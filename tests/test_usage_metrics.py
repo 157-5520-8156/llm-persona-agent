@@ -414,3 +414,17 @@ def test_gpt_image_2_has_verified_2026_08_18_price_row() -> None:
     assert parsed["text_input_tokens"] == 40
     assert parsed["image_input_tokens"] == 60
     assert parsed["output_tokens"] == 1366
+
+
+def test_v41_canonical_name_has_same_tariff_as_legacy_alias_and_unknown_stays_blocked():
+    from companion_daemon.usage_metrics import estimate_provider_request_reserve_cny, ProviderRequestPricingUnavailable
+    import pytest
+    request={'model':'deepseek-flash','messages':[{'role':'user','content':'测试'}],'max_tokens':256}
+    canonical=estimate_provider_request_reserve_cny(request_payload=request)
+    legacy=estimate_provider_request_reserve_cny(request_payload={**request,'model':'deepseek-v4-flash'})
+    from companion_daemon.usage_metrics import resolve_model_price
+    assert resolve_model_price('deepseek-flash') == resolve_model_price('deepseek-v4-flash')
+    # The legacy spelling adds wire bytes to the conservative request envelope.
+    assert 0 < canonical <= legacy
+    with pytest.raises(ProviderRequestPricingUnavailable):
+        estimate_provider_request_reserve_cny(request_payload={**request,'model':'deepseek-unpriced-future'})

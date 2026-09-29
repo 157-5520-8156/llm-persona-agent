@@ -10,6 +10,50 @@ from .life_development_draft import LifeDevelopmentDraftError, LifeDevelopmentPo
 from .life_content_store import MAX_LIFE_CONTENT_CHARACTERS
 from .world_consequence_contract import WorldConsequenceAuthority
 from .world_consequence_execution_context import WorldConsequenceExecutionMaterial
+from .world_environment_attention import (
+    GUIDANCE, INDEPENDENT_SCENE_GUIDANCE, ORDINARY_SCENE_LANGUAGE,
+    environment_attention, independent_scene_context,
+)
+
+
+def _recent_consequence_view(texture: object) -> object:
+    """Expose the actual history before its proof metadata, without new facts.
+
+    The full pinned source rows remain in pinned_world_context. This second
+    view is an index for the author, not another source or an authority upgrade.
+    Unknown/legacy row formats stay verbatim; only typed settled consequences
+    have a compact rendering. No prose classification or topic quota is used.
+    """
+    if not isinstance(texture, dict) or texture.get("contract") != "recent-life-texture.1":
+        return texture
+    rows = []
+    for item in texture.get("items", []):
+        value = item.get("value") if isinstance(item, dict) else None
+        if not isinstance(value, dict):
+            rows.append(deepcopy(item))
+            continue
+        if value.get("context_kind") == "biographical_context":
+            continue  # Background identity is not an event in recent life.
+        content = value.get("content")
+        if not isinstance(content, dict) or not isinstance(content.get("world_consequence"), dict):
+            rows.append(deepcopy(item))
+            continue
+        rows.append({
+            "source_ref": item["source_ref"], "lane": item["lane"],
+            "settled_at": value.get("settled_at"),
+            "privacy_class": value.get("privacy_class"),
+            "location_ref": value.get("location_ref"),
+            "content_ref": content.get("content_ref"),
+            "truncated": content.get("truncated"),
+            "world_consequence": deepcopy(content["world_consequence"]),
+            **({"character_response": deepcopy(content["character_response"])}
+               if content.get("character_response") is not None else {}),
+        })
+    return {
+        **deepcopy(texture), "contract": "recent-life-texture.2", "items": rows,
+        "reading_scope": "historical_consequences_not_current_presence_or_new_character_actions",
+        "source_details": "same_source_ref_in_pinned_world_context",
+    }
 
 
 def validate_world_consequence_offered_bindings(*, draft, messages) -> None:
@@ -169,11 +213,19 @@ def compile_world_consequence_messages(
         "prior_attempt": "not_evidence_of_success_or_of_embedded_historical_assertions",
         "user_channel_completion": "none",
     }
-    schema = life_possibility_output_schema(outcome_contract="world-consequence.2")
+    schema = life_possibility_output_schema(outcome_contract="world-consequence.2", authorized_attempt_claims=True)
     value["output_contract"] = {"no_op": {"decision": "no_op"}, "propose": schema}
     value["execution_authority"] = authority.model_dump(mode="json")
     value["execution_materials"] = [item.model_dump(mode="json") for item in execution_materials]
-    if value.get("occasion_mode") == "disturbance" or value.get("pressure_surfaces"):
+    if "recent_life_texture" in value:
+        value["recent_life_texture"] = _recent_consequence_view(value["recent_life_texture"])
+    attention = environment_attention(value)
+    if attention is not None:
+        value["environment_attention"] = attention
+        value["pinned_world_context"] = independent_scene_context(value.get("pinned_world_context"))
+    # Existing pressures are context, not authority to turn every subsequent
+    # ordinary occasion into another durable disturbance.
+    if value.get("occasion_mode") == "disturbance":
         disturbance_guidance = (
             "This is a disturbance occasion. At least one outcome must carry a durable "
             "world consequence: include dynamic_life_direction with a summary of the "
@@ -254,6 +306,33 @@ def compile_world_consequence_messages(
             + json.dumps(example, ensure_ascii=False)
             + "\n"
         )
+    if authority.execution_bindings:
+        example_guidance += (
+            "Within an exactly offered already-started attempt you are the candidate RESULT generator, "
+            "not merely a reader checking whether its result was known beforehand. Use a declaration "
+            "with scope novel_world_generation and subject_scope authorized_attempt_result for the "
+            "new objective result, bound only to that outcome's authorized_attempt_result.text. "
+            "Keep premise and environmental assertions on their own declarations. The exact binding "
+            "grants this narrow creation authority; it is not prior evidence of success. Choose a "
+            "concrete success, failure or partial result inside the original intention and elapsed "
+            "time, or no_op if no result can be resolved. A warning that a time window proves "
+            "nothing is not itself a concrete result. Do not add actions outside that original "
+            "attempt, new decisions, feelings, fabricated earlier history or user-channel delivery.\n"
+        )
+    if completion is not None:
+        # Keep the invariant author contract at the front of completed-activity
+        # requests so later requests can reuse the provider's exact prefix
+        # cache. This changes serialization order only: values and authorities
+        # are untouched. Active-attempt requests retain their qualified order.
+        stable_prefix_fields = (
+            "output_contract",
+            "claim_classification_contract",
+            "authored_subject",
+            "world_author_wire",
+        )
+        ordered_keys = [key for key in stable_prefix_fields if key in value]
+        ordered_keys.extend(key for key in value if key not in stable_prefix_fields)
+        value = {key: value[key] for key in ordered_keys}
     return [
         {
             "role": "system",
@@ -317,6 +396,7 @@ def compile_world_consequence_messages(
                 "place.\n"
                 + example_guidance
                 + disturbance_guidance
+                + (GUIDANCE + "\n" + INDEPENDENT_SCENE_GUIDANCE + "\n" + ORDINARY_SCENE_LANGUAGE + "\n" if attention is not None else "")
                 + "Return exactly one JSON object."
             ),
         },

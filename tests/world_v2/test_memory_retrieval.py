@@ -191,6 +191,30 @@ def test_fact_backed_memory_retrieval_uses_only_the_exact_persisted_assertion_te
     assert item.source_excerpts[0].text == "我最近开始很喜欢喝乌龙茶。"
     assert item.source_excerpts[0].excerpt_ref == "observation:memory-source"
     assert item.source_excerpts[0].authority_event_ref == candidate.values.source_bindings[0].authority_event_ref
+    assert item.updated_at == candidate.updated_at
+    assert item.reviewed_at == candidate.values.reviewed_at
+    assert item.assessment_scope == "memory_salience_not_current_goal_or_obligation"
+
+
+def test_memory_capsule_ranking_uses_actual_age_and_retention_strength():
+    from datetime import timedelta
+    import json
+    from companion_daemon.world_v2.ledger_context_resolver import _rank, _signal_bp
+    from companion_daemon.world_v2.memory_retrieval import MemoryRetrievalItem
+
+    ledger, candidate, cursor = _message_fact_read_ledger()
+    item = MemoryRetrievalCompiler(ledger=ledger).compile(
+        cursor=cursor, candidates=(candidate,), viewer_privacy_ceiling="private",
+    ).items[0]
+    assert _signal_bp("active_memory_candidates", item) == candidate.values.retrieval_strength_bp
+    current = _rank("active_memory_candidates", item, candidate.updated_at)
+    assert current > 0
+    assert _rank("active_memory_candidates", item, candidate.updated_at + timedelta(days=3)) < current
+    weaker = item.model_copy(update={"retrieval_strength_bp": max(1, item.retrieval_strength_bp // 2)})
+    assert _rank("active_memory_candidates", weaker, candidate.updated_at) < current
+    historical = item.model_dump(mode="json", exclude={"updated_at", "reviewed_at", "assessment_scope"})
+    restored = MemoryRetrievalItem.model_validate_json(json.dumps(historical))
+    assert restored.model_dump(mode="json") == historical
 
 
 def test_memory_retrieval_does_not_turn_an_operator_fact_ref_into_model_content() -> None:

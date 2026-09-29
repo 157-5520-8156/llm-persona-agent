@@ -13,6 +13,7 @@ from datetime import datetime
 import hashlib
 import json
 import logging
+import threading
 import time
 from typing import Iterable, Mapping
 from zoneinfo import ZoneInfo
@@ -117,12 +118,12 @@ from .recent_dialogue import (
 )
 from .recall_corpus import (
     AffectOpeningRecallItem,
-    MAX_RECALL_CORPUS_DOCUMENTS,
     NpcIdentityRecallItem,
     RecallCorpusSources,
     required_recall_authority_refs,
     select_recall_authority_bindings,
 )
+
 from .recall_attention import (
     build_automatic_recall_request,
     select_recent_dialogue_for_automatic_recall,
@@ -154,6 +155,9 @@ from .world_life_context import (
     WorldLifeContextItem,
     WorldLifeSourceBinding,
 )
+
+# This source reader is independently bounded; it is not the life corpus size.
+MAX_HISTORICAL_FACT_TRANSITIONS = 256
 
 
 _PRIVACY_FLOOR: dict[SliceName, PrivacyClass] = {
@@ -749,6 +753,7 @@ def _signal_bp(slice_name: SliceName, item: BaseModel) -> int:
     direct = (
         getattr(values, "importance_bp", None),
         getattr(values, "retrieval_strength_bp", None),
+        getattr(item, "retrieval_strength_bp", None),
         getattr(item, "confidence_bp", None),
         getattr(values, "confidence_bp", None),
         getattr(item, "strength_bp", None),
@@ -1333,7 +1338,7 @@ def historical_fact_recall_items(
                 deliberation_revision=projection.deliberation_revision,
                 ledger_sequence=projection.ledger_sequence,
             ),
-            limit=MAX_RECALL_CORPUS_DOCUMENTS,
+            limit=MAX_HISTORICAL_FACT_TRANSITIONS,
         )
     else:
         # Compatibility for narrow test/decorator LedgerPorts.  Production
@@ -1349,7 +1354,7 @@ def historical_fact_recall_items(
             located = ledger.lookup_event_commit(transition.accepted_event_ref)
             if located is not None:
                 fallback.append(located[0])
-            if len(fallback) >= MAX_RECALL_CORPUS_DOCUMENTS:
+            if len(fallback) >= MAX_HISTORICAL_FACT_TRANSITIONS:
                 break
         events = tuple(fallback)
     prepared: list[tuple[WorldEvent, FactProjection]] = []
@@ -1580,6 +1585,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         # hash covers cursor, snapshot, actor, trigger, consumer profile and
         # logical time; fixed resolver collaborators are instance-scoped.
         self._resolved_context_cache: dict[str, ResolvedContextResult] = {}
+        self._resolve_guard = threading.RLock()
         self._resolve_calls = 0
         self._resolve_cache_hits = 0
         self._resolve_cache_misses = 0
@@ -1884,6 +1890,13 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         return result
 
     def resolve(self, query: ContextCompileQuery) -> ResolvedContextResult:
+        # Compilers with different presentation budgets share this resolver.
+        # Coalesce concurrent builds as well as sequential ones, so one pinned
+        # recall prefetch is not cancelled/restarted by a sibling consumer.
+        with self._resolve_guard:
+            return self._resolve_pinned(query)
+
+    def _resolve_pinned(self, query: ContextCompileQuery) -> ResolvedContextResult:
         started = time.perf_counter()
         self._resolve_calls += 1
         head = self._ledger.project()
@@ -2362,18 +2375,51 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                     sorted(dialogue_candidates, key=lambda item: item.occurred_at)
                 )[:-CHAT_RECENT_DIALOGUE_ITEM_LIMIT]
                 npc_identities = self._npc_identity_recall_items(projection)
+                # Index the readable source archive, not the 1440-character
+                # display window. Otherwise an older result (and its linked
+                # MemoryCandidate) disappears before lexical/vector ranking.
+                # Only selected recall hits enter the bounded model context.
+                recall_life = self._life_content.compile(
+                    cursor=query.cursor, actor_ref=query.actor_ref,
+                    viewer_privacy_ceiling="private", projection=projection,
+                    user_channel_limited_content_refs=user_channel_limited_content_refs,
+                    budget=None,
+                )
+                recall_experiences = tuple(
+                    item for item in recall_life.experience_items
+                    if query.actor_ref in item.values.participant_refs
+                )
+                recall_results = {
+                    item.source_entity_id: item for item in recall_life.settled_items
+                }
+                recall_source_ids = scoped_source_ids | {
+                    item.experience_id for item in recall_experiences
+                }
+                recall_memories = self._memory_retrieval.compile(
+                    cursor=query.cursor,
+                    candidates=tuple(
+                        item for item in projection.memory_candidates
+                        if item.values.status == "active" and all(
+                            binding.source_id in recall_source_ids
+                            for binding in item.values.source_bindings
+                        )
+                    ),
+                    viewer_privacy_ceiling="private", projection=projection,
+                    actor_ref=query.actor_ref,
+                )
                 recall_sources = RecallCorpusSources(
                     recent_dialogue=recall_dialogue,
                     relevant_facts=recalled_facts,
                     historical_facts=historical_facts,
                     open_threads=open_threads_for_continuity,
-                    recent_experiences=tuple(
-                        item for item in scoped_experiences if hasattr(item, "origin")
-                    ),
+                    recent_experiences=recall_experiences,
                     world_life=tuple(
-                        item for item in world_life if isinstance(item, WorldLifeContextItem)
+                        item.model_copy(update={
+                            "content": recall_results.get(item.occurrence_id),
+                        })
+                        for item in world_life if isinstance(item, WorldLifeContextItem)
                     ),
-                    active_memory_candidates=memory_retrievals.items,
+                    active_memory_candidates=recall_memories.items,
                     affect_openings=tuple(recall_affect_openings),
                     appraisals=recall_appraisals,
                     private_impressions=tuple(

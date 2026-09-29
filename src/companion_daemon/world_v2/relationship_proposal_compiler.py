@@ -13,6 +13,7 @@ import json
 from typing import Literal
 
 from .decision_proposal_authority import DecisionProposalAuthorityReader
+from .proposal_envelope import DecisionProposal, validate_proposal_envelope
 from .character_interior.relationship_context import (
     relationship_transition_subject_refs,
 )
@@ -24,6 +25,7 @@ from .relationship_events import (
     RelationshipCommitmentAcceptedPayload,
     relationship_mutation_hash,
 )
+from .proposal_audit_schemas import RecordedModelResultAudit
 from .relationship_commitment_acceptance_runtime import (
     relationship_commitment_mutation_event_id,
 )
@@ -656,6 +658,35 @@ class RelationshipProposalCompiler:
         change,
         acceptance_manifest_version: str = "relationship-acceptance.1",
     ) -> tuple[RelationshipProposalProjection, CommitResult] | None:
+        return self._accepted_rebased_candidate_for_audit(
+            projection=projection, audit=authority.audit, change=change,
+            acceptance_manifest_version=acceptance_manifest_version,
+        )
+
+    def is_world_stimulus_pending_in_projection(self, *, projection, audit) -> bool:
+        """Select recovery work from verified head data, without replaying it.
+
+        This grants no write authority. The selected job still uses the full
+        pinned compiler/acceptance path before it can produce any effect.
+        """
+        if audit not in projection.proposal_audits:
+            raise RelationshipProposalCompilerError("recovery_audit_not_in_projection")
+        proposal = validate_proposal_envelope(json.loads(audit.proposal_json))
+        if not isinstance(proposal, DecisionProposal):
+            return False
+        changes = [c for c in proposal.proposed_changes if c.kind == "relationship_signal"]
+        if not changes:
+            return False
+        if len(changes) != 1:
+            return True  # The authoritative processing path diagnoses it.
+        return self._accepted_rebased_candidate_for_audit(
+            projection=projection, audit=audit, change=changes[0],
+        ) is None
+
+    def _accepted_rebased_candidate_for_audit(
+        self, *, projection, audit, change,
+        acceptance_manifest_version: str = "relationship-acceptance.1",
+    ) -> tuple[RelationshipProposalProjection, CommitResult] | None:
         matches: list[tuple[RelationshipProposalProjection, CommitResult]] = []
         for decision in projection.acceptance_decisions:
             if (
@@ -686,11 +717,11 @@ class RelationshipProposalCompiler:
             binding = candidate.source_audit
             if (
                 binding is None
-                or binding.proposal_event_ref != authority.audit.event_ref
+                or binding.proposal_event_ref != audit.event_ref
                 or binding.proposal_event_payload_hash
-                != authority.audit.event_payload_hash
-                or binding.model_result_ref != authority.audit.model_result_ref
-                or binding.capsule_id != authority.audit.capsule_id
+                != audit.event_payload_hash
+                or binding.model_result_ref != audit.model_result_ref
+                or binding.capsule_id != audit.capsule_id
                 or binding.change_id != change.change_id
                 or binding.change_payload_hash != change.payload.payload_hash
             ):
@@ -1333,54 +1364,43 @@ class RelationshipProposalCompiler:
             )
         located = self._ledger.lookup_event_commit(source_event_id)
         if located is None:
-            raise RelationshipProposalCompilerError(
-                "world_stimulus_source_unavailable"
-            )
-        source_event, source_commit = located
-        evidence_type = _WORLD_STIMULUS_SOURCE_EVIDENCE.get(
-            source_event.event_type
-        )
-        if evidence_type is None:
-            raise RelationshipProposalCompilerError(
-                "world_stimulus_source_kind_unsupported"
-            )
-        if (
-            source_commit.world_revision > authority.cursor.world_revision
-            or source_commit.deliberation_revision
-            > authority.cursor.deliberation_revision
-            or source_commit.ledger_sequence > authority.cursor.ledger_sequence
-        ):
-            raise RelationshipProposalCompilerError(
-                "world_stimulus_source_outside_audit"
-            )
-        audit_committed = next(
+            raise RelationshipProposalCompilerError("world_stimulus_source_unavailable")
+        source_event, _source_commit = located
+        if source_event.event_type not in _WORLD_STIMULUS_SOURCE_EVIDENCE:
+            raise RelationshipProposalCompilerError("world_stimulus_source_kind_unsupported")
+        model_audit_projection = next(
             (
                 item
-                for item in audit_projection.committed_world_event_refs
-                if item.event_id == source_event_id
+                for item in audit_projection.model_result_audits
+                if item.model_result_ref == authority.audit.model_result_ref
             ),
             None,
         )
-        current_committed = next(
-            (
-                item
-                for item in current_projection.committed_world_event_refs
-                if item.event_id == source_event_id
-            ),
-            None,
-        )
-        if (
-            audit_committed is None
-            or current_committed is None
-            or audit_committed != current_committed
-            or audit_committed.event_type != source_event.event_type
-            or audit_committed.payload_hash != source_event.payload_hash
-        ):
-            raise RelationshipProposalCompilerError(
-                "world_stimulus_source_not_authoritative"
+        if model_audit_projection is None:
+            raise RelationshipProposalCompilerError("world_stimulus_lineage_unavailable")
+        try:
+            model_audit = RecordedModelResultAudit.model_validate_json(
+                model_audit_projection.audit_json
             )
-        raw = change.payload.value()
-        subject_ref = raw.get("subject_ref")
+        except ValueError as exc:
+            raise RelationshipProposalCompilerError(
+                "world_stimulus_lineage_invalid"
+            ) from exc
+        lineage = model_audit.character_interior_lineage
+        if (
+            model_audit_projection.trigger_ref != source_event_id
+            or lineage is None
+            or lineage.purpose != "world_stimulus_appraisal"
+            or lineage.causal_world_id != self._ledger.world_id
+            or source_event_id not in lineage.causal_source_refs
+        ):
+            raise RelationshipProposalCompilerError("world_stimulus_lineage_mismatch")
+        # A merged causal opportunity is one authored observation over a
+        # canonical source set.  The signal must retain that complete set;
+        # neither a caller-supplied subset nor arbitrary extra evidence may
+        # widen the relationship claim.
+        if tuple(change.evidence_refs) != lineage.causal_source_refs:
+            raise RelationshipProposalCompilerError("signal_evidence_not_exact_opportunity")
         audit_event = self._event(authority.audit.event_ref)
         if (
             audit_event.source
@@ -1389,60 +1409,95 @@ class RelationshipProposalCompiler:
                 "event:character-interior-world-stimulus:proposal:"
             )
         ):
-            # This exact writer validates the capability manifest against the
-            # pinned relationship projection before it can persist the audit.
-            raise RelationshipProposalCompilerError(
-                "world_stimulus_subject_authority_invalid"
-            )
-        audited_subjects = relationship_transition_subject_refs(
-            projection=audit_projection,
-            source_event=source_event,
-        )
-        current_subjects = relationship_transition_subject_refs(
-            projection=current_projection,
-            source_event=source_event,
-        )
-        if (
-            not isinstance(subject_ref, str)
-            or subject_ref not in audited_subjects
-            or subject_ref not in current_subjects
-        ):
+            raise RelationshipProposalCompilerError("world_stimulus_subject_authority_invalid")
+        raw = change.payload.value()
+        subject_ref = raw.get("subject_ref")
+        if not isinstance(subject_ref, str):
             raise RelationshipProposalCompilerError(
                 "world_stimulus_subject_not_authorized"
             )
-        if tuple(change.evidence_refs) != (source_event_id,):
-            raise RelationshipProposalCompilerError(
-                "signal_evidence_not_exact_trigger"
+        proposal_evidence = {
+            item.ref_id: item for item in authority.proposal.evidence_refs
+        }
+        evidence: list[EvidenceRef] = []
+        for ref_id in lineage.causal_source_refs:
+            source_located = self._ledger.lookup_event_commit(ref_id)
+            if source_located is None:
+                raise RelationshipProposalCompilerError("world_stimulus_source_unavailable")
+            cited_event, cited_commit = source_located
+            expected_evidence_type = _WORLD_STIMULUS_SOURCE_EVIDENCE.get(
+                cited_event.event_type
             )
-        source = next(
-            (
-                item
-                for item in authority.proposal.evidence_refs
-                if item.ref_id == source_event_id
-            ),
-            None,
-        )
-        if (
-            source is None
-            or source.evidence_kind != evidence_type
-            or source.source_world_revision != audit_committed.world_revision
-            or source.immutable_hash != "sha256:" + source_event.payload_hash
-        ):
-            raise RelationshipProposalCompilerError(
-                "signal_evidence_not_authoritative"
+            if cited_event.event_type != source_event.event_type or expected_evidence_type is None:
+                raise RelationshipProposalCompilerError("world_stimulus_source_set_mismatch")
+            if (
+                cited_commit.world_revision > authority.cursor.world_revision
+                or cited_commit.deliberation_revision > authority.cursor.deliberation_revision
+                or cited_commit.ledger_sequence > authority.cursor.ledger_sequence
+            ):
+                raise RelationshipProposalCompilerError("world_stimulus_source_outside_audit")
+            audited_committed = next(
+                (
+                    item
+                    for item in audit_projection.committed_world_event_refs
+                    if item.event_id == ref_id
+                ),
+                None,
+            )
+            current_committed = next(
+                (
+                    item
+                    for item in current_projection.committed_world_event_refs
+                    if item.event_id == ref_id
+                ),
+                None,
+            )
+            source = proposal_evidence.get(ref_id)
+            allowed_evidence_types = {expected_evidence_type}
+            # The stimulus author labels non-trigger sources as generic
+            # committed events. Retain that exact typed binding while still
+            # requiring a committed, cursor-pinned source event.
+            if expected_evidence_type != "committed_world_event":
+                allowed_evidence_types.add("committed_world_event")
+            if (
+                audited_committed is None
+                or current_committed is None
+                or audited_committed != current_committed
+                or audited_committed.event_type != cited_event.event_type
+                or audited_committed.payload_hash != cited_event.payload_hash
+                or source is None
+                or source.evidence_kind not in allowed_evidence_types
+                or source.source_world_revision != audited_committed.world_revision
+                or source.immutable_hash != "sha256:" + cited_event.payload_hash
+            ):
+                raise RelationshipProposalCompilerError(
+                    "signal_evidence_not_authoritative"
+                )
+            audited_subjects = relationship_transition_subject_refs(
+                projection=audit_projection,
+                source_event=cited_event,
+            )
+            current_subjects = relationship_transition_subject_refs(
+                projection=current_projection,
+                source_event=cited_event,
+            )
+            if subject_ref not in audited_subjects or subject_ref not in current_subjects:
+                raise RelationshipProposalCompilerError(
+                    "world_stimulus_subject_not_authorized"
+                )
+            evidence.append(
+                EvidenceRef(
+                    ref_id=ref_id,
+                    evidence_type=source.evidence_kind,
+                    claim_purpose="private_hypothesis",
+                    source_world_revision=audited_committed.world_revision,
+                    immutable_hash=cited_event.payload_hash,
+                )
             )
         return (
             source_event,
             subject_ref,
-            (
-                EvidenceRef(
-                    ref_id=source_event_id,
-                    evidence_type=evidence_type,
-                    claim_purpose="private_hypothesis",
-                    source_world_revision=audit_committed.world_revision,
-                    immutable_hash=source_event.payload_hash,
-                ),
-            ),
+            tuple(evidence),
         )
 
     def _source_relationship_subject(

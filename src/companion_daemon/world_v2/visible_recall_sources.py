@@ -10,7 +10,7 @@ import json
 
 from .context_capsule import ResolvedSourceBinding, source_bindings_hash
 from .recall_audit import RecallAuditTrace
-from .recall_model_reading import interior_recall_item, supports_fact_reading
+from .recall_model_reading import interior_recall_item, supports_fact_reading, supports_life_reading
 from .model_facing_context import compact_model_facing_context
 from .schema_core import canonicalize_json_value
 from .selected_source_composer import _indexed_materials
@@ -27,6 +27,21 @@ def _hash(value):
     return hashlib.sha256(_json(value).encode()).hexdigest()
 
 
+def _presented_user(author_request_json, audits):
+    author = json.loads(author_request_json)
+    user = json.loads(author["messages"][1]["content"])
+    # New traces compare the authenticated expanded identifiers, just as the
+    # visible-author verifier does. Retain historical receipt compilation.
+    if any(supports_life_reading(audit.index_version) for audit in audits):
+        from .reference_wire import expand_reference_view
+        user = expand_reference_view(
+            user, (author.get("identity_extras") or {}).get("reference_bindings"),
+        )
+        from .present_prompt import expand_present_world_context
+        user = expand_present_world_context(user)
+    return user
+
+
 def supplement_recalled_prehistory(
     *, table: VisibleSourceTable, audits: tuple[RecallAuditTrace, ...], author_request_json: str,
 ) -> tuple[VisibleSourceTable, tuple[RecallAuditTrace, ...]]:
@@ -36,8 +51,7 @@ def supplement_recalled_prehistory(
     base = table.as_dict()
     pin = base["pin"]
     actor = base["subjects"]["companion_actor_ref"]
-    author = json.loads(author_request_json)
-    user = json.loads(author["messages"][1]["content"])
+    user = _presented_user(author_request_json, audits)
     materials = user.get("inner_life_snapshot", {}).get("materials", {})
     entries, used = [], []
     seen = set()
@@ -212,7 +226,9 @@ def bind_presented_recalled_facts(request):
 
     audits = tuple(verify_trusted_recall_trace(trace) for trace in request.visible_source_recall_traces)
     if not any(supports_fact_reading(audit.index_version)
-               and any(hit.document.accepted_fact is not None for hit in audit.hits)
+               and any(hit.document.accepted_fact is not None or (
+                   supports_life_reading(audit.index_version) and hit.document.settled_life_json is not None
+               ) for hit in audit.hits)
                for audit in audits):
         return request
     table = requirement_table(request.visible_source_requirement_json)
@@ -234,7 +250,12 @@ def bind_presented_recalled_facts(request):
         audits=audits,
         materials=view.get("inner_life_snapshot", {}).get("materials", {}),
     )
-    if not selected:
+    from .recalled_life_source import presented_recalled_life
+    life, _ = presented_recalled_life(
+        table=table, audits=audits,
+        materials=view.get("inner_life_snapshot", {}).get("materials", {}),
+    )
+    if not selected and not life:
         return request
     lane = content.setdefault("slices", {}).setdefault("relevant_facts", {})
     items = list(lane.get("items", []))
@@ -254,6 +275,14 @@ def bind_presented_recalled_facts(request):
             continue
         items.append(item)
     lane.update(availability="available", items=items)
+    if life:
+        life_lane = content.setdefault("slices", {}).setdefault("world_life", {})
+        life_items = list(life_lane.get("items", []))
+        for entry in life:
+            if any(item.get("item_ref") == entry["item"]["item_ref"] for item in life_items):
+                continue
+            life_items.append({**entry["item"], "recall_injected": True})
+        life_lane.update(availability="available", items=life_items)
     return request.model_copy(update={"model_content_json": _json(canonicalize_json_value(content))})
 
 
@@ -265,8 +294,7 @@ def supplement_recalled_sources(
     table, historical = supplement_recalled_prehistory(
         table=table, audits=audits, author_request_json=author_request_json,
     )
-    author = json.loads(author_request_json)
-    user = json.loads(author["messages"][1]["content"])
+    user = _presented_user(author_request_json, audits)
     # Compare the canonical reading through the saved presentation contract.
     # The native prefetch view elides constants such as occurred_to=None;
     # their exact inverse is not a missing/unshown source.
@@ -276,19 +304,26 @@ def supplement_recalled_sources(
         table=original, audits=audits,
         materials=user.get("inner_life_snapshot", {}).get("materials", {}),
     )
-    if not selected:
+    from .recalled_life_source import presented_recalled_life
+    life, life_audits = presented_recalled_life(
+        table=original, audits=audits,
+        materials=user.get("inner_life_snapshot", {}).get("materials", {}),
+    )
+    if not selected and not life:
         return table, historical
     base = table.as_dict()
-    rows, materials = _indexed_materials([entry for _, entry in selected], base["subjects"])
+    rows, materials = _indexed_materials([entry for _, entry in selected] + life, base["subjects"])
     row_offset, material_offset = len(base["source_references"]), len(base["source_materials"])
     for row in rows:
         row["source_ref_index"] += row_offset
         row["material_index"] += material_offset
     base["source_references"].extend(rows)
     base["source_materials"].extend(materials)
-    used = tuple(audit for audit in audits if audit in historical or audit in facts)
+    used = tuple(audit for audit in audits if audit in historical or audit in facts or audit in life_audits)
     base["contract"] = RECALLED_SOURCE_TABLE_CONTRACT
     base["coverage_scope"] += "_with_presented_recalled_facts"
+    if life:
+        base["coverage_scope"] += "_and_settled_life"
     base["recall_trace_hashes"] = [_hash(audit.model_dump(mode="json")) for audit in used]
     base["table_hash"], base["materials_hash"] = _hash(base["source_references"]), _hash(base["source_materials"])
     return VisibleSourceTable(payload_json=_json(base)), used

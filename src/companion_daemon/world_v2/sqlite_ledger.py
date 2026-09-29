@@ -6195,6 +6195,36 @@ class SQLiteWorldLedger:
             raise LedgerIntegrityError("rebuilt projection does not match persisted head")
         return rebuilt
 
+    def _epoch_binding_replay_mode(self):
+        from .epoch_binding_compat import legacy_epoch_fact_binding
+
+        head = self._connection.execute(
+            "SELECT max(ledger_sequence) FROM world_v2_events WHERE world_id=?", (self._world_id,),
+        ).fetchone()[0]
+        cached = getattr(self, "_epoch_binding_mode_cache", None)
+        if cached is not None and cached[0] == head:
+            return cached[1]
+        root = self._connection.execute(
+            "SELECT event_json,event_hash FROM world_v2_events WHERE world_id=? AND ledger_sequence=1",
+            (self._world_id,),
+        ).fetchone()
+        def checked(row):
+            if hashlib.sha256(row["event_json"].encode()).hexdigest() != row["event_hash"]:
+                raise LedgerIntegrityError("epoch witness envelope hash mismatch")
+            return upcast_event(json.loads(row["event_json"]), target_schema_version=CURRENT_SCHEMA_VERSION)
+        genesis = checked(root) if root is not None else None
+        if genesis is None or genesis.payload().get("continuity", {}).get("continuity_version") != "epoch-continuity.1":
+            mode = "genesis"
+        else:
+            rows = self._connection.execute(
+                """SELECT event_json,event_hash FROM world_v2_events WHERE world_id=?
+                AND json_extract(event_json,'$.event_type') IN ('FactCorrected','FactWithdrawn','FactCorrectionCompensated')
+                ORDER BY ledger_sequence""", (self._world_id,),
+            )
+            mode = legacy_epoch_fact_binding(genesis, (checked(row) for row in rows))
+        self._epoch_binding_mode_cache = (head, mode)
+        return mode
+
     def _replay_locked(
         self,
         *,
@@ -6215,6 +6245,7 @@ class SQLiteWorldLedger:
                 and value.cursor.ledger_sequence <= target_cursor.ledger_sequence
             )
             prefix = max(candidates, key=lambda value: value.cursor.ledger_sequence, default=None)
+        epoch_binding_mode = self._epoch_binding_replay_mode() if prefix is None else "genesis"
         if prefix is None:
             state = ReducerState()
             world_revision = 0
@@ -6324,6 +6355,7 @@ class SQLiteWorldLedger:
                 state = reduce_event(
                     state,
                     event,
+                    legacy_epoch_fact_binding=epoch_binding_mode,
                     allow_legacy_plan_owner=event.event_id in legacy_plan_event_ids,
                     allow_legacy_clock_drift=(
                         event.event_id in self._legacy_clock_compat_event_ids

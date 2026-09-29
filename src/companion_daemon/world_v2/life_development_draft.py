@@ -463,6 +463,7 @@ class LifeDevelopmentClaimDeclaration(FrozenModel):
         "provisional_entity",
         "user_or_shared_history",
         "character_completed_experience",
+        "authorized_attempt_result",
     ]
     source_refs: tuple[str, ...] = Field(default=(), max_length=16)
 
@@ -483,6 +484,7 @@ class LifeDevelopmentClaimDeclaration(FrozenModel):
             if self.subject_scope not in {
                 "world_environment",
                 "provisional_entity",
+                "authorized_attempt_result",
             }:
                 raise ValueError(
                     "novel-world claim cannot assert user/shared history or completed experience"
@@ -925,6 +927,19 @@ class LifeDevelopmentPossibilityDraft(FrozenModel):
         }
         if used != set(declaration_refs):
             raise ValueError("premise and outcomes must exactly close over claim declarations")
+        attempt_claims = {c.claim_id for c in self.claim_declarations if c.subject_scope == "authorized_attempt_result"}
+        if attempt_claims:
+            if (self.causal_authority != "world_contingency" or self.timing.mode != "now"
+                    or attempt_claims.intersection(self.premise_claim_refs)):
+                raise ValueError("attempt-result claims belong only to current bounded result branches")
+            for claim in self.claim_declarations:
+                if claim.claim_id in attempt_claims and claim.scope != "novel_world_generation":
+                    raise ValueError("attempt-result declaration is creation authority, not prior proof")
+            for outcome in self.outcomes:
+                if attempt_claims.intersection(outcome.claim_refs) and (
+                    outcome.world_consequence is None or outcome.world_consequence.authorized_attempt_result is None
+                ):
+                    raise ValueError("attempt-result claim requires its exact execution binding")
         if (self.location_ref is None) != (self.location_capability_ref is None):
             raise ValueError("location_ref and location_capability_ref must be supplied together")
         for outcome in self.outcomes:

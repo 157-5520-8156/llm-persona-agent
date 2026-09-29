@@ -13,7 +13,7 @@ import json
 import logging
 
 from ..contextual_life_retry import CONTEXTUAL_LIFE_RETRY_DELAYS_SECONDS
-from ..schemas import ProjectionCursor
+from ..errors import LedgerIntegrityError
 
 
 _LOG = logging.getLogger(__name__)
@@ -33,10 +33,11 @@ class WorldStimulusRetrySchedule:
     authority. Closing/reopening SQLite reconstructs exactly the same due time.
     """
 
-    def __init__(self, *, ledger, identities_for_projection):
+    def __init__(self, *, ledger, identity_for_audit):
         self._ledger = ledger
-        self._identities_for_projection = identities_for_projection
+        self._identity_for_audit = identity_for_audit
         self._failures: dict[str, _FailedAttempt] = {}
+        self._unreadable_event_refs: set[str] = set()
         self.unresolved_attempt_ids: frozenset[str] = frozenset()
         self._reported_unresolved: set[str] = set()
 
@@ -45,6 +46,9 @@ class WorldStimulusRetrySchedule:
         unresolved: set[str] = set()
         for item in projection.model_result_audits:
             if item.attempt_id not in attempt_ids:
+                continue
+            if item.event_ref in self._unreadable_event_refs:
+                unresolved.add(item.attempt_id)
                 continue
             audit = json.loads(item.audit_json)
             if (
@@ -55,6 +59,22 @@ class WorldStimulusRetrySchedule:
                 continue
             try:
                 failed = self._failure(item, projection)
+            except LedgerIntegrityError:
+                # A corrupt/unreplayable historical prefix is immutable from
+                # this runtime's perspective.  Quarantine only this audit for
+                # the process lifetime; repeatedly replaying genesis for the
+                # same failed identity both blocks unrelated work on the
+                # ledger lock and cannot make the old bytes valid.  A restart
+                # with a repaired reader naturally retries reconstruction.
+                self._unreadable_event_refs.add(item.event_ref)
+                unresolved.add(item.attempt_id)
+                if item.event_ref not in self._reported_unresolved:
+                    _LOG.warning(
+                        "world stimulus retry_identity_unavailable event=%s attempt=%s",
+                        item.event_ref, item.attempt_id,
+                    )
+                    self._reported_unresolved.add(item.event_ref)
+                continue
             except (ValueError, KeyError):
                 # An unreadable historical identity cannot authorize a paid
                 # retry. Isolate its exact attempts, keeping other work live;
@@ -94,24 +114,24 @@ class WorldStimulusRetrySchedule:
         located = self._ledger.lookup_event_commit(item.event_ref)
         if located is None:
             raise ValueError("world stimulus retry lacks its immutable failure event")
-        event, commit = located
-        historical = self._ledger.project_at(ProjectionCursor(
-            world_revision=commit.world_revision,
-            deliberation_revision=commit.deliberation_revision,
-            ledger_sequence=commit.ledger_sequence,
-        ))
+        event, _commit = located
+        if event.event_type != "ModelResultRecorded" or event.event_id != item.event_ref:
+            raise ValueError("world stimulus retry failure reference is not a model audit")
+        # The recorded audit carries the exact causal source set and epoch
+        # used for this attempt. Rebuilding a historical projection here is
+        # unnecessary and makes a retry depend on every reducer ever used by
+        # the ledger, even though the immutable lineage has already been
+        # validated in the current projection.
+        identity = self._identity_for_audit(item)
+        if identity is None or item.trigger_ref not in identity.source_refs:
+            raise ValueError("world stimulus retry lacks its audited causal opportunity")
         process = next((
-            process for process in historical.trigger_processes
+            process for process in projection.trigger_processes
             if process.source_evidence_ref == item.trigger_ref
             and item.attempt_id in process.attempt_ids
         ), None)
         if process is None:
-            raise ValueError("world stimulus retry lacks its exact claimed source")
-        identities = self._identities_for_projection(historical)
-        identity = identities.get(process.trigger_id)
-        if identity is None:
-            raise ValueError("world stimulus retry lacks its causal opportunity")
+            raise ValueError("world stimulus retry lacks its exact source process")
         failed = _FailedAttempt(identity.opportunity_ref, item.attempt_id, event.logical_time)
         self._failures[item.event_ref] = failed
         return failed
-

@@ -434,6 +434,7 @@ async def test_npc_impulse_is_separately_adjudicated_and_enters_event_machine() 
     assert set(world_payload["world_capabilities"]) == {
         "participant_refs",
         "location_refs",
+        "allowed_outcome_privacy",
     }
     assert world_payload["world_capabilities"]["participant_refs"] == ["npc:lin"]
     assert "affect" not in world.calls[0][1]["content"].lower()
@@ -928,4 +929,119 @@ async def test_npc_actor_profile_carries_forward_prior_inner_state() -> None:
     assert len(actor.calls) == 2
     second_profile = json.loads(actor.calls[1][1]["content"])["npc_actor_profile"]
     assert second_profile["my_last_state"] == first_inner
+    first_profile = json.loads(actor.calls[0][1]["content"])["npc_actor_profile"]
+    assert second_profile["my_last_state_at"] == first_profile["now"]["logical_time"]
     assert second_profile["my_goals"] == first_payload["current_goal_summaries"]
+
+
+def test_npc_request_schema_distinguishes_event_evidence_from_entity_coordinates():
+    from jsonschema import Draft202012Validator, ValidationError
+
+    ledger, store, _, _, runtime = _runtime(_actor("no_op"), {"decision": "no_op"})
+    from companion_daemon.world_v2.npc_ecology import NpcEcologyStimulus
+    stimulus = NpcEcologyStimulus(
+        cursor=_cursor_for_test(ledger), wake_event_ref="clock-life",
+        source_event_refs=("clock-life",), epoch_ref="source-vocabulary",
+    )
+    snapshot = runtime.snapshot(_cursor_for_test(ledger))
+    prompt, payload = runtime._actor_request(stimulus=stimulus, snapshot=snapshot)
+    contract = json.loads(prompt[prompt.index('{"json_schema"'):])["json_schema"]
+    allowed = payload["authority"]["input_event_refs"]
+    plans = payload["npc_actor_profile"]["plan_context"]
+    assert plans
+    for row in plans:
+        original = next(plan for plan in ledger.project().plans if plan.plan_id == row["plan_ref"])
+        assert row["owner_actor_ref"] == original.owner_actor_ref
+        assert row["status"] == original.status
+        assert row["plan_ref"] in payload["npc_actor_profile"]["open_plans"]
+    assert contract["properties"]["source_refs"]["items"]["enum"] == list(allowed)
+    schema = contract["properties"]["source_refs"]
+    Draft202012Validator(schema).validate([allowed[0]])
+    with pytest.raises(ValidationError):
+        Draft202012Validator(schema).validate(["room:kitchen"])
+
+
+def _cursor_for_test(ledger):
+    projection = ledger.project()
+    return ProjectionCursor(world_revision=projection.world_revision,
+                            deliberation_revision=projection.deliberation_revision,
+                            ledger_sequence=projection.ledger_sequence)
+
+
+def test_npc_request_schema_exposes_the_same_now_later_boundary_as_acceptance():
+    from jsonschema import Draft202012Validator, ValidationError
+    from companion_daemon.world_v2.npc_ecology import NpcEcologyStimulus
+
+    ledger, _, _, _, runtime = _runtime(_actor("no_op"), {"decision": "no_op"})
+    stimulus = NpcEcologyStimulus(cursor=_cursor_for_test(ledger), wake_event_ref="clock-life",
+                                 source_event_refs=("clock-life",), epoch_ref="timing-shape")
+    prompt, _ = runtime._actor_request(stimulus=stimulus, snapshot=runtime.snapshot(_cursor_for_test(ledger)))
+    schema = json.loads(prompt[prompt.index('{"json_schema"'):])["json_schema"]["$defs"]["NpcActorProposal"]
+    validator = Draft202012Validator(schema)
+    now = {"timing": "now", "premise": "泡一壶茶", "participant_refs": ["npc:lin"],
+           "location_ref": "room:kitchen", "duration_minutes": 20, "visibility": "personal"}
+    validator.validate(now)
+    with pytest.raises(ValidationError):
+        validator.validate({**now, "activity_kind": "tea", "importance_bp": 3500})
+    with pytest.raises(ValidationError):
+        validator.validate({**now, "timing": "later"})
+    validator.validate({**now, "timing": "later", "activity_kind": "tea",
+                        "importance_bp": 3500, "scheduled_start_after_minutes": 30})
+
+
+def test_npc_elapsed_schedule_is_explicit_without_fabricating_plan_completion():
+    from companion_daemon.world_v2.npc_ecology import NpcEcologyStimulus
+
+    ledger, _, _, _, runtime = _runtime(_actor("no_op"), {"decision": "no_op"})
+    plan = next(item for item in ledger.project().plans if item.plan_id == "plan-tea")
+    after = plan.scheduled_window.closes_at + timedelta(hours=1)
+    commit(ledger, [event("clock-after-window", "ClockAdvanced", {
+        "logical_time_from": ledger.project().logical_time.isoformat(), "logical_time_to": after.isoformat(),
+    }, at=after)])
+    stimulus = NpcEcologyStimulus(cursor=_cursor_for_test(ledger), wake_event_ref="clock-after-window",
+                                 source_event_refs=("clock-after-window",), epoch_ref="expired-schedule")
+    _, payload = runtime._actor_request(stimulus=stimulus, snapshot=runtime.snapshot(_cursor_for_test(ledger)))
+    row = next(item for item in payload["npc_actor_profile"]["plan_context"] if item["plan_ref"] == plan.plan_id)
+    assert row["window_state"] == "elapsed"
+    assert row["status"] == plan.status == "planned"
+    assert row["owner_actor_ref"] == plan.owner_actor_ref
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("lane", ["actor", "world"])
+async def test_npc_privacy_floor_is_offered_and_rejected_before_domain_commit(lane):
+    actor_payload, world_payload = _actor("propose"), _world()
+    if lane == "actor":
+        actor_payload["proposal"]["visibility"] = "public"
+    else:
+        for outcome in world_payload["outcomes"]:
+            outcome["privacy"] = "public"
+    ledger, _, actor, world, runtime = _runtime(actor_payload, world_payload)
+    before = len(ledger.project().world_occurrences)
+    result = await runtime.advance_once(wake_event_ref="clock-life", trace_id="trace", correlation_id="privacy-test")
+    assert result.status == "technical_failure"
+    assert len(ledger.project().world_occurrences) == before
+    request = json.loads(actor.calls[0][1]["content"])
+    assert request["authority"]["allowed_visibility"] == ["personal", "private", "withhold"]
+    if lane == "actor":
+        assert len(actor.calls) == 2 and not world.calls
+    else:
+        assert len(actor.calls) == 1 and len(world.calls) == 2
+        assert json.loads(world.calls[0][1]["content"])["world_capabilities"]["allowed_outcome_privacy"] == ["personal", "private", "withhold"]
+
+
+@pytest.mark.asyncio
+async def test_pre_fix_weak_actor_choice_is_not_reauthored_or_silently_upgraded(monkeypatch):
+    payload = _actor("propose")
+    payload["proposal"]["visibility"] = "public"
+    ledger, _, actor, world, runtime = _runtime(payload, _world())
+    before = len(ledger.project().world_occurrences)
+    # Reproduce an already-recorded actor choice admitted by the old gate.
+    with monkeypatch.context() as old:
+        old.setattr(runtime, "_validate_actor_decision", lambda *args, **kwargs: None)
+        result = await runtime.advance_once(wake_event_ref="clock-life", trace_id="trace", correlation_id="old-actor")
+    assert result.reason_code == "npc_ecology.stored_actor_visibility_invalid"
+    again = await runtime.advance_once(wake_event_ref="clock-life", trace_id="trace", correlation_id="recover-old-actor")
+    assert again.reason_code == result.reason_code
+    assert len(actor.calls) == 1 and not world.calls
+    assert len(ledger.project().world_occurrences) == before

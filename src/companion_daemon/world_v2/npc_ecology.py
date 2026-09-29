@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 import hashlib
 import json
-from typing import Literal, Protocol
+from typing import Literal, Protocol, get_args
 
 import httpx
 from pydantic import Field, model_validator
@@ -77,6 +77,17 @@ from .schemas import (
 
 
 _POLICY = "policy:npc-ecology.2"
+_PRIVACY_LEVELS = get_args(PrivacyClass)
+
+
+def _npc_visibility_choices(projection, npc_ref, *, outcome_floor=None):
+    npc = next(item for item in projection.npcs if f"npc:{item.npc_id}" == npc_ref)
+    rank = _PRIVACY_LEVELS.index(npc.privacy_class)
+    if outcome_floor is not None:
+        rank = max(rank, _PRIVACY_LEVELS.index(outcome_floor))
+    return _PRIVACY_LEVELS[rank:]
+
+
 @dataclass(frozen=True, slots=True)
 class _ModelAttempt:
     request_json: str
@@ -945,12 +956,15 @@ class NpcEcology:
         )
         projection = self._ledger.project_at(stimulus.cursor)
         pending_impulse_summary = None
+        prior_state_at = None
         for item in getattr(projection, "npcs", ()):
             if f"npc:{item.npc_id}" != selected_npc_ref:
                 continue
             subjective = getattr(item, "subjective_state", None)
             if subjective is not None:
                 pending_impulse_summary = subjective.pending_impulse_summary
+                if selected_identity.inner_state is not None:
+                    prior_state_at = subjective.evolved_at.isoformat()
             break
         npc_actor_profile = compile_npc_actor_profile(
             identity=selected_identity,
@@ -958,6 +972,20 @@ class NpcEcology:
             pending_impulse_summary=pending_impulse_summary,
             civil_time=snapshot.civil_time,
         )
+        # The identity view includes plans involving this NPC, not only
+        # plans authored by it. Bare IDs hid that distinction from the actor.
+        npc_actor_profile["plan_context"] = [
+            {"plan_ref": plan.plan_id, "owner_actor_ref": plan.owner_actor_ref,
+             "status": plan.status, "participant_refs": list(plan.participant_refs),
+             "window_state": (
+                 "unavailable" if plan.scheduled_window is None or projection.logical_time is None else
+                 "upcoming" if projection.logical_time < plan.scheduled_window.opens_at else
+                 "open" if projection.logical_time < plan.scheduled_window.closes_at else "elapsed"
+             ),
+             "scheduled_window": plan.scheduled_window.model_dump(mode="json") if plan.scheduled_window else None}
+            for plan in projection.plans if plan.plan_id in selected_identity.active_plan_refs
+        ]
+        npc_actor_profile["my_last_state_at"] = prior_state_at
         payload = {
             "stimulus": stimulus.model_dump(mode="json"),
             "npc_actor_profile": npc_actor_profile,
@@ -976,6 +1004,7 @@ class NpcEcology:
                 "selected_npc_ref": selected_npc_ref,
                 "system_does_not_choose_motive": True,
                 "clock_proves_time_only": True,
+                "allowed_visibility": _npc_visibility_choices(projection, selected_npc_ref),
                 "input_event_refs": self._actor_context_event_refs(
                     stimulus=stimulus,
                     snapshot=snapshot,
@@ -983,9 +1012,19 @@ class NpcEcology:
                 ),
             },
         }
-        output_contract = {
-            "json_schema": NpcActorDecision.model_json_schema(mode="validation"),
-        }
+        actor_schema = NpcActorDecision.model_json_schema(mode="validation")
+        actor_schema["properties"]["source_refs"]["items"]["enum"] = list(payload["authority"]["input_event_refs"])
+        proposal_schema = actor_schema["$defs"]["NpcActorProposal"]
+        proposal_schema["properties"]["visibility"]["enum"] = list(payload["authority"]["allowed_visibility"])
+        future_fields = ("activity_kind", "scheduled_start_after_minutes", "importance_bp")
+        proposal_schema["anyOf"] = [
+            {"properties": {"timing": {"const": "now"}, **{key: {"type": "null"} for key in future_fields}}},
+            {"properties": {"timing": {"const": "later"}, **{
+                key: next(item for item in proposal_schema["properties"][key]["anyOf"] if item.get("type") != "null")
+                for key in future_fields
+            }}, "required": list(future_fields)},
+        ]
+        output_contract = {"json_schema": actor_schema}
         prompt = (
             "Act as the exact selected NPC in this source-bound social world. Freely decide "
             "what they currently feel and want, and whether they propose doing anything. "
@@ -997,6 +1036,16 @@ class NpcEcology:
             "the NPC's own concrete timing (now/later), premise, participants, location, "
             "duration, visibility and, for later, free activity/timing/importance. The World "
             "Author cannot invent these choices. Exact refs must come from the supplied world. "
+            "source_refs must be a sorted, unique nonempty subset of authority.input_event_refs. "
+            "Plan, occurrence, NPC and location IDs are coordinates, not event evidence refs. "
+            "open_plans includes plans involving you; plan_context identifies their actual owner "
+            "and status. Being a participant does not mean you authored or completed that plan. "
+            "window_state describes scheduled time only: elapsed is not proof of completion. "
+            "my_last_state is your earlier reading at my_last_state_at, not a fresh observation. "
+            "For timing=now, activity_kind, scheduled_start_after_minutes and importance_bp "
+            "must all be null or omitted. Only timing=later uses those three fields, all non-null. "
+            "Proposal visibility must be one of authority.allowed_visibility; your identity's "
+            "privacy floor also applies to your activities. "
             "Civil-time source bindings authorize only their displayed time fields, "
             "not other biography fields. Clock proves time, not weather, activity, "
             "motive or location. Unavailable civil time must not be inferred from place refs. "
@@ -1097,21 +1146,26 @@ class NpcEcology:
         participant_refs = (
             proposal.participant_refs if proposal is not None else (actor_decision.npc_ref,)
         )
+        allowed_privacy = _npc_visibility_choices(
+            self._ledger.project_at(stimulus.cursor), actor_decision.npc_ref,
+            outcome_floor=proposal.visibility if proposal is not None else None,
+        )
         payload = {
             "stimulus": stimulus.model_dump(mode="json"),
             "npc_actor_decision": actor_decision.model_dump(mode="json"),
             "world_capabilities": {
                 "participant_refs": participant_refs,
                 "location_refs": snapshot.available_location_refs,
+                "allowed_outcome_privacy": allowed_privacy,
             },
         }
         if stimulus.focus_plan_ref is not None:
             projection = self._ledger.project_at(stimulus.cursor)
             plan = next(item for item in projection.plans if item.plan_id == stimulus.focus_plan_ref)
             payload["active_plan"] = plan.model_dump(mode="json")
-        output_contract = {
-            "json_schema": NpcWorldDecision.model_json_schema(mode="validation"),
-        }
+        world_schema = NpcWorldDecision.model_json_schema(mode="validation")
+        world_schema["$defs"]["NpcWorldOutcomeDraft"]["properties"]["privacy"]["enum"] = list(allowed_privacy)
+        output_contract = {"json_schema": world_schema}
         prompt = (
             "You are World Author, not the NPC. Adjudicate the exact NPC-owned proposal without "
             "rewriting its motive, timing, people, place, activity or importance. "
@@ -1129,7 +1183,8 @@ class NpcEcology:
             + "Each outcome must declare "
             "user_channel_completion=none and must not narrate a completed send or reply through "
             "the user's chat channel; that is Action-ledger territory. NPC self-life in this "
-            "situation remains allowed. Return only "
+            "situation remains allowed. Each outcome's privacy must be in "
+            "world_capabilities.allowed_outcome_privacy. Return only "
             "NpcWorldDecision JSON with decision and outcomes. The following contract controls "
             "only the JSON wire, not the adjudication: " + _canonical(output_contract)
         )
@@ -1288,6 +1343,9 @@ class NpcEcology:
             return "npc_ecology.actor_participant_authority_failed"
         if proposal.location_ref not in snapshot.available_location_refs:
             return "npc_ecology.actor_location_closure_failed"
+        allowed = _npc_visibility_choices(self._ledger.project_at(stimulus.cursor), decision.npc_ref)
+        if proposal.visibility not in allowed:
+            return "npc_ecology.actor_visibility_below_privacy_floor; allowed=" + ",".join(allowed)
         if stimulus.focus_plan_ref is not None and proposal.timing != "now":
             return "npc_ecology.due_plan_cannot_schedule_another_plan"
         return None
@@ -1733,12 +1791,29 @@ class NpcEcology:
     async def _materialize(
         self, *, stimulus, snapshot, wake, actor_event_id, actor_decision, identity
     ) -> NpcEcologyResult:
+        proposal = actor_decision.proposal
+        if proposal is not None and proposal.visibility not in _npc_visibility_choices(
+            self._ledger.project_at(stimulus.cursor), actor_decision.npc_ref,
+        ):
+            return NpcEcologyResult(
+                status="technical_failure", reason_code="npc_ecology.stored_actor_visibility_invalid",
+                npc_ref=actor_decision.npc_ref, decision_event_ref=actor_event_id,
+            )
         world_event_id = f"event:npc-ecology:world:{identity}"
         existing_world = self._ledger.lookup_event_commit(world_event_id)
         if existing_world is not None:
             world_decision = NpcWorldDecision.model_validate_json(
                 _canonical(existing_world[0].payload()["decision_payload"])
             )
+            allowed = _npc_visibility_choices(
+                self._ledger.project_at(stimulus.cursor), actor_decision.npc_ref,
+                outcome_floor=proposal.visibility if proposal is not None else None,
+            )
+            if any(item.privacy not in allowed for item in world_decision.outcomes):
+                return NpcEcologyResult(
+                    status="technical_failure", reason_code="npc_ecology.stored_world_privacy_invalid",
+                    npc_ref=actor_decision.npc_ref, decision_event_ref=actor_event_id,
+                )
         else:
             try:
                 world_decision, raw, world_attempts = await self._world_decide(
@@ -1898,13 +1973,19 @@ class NpcEcology:
         )
 
     def _validate_world_decision(self, decision, *, stimulus, snapshot, actor_decision):
+        proposal = actor_decision.proposal
+        allowed = _npc_visibility_choices(
+            self._ledger.project_at(stimulus.cursor), actor_decision.npc_ref,
+            outcome_floor=proposal.visibility if proposal is not None else None,
+        )
+        if any(outcome.privacy not in allowed for outcome in decision.outcomes):
+            return "npc_ecology.outcome_privacy_below_floor; allowed=" + ",".join(allowed)
         if stimulus.focus_plan_ref is not None:
             if decision.decision != "accept" or len(decision.outcomes) < 2:
                 return "npc_ecology.active_plan_outcomes_missing"
             return None
         if decision.decision == "no_op":
             return None
-        proposal = actor_decision.proposal
         if proposal is None:
             return "npc_ecology.world_actor_proposal_missing"
         if proposal.timing == "now" and len(decision.outcomes) < 2:

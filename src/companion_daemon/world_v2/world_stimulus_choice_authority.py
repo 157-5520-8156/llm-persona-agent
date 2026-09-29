@@ -177,6 +177,20 @@ def world_stimulus_source_origin(
         ),
         None,
     )
+    if selected_clock is not None and selected_clock.logical_time < source.logical_time:
+        # A delayed transport/accounting event can occupy the pinned revision
+        # without advancing the world's logical clock. Recover that clock from
+        # its actual authority, bounded by the original pin (never today's
+        # clock). Keep all previously valid origin bytes unchanged on replay.
+        selected_clock = max(
+            (
+                ref for ref in state.committed_world_event_refs
+                if ref.world_revision <= audit.evaluated_world_revision
+                and ref.event_type in {"WorldStarted", "ClockAdvanced"}
+            ),
+            key=lambda ref: ref.world_revision,
+            default=None,
+        )
     if selected_clock is None or selected_clock.logical_time < source.logical_time:
         raise error_type("selection_clock_unavailable")
     return source, {

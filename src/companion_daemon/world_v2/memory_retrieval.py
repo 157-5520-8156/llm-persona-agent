@@ -11,10 +11,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime
 from typing import Literal
 
 from pydantic import Field, model_validator
+from pydantic import PrivateAttr
 
+from .character_prehistory import PrehistoryRecord
 from .ledger import LedgerPort, ObservationEventLocator
 from .life_content import collect_user_channel_limited_content_refs
 from .life_content_reading import (
@@ -64,6 +67,10 @@ class MemorySourceExcerpt(FrozenModel):
     character_response: CharacterResponseReading | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )
+    # Exact source bytes available only to the local index compiler. This is
+    # deliberately absent from model-visible/durable readings; the ordinary
+    # excerpt remains bounded by ``max_excerpt_characters``.
+    _recall_source_record: PrehistoryRecord | None = PrivateAttr(default=None)
 
     @model_validator(mode="after")
     def one_source_carrier(self):
@@ -95,6 +102,13 @@ class MemoryRetrievalItem(FrozenModel):
     retrieval_strength_bp: int = Field(ge=1, le=10_000)
     source_excerpts: tuple[MemorySourceExcerpt, ...] = Field(min_length=1)
     truncated: bool
+    # Optional keeps old serialized views byte-compatible. New reads carry
+    # the actual candidate times; otherwise capsule recency silently scores 0.
+    updated_at: datetime | None = Field(default=None, exclude_if=lambda v: v is None)
+    reviewed_at: datetime | None = Field(default=None, exclude_if=lambda v: v is None)
+    assessment_scope: Literal["memory_salience_not_current_goal_or_obligation"] | None = Field(
+        default=None, exclude_if=lambda v: v is None,
+    )
 
     def committed_source_claims(self) -> tuple[tuple[str, int, str], ...]:
         """Include the reviewed archive proof without exposing its other records."""
@@ -130,6 +144,15 @@ class MemoryRetrievalSuppression(FrozenModel):
 class MemoryRetrievalResult(FrozenModel):
     items: tuple[MemoryRetrievalItem, ...]
     suppressions: tuple[MemoryRetrievalSuppression, ...]
+
+
+def _material_updated_at(candidate, transitions):
+    """A routine retention review must not make an old memory look newly lived."""
+    history = [t for t in transitions if t.candidate_id == candidate.candidate_id]
+    if not history or max(history, key=lambda t: t.entity_revision).operation != "review":
+        return candidate.updated_at
+    changed = [t for t in history if t.operation != "review"]
+    return max(changed, key=lambda t: t.entity_revision).accepted_at if changed else candidate.opened_at
 
 
 def _source_summary_is_bound(values: MemoryCandidateValues) -> bool:
@@ -343,6 +366,9 @@ class MemoryRetrievalCompiler:
                     retrieval_strength_bp=candidate.values.retrieval_strength_bp,
                     source_excerpts=tuple(excerpts),
                     truncated=any(item.truncated for item in excerpts),
+                    updated_at=_material_updated_at(candidate, projection.memory_candidate_transitions),
+                    reviewed_at=candidate.values.reviewed_at,
+                    assessment_scope="memory_salience_not_current_goal_or_obligation",
                 )
             )
         return MemoryRetrievalResult(items=tuple(items), suppressions=tuple(suppressions))
@@ -356,12 +382,18 @@ class MemoryRetrievalCompiler:
         if actor_ref is None or row.actor_ref != actor_ref:
             return None
         text = row.record.statement[:self._max_excerpt_characters]
-        return MemorySourceExcerpt(
+        excerpt = MemorySourceExcerpt(
             **binding.model_dump(), excerpt_ref=row.record.record_id,
             excerpt_payload_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
             text=text, truncated=len(text) < len(row.record.statement),
             prehistory=prehistory_memory_reading(row, archive),
         )
+        # This private attribute is set only after the exact active candidate,
+        # owner, record, archive and event closure have passed the reader above.
+        # RecallCorpusCompiler uses it to form bounded source-exact windows;
+        # it never enters the role's snapshot or provider request.
+        excerpt._recall_source_record = row.record
+        return excerpt
 
     def _experience_excerpt(
         self,

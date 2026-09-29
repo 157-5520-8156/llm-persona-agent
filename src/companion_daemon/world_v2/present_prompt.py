@@ -674,7 +674,7 @@ def reply_only_bubble_clause() -> str:
     )
 
 
-def slim_consider_instruction() -> str:
+def slim_consider_instruction(*, preserve_legacy_authoring: bool = False) -> str:
     """Describe the slim object in the language she writes in.
 
     This text used to be ~7.5k of English inside a ~19k English transport
@@ -704,14 +704,15 @@ def slim_consider_instruction() -> str:
         "事实来源是硬边界：messages 陈述外部事件、地点、行为或既往经历时，"
         "须在同级 world_claims 逐条写 claim_text、scope、source_refs，"
         "仅用 expression_hard_boundaries 中相应时态的来源。"
-        "day_sheet 和传记习惯不能证明当前或刚才发生了什么；没有来源的经历不能补写。\n"
+        "day_sheet 和传记习惯不能证明当前或刚才发生了什么；没有来源的经历不能补写。"
+        + ("" if preserve_legacy_authoring else "\n"
         "scope 按事情本身的时间选，不是按你现在正在说它："
         "已经发生过的你自己的经历（今天下午走过的那段路、刚做完的事）属于"
         "shared_history 或 past_world，不要写成 current_world；"
         "current_world 只给此刻确实成立的世界状态。"
         "你自己的打算、意愿、想去做的事不是世界事实，不要为它写 claim——"
-        "真想开始做，用 life_intent 表达意图；打算本身不证明已经发生。"
-        "Context 里还活着的 affect 强度和你这轮自己写下的 target_intensity_bp 都是你能看见的状态，"
+        "真想开始做，用 life_intent 表达意图；打算本身不证明已经发生。")
+        + "Context 里还活着的 affect 强度和你这轮自己写下的 target_intensity_bp 都是你能看见的状态，"
         "不是行为指令。真的有很多话时可以连续写多条 messages，也可以只说一句或沉默；"
         "情绪强度不会命令你发几条，也不会替你决定语气。"
         + reply_only_bubble_clause()
@@ -1425,9 +1426,10 @@ def canonical_atomic_consider_instruction() -> str:
 
 def combined_turn_system_lead(
     *, private_turn_state_required: bool, atomic_drafts: bool = False,
+    preserve_legacy_authoring: bool = False,
 ) -> str:
     instruction = (
-        canonical_atomic_consider_instruction() if atomic_drafts else slim_consider_instruction()
+        canonical_atomic_consider_instruction() if atomic_drafts else slim_consider_instruction(preserve_legacy_authoring=preserve_legacy_authoring)
     )
     epistemic_expression_clause = (
         "appraisal_draft 负责你私下怎么理解，expression_draft 负责你决定说什么；"

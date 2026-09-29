@@ -426,3 +426,15 @@ def test_open_life_npc_plan_is_startable_when_the_npc_is_active() -> None:
 
     assert result.status == "openings_available"
     assert any(item.operation == "start" for item in result.openings)
+
+
+def test_expired_paused_plan_cannot_resume_but_old_catalog_replays_unchanged():
+    plan = _plan("paused-expired", status="paused", scheduled_window=DueWindow(
+        opens_at=NOW - timedelta(hours=2), closes_at=NOW - timedelta(hours=1),
+    ))
+    for version, expected in (("activity-opening.8", {"resume", "abandon"}),
+                              ("activity-opening.9", {"abandon"})):
+        assert set(ActivityOpeningCatalog._operations_for(plan, logical_time=NOW, catalog_version=version)) == expected
+    for at in (NOW - timedelta(hours=2), NOW - timedelta(hours=1, seconds=1)):
+        assert "resume" in ActivityOpeningCatalog._operations_for(plan, logical_time=at)
+    assert "resume" not in ActivityOpeningCatalog._operations_for(plan, logical_time=NOW - timedelta(hours=1))

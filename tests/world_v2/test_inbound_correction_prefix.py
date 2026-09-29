@@ -269,8 +269,10 @@ def test_legacy_compiler_bytes_stay_frozen_and_compact_v3_has_new_identity():
     )
     current = json.loads(result.stdout)
     assert {key: current[key] for key in expected} == expected
-    # New atomic v3 uses character-inbound-prompt.1. The eight historical
+    # Current v3 includes the explicit lived-evidence boundary added after the
+    # initial compact prompt. Only that current compiler hash changes; old
+    # recorded carriers are verified from their saved bytes. The eight historical
     # variants above retain their bytes; saved v3 carriers also retain their
     # exact original prompt rather than using this compiler during replay.
-    assert current["3:False:True:False"] == "c9ecbe9f25ced0548872adffcda24a71d2b870d4c03fb26c20ab04742a68881e"
-    assert current["3:False:True:True"] == "96740fa41242ad884f2768d251a2725ec3e1af171bec7eee664bcedfad1244c6"
+    assert current["3:False:True:False"] == "207c5bb301ba1f3443e6e1317b9b52db4dc00fc341454b27239f3dc753bb75bb"
+    assert current["3:False:True:True"] == "3d4b4f030aca85c76fb84527569f90103c4e676f7d107a54baea297c76d65a0f"

@@ -670,6 +670,7 @@ def estimate_provider_request_reserve_cny(
     if _deepseek_family(model) is not None and model not in {
         "deepseek-chat",
         "deepseek-reasoner",
+        "deepseek-flash",
         "deepseek-v4-flash",
         "deepseek-v4-pro",
     }:

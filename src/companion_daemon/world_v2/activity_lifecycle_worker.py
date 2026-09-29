@@ -30,6 +30,7 @@ from .activity_lifecycle_runtime import (
 )
 from .character_interior import CharacterInterior, InteriorOpportunity
 from .character_interior.audit import recorded_character_interior_model_result
+from .errors import ConcurrencyConflict
 from .character_interior.contracts import _InteriorCapabilityManifest
 from .character_interior.run_result import CausalOpportunityRuntime
 from .life_ecology_activity import ActivityOpeningCatalog
@@ -139,6 +140,7 @@ class ActivityLifecycleWorker:
             ledger=ledger, interior=character_interior, actor_ref=owner_actor_ref,
             daily=self._daily_occasions, spends=self._occasion_spends,
             timezone=self._local_timezone,
+            plan_material_reader=plan_material_reader,
         ) if day_open_life_enabled else None
 
     async def advance_once(
@@ -349,6 +351,32 @@ class ActivityLifecycleWorker:
                 character_interior_model_result=draft.character_interior_model_result,
                 character_decision_json=draft.character_decision_json,
             )
+        current = self._ledger.project()
+        current_cursor = ProjectionCursor(
+            world_revision=current.world_revision,
+            deliberation_revision=current.deliberation_revision,
+            ledger_sequence=current.ledger_sequence,
+        )
+        if current_cursor != cursor:
+            # Appending an unrelated deliberation while the role is thinking
+            # does not revoke its choice. Rebind only the proposal envelope,
+            # retaining the exact paid draft and its original author lineage.
+            # World/clock changes, a changed lease or a changed choice catalogue
+            # still invalidate the pin; effects retain their ordinary CAS.
+            previous_claim = next((item for item in projection.trigger_processes if item.trigger_id == trigger_id), None)
+            current_claim = next((item for item in current.trigger_processes if item.trigger_id == trigger_id), None)
+            if (current.world_revision != projection.world_revision
+                    or current.logical_time != projection.logical_time
+                    or current_claim != previous_claim
+                    or self._catalog.openings_for(projection=current, wake_event_ref=wake_event_ref) != catalog):
+                raise ConcurrencyConflict("activity choice authority changed during authoring")
+            proposal = self._compiler.compile(
+                projection=current, wake_event_ref=wake_event_ref,
+                ecology_trigger_id=trigger_id, draft=draft,
+            )
+            if proposal is None:
+                raise RuntimeError("unchanged activity catalogue lost the selected transition")
+            cursor = current_cursor
         recorded = self._proposal_recorder.record(
             cursor=cursor,
             proposal=proposal,
@@ -408,6 +436,7 @@ class ActivityLifecycleWorker:
         ) or self._occasion_spends.spent(first_occasion_id)
         cause_bound = tuple(item for item in openings if item.opening_kind != "ordinary")
         completes = tuple(item for item in openings if item.operation == "complete")
+        closed_window_abandon_only = _openings_are_closed_window_abandons(openings)
         if not openings:
             return ActivityLifecycleModelDraft(decision="no_op"), None
         if len(completes) == 1 and all(item.operation == "complete" for item in openings):
@@ -416,7 +445,7 @@ class ActivityLifecycleWorker:
         # not also be the last chance: a plan committed later the same wake,
         # or an activity that has become legally completable, is new catalog
         # material.  She still picks or no_ops; this only asks again.
-        if first_chance_spent and not cause_bound and not renewed_plan_catalog and not completes:
+        if first_chance_spent and not cause_bound and not renewed_plan_catalog and not completes and not closed_window_abandon_only:
             self._daily_occasions.mark("day_open", day_key)
             return ActivityLifecycleModelDraft(decision="no_op"), None
         # Cause-bound openings (an observed user interruption, a clock
@@ -424,7 +453,6 @@ class ActivityLifecycleWorker:
         # are new life material.  They get their own bounded Occasion so she
         # can react on the same local day instead of being forced toward the
         # single complete token.
-        closed_window_abandon_only = _openings_are_closed_window_abandons(openings)
         use_day_open = (
             not first_chance_spent
             and not closed_window_abandon_only
@@ -487,10 +515,16 @@ class ActivityLifecycleWorker:
                     # A missing sidecar must not hide an otherwise legal
                     # activity opening from the character.
                     pass
+            plan = next((plan for plan in projection.plans if resolved is not None and plan.plan_id == resolved.plan_id), None)
             opening_summaries.append(
                 {
                     "opening_token": item.opening_token,
                     "safe_summary": summary,
+                    **({"activity_state": {
+                        "status": plan.status,
+                        "scheduled_window": plan.scheduled_window.model_dump(mode="json") if plan.scheduled_window else None,
+                        "window_elapsed": bool(plan.scheduled_window and projection.logical_time >= plan.scheduled_window.closes_at),
+                    }} if plan is not None else {}),
                 }
             )
         capability = {

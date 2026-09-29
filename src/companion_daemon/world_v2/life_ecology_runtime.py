@@ -477,9 +477,33 @@ class LifeEcologyRuntime:
                     activity_followup_status=activity_status,
                 )
 
+        # Already-authored NPC effects and fresh observable stimuli have
+        # their own causal authority. Let that
+        # work use this wake before another discretionary World possibility;
+        # otherwise an always-proposing atmosphere lane can starve it forever.
+        # Exact protagonist attempt results still retain their existing order.
+        npc_has_due_work = False
+        npc_has_stimulus = False
+        if self._npc_initiative_followup is not None:
+            due_reader = getattr(self._npc_initiative_followup, "has_due_work", None)
+            if callable(due_reader):
+                npc_has_due_work = bool(due_reader(projection=projection))
+            stimulus_reader = getattr(self._npc_initiative_followup, "has_stimulus", None)
+            if callable(stimulus_reader):
+                npc_has_stimulus = bool(stimulus_reader(projection=projection))
+
         life_development_status: str | None = None
         life_development_failure_code: str | None = None
         completion_ref = None
+        # A failed old attempt result must not own every later due slot. Use
+        # the next due slot for independent work, then allow its retry again.
+        # Fresh causal results still take priority. Failure stays a failure;
+        # neither the attempt nor its missing result is silently completed.
+        retry_old_consequence = development_due and not (
+            schedule is not None and schedule.last_outcome_ref.startswith(
+                "life-ecology:technical_failure.consequence."
+            )
+        )
         pending_completion = getattr(
             self._life_development_followup, "pending_completed_activity_ref", None,
         )
@@ -492,7 +516,7 @@ class LifeEcologyRuntime:
             # follows the existing due/backoff schedule, including restart.
             try:
                 completion_ref = pending_completion(
-                    after_world_revision=None if development_due else projection.world_revision,
+                    after_world_revision=None if retry_old_consequence else projection.world_revision,
                 )
             except (ValueError, TypeError, ConcurrencyConflict):
                 await self._complete_failed_safe(key=key, trigger_id=claim.trigger_id)
@@ -509,7 +533,7 @@ class LifeEcologyRuntime:
         if completion_ref is None and callable(pending_active_attempt) and is_clock_wake:
             try:
                 active_attempt_ref = pending_active_attempt(
-                    after_world_revision=None if development_due else projection.world_revision,
+                    after_world_revision=None if retry_old_consequence else projection.world_revision,
                 )
             except (ValueError, TypeError, ConcurrencyConflict):
                 await self._complete_failed_safe(key=key, trigger_id=claim.trigger_id)
@@ -522,7 +546,8 @@ class LifeEcologyRuntime:
         if (
             self._life_development_followup is not None
             and (completion_ref is not None or active_attempt_ref is not None or (
-                development_due and activity_status != "transitioned"
+                development_due and not (npc_has_due_work or npc_has_stimulus)
+                and activity_status != "transitioned"
                 and aftermath_status
                 not in {"occurrence_opened", "settled", "recovered_experience", "recovered_memory"}
             ))
@@ -623,17 +648,6 @@ class LifeEcologyRuntime:
         # plan_committed wake must not.  After H23 the World Author usually
         # writes a plan whenever it is due; treating that as "the wake is
         # taken" starved NPC of every ambient consideration.
-        npc_has_due_work = False
-        npc_has_stimulus = False
-        if self._npc_initiative_followup is not None:
-            due_reader = getattr(self._npc_initiative_followup, "has_due_work", None)
-            if callable(due_reader):
-                npc_has_due_work = bool(due_reader(projection=projection))
-            stimulus_reader = getattr(
-                self._npc_initiative_followup, "has_stimulus", None
-            )
-            if callable(stimulus_reader):
-                npc_has_stimulus = bool(stimulus_reader(projection=projection))
         if (
             self._npc_initiative_followup is not None
             and (development_due or npc_has_due_work or npc_has_stimulus)
@@ -824,7 +838,7 @@ class LifeEcologyRuntime:
                 "key": key,
                 "trigger_id": claim.trigger_id,
                 "outcome": (
-                    f"technical_failure.{life_development_failure_code}"
+                    f"technical_failure.consequence.{life_development_failure_code}"
                     if (completion_ref is not None or active_attempt_ref is not None)
                     and life_development_failure_code is not None
                     else f"aftermath_{aftermath_status}"

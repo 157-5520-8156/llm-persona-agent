@@ -67,6 +67,10 @@ _INDEPENDENT_REVIEW_PROFILES = {
     "experimental_independent_v22": "22",
     "experimental_independent_v23": "23",
 }
+_GROUNDED_REVIEW_PROFILES = {
+    "grounded_review_v24": "24",
+    "grounded_review_v25": "25",
+}
 # Whole-candidate author carriers that keep the one curated call and its single
 # contextual reviewer. The slim carrier changes only the transport envelope, so it
 # cannot quietly become a second author topology or a differently-reviewed candidate.
@@ -80,6 +84,7 @@ def configured_visible_review_version(settings: Settings) -> str | None:
         "whole_v3_review_v7": "7",
         "whole_v3_review_v8": "8",
         **_INDEPENDENT_REVIEW_PROFILES,
+        **_GROUNDED_REVIEW_PROFILES,
     }.get(settings.world_v2_visible_expression_profile)
 
 
@@ -630,6 +635,7 @@ class SemanticChatComposition:
     identity_frame: CompanionIdentityFrame
     local_provider_capacity: ProviderCapacityGate | None
     text_endpoint_controller: TextTurnEndpointController | None
+    text_shadow_observer: object | None = None
     _owned_models: tuple[object, ...] = ()
     # Close-only resources promise that ``aclose`` itself reaches quiescence.
     # Task owners may return from bounded close while retaining provider
@@ -650,7 +656,10 @@ class SemanticChatComposition:
     def character_interior_health(self) -> dict[str, object]:
         """Expose the sole protagonist-author topology without private state."""
 
-        return self.character_interior.runtime_health()
+        value = self.character_interior.runtime_health()
+        if self.text_shadow_observer is not None:
+            value = {**value, "ordinary_text_review": self.text_shadow_observer.health_snapshot()}
+        return value
 
     def life_source_authority_health(self) -> dict[str, object]:
         """Report Life reviewer transport state without overstating qualification."""
@@ -880,25 +889,37 @@ def build_semantic_chat_composition(
         raise ValueError("semantic chat composition requires a model id prefix")
     if type(visible_source_review_version) is not str or visible_source_review_version not in SUPPORTED_REVIEW_VERSIONS:
         raise ValueError("unsupported visible source review version")
-    from .visible_independent_review_runtime import (
-        IndependentVisibleReviewer, validate_independent_reviewer_configuration,
+    from .visible_independent_review_configuration import (
+        GroundedVisibleReviewer, IndependentVisibleReviewer,
+        validate_independent_reviewer_configuration,
     )
     configured_version = configured_visible_review_version(settings)
     independent_profile = settings.world_v2_visible_expression_profile in _INDEPENDENT_REVIEW_PROFILES
+    grounded_profile = settings.world_v2_visible_expression_profile in _GROUNDED_REVIEW_PROFILES
+    if settings.world_v2_ordinary_text_review_mode == "sampled" and (
+        not grounded_profile or visible_source_review_version != "25" or not life_review_world_id
+    ):
+        raise ValueError("sampled text requires explicit v25 profile and world identity")
     auto_independent_review = independent_profile and flash_model is None and source_closure_model is None
+    auto_grounded_review = grounded_profile and flash_model is None and source_closure_model is None
     if independent_profile and (
         not visible_source_review_required or visible_source_review_version != configured_version
         or visible_author_tool_version not in _INDEPENDENT_WHOLE_AUTHOR_VERSIONS
     ):
         raise ValueError("experimental independent profile requires its fixed whole author/review versions")
-    if not auto_independent_review:
+    if grounded_profile and (
+        not visible_source_review_required or visible_source_review_version != configured_version
+        or visible_author_tool_version not in _INDEPENDENT_WHOLE_AUTHOR_VERSIONS
+    ):
+        raise ValueError("grounded review profile requires its fixed whole author/review versions")
+    if not (auto_independent_review or auto_grounded_review):
         validate_independent_reviewer_configuration(source_closure_model, visible_source_review_version)
     if settings.world_v2_life_candidate_review_enabled and life_source_reviewer is None and flash_model is not None:
         raise ValueError("caller-supplied character requires an explicit Life candidate reviewer")
     if settings.world_v2_life_candidate_review_enabled and life_source_reviewer is None and not life_review_world_id:
         raise ValueError("Life candidate reviewer requires the host's explicit world identity")
-    if independent_profile and not settings.world_v2_visible_source_review_model.strip():
-        raise ValueError("experimental visible source reviewer model must be nonempty")
+    if (independent_profile or grounded_profile) and not settings.world_v2_visible_source_review_model.strip():
+        raise ValueError("visible source reviewer model must be nonempty")
     if settings.world_v2_life_candidate_review_enabled and not settings.world_v2_life_candidate_review_model.strip():
         raise ValueError("Life candidate reviewer model must be nonempty")
     if visible_source_review_version != "1" and visible_source_review_required is not True:
@@ -1061,6 +1082,17 @@ def build_semantic_chat_composition(
     )
     del _unused
     try:
+        if auto_grounded_review:
+            reviewer_model = DeepSeekChatModel(
+                api_key=effective_deepseek_key,
+                base_url=settings.deepseek_base_url,
+                model=settings.world_v2_visible_source_review_model,
+                thinking_enabled=False,
+                max_completion_tokens=4096,
+                usage_observer=usage_observer,
+            )
+            owned.append(reviewer_model)
+            source_closure_model = GroundedVisibleReviewer(source_model=reviewer_model)
         if auto_independent_review:
             def review_provider(model: str) -> DeepSeekChatModel:
                 provider = DeepSeekChatModel(
@@ -1152,8 +1184,19 @@ def build_semantic_chat_composition(
             )
             owned_finalizers.append(evidence_store)
             life_source_reviewer = LifeSourceReviewer(model=life_review_model, evidence_store=evidence_store)
+        text_shadow_observer = None
+        if settings.world_v2_ordinary_text_review_mode == "sampled":
+            from .text_shadow_observer import TextShadowObserver
+            text_shadow_observer = TextShadowObserver(
+                database=settings.database_path, world_id=life_review_world_id,
+                model=source_closure_model.source_model,
+                sample_every=settings.world_v2_text_review_sample_every,
+            )
+            owned_closeables.append(text_shadow_observer)
         character_interior = compose_production_character_interior(
             flash_model=flash_model,
+            ordinary_text_review_mode=settings.world_v2_ordinary_text_review_mode,
+            text_shadow_observer=text_shadow_observer,
             thinking_model=thinking_model,
             whole_candidate_mode=visible_source_review_required,
             visible_source_review_model=source_closure_model if visible_source_review_required else None,
@@ -1162,6 +1205,7 @@ def build_semantic_chat_composition(
             evidence_first_schema=visible_author_evidence_first_schema,
             visible_source_review_version=visible_source_review_version,
             life_source_reviewer=life_source_reviewer,
+            reference_wire=settings.world_v2_reference_wire_enabled,
             source_closure_model=None,
             report_relative_source_closure_model=None,
             source_closure_reselection_lane=None,
@@ -1195,6 +1239,7 @@ def build_semantic_chat_composition(
         resolved_life_source_closure_model = background_model
     return SemanticChatComposition(
         world_support_model=background_model,
+        text_shadow_observer=text_shadow_observer,
         character_author_model_id=(
             _model_identity(getattr(flash_model, "primary", flash_model)) or "unknown"
         ),

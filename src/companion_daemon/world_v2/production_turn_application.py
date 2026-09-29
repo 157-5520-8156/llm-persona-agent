@@ -9,6 +9,8 @@ second Engine or Ledger write path.
 
 from __future__ import annotations
 
+from .memory_consolidation_runtime import MemoryConsolidationRuntime
+
 import asyncio
 from collections import Counter
 from dataclasses import dataclass, replace
@@ -788,6 +790,7 @@ class WorldV2TurnApplicationConfig:
     # Fact/Experience retention and withdrawal review all use the one
     # CharacterInterior author at an exact ledger cursor.
     character_memory_enabled: bool = True
+    memory_consolidation_enabled: bool = False
     # Explicit operator-reviewed initialization input; never a role draft.
     reviewed_prehistory: ReviewedPrehistoryArchive | None = None
     outcome_worker_owner: str = "worker:world-v2:outcome"
@@ -2202,7 +2205,7 @@ class WorldV2TurnApplication:
         if self._life_ecology is None:
             return None
         from .chat_life_plan_consideration import pending_opportunities
-        from .day_open_opportunity import activity_continuation_due, day_open_retry_due
+        from .day_open_opportunity import activity_continuation_due, day_open_retry_due, day_open_reconsideration_due
 
         trigger_store = getattr(self._life_ecology, "_trigger_store", None)
         reader = getattr(trigger_store, "next_consideration_at", None)
@@ -2230,13 +2233,14 @@ class WorldV2TurnApplication:
             )
         )
         day_open_due = day_open_retry_due(self._ledger, actor_ref=self._companion_actor_ref)
+        reconsideration_due = day_open_reconsideration_due(self._ledger, actor_ref=self._companion_actor_ref)
         continuation_due = None
         if not self._life_ecology.background_budget_paused():
             continuation_due = activity_continuation_due(
                 self._ledger, actor_ref=self._companion_actor_ref, projection=projection,
             )
         candidates = tuple(
-            x for x in (due, day_open_due, continuation_due, *(item.due_at for item in pending))
+            x for x in (due, day_open_due, reconsideration_due, continuation_due, *(item.due_at for item in pending))
             if x is not None
         )
         now = projection.logical_time
@@ -2276,6 +2280,9 @@ class WorldV2TurnApplication:
         if isinstance(stored, PrivateImpressionDrainPolicy):
             return stored
         return PrivateImpressionDrainPolicy()
+
+    async def memory_consolidation_next_due(self):
+        return await self._turns.memory_consolidation_next_due()
 
     async def private_impression_next_due(self):
         """Return when an open private-impression farm may spend its next call.
@@ -3811,9 +3818,10 @@ def build_sqlite_world_v2_turn_application(
             actor_ref=config.companion_actor_ref,
             related_subject_refs=(config.counterpart_actor_ref or config.reply_target,),
         )
-        from .visible_review_protocols import SUBJECTIVE_HISTORY_PROTOCOLS
+        from .visible_review_protocols import GROUNDED_REVIEW_PROTOCOLS, SUBJECTIVE_HISTORY_PROTOCOLS
         retain_pinned_appraisals = (config.visible_source_review_required
-            and inbound_model.visible_review_protocol() in SUBJECTIVE_HISTORY_PROTOCOLS)
+            and inbound_model.visible_review_protocol() in (
+                SUBJECTIVE_HISTORY_PROTOCOLS | frozenset(GROUNDED_REVIEW_PROTOCOLS.values())))
         capsules = context_capsule_compiler_from_ledger(
             ledger=ledger,
             retain_pinned_appraisals=retain_pinned_appraisals,
@@ -3845,13 +3853,10 @@ def build_sqlite_world_v2_turn_application(
                 else None
             ),
         )
-        chat_capsules = context_capsule_compiler_from_ledger(
-            ledger=ledger,
-            retain_pinned_appraisals=retain_pinned_appraisals,
-            situation_compiler=SituationCompiler(
-                local_chronology=LocalChronology(config.local_timezone)
-            ),
-            policy=ContextCapsuleBudgetPolicy(
+        # Both lanes read the same pinned sources. Share resolution (including
+        # the recall snapshot/prefetch), while keeping their budgets independent.
+        chat_capsules = capsules.with_policy(
+            ContextCapsuleBudgetPolicy(
                 # Preserve dialogue/world/affect continuity even when their
                 # complete proof envelopes coincide.  Chat still trims low-
                 # value capability and accounting slices below.
@@ -3865,25 +3870,6 @@ def build_sqlite_world_v2_turn_application(
                     max_items=4, max_fields=48, max_characters=1_200
                 ),
                 action_budget=SliceBudget(max_items=4, max_fields=40, max_characters=1_200),
-            ),
-            relevance_scope=relevance_scope,
-            life_content_store=life_content_store,
-            perception_result_reader=perception_transport,
-            expression_payload_store=expression_payload_store,
-            recall_coordinator=recall_coordinator,
-            biographical_catalog=biographical_context_catalog,
-            biographical_timezone_name=(
-                config.local_timezone if biographical_context_catalog is not None else None
-            ),
-            biographical_timeline=biographical_timeline,
-            reviewed_npc_identity_summaries=(
-                {
-                    item.stable_identity_ref: item.identity_summary
-                    for item in life_seed_catalog.reviewed_npcs
-                    if item.identity_summary is not None
-                }
-                if life_seed_catalog is not None
-                else None
             ),
         )
         expression_episode_diagnostics = ExpressionEpisodeDiagnostics(
@@ -4241,6 +4227,10 @@ def build_sqlite_world_v2_turn_application(
                 else None
             ),
             character_interior=character_interior,
+            memory_consolidation=(MemoryConsolidationRuntime(
+                ledger=ledger, character_interior=character_interior, actor_ref=config.companion_actor_ref,
+                owner_id=config.memory_review_worker_owner, content_store=life_content_store,
+            ) if config.character_memory_enabled and config.memory_consolidation_enabled else None),
             memory_withdrawal_review=(
                 MemoryWithdrawalReviewRuntime(
                     ledger=ledger,

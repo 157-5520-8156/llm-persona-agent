@@ -13,7 +13,7 @@ from companion_daemon.world_v2.character_interior.structured_role import Structu
 from test_world_stimulus_life_response import _ResponseHTTP, _build, _model, _settled
 
 
-async def _prepared(tmp_path, monkeypatch, *, fault=None, ecology=False):
+async def _prepared(tmp_path, monkeypatch, *, fault=None, ecology=False, reference_wire=False):
     monkeypatch.setenv('COMPANION_DISABLE_DEBUG_USAGE_LEDGER', '1')
     captured = []
     original = StructuredCharacterRoleFaculty.experience
@@ -33,7 +33,7 @@ async def _prepared(tmp_path, monkeypatch, *, fault=None, ecology=False):
     compose = fixture.compose_production_character_interior
 
     def durable_composition(**kwargs):
-        return compose(**kwargs, turn_store=store)
+        return compose(**kwargs, turn_store=store, reference_wire=reference_wire)
 
     monkeypatch.setattr(fixture, 'compose_production_character_interior', durable_composition)
     provider = _ResponseHTTP(text='有点想听听窗外的声音。', fault=fault)
@@ -169,3 +169,27 @@ async def test_same_author_correction_keeps_origin_and_binds_its_actual_second_i
     assert first == second
     assert correction['rejected_role_result']['raw_result'] not in snapshot.life_source_origin.capsule_json
     assert len(provider.stimulus_requests) == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", [None, "missing_once"])
+async def test_host_reference_bindings_survive_correction_and_durable_restore(tmp_path, monkeypatch, fault):
+    payload, request, provider = await _prepared(tmp_path, monkeypatch, fault=fault, reference_wire=True)
+    result, snapshot, _, _ = _restore_prepared_turn(canonical(payload), purpose="world_stimulus_appraisal")
+    view = result.life_source_view
+    assert view.verify_request(request) == view
+    controls = json.loads(view.provider_controls_json)
+    bindings = controls["identity_extras"]["reference_bindings"]
+    sent = json.loads(provider.stimulus_requests[-1]["messages"][1]["content"])
+    assert sent["reference_dictionary"]["contract"] == "opaque-reference-wire.3"
+    assert "entries" not in sent["reference_dictionary"]
+    assert bindings["entries"]
+    assert view.author_payload()["inner_turn"]["trigger_ref"] == request.trigger_ref
+    assert snapshot.snapshot_hash == request.snapshot.snapshot_hash
+    corrupted = deepcopy(payload)
+    bad_controls = json.loads(corrupted["result"]["life_source_view"]["provider_controls_json"])
+    entries = bad_controls["identity_extras"]["reference_bindings"]["entries"]
+    entries[next(iter(entries))] = "event:forged:" + "b" * 64
+    corrupted["result"]["life_source_view"]["provider_controls_json"] = canonical(bad_controls)
+    with pytest.raises(_InteriorTechnicalError, match="invalid_durable_turn_checkpoint"):
+        _restore_prepared_turn(canonical(corrupted), purpose="world_stimulus_appraisal")

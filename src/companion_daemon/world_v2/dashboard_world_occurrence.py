@@ -22,6 +22,35 @@ class DashboardWorldOccurrenceReading:
     truncated: bool = False
 
 
+def experience_world_occurrence(projection, experience):
+    """Join the exact settlement binding, never a nearby event or response."""
+    bindings = getattr(getattr(experience, 'values', None), 'source_bindings', ())
+    if len(bindings) != 1:
+        return None
+    binding = bindings[0]
+    if binding.source_kind == 'world_life_response':
+        binding = binding.settlement
+    if binding.source_kind != 'occurrence_settlement':
+        return None
+    occurrence = next((o for o in projection.world_occurrences
+                       if o.occurrence_id == binding.occurrence_id), None)
+    if occurrence is None or any((
+        occurrence.settlement_event_ref != binding.authority_event_ref,
+        occurrence.result_id != binding.result_id,
+        occurrence.result_payload_ref != binding.result_payload_ref,
+        occurrence.result_payload_hash != binding.result_payload_hash,
+        occurrence.entity_revision != binding.occurrence_entity_revision,
+    )):
+        return None
+    if not any(e.event_id == binding.authority_event_ref
+               and e.world_revision == binding.authority_world_revision
+               and e.payload_hash == binding.authority_payload_hash
+               and e.event_type == 'WorldOccurrenceSettled'
+               for e in projection.committed_world_event_refs):
+        return None
+    return occurrence
+
+
 def _event_at(
     ledger: LedgerPort, projection: LedgerProjection, event_ref: str, event_type: str,
 ) -> WorldEvent:

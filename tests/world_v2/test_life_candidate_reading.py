@@ -32,6 +32,20 @@ def _prepare(value=None):
     return prepare_life_candidate_reading(candidate_json=json.dumps(value or _candidate(), ensure_ascii=False))
 
 
+def test_protocol_field_projection_never_classifies_prose_by_identifier_like_spelling():
+    from companion_daemon.world_v2.character_interior.life_candidate_reading import _candidate as inventory
+    value = _candidate()
+    value['summary'] = 'I:walked:outside'
+    value['proposals'][0]['life_responses'][0]['response_text'] = 's0'
+    _, fields = inventory(json.dumps(value), drop_identifier_fields=True, drop_protocol_fields=True)
+    paths = {field['path'] for field in fields}
+    assert '/summary' in paths
+    assert '/proposals/0/life_responses/0/response_text' in paths
+    assert '/attended_source_refs/0' not in paths
+    assert '/status' not in paths
+    assert '/proposals/0/future_nested_field/日~1记~0' in paths
+
+
 def _response(prepared):
     return {"contract": CONTRACT, "fields": [
         {"path": item["path"], "interpretation": "fixture reading, not semantic evidence", "readings": []}

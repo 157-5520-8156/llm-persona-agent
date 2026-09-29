@@ -43,6 +43,10 @@ async def test_current_activity_http_claim_reaches_accepted_action_and_terminal_
         body = json.loads(request.content)
         bodies.append(body)
         material = json.loads(body["messages"][1]["content"])
+        from companion_daemon.world_v2.shared_string_view import unpack_shared_strings
+        presented = material["inner_life_snapshot"]["materials"]
+        if presented.get("contract") == "shared-string-view.1":
+            material["inner_life_snapshot"]["materials"] = unpack_shared_strings(presented)
         current = material["inner_life_snapshot"]["materials"]["current_activities"]
         assert len(current) == 1
         source_ref = next(
@@ -170,7 +174,11 @@ async def test_current_activity_http_claim_reaches_accepted_action_and_terminal_
     assert transport.bodies == [claim]
     assert len(bodies) == 1
     material = json.loads(bodies[0]["messages"][1]["content"])
-    activity = material["inner_life_snapshot"]["materials"]["current_activities"][0]
+    shown = material["inner_life_snapshot"]["materials"]
+    if shown.get("contract") == "shared-string-view.1":
+        from companion_daemon.world_v2.shared_string_view import unpack_shared_strings
+        shown = unpack_shared_strings(shown)
+    activity = shown["current_activities"][0]
     assert activity["plan_id"] == plan_id
     assert activity["active_since"] == event.logical_time.isoformat().replace("+00:00", "Z")
     assert "校园征稿启事" in activity["accepted_intention"]["text"]

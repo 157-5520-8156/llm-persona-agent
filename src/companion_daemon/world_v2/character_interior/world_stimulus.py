@@ -66,6 +66,7 @@ from ..proposal_envelope import (
     AspirationTransitionPayload,
     CanonicalTypedPayload,
     DecisionProposal,
+    InteriorDecisionProposal,
     ProposalEvidenceRef,
     TypedChange,
     validate_proposal_envelope,
@@ -132,6 +133,11 @@ _LOG = logging.getLogger(__name__)
 PURPOSE = "world_stimulus_appraisal"
 PROPOSAL_TYPE = "world_stimulus_appraisal_result"
 PAYLOAD_CONTRACT = "character-interior-world-stimulus-appraisal-result.1"
+def _silence_context_note():
+    from ..silence_observation import SILENCE_CONTEXT_NOTE
+    return SILENCE_CONTEXT_NOTE
+
+
 _PROCESS_PRIORITY = (
     "perception_result_deliberation",
     "npc_world_appraisal",
@@ -516,6 +522,11 @@ class _WorldStimulusRelationshipSignalSettlement:
             source_event_id=source_event.event_id,
         )
 
+    def is_pending_in_projection(self, *, projection, audit) -> bool:
+        return self._compiler.is_world_stimulus_pending_in_projection(
+            projection=projection, audit=audit,
+        )
+
     async def _compile(self, **kwargs):  # type: ignore[no-untyped-def]
         source_event = kwargs.pop("source_event")
 
@@ -697,6 +708,11 @@ class _WorldStimulusInteriorAuthorityHandler:
                 or receipt.payload_hash != expected_perception_result["receipt_event_payload_hash"]
             ):
                 raise ValueError("world stimulus perception receipt is not pinned authority")
+        if "silence_observation" in manifest.payload:
+            from ..silence_observation import silence_observation
+            if (process_kind != "silence_appraisal" or manifest.payload["silence_observation"] != silence_observation(
+                    pinned, anchor_event_ref=source_event.event_id, actor_ref=request.actor_ref)):
+                raise ValueError("silence observation differs from its original World pin")
         pinned_affect_bounds = lower_bounds_from_projection(pinned)
         if manifest.payload.get("affect_target_lower_bounds") != pinned_affect_bounds.model_dump(
             mode="json"
@@ -1070,7 +1086,9 @@ class _WorldStimulusInteriorAuthorityHandler:
                     value={**response.model_dump(mode="json"), "actor_ref": request.actor_ref},
                 ),
             ))
-        decision = DecisionProposal(
+        decision_type = InteriorDecisionProposal if result.reflection_depth is not None else DecisionProposal
+        decision = decision_type(
+            **({"interior_reflection_depth": result.reflection_depth} if result.reflection_depth is not None else {}),
             **(
                 {"schema_registry_version": CHARACTER_LIFE_RESPONSE_REGISTRY_VERSION}
                 if expected_response_capability is not None else
@@ -1381,12 +1399,7 @@ class CharacterInteriorWorldStimulusRuntime:
         ] = {}
         self._technical_retry_schedule = WorldStimulusRetrySchedule(
             ledger=ledger,
-            identities_for_projection=lambda projection: self._health_opportunity_identities(
-                projection=projection,
-                processes=tuple(item for item in projection.trigger_processes
-                                if item.process_kind in _PROCESS_PRIORITY
-                                and item.source_evidence_ref is not None),
-            ),
+            identity_for_audit=self._retry_opportunity_identity,
         )
 
     def _route_groups(
@@ -1479,7 +1492,10 @@ class CharacterInteriorWorldStimulusRuntime:
             ),
             last_source_ref=(last.source_evidence_ref if last is not None else None),
             last_opportunity_ref=(last_identity.opportunity_ref if last_identity else None),
-            no_change_count=sum(item.endswith(":no-change") for item in outcomes),
+            no_change_count=sum(
+                item.endswith(":no-change") or ":no-change:expired:" in item
+                for item in outcomes
+            ),
             ignored_count=sum(":ignored" in item for item in outcomes),
             expired_count=sum(":expired:" in item for item in outcomes),
             accepted_count=sum(
@@ -1591,7 +1607,7 @@ class CharacterInteriorWorldStimulusRuntime:
         # Current projection membership is still checked by each caller; a
         # rewind cannot see an identity merely because a later audit was cached.
         key = (getattr(model_audit, "event_ref", ""), getattr(model_audit, "audit_hash", ""),
-               hashlib.sha256(model_audit.audit_json.encode("utf-8")).hexdigest())
+               model_audit.audit_json)
         if key in self._audited_opportunity_identities:
             return self._audited_opportunity_identities[key]
         identity = None
@@ -1616,6 +1632,38 @@ class CharacterInteriorWorldStimulusRuntime:
             pass  # Preserve the existing invalid/legacy audit exclusion.
         self._audited_opportunity_identities[key] = identity
         return identity
+
+    def _retry_opportunity_identity(
+        self,
+        model_audit,
+    ) -> CausalOpportunityIdentity | None:
+        """Read the exact failure-time grouping, without replaying history."""
+
+        successful_identity = self._audited_opportunity_identity(model_audit)
+        if successful_identity is not None:
+            return successful_identity
+        try:
+            recorded = RecordedModelResultAudit.model_validate_json(model_audit.audit_json)
+            source = recorded.causal_opportunity_identity
+            if (
+                source is None
+                or source.world_id != self._ledger.world_id
+                or source.actor_ref != self._companion_actor_ref
+                or source.purpose != PURPOSE
+            ):
+                return None
+            policy = CausalOpportunityPolicy.from_ref(source.policy_ref)
+            candidate = CausalOpportunityRuntime(
+                world_id=source.world_id,
+                actor_ref=source.actor_ref,
+                purpose=source.purpose,
+                contract_version=source.contract_version,
+            ).identity_for_refs(source.source_refs, epoch=source.epoch, policy=policy)
+            if candidate.model_dump(mode="json") != source.model_dump(mode="json"):
+                return None
+            return candidate
+        except (TypeError, ValueError):
+            return None
 
     def _health_source_event(self, source_ref: str | None) -> WorldEvent | None:
         if source_ref is None:
@@ -1707,7 +1755,11 @@ class CharacterInteriorWorldStimulusRuntime:
         wake_event_ref: str | None = None,
     ) -> CharacterInteriorRunResult:
         projection = await self._project()
-        process = self._next_process(projection, wake_event_ref=wake_event_ref)
+        process = (
+            await asyncio.to_thread(self._next_process, projection, wake_event_ref=wake_event_ref)
+            if self._ledger.blocks_event_loop
+            else self._next_process(projection, wake_event_ref=wake_event_ref)
+        )
         if process is None:
             return CharacterInteriorRunResult(trigger_id="", status="idle")
         _CURRENT_TRIGGER_ID.set(process.trigger_id)
@@ -1806,6 +1858,7 @@ class CharacterInteriorWorldStimulusRuntime:
             except (ValueError, OSError):
                 await self._record_technical_failure(
                     process=active, source_event=source_event,
+                    opportunity_identity=identity,
                     failure_code="world_consequence_published_source_unavailable",
                 )
                 return result(work_status="technical_failure")
@@ -1822,6 +1875,7 @@ class CharacterInteriorWorldStimulusRuntime:
                     stimulus_ref=identity.opportunity_ref,
                     capability_manifest=manifest,
                     context_note=(
+                        _silence_context_note() if active.process_kind == "silence_appraisal" else
                         "A committed change is available for the character's own private "
                         "interpretation. It may matter in any way or not change her at all."
                     ),
@@ -1836,6 +1890,7 @@ class CharacterInteriorWorldStimulusRuntime:
                 await self._record_technical_failure(
                     process=active,
                     source_event=source_event,
+                    opportunity_identity=identity,
                     failure_code=transition.failure_code or "interior_technical_failure",
                 )
                 return result(work_status="technical_failure")
@@ -1850,6 +1905,7 @@ class CharacterInteriorWorldStimulusRuntime:
                 await self._record_technical_failure(
                     process=active,
                     source_event=source_event,
+                    opportunity_identity=identity,
                     failure_code="invalid_proposal_count",
                 )
                 return result(work_status="technical_failure")
@@ -1924,6 +1980,7 @@ class CharacterInteriorWorldStimulusRuntime:
             except (ConcurrencyConflict, ValueError):
                 await self._record_technical_failure(
                     process=active, source_event=source_event,
+                    opportunity_identity=identity,
                     failure_code="world_life_response_settlement_failure",
                 )
                 return result(work_status="technical_failure")
@@ -1945,6 +2002,7 @@ class CharacterInteriorWorldStimulusRuntime:
                 await self._record_technical_failure(
                     process=active,
                     source_event=source_event,
+                    opportunity_identity=identity,
                     failure_code="world_life_intent_settlement_failure",
                 )
                 return result(work_status="technical_failure")
@@ -1962,6 +2020,7 @@ class CharacterInteriorWorldStimulusRuntime:
             await self._record_technical_failure(
                 process=active,
                 source_event=source_event,
+                opportunity_identity=identity,
                 failure_code="experience_settlement_failure",
             )
             return result(work_status="technical_failure")
@@ -1975,6 +2034,7 @@ class CharacterInteriorWorldStimulusRuntime:
             await self._record_technical_failure(
                 process=active,
                 source_event=source_event,
+                opportunity_identity=identity,
                 failure_code="aspiration_settlement_failure",
             )
             return result(work_status="technical_failure")
@@ -2013,6 +2073,7 @@ class CharacterInteriorWorldStimulusRuntime:
                 await self._record_technical_failure(
                     process=active,
                     source_event=source_event,
+                    opportunity_identity=identity,
                     failure_code="relationship_settlement_failure",
                 )
                 return result(work_status="technical_failure")
@@ -2023,6 +2084,7 @@ class CharacterInteriorWorldStimulusRuntime:
                 await self._record_technical_failure(
                     process=active,
                     source_event=source_event,
+                    opportunity_identity=identity,
                     failure_code="relationship_settlement_failure",
                 )
                 return result(work_status="technical_failure")
@@ -2049,6 +2111,7 @@ class CharacterInteriorWorldStimulusRuntime:
             await self._record_technical_failure(
                 process=active,
                 source_event=source_event,
+                opportunity_identity=identity,
                 failure_code="emotion_settlement_failure",
             )
             return result(work_status="technical_failure")
@@ -2060,9 +2123,14 @@ class CharacterInteriorWorldStimulusRuntime:
             if emotion_status == "no_change"
             and relationship_status == "no_change"
             and aspiration.status == "no_change"
-            and experience.status == "no_change"
+            and experience.status in {"no_change", "expired"}
             and not has_life_intent
             else "accepted"
+        )
+        experience_outcome = (
+            ":expired:experience-thread-intent"
+            if getattr(experience, "outcome_code", None) == "thread_intent_expired"
+            else ""
         )
         # Appraisal acceptance may already terminalize the primary source in
         # its own atomic batch.  The helper skips that terminal process and
@@ -2071,7 +2139,9 @@ class CharacterInteriorWorldStimulusRuntime:
             await self._complete_opportunity_processes(
                 processes=active_processes,
                 source_events=source_events_by_trigger,
-                outcome_ref=f"outcome:{active.trigger_id}:{completed_status}",
+                outcome_ref=(
+                    f"outcome:{active.trigger_id}:{completed_status}{experience_outcome}"
+                ),
             )
         if not self._process_is_terminal(await self._project(), trigger_id=active.trigger_id):
             raise RuntimeError("accepted world stimulus did not terminalize its source trigger")
@@ -2417,6 +2487,12 @@ class CharacterInteriorWorldStimulusRuntime:
             return False
         if not isinstance(proposal, DecisionProposal):
             return False
+        from ..affect_source_lifecycle import source_appraisal_closed
+        if source_appraisal_closed(proposal=proposal, projection=projection):
+            # Appraisal expiry/supersession is authoritative World history.
+            # It does not mean the role chose silence or no emotion. It means
+            # this old, not-yet-applied effect can no longer be accepted.
+            return False
         affect_changes = tuple(
             item for item in proposal.proposed_changes if item.kind == "affect_transition"
         )
@@ -2502,12 +2578,8 @@ class CharacterInteriorWorldStimulusRuntime:
                 audit.proposal_id,
                 source_event.event_id,
             ),
-            lambda: self._relationship_settlement.is_pending(
-                world_id=self._ledger.world_id,
-                audit_cursor=audit_cursor,
-                current_cursor=current_cursor,
-                proposal_id=audit.proposal_id,
-                source_event=source_event,
+            lambda: self._relationship_settlement.is_pending_in_projection(
+                projection=projection, audit=audit,
             ),
         )
 
@@ -2544,11 +2616,8 @@ class CharacterInteriorWorldStimulusRuntime:
                 audit.proposal_id,
                 source_event.event_id,
             ),
-            lambda: self._experience_settlement.is_pending(
-                audit_cursor=audit_cursor,
-                current_cursor=current_cursor,
-                proposal_id=audit.proposal_id,
-                source_event=source_event,
+            lambda: self._experience_settlement.is_pending_in_projection(
+                projection=projection, audit=audit, source_event=source_event,
             ),
         )
 
@@ -2987,6 +3056,11 @@ class CharacterInteriorWorldStimulusRuntime:
                 source_event=source_event,
             ).model_dump(mode="json"),
         }
+        if process.process_kind == "silence_appraisal":
+            from ..silence_observation import silence_observation
+            payload["silence_observation"] = silence_observation(
+                projection, anchor_event_ref=source_event.event_id, actor_ref=self._companion_actor_ref,
+            )
         if process.process_kind == "perception_result_deliberation":
             payload["perception_result"] = await self._read_perception_result(source_event)
             payload["perception_results"] = {
@@ -3125,6 +3199,7 @@ class CharacterInteriorWorldStimulusRuntime:
         *,
         process: TriggerProcess,
         source_event: WorldEvent,
+        opportunity_identity: CausalOpportunityIdentity,
         failure_code: str,
     ) -> None:
         if process.claim_lease is None:
@@ -3136,6 +3211,7 @@ class CharacterInteriorWorldStimulusRuntime:
             attempt_id=process.claim_lease.attempt_id,
             evaluated_world_revision=current.world_revision,
             failure_code=failure_code,
+            causal_opportunity=opportunity_identity,
         )
         if any(
             item.model_result_ref == model_payload.model_result_ref

@@ -14,6 +14,7 @@ import httpx
 import pytest
 
 from companion_daemon.llm import DeepSeekChatModel
+from companion_daemon.world_v2.shared_string_view import CONTRACT as SHARED_STRING_CONTRACT, unpack_shared_strings
 from companion_daemon.world_v2.character_interior.production import (
     compose_production_character_interior,
 )
@@ -52,15 +53,25 @@ class _LifeChatHTTP:
         self.authors = []
         self.reviews = []
         self.usages = []
+        self.callback_errors = []
 
     async def __call__(self, request):
+        try:
+            return await self.respond(request)
+        except AssertionError as exc:
+            self.callback_errors.append(str(exc))
+            raise
+
+    async def respond(self, request):
         body = json.loads(request.content)
         user = json.loads(body["messages"][-1]["content"])
         name = body["tool_choice"]["function"]["name"]
         if name.startswith("character_inbound_"):
             assert name in {"character_inbound_initial_v3", "character_inbound_final_atomic_v3"}
-            assert "accepted_intention.text remains an intention" in body["messages"][0]["content"]
-            assert "use only the exact accepted_intention.text" not in body["messages"][0]["content"]
+            system = body["messages"][0]["content"]
+            assert "计划只证明意图" in system
+            assert "活动开始只证明开始尝试" in system
+            assert "空声明不豁免正文里的事实" in system
             self.authors.append(body)
             candidate = _decision()
             candidate["expression_draft"]["beats"] = [
@@ -267,8 +278,13 @@ async def test_public_v3_to_v4_host_can_say_exact_settled_environment(tmp_path, 
             platform="test", platform_user_id="user.1", platform_message_id="life-return",
             text="刚才外面怎么样？", observed_at=now, trace_id="trace:visible-life-return",
         ))
+        assert provider.callback_errors == [], (outcome, provider.callback_errors)
         original = json.loads(provider.authors[0]["messages"][-1]["content"])
-        assert original["inner_life_snapshot"]["materials"]["recent_self_experiences"]["items"]
+        materials = original["inner_life_snapshot"]["materials"]
+        if isinstance(materials, dict) and materials.get("contract") == SHARED_STRING_CONTRACT:
+            materials = unpack_shared_strings(materials)
+        assert materials["recent_self_experiences"]["items"]
+        assert "一阵短雨已经停了。" in json.dumps(materials, ensure_ascii=False)
         assert provider.reviews, "test must reach the original full v4 review seam"
         assert outcome.status == "action_authorized", outcome
         assert (len(provider.authors), len(provider.reviews)) == (1, 1)

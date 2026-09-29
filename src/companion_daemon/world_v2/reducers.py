@@ -3197,10 +3197,21 @@ def _model_result_recorded(state: ReducerState, event: WorldEvent) -> ReducerSta
         for value in state.model_result_audits
     ):
         raise ValueError("model result identity is already registered")
-    existing_audits = tuple(
-        (value, RecordedModelResultAudit.model_validate_json(value.audit_json))
-        for value in state.model_result_audits
-    )
+    # Previous immutable projections were validated on acceptance. This
+    # invariant concerns only stream relatives and physical-terminal owners;
+    # revalidating every unrelated historical provider payload makes appending
+    # N results quadratic in the size of the whole conversation.
+    existing_audits = []
+    for value in state.model_result_audits:
+        header = json.loads(value.audit_json)
+        if (
+            value.parent_model_call_id == recorded.model_call_id
+            or value.model_call_id == recorded.parent_model_call_id
+            or header.get("route", {}).get("router_version") == "physical-provider-audit.1"
+            or header.get("physical_provider_audits")
+        ):
+            existing_audits.append((value, RecordedModelResultAudit.model_validate_json(value.audit_json)))
+    existing_audits = tuple(existing_audits)
     existing_stream = tuple(
         audit
         for projection, audit in existing_audits
@@ -3219,6 +3230,7 @@ def _model_result_recorded(state: ReducerState, event: WorldEvent) -> ReducerSta
             )
             for _owner_projection, owner in existing_audits
             for terminal in owner.physical_provider_audits
+            if terminal.model_call_id == physical.model_call_id
         )
         == 1
     )
@@ -3270,7 +3282,7 @@ def _model_result_recorded(state: ReducerState, event: WorldEvent) -> ReducerSta
         if independent_failed_main_terminal and not set(
             recorded.semantic_model_call_ids
         ).isdisjoint(
-            projection.model_call_id for projection, _audit in existing_audits
+            projection.model_call_id for projection in state.model_result_audits
         ):
             raise ValueError(
                 "independent physical provider semantic identities overlap "
@@ -8181,7 +8193,7 @@ def _require_previous_event(
         raise ValueError("minimal reply effect predecessor is not exact")
 
 
-def _world_started(state: ReducerState, event: WorldEvent) -> ReducerState:
+def _world_started(state: ReducerState, event: WorldEvent, *, legacy_epoch_fact_binding="genesis") -> ReducerState:
     if state.logical_time is not None:
         raise ValueError("WorldStarted cannot reinitialize logical time")
     continuity = event.payload().get("continuity")
@@ -8203,6 +8215,7 @@ def _world_started(state: ReducerState, event: WorldEvent) -> ReducerState:
         genesis_event_id=event.event_id,
         genesis_payload_hash=event.payload_hash,
         logical_time=event.logical_time,
+        legacy_fact_binding=legacy_epoch_fact_binding,
     )
     return state.model_copy(update={"logical_time": event.logical_time, **hydrated})
 
@@ -11372,6 +11385,7 @@ def _trigger_process_claimed(state: ReducerState, event: WorldEvent) -> ReducerS
         "life_ecology",
         "life_reflection",
         "memory_candidate_review",
+        "memory_consolidation_review",
         "expression_episode",
     }:
         if (
@@ -11425,6 +11439,7 @@ def _trigger_process_claimed(state: ReducerState, event: WorldEvent) -> ReducerS
         "life_ecology",
         "life_reflection",
         "memory_candidate_review",
+        "memory_consolidation_review",
         "expression_episode",
     }:
         raise ValueError("appraisal trigger must be opened before it is claimed")
@@ -11491,6 +11506,16 @@ def _trigger_process_opened(state: ReducerState, event: WorldEvent) -> ReducerSt
             or process.trigger_ref != f"media-request:{source.payload_hash}"
         ):
             raise ValueError("media request trigger identity is not deterministic")
+    if process.process_kind == "memory_consolidation_review":
+        source = next((item for item in state.committed_world_event_refs
+                       if item.event_id == process.source_evidence_ref), None)
+        suffix = process.trigger_ref.removeprefix("memory-review-job:")
+        if (source is None or source.event_type != "ClockAdvanced"
+                or source.logical_time > event.logical_time
+                or len(suffix) != 64 or any(c not in "0123456789abcdef" for c in suffix)
+                or process.trigger_ref != "memory-review-job:" + suffix
+                or process.trigger_id != "trigger:memory-consolidation:" + suffix):
+            raise ValueError("periodic memory trigger must bind a committed clock and immutable job")
     if process.process_kind == "memory_candidate_review":
         source = next(
             (
@@ -15876,6 +15901,7 @@ def reduce_event(
     state: ReducerState,
     event: WorldEvent,
     *,
+    legacy_epoch_fact_binding: str = "genesis",
     allow_legacy_plan_owner: bool = False,
     allow_legacy_clock_drift: bool = False,
     allow_legacy_activity_opening: bool = False,
@@ -15890,6 +15916,7 @@ def reduce_event(
         return _reduce_event_impl(
             state,
             event,
+            legacy_epoch_fact_binding=legacy_epoch_fact_binding,
             allow_legacy_plan_owner=allow_legacy_plan_owner,
             allow_legacy_clock_drift=allow_legacy_clock_drift,
             allow_legacy_activity_opening=allow_legacy_activity_opening,
@@ -15904,6 +15931,7 @@ def _reduce_event_impl(
     state: ReducerState,
     event: WorldEvent,
     *,
+    legacy_epoch_fact_binding: str,
     allow_legacy_plan_owner: bool,
     allow_legacy_clock_drift: bool,
     allow_legacy_activity_opening: bool,
@@ -15911,7 +15939,9 @@ def _reduce_event_impl(
 ) -> ReducerState:
     event_contract(event.event_type).validate_payload(event.payload())
     definition = event_definition(event.event_type)
-    if event.event_type == "ObservationRecorded" and allow_legacy_clock_drift:
+    if event.event_type == "WorldStarted" and legacy_epoch_fact_binding == "archive":
+        reduced = _world_started(state, event, legacy_epoch_fact_binding="archive")
+    elif event.event_type == "ObservationRecorded" and allow_legacy_clock_drift:
         reduced = _observation_recorded(state, event, allow_legacy_clock_drift=True)
     elif event.event_type == "ActivityPlanned" and allow_legacy_plan_owner:
         reduced = _activity_planned(

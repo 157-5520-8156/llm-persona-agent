@@ -81,6 +81,7 @@ async def _run_scenario(
     review_required=None,
     authored_outputs=None,
     history_subject="companion",
+    reference_wire=False,
 ):
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
     monkeypatch.setattr(config_module, "_macos_launchctl_env", lambda _name: None)
@@ -187,7 +188,7 @@ async def _run_scenario(
             fields = body["tools"][0]["function"]["parameters"]["properties"]
             return _http_result(body, {key: authored.get(key) for key in fields})
 
-        assert name == "character_role_proactive_contact_v1", name
+        assert name == ("character_role_proactive_contact_v2" if reference_wire else "character_role_proactive_contact_v1"), name
         assert "source_table_json" not in json.dumps(body)
         assert "visible_source_requirement_json" not in json.dumps(body)
         proactive_requests.append(body)
@@ -221,7 +222,20 @@ async def _run_scenario(
         }
         if source_claim_scenario:
             packet = json.loads(body["messages"][-1]["content"])
-            source = next(item for item in packet["citeable_sources"]["items"] if history_source(item))
+            if reference_wire:
+                from companion_daemon.llm import captured_reference_request_identity
+                from companion_daemon.world_v2.reference_wire import expand_reference_view
+
+                # The offline oracle makes the same source choice in both
+                # carriers, then emits the offered handle. This tests identity
+                # and review binding, not a fixture model's comprehension.
+                bindings = captured_reference_request_identity()["identity_extras"]["reference_bindings"]
+                canonical_packet = expand_reference_view(packet, bindings)
+                source = next(item for item in canonical_packet["citeable_sources"]["items"] if history_source(item))
+                forward = {ref: alias for alias, ref in bindings["entries"].items()}
+                source = {**source, "ref": forward.get(source["ref"], source["ref"])}
+            else:
+                source = next(item for item in packet["citeable_sources"]["items"] if history_source(item))
             invalid = scenario != "valid_claim" and (
                 len(proactive_requests) == 1 or scenario.endswith("twice")
             )
@@ -386,6 +400,7 @@ async def _run_scenario(
     delivery = _DeliveredQQ()
     host = build_qq_c2c_host(
         settings=Settings(
+            WORLD_V2_REFERENCE_WIRE_ENABLED=reference_wire,
             _env_file=None,
             database_path=tmp_path / "world.sqlite",
             PRIMARY_USER_ID="geoff",
@@ -680,6 +695,12 @@ async def _run_scenario(
 )
 async def test_required_proactive_review_public_host(tmp_path, monkeypatch, scenario):
     await _run_scenario(tmp_path, monkeypatch, scenario)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scenario", ["source_free", "valid_claim", "reselect"])
+async def test_reviewed_proactive_keeps_actual_compact_request_identity(tmp_path, monkeypatch, scenario):
+    await _run_scenario(tmp_path, monkeypatch, scenario, reference_wire=True, review_version="4")
 
 
 @pytest.mark.asyncio

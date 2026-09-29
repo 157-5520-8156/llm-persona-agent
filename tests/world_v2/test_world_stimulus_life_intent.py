@@ -102,6 +102,8 @@ class _RoleHTTP:
             summary = (
                 "begin an abstract planned activity"
                 if self.lifecycle_choice == "start"
+                else "let go of an abstract activity" if self.lifecycle_choice == "abandon"
+                else "pause the current abstract activity" if self.lifecycle_choice == "pause"
                 else "finish the current abstract activity"
             )
             offered = capability["payload"].get("openings", [])
@@ -201,6 +203,9 @@ class _RoleHTTP:
 def _http_result(body, authored):
     if body.get("tools", [{}])[0].get("function", {}).get("name") in {
         "character_role_world_stimulus_appraisal_v2", "character_role_world_stimulus_appraisal_v3",
+        "character_role_world_stimulus_appraisal_v4",
+        "character_role_world_stimulus_appraisal_v5",
+        "character_role_world_stimulus_appraisal_v6",
     }:
         authored = {"result": authored}
     name = body["tool_choice"]["function"]["name"]
@@ -626,7 +631,12 @@ async def test_installed_ecology_executes_world_plan_and_next_chat_reads_its_exa
             )
         )
         current_request = json.loads(provider.chat_requests[-1]["messages"][-1]["content"])
-        current = current_request["inner_life_snapshot"]["materials"]["current_activities"]
+        from companion_daemon.world_v2.shared_string_view import CONTRACT as SHARED_STRINGS, unpack_shared_strings
+
+        material = current_request["inner_life_snapshot"]["materials"]
+        if material.get("contract") == SHARED_STRINGS:
+            material = unpack_shared_strings(material)
+        current = material["current_activities"]
         assert len(current) == 1
         assert current[0]["plan_id"] == plan.plan_id
         assert current[0]["accepted_intention"]["text"] == INTENTION
@@ -663,6 +673,8 @@ async def test_installed_ecology_executes_world_plan_and_next_chat_reads_its_exa
         )
         last_request = json.loads(provider.chat_requests[-1]["messages"][-1]["content"])
         materials = last_request["inner_life_snapshot"]["materials"]
+        if materials.get("contract") == SHARED_STRINGS:
+            materials = unpack_shared_strings(materials)
         assert not materials.get("current_activities")
         recent = materials["recently_ended_activities"]
         assert len(recent) == 1

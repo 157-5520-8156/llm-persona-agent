@@ -10,6 +10,7 @@ import json
 from typing import Literal
 
 from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
 from pydantic import Field
 
 from ..fact_observation_value import FactObservationValueBinding
@@ -38,9 +39,14 @@ COMPACT_CONTRACT = 'life-source-review.16'
 # The contract every new Installed review is minted at. .15 is the lean
 # presentation of the .13 protocol; earlier pins keep replaying at their own
 # version, and .14 stays available for pins already written against it.
-MINTED_CONTRACT = COMPACT_CONTRACT
+INTENT_CONTRACT = 'life-source-review.17'
+NATIVE_REPAIR_CONTRACT = 'life-source-review.18'
+STATE_ALIGNMENT_CONTRACT = 'life-source-review.19'
+RUNTIME_READING_CONTRACT = 'life-source-review.20'
+COMPACT_RUNTIME_CONTRACT = 'life-source-review.21'
+MINTED_CONTRACT = COMPACT_RUNTIME_CONTRACT
 _BOUND_PERMISSION_CONTRACTS = {BOUND_PERMISSION_CONTRACT, CONTRACT, CLAIM_AUTHORITY_CONTRACT,
-    LEAN_CONTRACT, COMPACT_CONTRACT}
+    LEAN_CONTRACT, COMPACT_CONTRACT, INTENT_CONTRACT, NATIVE_REPAIR_CONTRACT, STATE_ALIGNMENT_CONTRACT, RUNTIME_READING_CONTRACT, COMPACT_RUNTIME_CONTRACT}
 _AUTHORSHIP_CONTRACTS = {AUTHORSHIP_CONTRACT, TEMPORAL_AUTHORSHIP_CONTRACT,
     COVERAGE_AUTHORSHIP_CONTRACT, PERMISSION_AUTHORITY_CONTRACT, EXACT_VALUE_AUTHORITY_CONTRACT, *_BOUND_PERMISSION_CONTRACTS}
 _CHOICE_CONTRACTS = {PERMISSION_CONTRACT, BOUNDED_REASON_CONTRACT, VERDICT_ORDER_CONTRACT, LEGACY_CURRENT_CONTRACT}
@@ -109,7 +115,7 @@ def _prepare_legacy_review(*, candidate_json, provider_raw, view, snapshot, cont
     payload = {'contract': contract, 'source_view_sha256': digest(view.model_dump_json()),
         'candidate': candidate, 'original_author_output': provider_raw, 'text_fields': fields,
         'source_readings': readings,
-        'actual_author_snapshot': json.loads(json.loads(view.messages_json)[1]['content'])['inner_life_snapshot']}
+        'actual_author_snapshot': view.author_payload()['inner_life_snapshot']}
     support_instructions = (
         'For Fact values select quoted_value exactly from its observation, '
         'with subject_role source_owner and its actual subject_ref; the host checks the accepted value hash. '
@@ -228,7 +234,7 @@ def prepare_review(*, candidate_json, provider_raw, view, snapshot, contract=Non
     if (view.review_contract not in {None, contract}
         or contract in {EXACT_VALUE_AUTHORITY_CONTRACT, *_BOUND_PERMISSION_CONTRACTS} and view.review_contract != contract):
         raise ValueError('Life review contract differs from its source preparation')
-    if contract in {CONTRACT, CLAIM_AUTHORITY_CONTRACT, LEAN_CONTRACT, COMPACT_CONTRACT}:
+    if contract in {CONTRACT, CLAIM_AUTHORITY_CONTRACT, LEAN_CONTRACT, COMPACT_CONTRACT, INTENT_CONTRACT, NATIVE_REPAIR_CONTRACT, STATE_ALIGNMENT_CONTRACT, RUNTIME_READING_CONTRACT, COMPACT_RUNTIME_CONTRACT}:
         from .life_source_review_request import prepare_current_review
 
         return prepare_current_review(candidate_json=candidate_json, provider_raw=provider_raw,
@@ -254,9 +260,15 @@ def inspect_review(*, raw, prepared_json, readings):
     from .life_source_authorship_review import inspect
     choices = {p['permission_id']: p for p in life_permission_choices(readings)}
     sources = {r['reading_id']: r for r in readings['readings']}
+    expected_display = readings
+    if packet['contract'] == COMPACT_RUNTIME_CONTRACT:
+        from .life_source_review_request import compact_reading_display
+        if packet.get('reading_presentation') != 'life-reading-ordinal-display.1':
+            raise ValueError('Life reading presentation lacks its exact protocol')
+        expected_display = compact_reading_display(readings)
     if packet['contract'] in _BOUND_PERMISSION_CONTRACTS and (
         readings['contract'] != 'life-source-readings.4'
-        or packet['source_readings'] != readings
+        or packet['source_readings'] != expected_display
         or len(sources) != len(readings['readings'])
     ):
         raise ValueError('permission-only review requires its exact unique source readings')
@@ -297,7 +309,7 @@ def inspect_review(*, raw, prepared_json, readings):
 
 
 class LifeSourceReviewReceipt(FrozenModel):
-    contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8', 'life-source-review.9', 'life-source-review.10', 'life-source-review.11', 'life-source-review.12', 'life-source-review.13', 'life-source-review.14', 'life-source-review.15', 'life-source-review.16'] = CONTRACT
+    contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8', 'life-source-review.9', 'life-source-review.10', 'life-source-review.11', 'life-source-review.12', 'life-source-review.13', 'life-source-review.14', 'life-source-review.15', 'life-source-review.16', 'life-source-review.17', 'life-source-review.18', 'life-source-review.19', 'life-source-review.20', 'life-source-review.21'] = CONTRACT
     prepared_json: str = Field(max_length=256_000)
     response_json: str = Field(max_length=64_000)
     request_hash: str = Field(pattern=r'^[0-9a-f]{64}$')
@@ -314,6 +326,18 @@ class LifeSourceReviewReceipt(FrozenModel):
         pin = json.loads(checked.prepared_json)
         prepared, readings = prepare_review(candidate_json=candidate_body(result),
             provider_raw=pin['provider_raw'], view=result.life_source_view, snapshot=snapshot, contract=checked.contract)
+        if pin.get('wire_feedback'):
+            if checked.contract not in {NATIVE_REPAIR_CONTRACT, STATE_ALIGNMENT_CONTRACT, RUNTIME_READING_CONTRACT, COMPACT_RUNTIME_CONTRACT}:
+                raise ValueError('historical Life review cannot carry wire feedback')
+            feedback = pin['wire_feedback']
+            try:
+                inspect_review(raw=feedback['invalid_response'], prepared_json=prepared, readings=readings)
+            except (ValueError, JsonSchemaValidationError) as invalid:
+                if feedback['format_error'] != _wire_error(invalid):
+                    raise ValueError('Life feedback differs from its original error') from invalid
+            else:
+                raise ValueError('Life feedback cannot retry a usable verdict')
+            prepared = _repair_request(prepared, feedback['invalid_response'], feedback['format_error'])
         if result.life_source_view.review_contract != checked.contract:
             raise ValueError('Life review contract differs from its source preparation')
         if (prepared != checked.prepared_json or digest(pin['provider_raw']) != result.author_lineage.response_hash.removeprefix('sha256:')
@@ -326,6 +350,27 @@ class LifeSourceReviewReceipt(FrozenModel):
         if outcome != 'accepted':
             raise ValueError('Life source review did not accept the complete candidate')
         return checked
+
+
+def _wire_error(error):
+    return type(error).__name__ + ':' + ' '.join(str(error).split())[:500]
+
+
+def _repair_request(prepared, raw, reason):
+    from companion_daemon.llm import provider_invocation_request_hash
+
+    envelope = json.loads(prepared)
+    if envelope.get('wire_feedback') or not isinstance(raw, str) or len(raw.encode()) > 64_000:
+        raise ValueError('Life wire feedback must be one bounded response')
+    feedback = {'previous_request_hash': provider_invocation_request_hash(**envelope['request']),
+                'invalid_response': raw, 'format_error': reason}
+    envelope['wire_feedback'] = feedback
+    envelope['request']['messages'].append({'role': 'user', 'content': canonical({
+        **feedback, 'instruction': 'This was not a usable review. Submit the complete tool arguments once more, fixing the precise format error. Keep the original candidate, evidence and permission boundaries; do not rewrite the character or convert unsupported claims to supported ones.'})})
+    encoded = json.dumps(envelope, ensure_ascii=False, separators=(',', ':'), allow_nan=False)
+    if len(encoded.encode()) > 256_000:
+        raise ValueError('Life repaired request exceeds its audit bound')
+    return encoded
 
 
 def verify_life_review(result, snapshot, *, required=False):
@@ -360,24 +405,35 @@ class LifeSourceReviewer:
         from ..deliberation import ModelUsageProvenance
         prepared, readings = prepare_review(candidate_json=candidate_body(result), provider_raw=provider_raw,
             view=result.life_source_view, snapshot=snapshot)
-        self._record(prepared, 'raw_model_request')
-        request = json.loads(prepared)['request']
-        request_hash = provider_invocation_request_hash(**request)
-        call_id = 'model-call:life-review:' + digest(result.author_lineage.model_call_id + request_hash)
-        try:
-            with model_call_scope('life_source_review'), model_request_emission_scope(provider_call_id=call_id,
-                    entry_marker=None, completion_marker=None), model_provider_request_identity_scope(request_hash=request_hash):
-                raw, usage = await asyncio.wait_for(self.model.complete_json_with_usage(**request), timeout=22.0)
-        except BaseException as exc:
-            self._record(canonical({'contract': CONTRACT, 'model_call_id': call_id,
-                'request_hash': request_hash, 'outcome': 'technical_failure',
-                'failure_type': type(exc).__name__, 'response_received': False}), 'raw_model_result')
-            raise
-        self._record(raw, 'raw_model_result')
-        review_contract = json.loads(request['messages'][1]['content'])['contract']
-        receipt = LifeSourceReviewReceipt(contract=review_contract, prepared_json=prepared, response_json=raw, request_hash=request_hash,
-            response_hash=digest(raw), model_id=str(getattr(self.model, 'model', type(self.model).__name__)),
-            model_call_id=call_id, usage_json=ModelUsageProvenance.model_validate(usage).model_dump_json())
-        self._record(canonical(receipt.model_dump(mode='json', exclude={'prepared_json', 'response_json'})), 'raw_model_result')
-        outcome, failures = inspect_review(raw=raw, prepared_json=prepared, readings=readings)
-        return receipt, outcome, failures
+        # A wire repair shares the original 22-second budget; a definite
+        # rejection goes back to the character once, never back to the critic.
+        async with asyncio.timeout(22.0):
+            for ordinal in range(2):
+                self._record(prepared, 'raw_model_request')
+                request = json.loads(prepared)['request']
+                request_hash = provider_invocation_request_hash(**request)
+                call_id = 'model-call:life-review:' + digest(result.author_lineage.model_call_id + request_hash)
+                try:
+                    with model_call_scope('life_source_review'), model_request_emission_scope(provider_call_id=call_id,
+                            entry_marker=None, completion_marker=None), model_provider_request_identity_scope(request_hash=request_hash):
+                        raw, usage = await self.model.complete_json_with_usage(**request)
+                except BaseException as exc:
+                    self._record(canonical({'contract': CONTRACT, 'model_call_id': call_id,
+                        'request_hash': request_hash, 'outcome': 'technical_failure',
+                        'failure_type': type(exc).__name__, 'response_received': False}), 'raw_model_result')
+                    raise
+                self._record(raw, 'raw_model_result')
+                review_contract = json.loads(request['messages'][1]['content'])['contract']
+                receipt = LifeSourceReviewReceipt(contract=review_contract, prepared_json=prepared, response_json=raw, request_hash=request_hash,
+                    response_hash=digest(raw), model_id=str(getattr(self.model, 'model', type(self.model).__name__)),
+                    model_call_id=call_id, usage_json=ModelUsageProvenance.model_validate(usage).model_dump_json())
+                self._record(canonical(receipt.model_dump(mode='json', exclude={'prepared_json', 'response_json'})), 'raw_model_result')
+                try:
+                    outcome, failures = inspect_review(raw=raw, prepared_json=prepared, readings=readings)
+                except (ValueError, JsonSchemaValidationError) as invalid:
+                    if ordinal or review_contract not in {NATIVE_REPAIR_CONTRACT, STATE_ALIGNMENT_CONTRACT, RUNTIME_READING_CONTRACT, COMPACT_RUNTIME_CONTRACT}:
+                        raise
+                    prepared = _repair_request(prepared, raw, _wire_error(invalid))
+                    continue
+                return receipt, outcome, failures
+        raise AssertionError('Life reviewer exited without a result')

@@ -413,6 +413,10 @@ class WorldV2PlatformHost:
             return None
         return await reader()
 
+    async def memory_consolidation_next_due(self):
+        reader = getattr(self._application, "memory_consolidation_next_due", None)
+        return await reader() if callable(reader) else None
+
     async def private_impression_next_due(self):
         """Read the next private-impression farm instant, if one is waiting."""
 

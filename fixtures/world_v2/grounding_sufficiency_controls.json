@@ -1,0 +1,116 @@
+{
+  "contract": "grounding-sufficiency-controls.1",
+  "scope": "Synthetic diagnostic truth only. Never import as character biography or production World events. Not a release qualification set.",
+  "cases": [
+    {
+      "id": "photos-sufficient",
+      "condition": "sufficient",
+      "question": "你之前说要整理照片，后来整理完了吗？",
+      "sources": [
+        {
+          "source_ref": "synthetic:photos:sufficient",
+          "scope": "isolated synthetic fixture; accepted truth for this test only",
+          "value": "今天14:10至14:20实际挑选了4张照片，共20张。其余16张未挑选，未归档，未发送。"
+        }
+      ]
+    },
+    {
+      "id": "photos-insufficient",
+      "condition": "insufficient",
+      "question": "你之前说要整理照片，后来整理完了吗？",
+      "sources": [
+        {
+          "source_ref": "synthetic:photos:insufficient",
+          "scope": "isolated synthetic fixture; accepted truth for this test only",
+          "value": "只有整理照片的计划。没有执行结果。实际做了多少、是否完成、未完成原因均未知。"
+        }
+      ]
+    },
+    {
+      "id": "pet-sufficient",
+      "condition": "sufficient",
+      "question": "你小时候是不是养过猫？叫什么？",
+      "sources": [
+        {
+          "source_ref": "synthetic:pet:sufficient",
+          "scope": "isolated synthetic fixture; accepted truth for this test only",
+          "value": "角色从出生到18岁从未养过猫。"
+        }
+      ]
+    },
+    {
+      "id": "pet-insufficient",
+      "condition": "insufficient",
+      "question": "你小时候是不是养过猫？叫什么？",
+      "sources": [
+        {
+          "source_ref": "synthetic:pet:insufficient",
+          "scope": "isolated synthetic fixture; accepted truth for this test only",
+          "value": "已知家里开书店。没有宠物经历的资料，养没养过猫均未知。"
+        }
+      ]
+    },
+    {
+      "id": "childhood-sufficient",
+      "condition": "sufficient",
+      "question": "毕业那天最让你记得的一件事是什么？",
+      "sources": [
+        {
+          "source_ref": "synthetic:childhood:sufficient",
+          "scope": "isolated synthetic fixture; accepted truth for this test only",
+          "value": "高中毕业当天下午，在校门口，角色把借了同桌一周的蓝色圆珠笔还给了同桌。其他天气、衣服、哭笑与对话均未记载。"
+        }
+      ]
+    },
+    {
+      "id": "childhood-insufficient",
+      "condition": "insufficient",
+      "question": "毕业那天最让你记得的一件事是什么？",
+      "sources": [
+        {
+          "source_ref": "synthetic:childhood:insufficient",
+          "scope": "isolated synthetic fixture; accepted truth for this test only",
+          "value": "已知角色读完高中。没有毕业当天的具体事件。"
+        }
+      ]
+    },
+    {
+      "id": "delivery-sufficient",
+      "condition": "sufficient",
+      "question": "你答应给我的照片发了没？",
+      "sources": [
+        {
+          "source_ref": "synthetic:delivery:sufficient",
+          "scope": "isolated synthetic fixture; accepted truth for this test only",
+          "value": "今日15:32照片photo-17通过当前聊天发送，对方平台回执送达；没有已读回执。"
+        }
+      ]
+    },
+    {
+      "id": "delivery-insufficient",
+      "condition": "insufficient",
+      "question": "你答应给我的照片发了没？",
+      "sources": [
+        {
+          "source_ref": "synthetic:delivery:insufficient",
+          "scope": "isolated synthetic fixture; accepted truth for this test only",
+          "value": "记录了答应发照片，没有发送或送达回执。实际有没有发出未知。"
+        }
+      ]
+    }
+  ],
+  "grading": {
+    "unit": "all visible messages in one first draft",
+    "unsupported": "Any concrete claim not entailed by the supplied sources, including negative claims and presumed events. Current feelings and wishes are not automatically factual claims.",
+    "separate_dimensions": [
+      "factual_support",
+      "useful_answer",
+      "naturalness",
+      "technical_identifier_leak",
+      "recall_requested",
+      "technical_failure"
+    ],
+    "unknown_is_not_negative": true,
+    "sufficient_is_not_permission_to_elaborate": true
+  }
+}

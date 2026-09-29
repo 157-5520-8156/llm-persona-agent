@@ -185,6 +185,7 @@ def test_post_silent_delay_enters_wake_set_via_computed_peek() -> None:
         computed={
             "social.initiative.cadence": post_silent,
             "private_impression.interval": None,
+            "memory.candidate_consolidation": None,
             "life.ecology": life,
         },
     )

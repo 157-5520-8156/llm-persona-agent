@@ -82,7 +82,7 @@ from .proposal_audit_schemas import (
     model_audit_json,
     sha256,
 )
-from .proposal_envelope import DecisionProposal
+from .proposal_envelope import DecisionProposal, validate_proposal_envelope
 from .schema_core import FrozenModel
 from .schemas import (
     AppraisalMeaningRef,
@@ -1772,7 +1772,9 @@ class PrivateImpressionTriggerRuntime:
         if inbound is None or len(audits) != 1:
             return None
         audit = audits[0]
-        proposal = DecisionProposal.model_validate_json(audit.proposal_json)
+        proposal = validate_proposal_envelope(json.loads(audit.proposal_json))
+        if not isinstance(proposal, DecisionProposal):
+            return None
         state = proposal.private_turn_state
         if (state is None or state.keep_impression is not True
                 or state.stuck_with_me != reflection_summary

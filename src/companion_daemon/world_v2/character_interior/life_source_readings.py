@@ -176,14 +176,17 @@ class PreparedLifeSourceReadings:
 def prepare_life_source_readings(*, view: LifeSourceView, snapshot) -> PreparedLifeSourceReadings:
     view = view.verify_snapshot(snapshot)
     table = json.loads(view.source_table_json)
-    rendered = json.loads(json.loads(view.messages_json)[1]['content'])['inner_life_snapshot']
+    rendered = view.author_payload()['inner_life_snapshot']
     visible = {(item['source_ref'], item['scope']) for item in rendered.get('source_inventory', ())}
     readings, excluded, identities = [], [], {}
     exact_value_display = view.review_contract in EXACT_VALUE_REVIEW_CONTRACTS
     for source in table['source_references']:
         material = table['source_materials'][source['material_index']]['material']
         row = {**source, 'review_material': material}
+        from .life_situation_readings import situation_plan_reading
+        aligned = view.review_contract in {'life-source-review.19', 'life-source-review.20', 'life-source-review.21'}
         structured_reader = (
+            situation_plan_reading if aligned and material.get('lane') == 'current_situation' else
             affect_history_reading if view.review_contract in STATE_REVIEW_CONTRACTS and material.get("lane") == "affect_episodes" else
             lifecycle_state_reading if view.review_contract in STATE_REVIEW_CONTRACTS and material.get("item", {}).get("value", {}).get("context_kind") == "activity_lifecycle_state" else
             biographical_reading if material.get('kind') == 'biographical_coordinate' else
@@ -192,7 +195,8 @@ def prepare_life_source_readings(*, view: LifeSourceView, snapshot) -> PreparedL
         if structured_reader is not None:
             descriptor, reason = structured_reader(row, rendered=rendered,
                 **({'exact_value_display': exact_value_display} if structured_reader is fact_value_reading else
-                   {'snapshot': snapshot} if structured_reader in {lifecycle_state_reading, affect_history_reading} else {}))
+                   {'snapshot': snapshot, 'state_only': aligned} if structured_reader is affect_history_reading else
+                   {'snapshot': snapshot} if structured_reader in {lifecycle_state_reading, situation_plan_reading} else {}))
             if descriptor is None:
                 excluded.append({'source_ref_index': source['source_ref_index'], 'reason': reason})
                 continue
@@ -245,6 +249,9 @@ def prepare_life_source_readings(*, view: LifeSourceView, snapshot) -> PreparedL
                        'source_ref_indexes': [source['source_ref_index']]}
             identities[identity] = reading
             readings.append(reading)
+    if view.review_contract in {'life-source-review.20', 'life-source-review.21'}:
+        from .life_runtime_readings import runtime_readings
+        readings.extend(runtime_readings(view=view, snapshot=snapshot))
     return PreparedLifeSourceReadings(canonical({
         'contract': EXACT_VALUE_CONTRACT if exact_value_display else CONTRACT,
         'source_view_sha256': digest(view.model_dump_json()),

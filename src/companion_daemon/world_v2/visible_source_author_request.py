@@ -157,10 +157,14 @@ def verify_visible_source_author_request(
     except (TypeError, RecursionError) as exc:
         raise ValueError("visible author request user material is not JSON") from exc
     if value["contract"] == PROACTIVE_AUTHOR_REQUEST_CONTRACT:
+        from .reference_wire import expand_reference_view
+
+        reference_bindings = (value["identity_extras"] or {}).get("reference_bindings")
+        user = expand_reference_view(user, reference_bindings)
         if not isinstance(user, dict) or user.get("inner_turn", {}).get("purpose") != "proactive_contact":
             raise ValueError("proactive author request has another purpose")
         tools = value["tools"]
-        if not isinstance(tools, list) or len(tools) != 1 or tools[0].get("function", {}).get("name") != "character_role_proactive_contact_v1":
+        if not isinstance(tools, list) or len(tools) != 1 or tools[0].get("function", {}).get("name") not in {"character_role_proactive_contact_v1", "character_role_proactive_contact_v2"}:
             raise ValueError("proactive author request lacks its exact tool")
         catalog = user.get("citeable_sources", {})
         items = catalog.get("items") if isinstance(catalog, dict) else None
@@ -174,7 +178,14 @@ def verify_visible_source_author_request(
         aliases = {item["id"]: item["ref"] for item in items}
         if len(aliases) != len(items):
             raise ValueError("proactive author source aliases are ambiguous")
+        if reference_bindings is not None:
+            permitted_refs = set(aliases.values())
+            aliases.update({alias: ref for alias, ref in reference_bindings["entries"].items() if ref in permitted_refs})
         return aliases
+    reference_bindings = (value["identity_extras"] or {}).get("reference_bindings")
+    if reference_bindings is not None:
+        from .reference_wire import expand_reference_view
+        user = expand_reference_view(user, reference_bindings)
     boundaries = user.get("expression_hard_boundaries") if isinstance(user, dict) else None
     aliases = boundaries.get("source_ref_aliases") if isinstance(boundaries, dict) else None
     if not isinstance(aliases, dict) or any(

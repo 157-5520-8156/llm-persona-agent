@@ -207,7 +207,7 @@ async def test_http_composition_wires_compact_source_guard_without_inventory(
         assert interior_health["primary_author_faculty"] == "structured-character-role"
         primary_route = interior_health["primary_author_route"]
         assert primary_route["name"] == "structured-character-role"
-        assert primary_route["version"] == "structured-character-role.1"
+        assert primary_route["version"] == "structured-character-role.2"
         assert primary_route["model_id"] == author.model
         assert interior_health["legacy_interface_invocations"] == 0
         assert interior_health["parallel_character_author_conflicts"] == 0

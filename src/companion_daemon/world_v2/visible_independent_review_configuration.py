@@ -6,7 +6,7 @@ Provider calls and immutable evidence recording remain in the review runtime.
 
 from dataclasses import dataclass
 
-from .visible_review_protocols import GROUNDED_REVIEW_VERSION, REVIEW_PROTOCOLS
+from .visible_review_protocols import GROUNDED_REVIEW_VERSIONS, REVIEW_PROTOCOLS
 
 
 @dataclass(frozen=True)
@@ -54,7 +54,7 @@ class IndependentVisibleReviewer:
 
 
 def validate_independent_reviewer_configuration(reviewer, version):
-    if version == GROUNDED_REVIEW_VERSION:
+    if version in GROUNDED_REVIEW_VERSIONS:
         if not isinstance(reviewer, GroundedVisibleReviewer):
             raise ValueError("grounded review requires its explicit single reviewer")
         return

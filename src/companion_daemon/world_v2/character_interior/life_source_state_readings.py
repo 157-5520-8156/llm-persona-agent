@@ -10,12 +10,12 @@ from .life_source_origin import canonical, digest
 
 CONTRACT = 'life-source-review.13'
 STATE_REVIEW_CONTRACTS = frozenset({'life-source-review.13', 'life-source-review.14',
-    'life-source-review.15', 'life-source-review.16'})
+    'life-source-review.15', 'life-source-review.16', 'life-source-review.17', 'life-source-review.18', 'life-source-review.19', 'life-source-review.20', 'life-source-review.21'})
 SCOPE = 'activity_lifecycle_states'
 FIELDS = ('plan_id', 'plan_entity_revision', 'owner_actor_ref', 'status', 'transitioned_at', 'lifecycle_scope')
 
 
-COMPACT_INVENTORY_CONTRACTS = frozenset({'life-source-review.16'})
+COMPACT_INVENTORY_CONTRACTS = frozenset({'life-source-review.16', 'life-source-review.17', 'life-source-review.18', 'life-source-review.19', 'life-source-review.20', 'life-source-review.21'})
 
 
 def life_source_profile(review_contract):

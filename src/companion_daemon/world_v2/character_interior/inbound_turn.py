@@ -427,6 +427,10 @@ class InboundTurnFaculty:
             return bool(owns_recall())
         return getattr(self._author, "_recall", None) is None
 
+    def ordinary_text_review_mode(self):
+        reader = getattr(self._author, "ordinary_text_review_mode", None)
+        return reader() if callable(reader) else "blocking"
+
     def visible_review_protocol(self):
         operation = getattr(self._author, "visible_review_protocol", None)
         return operation() if callable(operation) else None
@@ -722,6 +726,7 @@ class InboundTurnFaculty:
                 or previous.request_hash != recall_choice.request_hash
                 or previous.response_hash != recall_choice.response_hash
                 or previous.private_turn_state != recall_choice.private_turn_state
+                or previous.recall_parameters != recall_choice.recall_parameters
             ):
                 raise RuntimeError(
                     "inbound Recall choice changed within one Inner Turn"
@@ -754,6 +759,8 @@ class InboundTurnFaculty:
                 "status": "recall_request",
                 "summary": private_state.inner_state_summary,
                 "recall_query": recall_choice.query,
+                **({"recall_parameters": recall_choice.recall_parameters.model_dump(mode="python")}
+                   if recall_choice.recall_parameters is not None else {}),
                 "attended_source_refs": tuple(
                     ref
                     for ref in private_state.attended_source_refs
@@ -964,6 +971,11 @@ class CharacterInteriorInboundDeliberationAdapter:
         self._world_id = world_id
         self._actor_ref = actor_ref
         self._speculative_hedge_enabled = speculative_hedge_enabled
+
+    def ordinary_text_review_mode(self):
+        faculty = self._interior._registry.for_purpose(_PURPOSE)
+        reader = getattr(faculty, "ordinary_text_review_mode", None)
+        return reader() if callable(reader) else "blocking"
 
     def visible_review_protocol(self):
         faculty = self._interior._registry.for_purpose(_PURPOSE)  # noqa: SLF001

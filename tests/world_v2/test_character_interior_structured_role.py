@@ -2241,7 +2241,7 @@ async def test_world_stimulus_required_tool_reaches_deepseek_http_boundary() -> 
                                 {
                                     "type": "function",
                                     "function": {
-                                        "name": "character_role_world_stimulus_appraisal_v3",
+                                        "name": "character_role_world_stimulus_appraisal_v6",
                                         "arguments": raw_result,
                                     },
                                 }
@@ -2277,12 +2277,12 @@ async def test_world_stimulus_required_tool_reaches_deepseek_http_boundary() -> 
     assert "response_format" not in captured
     assert captured["tool_choice"] == {
         "type": "function",
-        "function": {"name": "character_role_world_stimulus_appraisal_v3"},
+        "function": {"name": "character_role_world_stimulus_appraisal_v6"},
     }
     tools = captured["tools"]
     assert isinstance(tools, list) and len(tools) == 1
     assert tools[0]["type"] == "function"
-    assert tools[0]["function"]["name"] == "character_role_world_stimulus_appraisal_v3"
+    assert tools[0]["function"]["name"] == "character_role_world_stimulus_appraisal_v6"
 
 
 def test_world_stimulus_tool_schema_keeps_no_change_and_transition_open() -> None:
@@ -4881,6 +4881,79 @@ async def test_proactive_contact_overflowing_attended_refs_bound_without_reselec
     assert len(result["attended_source_refs"]) == 8
     assert result["attended_source_refs"][0] == "source:private_self"
     assert len(model.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_background_reference_wire_decodes_only_the_pinned_dictionary() -> None:
+    from companion_daemon.world_v2.reference_wire import expand_reference_view
+
+    ref = "dialogue:observation:" + "a" * 64
+    refs = (ref, *("dialogue:observation:" + hashlib.sha256(str(i).encode()).hexdigest() for i in range(20)))
+    request = await _pinned_dialogue_request(
+        refs, capability_manifest=_proactive_manifest().model_copy(
+            update={"source_refs": ("source:private_self", *refs)},
+        ),
+    )
+
+    class AliasModel:
+        supports_required_tool_choice = True
+
+        async def complete_json(self, messages, **kwargs):
+            return await self.complete(messages, **kwargs)
+
+        async def complete(self, messages, **kwargs):
+            self.messages = messages
+            body = json.loads(messages[1]["content"])
+            self.alias = next(item["ref"] for item in body["citeable_sources"]["items"] if item["ref"].startswith("@r:"))
+            assert self.alias in {item["ref"] for item in body["citeable_sources"]["items"]}
+            assert "entries" not in body["reference_dictionary"]
+            value = _silent_proactive_role_object()
+            value["attended_source_refs"] = [self.alias]
+            self.raw = json.dumps(value, ensure_ascii=False)
+            return self.raw
+
+    model = AliasModel()
+    role = StructuredCharacterRoleFaculty(model=model, model_id="fixture", reference_wire=True)
+    result = await role.consider(request)
+    plain = StructuredCharacterRoleFaculty(model=model, model_id="fixture")
+    # Changing transport must not invalidate a paid, already valid semantic
+    # turn for the same source pin or introduce another character author.
+    assert role.author_identity == plain.author_identity
+    expected = json.loads(plain._messages(request, contract=plain._resolve_contract(request))[1]["content"])
+    messages, tool, bindings = role._prepare_request(request, contract=role._resolve_contract(request))
+    assert expand_reference_view(json.loads(model.messages[1]["content"]), bindings) == expected
+    assert tuple(result["attended_source_refs"]) == (ref,)
+    assert result["author_lineage"]["model_version"] == "fixture"
+    assert json.loads(model.messages[1]["content"])["reference_dictionary"]["contract"] == "opaque-reference-wire.3"
+    assert result["author_lineage"]["request_hash"] == role._provider_request_hash(
+        messages=messages, tool_contract=tool, reference_bindings=bindings,
+    )
+    assert result["author_lineage"]["response_hash"] == "sha256:" + hashlib.sha256(model.raw.encode()).hexdigest()
+
+
+def test_background_attention_wire_preserves_canonical_capacity():
+    from companion_daemon.world_v2.character_interior.structured_role import _ExpandedAttentionWireRoleResult
+
+    value = {"status": "no_change", "summary": "我注意到这些。",
+             "attended_source_refs": [f"source:{i}" for i in range(32)]}
+    assert _ExpandedAttentionWireRoleResult.model_validate(value).attended_source_refs == value["attended_source_refs"]
+    with pytest.raises(ValueError):
+        _ExpandedAttentionWireRoleResult.model_validate({**value, "attended_source_refs": value["attended_source_refs"] + ["source:overflow"]})
+
+
+def test_compact_proactive_tool_preserves_the_complete_old_strict_schema():
+    from companion_daemon.world_v2.character_interior.local_schema_references import expand_local_schema_references
+
+    compiler = StructuredRoleToolContracts()
+    arguments = dict(capability_payload=_proactive_manifest().payload, recall_allowed=True)
+    old = compiler.proactive_contact(**arguments, schema_dialect="deepseek-strict")
+    compact = compiler.proactive_contact(**arguments, schema_dialect="deepseek-strict-compact")
+    before = old.provider_tools[0]["function"]["parameters"]
+    after = compact.provider_tools[0]["function"]["parameters"]
+    assert expand_local_schema_references(after) == before
+    assert len(json.dumps(after)) < len(json.dumps(before)) * 0.7
+    assert old.identity.version == "1" and compact.identity.version == "2"
+    assert old.identity.tool_name != compact.identity.tool_name
 
 
 class _PinnedDialogueProjection(_Projection):

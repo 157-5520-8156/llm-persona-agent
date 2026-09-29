@@ -9,6 +9,7 @@ from typing import Any, Literal, Mapping, Protocol
 from pydantic import Field, field_validator, model_validator
 
 from ..schema_core import FrozenModel
+from ..recall_audit import CharacterRecallRequest
 from ..visible_rejection_context import RejectedVisibleExpression
 from ..schemas import ProjectionCursor
 from .contracts import (
@@ -86,6 +87,7 @@ class _RecallRequest(FrozenModel):
     cursor: ProjectionCursor
     trigger_ref: str = Field(min_length=1)
     query: str = Field(min_length=1, max_length=1_024)
+    recall_parameters: CharacterRecallRequest | None = Field(default=None, exclude_if=lambda v: v is None)
     subject_source_refs: tuple[str, ...] = Field(min_length=1)
     snapshot: InnerLifeSnapshot
 
@@ -202,6 +204,7 @@ class _InteriorRoleResult(FrozenModel):
     attended_source_refs: tuple[str, ...] = Field(default=(), max_length=32)
     decision: dict[str, Any] | None = None
     recall_query: str | None = Field(default=None, min_length=1, max_length=1_024)
+    recall_parameters: CharacterRecallRequest | None = Field(default=None, exclude_if=lambda v: v is None)
     proposals: tuple[dict[str, Any], ...] = Field(default=(), max_length=32)
     author_lineage: _InteriorAuthorLineage | None = None
     author_usage_json: str | None = Field(default=None, max_length=8_192)
@@ -228,6 +231,10 @@ class _InteriorRoleResult(FrozenModel):
             raise ValueError("role recall request requires a query")
         if self.status != "recall_request" and self.recall_query is not None:
             raise ValueError("only a role recall request may carry a query")
+        if self.recall_parameters is not None and (
+            self.status != "recall_request" or self.recall_parameters.query_text != self.recall_query
+        ):
+            raise ValueError("Recall parameters must match the role-owned query")
         if self.status == "recall_request" and self.proposals:
             raise ValueError("role recall request cannot submit effects before recall")
         if self.author_usage_json is not None and self.author_lineage is None:

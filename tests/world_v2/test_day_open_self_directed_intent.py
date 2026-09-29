@@ -55,10 +55,11 @@ INTENT = {
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("terminal_kind", ["completed", "abandoned"])
 @pytest.mark.parametrize("choose_next", [False, True])
 @pytest.mark.parametrize("repair_sources", [False, True])
 async def test_completed_activity_offers_one_new_self_directed_choice(
-    tmp_path, monkeypatch, build_app, choose_next, repair_sources,
+    tmp_path, monkeypatch, build_app, choose_next, repair_sources, terminal_kind,
 ):
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
 
@@ -77,10 +78,12 @@ async def test_completed_activity_offers_one_new_self_directed_choice(
     paused = [False]
     app = build_app(path, model, ecology=True, background_budget_paused=lambda: paused[0])
     previous = NOW
+    # Ordinary abandonment is offered after the existing lifecycle dwell window.
+    shift = 10 if terminal_kind == "abandoned" else 0
     try:
         for minute in (1, 2, 6, 7, 8, 9):
-            provider.lifecycle_choice = "complete" if minute == 6 else "start"
-            at = NOW + timedelta(minutes=minute)
+            provider.lifecycle_choice = ("complete" if terminal_kind == "completed" else "abandon") if minute == 6 else "start"
+            at = NOW + timedelta(minutes=minute + (shift if minute >= 6 else 0))
             await app.tick(
                 tick_id=f"continuity-{minute}", logical_time_from=previous,
                 logical_time_to=at, observed_at=at, trace_id=f"trace:continuity-{minute}",
@@ -90,7 +93,7 @@ async def test_completed_activity_offers_one_new_self_directed_choice(
             previous = at
             if minute == 6:
                 projection = app.export_replay_evidence().projection
-                _assert_completion_authority_boundaries(projection)
+                _assert_completion_authority_boundaries(projection, terminal_kind)
                 assert await app.life_ecology_next_due() == at + timedelta(seconds=1)
                 paused[0] = True
                 assert await app.life_ecology_next_due() > at + timedelta(seconds=1)
@@ -100,7 +103,7 @@ async def test_completed_activity_offers_one_new_self_directed_choice(
                 app = build_app(path, model, ecology=True)
                 assert await app.life_ecology_next_due() == at + timedelta(seconds=1)
         evidence = app.export_replay_evidence()
-        assert any(x.event.event_type == "ActivityCompleted" for x in evidence.events), [
+        assert any(x.event.event_type == ("ActivityCompleted" if terminal_kind == "completed" else "ActivityAbandoned") for x in evidence.events), [
             (p.status, p.scheduled_window) for p in evidence.projection.plans
         ]
         assert len(provider.day_requests) == 2 + int(repair_sources), "completion never reached the character as a new choice"
@@ -110,13 +113,25 @@ async def test_completed_activity_offers_one_new_self_directed_choice(
             assert sum(p.status == "active" for p in evidence.projection.plans) == 1
         next_request = json.loads(provider.day_requests[1]["messages"][1]["content"])
         capability = next_request["capability_manifest"]["payload"]["self_directed_intent"]
-        assert capability["contract"] == "day-open-life-intent-capability.2"
-        completed = next(x.event for x in evidence.events if x.event.event_type == "ActivityCompleted")
+        assert capability["contract"] == "day-open-life-intent-capability.3"
+        completed = next(x.event for x in evidence.events if x.event.event_type == ("ActivityCompleted" if terminal_kind == "completed" else "ActivityAbandoned"))
         assert capability["completion_source"]["event_ref"] == completed.event_id
+        assert capability["completion_source"].get("terminal_kind", "completed") == terminal_kind
+        if terminal_kind == "abandoned":
+            states = next_request["inner_life_snapshot"]["materials"]["activity_lifecycle_states"]
+            assert any(item["status"] == "abandoned" and item["source_ref"] == completed.event_id for item in states)
+            assert INTENT["intention"] in next_request["inner_turn"]["context_note"]
+            assert "not a current obligation" in next_request["inner_turn"]["context_note"]
         from companion_daemon.world_v2.day_open_life_intent_contract import DayOpenActivityCapability
         from copy import deepcopy
 
         full_capability = next_request["capability_manifest"]["payload"]
+        if terminal_kind == "abandoned":
+            legacy = deepcopy(full_capability)
+            legacy["contract"] = "character-interior-activity-lifecycle-capability.4"
+            legacy["self_directed_intent"]["contract"] = "day-open-life-intent-capability.2"
+            with pytest.raises(ValueError, match="exact completed activity"):
+                DayOpenActivityCapability.model_validate_json(json.dumps(legacy))
         for mutation in ("outer_version", "inner_version", "missing_source"):
             changed = deepcopy(full_capability)
             if mutation == "outer_version":
@@ -129,7 +144,7 @@ async def test_completed_activity_offers_one_new_self_directed_choice(
                 DayOpenActivityCapability.model_validate_json(json.dumps(changed))
         app.close()
         app = build_app(path, model, ecology=True)
-        at = NOW + timedelta(minutes=10)
+        at = NOW + timedelta(minutes=10 + shift)
         await app.tick(
             tick_id="continuity-restart", logical_time_from=previous,
             logical_time_to=at, observed_at=at, trace_id="trace:continuity-restart",
@@ -138,11 +153,15 @@ async def test_completed_activity_offers_one_new_self_directed_choice(
         )
         assert len(provider.day_requests) == 2 + int(repair_sources), "the same completion was offered again after restart"
         assert len(app.export_replay_evidence().projection.plans) == (2 if choose_next else 1)
+        from companion_daemon.world_v2.replay_evaluator import ReplayEvaluator
+
+        replay = ReplayEvaluator().evaluate(evidence=app.export_replay_evidence())
+        assert replay.replay_hash_matches and not replay.findings
         if choose_next:
             provider.lifecycle_choice = "complete"
-            at = NOW + timedelta(minutes=13)
+            at = NOW + timedelta(minutes=13 + shift)
             await app.tick(
-                tick_id="second-completion", logical_time_from=NOW + timedelta(minutes=10),
+                tick_id="second-completion", logical_time_from=NOW + timedelta(minutes=10 + shift),
                 logical_time_to=at, observed_at=at, trace_id="trace:second-completion",
                 causation_id="clock:second-completion", correlation_id="life-continuation",
                 reason="test_clock",
@@ -163,20 +182,24 @@ async def test_completed_activity_offers_one_new_self_directed_choice(
         await model.aclose()
 
 
-def _assert_completion_authority_boundaries(projection):
+def _assert_completion_authority_boundaries(projection, terminal_kind="completed"):
     from companion_daemon.world_v2.activity_continuation_source import (
         latest_completion_source, validate_completion_source,
     )
     from companion_daemon.world_v2.day_open_life_intent_runtime import day_open_life_plan_id
     from companion_daemon.world_v2.day_open_life_intent_contract import day_open_opportunity_ref
 
-    source = latest_completion_source(projection, actor_ref=ACTOR)
+    source = latest_completion_source(projection, actor_ref=ACTOR, include_abandoned=True)
+    assert source.terminal_kind == terminal_kind
+    if terminal_kind == "abandoned":
+        assert latest_completion_source(projection, actor_ref=ACTOR) is None
     assert source is not None
     assert latest_completion_source(projection, actor_ref="actor:other") is None
     for update in (
         {"event_ref": "event:missing"}, {"payload_hash": "f" * 64},
         {"world_revision": source.world_revision + 1}, {"plan_revision": source.plan_revision + 1},
         {"plan_id": "plan:other"},
+        {"terminal_kind": "abandoned" if terminal_kind == "completed" else "completed"},
     ):
         with pytest.raises(ValueError, match="completion_authority_invalid"):
             validate_completion_source(
@@ -589,7 +612,9 @@ async def test_first_day_intent_starts_through_lifecycle_and_next_chat_reads_ori
             )
         )
         material = json.loads(provider.chat_requests[-1]["messages"][-1]["content"])
-        active = material["inner_life_snapshot"]["materials"]["current_activities"]
+        from companion_daemon.world_v2.shared_string_view import unpack_shared_strings
+
+        active = unpack_shared_strings(material["inner_life_snapshot"]["materials"])["current_activities"]
         assert len(active) == 1
         assert active[0]["plan_id"] == plan.plan_id
         assert active[0]["accepted_intention"]["text"] == INTENT["intention"]
@@ -820,6 +845,73 @@ async def test_completion_choice_retry_or_paid_recovery_preserves_original_sourc
         assert app.export_replay_evidence().projection == evidence.projection
         await tick("later", selected + timedelta(seconds=31))
         assert len(provider.day_requests) == (3 if failure_seam == "transport" else 2)
+    finally:
+        app.close()
+        await model.aclose()
+
+
+@pytest.mark.asyncio
+async def test_role_can_plan_later_without_starting_now(tmp_path, monkeypatch, build_app):
+    import sys
+
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    monkeypatch.setattr(sys.modules[__name__], "INTENT", {**INTENT, "start_after_seconds": 3600})
+    provider = _DayOpenHTTP()
+    model = DeepSeekChatModel(
+        "offline-fixture", "https://fixture.invalid", "deepseek-v4-flash",
+        thinking_enabled=False, transport=httpx.MockTransport(provider),
+    )
+    app = build_app(tmp_path / "later-plan.sqlite", model, ecology=True)
+    try:
+        previous = NOW
+        for label, at in (("plan", NOW + timedelta(minutes=1)),
+                          ("not-yet", NOW + timedelta(minutes=2)),
+                          ("due", NOW + timedelta(minutes=61))):
+            await app.tick(
+                tick_id=label, logical_time_from=previous, logical_time_to=at,
+                observed_at=at, trace_id="trace:" + label, causation_id="clock:" + label,
+                correlation_id="later-plan", reason="test_clock",
+            )
+            plan = app.export_replay_evidence().projection.plans[0]
+            assert plan.scheduled_window.opens_at == NOW + timedelta(minutes=61)
+            assert plan.status == ("active" if label == "due" else "planned")
+            previous = at
+        assert len(provider.day_requests) == 1
+        assert len(provider.lifecycle_requests) == 1
+    finally:
+        app.close()
+        await model.aclose()
+
+
+@pytest.mark.asyncio
+async def test_expired_pause_leads_to_owned_choice_then_fresh_intention(tmp_path, monkeypatch, build_app):
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    provider = _DayOpenHTTP()
+    model = DeepSeekChatModel("fixture", "https://fixture.invalid", "deepseek-v4-flash",
+                             thinking_enabled=False, transport=httpx.MockTransport(provider))
+    path = tmp_path / "expired-paused.sqlite"
+    app = build_app(path, model, ecology=True)
+    previous = NOW
+    try:
+        for minute, choice in ((1, "start"), (2, "start"), (6, "pause"), (16, "abandon"), (17, "start")):
+            provider.lifecycle_choice = choice
+            at = NOW + timedelta(minutes=minute)
+            await app.tick(tick_id=f"expired-{minute}", logical_time_from=previous, logical_time_to=at,
+                           observed_at=at, trace_id=f"trace:expired-{minute}", causation_id=f"clock:expired-{minute}",
+                           correlation_id="expired-paused", reason="test_clock")
+            previous = at
+            if minute == 6:
+                assert app.export_replay_evidence().projection.plans[0].status == "paused"
+                app.close()
+                app = build_app(path, model, ecology=True)
+        evidence = app.export_replay_evidence()
+        kinds = [row.event.event_type for row in evidence.events]
+        assert "ActivityResumed" not in kinds
+        assert kinds.count("ActivityAbandoned") == 1
+        assert kinds.count("ActivityPlanned") == 2
+        assert len(provider.day_requests) == 2
+        offered = json.loads(provider.lifecycle_requests[-1]["messages"][1]["content"])["capability_manifest"]["payload"]
+        assert all(row["activity_state"]["window_elapsed"] for row in offered["openings"])
     finally:
         app.close()
         await model.aclose()

@@ -694,6 +694,10 @@ class WorldLedger:
             raise ValueError("requested projection cursor is outside the ledger range")
         if cursor == head_cursor:
             return self.project()
+        from .epoch_binding_compat import legacy_epoch_fact_binding
+        epoch_binding_mode = legacy_epoch_fact_binding(
+            self._events[0].event if self._events else None, (row.event for row in self._events),
+        )
         state = ReducerState()
         reached_world_revision = 0
         reached_deliberation_revision = 0
@@ -704,6 +708,7 @@ class WorldLedger:
             state = reduce_event(
                 state,
                 stored.event,
+                legacy_epoch_fact_binding=epoch_binding_mode,
                 allow_legacy_relationship_policy_digest=True,
             )
             reached_world_revision = stored.world_revision
@@ -1047,6 +1052,10 @@ class WorldLedger:
         self, *, ledger_sequence: int, reducer_bundle_version: str
     ) -> LedgerProjection:
         require_reducer_bundle(reducer_bundle_version)
+        from .epoch_binding_compat import legacy_epoch_fact_binding
+        epoch_binding_mode = legacy_epoch_fact_binding(
+            self._events[0].event if self._events else None, (row.event for row in self._events),
+        )
         state = ReducerState()
         world_revision = 0
         deliberation_revision = 0
@@ -1061,6 +1070,7 @@ class WorldLedger:
             state = reduce_event(
                 state,
                 stored.event,
+                legacy_epoch_fact_binding=epoch_binding_mode,
                 allow_legacy_relationship_policy_digest=True,
             )
         return make_projection(

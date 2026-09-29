@@ -17,7 +17,7 @@ from .life_source_origin import canonical
 from .snapshot_compiler import _affect_entry
 
 
-def affect_history_reading(row, *, rendered, snapshot):
+def affect_history_reading(row, *, rendered, snapshot, state_only=False):
     """Return one exact structured history reading or a closed exclusion.
 
     Numeric magnitudes retain their original types and zero values. Permission
@@ -61,9 +61,18 @@ def affect_history_reading(row, *, rendered, snapshot):
         expected = compact_affect_for_model_view([
             _affect_entry({'source_ref': item_ref, 'value': value}),
         ])[0]
-        if canonical(shown[0]) != canonical(expected):
-            return None, 'exact_field_not_presented'
         displayed = shown[0]
+        if state_only:
+            # The living view can include more appraisal provenance than the
+            # selected Capsule. Compare every state field exactly, and grant
+            # no permission for either provenance list or its implied causes.
+            def state_fields(entry):
+                return {**entry, 'components': [
+                    {key: value for key, value in component.items() if key != 'appraisal_refs'}
+                    for component in entry['components']]}
+            displayed, expected = state_fields(displayed), state_fields(expected)
+        if canonical(displayed) != canonical(expected):
+            return None, 'exact_field_not_presented'
         # Only displayed state/history participates. Decay controls remain in
         # typed validation above, not in the model's support surface. Appraisal
         # identities are provenance, not a description of an external cause.

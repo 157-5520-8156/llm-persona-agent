@@ -102,7 +102,7 @@ async def test_current_stimulus_token_crosses_real_http_adapter_unchanged_semant
                                 {
                                     "type": "function",
                                     "function": {
-                                        "name": "character_role_world_stimulus_appraisal_v3",
+                                        "name": "character_role_world_stimulus_appraisal_v6",
                                         "arguments": raw,
                                     },
                                 }
@@ -198,6 +198,27 @@ async def test_canonical_and_token_produce_same_authorized_payload():
     # Keep the original author response hashes distinct; transport restoration
     # does not claim that the provider wrote identical response bytes.
     assert canonical["author_lineage"]["response_hash"] != token["author_lineage"]["response_hash"]
+
+
+@pytest.mark.asyncio
+async def test_life_response_and_intent_decode_only_exact_catalog_identity_slots():
+    from companion_daemon.world_v2.character_interior.structured_role import _BUILTIN_CONTRACTS
+    request = await _request(phase="experience", purpose="world_stimulus_appraisal",
+                             capability_manifest=_manifest())
+    original = _result(["s0"])
+    original['proposals'][0]['life_responses'] = [
+        {'source_event_ref': 's0', 'response_text': 's0 是我写下的原文。'},
+        {'source_event_ref': 'unoffered', 'response_text': None},
+    ]
+    original['proposals'][0]['life_intent'] = {'source_event_ref': 's0', 'intention': 's0'}
+    result = StructuredCharacterRoleFaculty._normalize_provider_wire_shape(
+        original, request=request, contract=next(c for c in _BUILTIN_CONTRACTS if c.purpose == 'world_stimulus_appraisal'))
+    proposal = result['proposals'][0]
+    assert proposal['life_responses'] == [
+        {'source_event_ref': SOURCE, 'response_text': 's0 是我写下的原文。'},
+        {'source_event_ref': 'unoffered', 'response_text': None},
+    ]
+    assert proposal['life_intent'] == {'source_event_ref': SOURCE, 'intention': 's0'}
 
 
 @pytest.mark.asyncio
@@ -509,3 +530,33 @@ def test_existing_thread_cannot_redeclare_creation_kind_in_provider_schema(opera
     with pytest.raises(ValidationError, match="thread_kind must be null"):
         TypeAdapter(ExperienceTransitionDraft).validate_json(json.dumps(transition))
     assert not validator.is_valid(value)
+
+
+@pytest.mark.parametrize("operation", ["update", "resolve", "cancel"])
+def test_native_thread_branches_keep_constraints_after_deepseek_projection(operation):
+    from companion_daemon.world_v2.character_interior.local_schema_references import expand_local_schema_references
+
+    capability = _capability().model_dump(mode="json")
+    source = capability["current_source_ref"]
+    contract = StructuredRoleToolContracts().world_stimulus_appraisal(
+        capability_payload={"experience_transitions": capability},
+        recall_allowed=False, source_tokens=(("s0", source), ("s1", "event:head")),
+        schema_dialect="deepseek-strict-v5",
+    )
+    schema = expand_local_schema_references(contract.provider_tools[0]["function"]["parameters"])
+    transition_schema = schema["properties"]["result"]["anyOf"][0]["properties"]["proposals"]["items"]["properties"]["experience_transition"]
+    validator = Draft202012Validator(transition_schema)
+    transition = _result([source, "event:head"])["proposals"][0]["experience_transition"]
+    transition.update(
+        operation=operation, target_id="thread:existing", expected_entity_revision=2,
+        thread_kind=None, importance_bp=4400 if operation == "update" else None,
+        due_at="2026-09-18T01:00:00Z" if operation == "update" else None,
+        expires_at="2026-09-18T12:00:00Z" if operation == "update" else None,
+        resolution_kind="answered" if operation == "resolve" else None,
+        cancellation_reason_code="obsolete" if operation == "cancel" else None,
+    )
+    assert validator.is_valid(transition)
+    assert not validator.is_valid({**transition, "thread_kind": "topic_open"})
+    assert not validator.is_valid({**transition, "target_id": "thread:not-offered"})
+    assert not validator.is_valid({**transition, "expected_entity_revision": 999})
+    assert not validator.is_valid({**transition, "source_refs": [source, "event:unrelated"]})

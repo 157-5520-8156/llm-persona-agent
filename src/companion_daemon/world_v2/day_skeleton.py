@@ -48,6 +48,13 @@ def load_world_day_skeleton(path: Path | None = None) -> WorldDaySkeleton:
     raw = yaml.safe_load(seed_path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         return WorldDaySkeleton(slots=(), themes=())
+    # Legacy executable templates are not the V2 character's daily agenda.
+    # An explicit advisory profile may leave weekly slots empty; never fill
+    # that intentional space back in with legacy hobby/event templates.
+    if "character_routine_background" in raw:
+        raw = raw["character_routine_background"]
+        if not isinstance(raw, dict):
+            raise ValueError("character_routine_background must be an object")
     slots: list[DaySlot] = []
     for item in raw.get("daily_schedule") or ():
         if not isinstance(item, dict):

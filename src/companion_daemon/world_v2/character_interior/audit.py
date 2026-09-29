@@ -7,6 +7,7 @@ import json
 
 from ..proposal_audit_schemas import (
     ModelResultRecordedPayload,
+    RecordedCausalOpportunityIdentity,
     RecordedCharacterInteriorTurnLineage,
     RecordedModelDecisionContext,
     RecordedModelResultAudit,
@@ -205,6 +206,7 @@ def technical_character_interior_model_result(
     attempt_id: str,
     evaluated_world_revision: int,
     failure_code: str,
+    causal_opportunity: CausalOpportunityIdentity | None = None,
 ) -> ModelResultRecordedPayload:
     """Create content-free durable evidence for a retryable technical failure."""
 
@@ -235,6 +237,13 @@ def technical_character_interior_model_result(
         failure_code=failure_code,
         slot="primary",
         outcome="invalid",
+        causal_opportunity_identity=(
+            RecordedCausalOpportunityIdentity.model_validate(
+                causal_opportunity.model_dump(mode="python")
+            )
+            if causal_opportunity is not None
+            else None
+        ),
     )
     audit_json = model_audit_json(audit)
     deliberation_identity = {

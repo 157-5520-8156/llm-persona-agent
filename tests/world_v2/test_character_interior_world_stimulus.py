@@ -9,6 +9,11 @@ import pytest
 from companion_daemon.world_v2.accepted_ledger_batch import AcceptedLedgerBatchIssuer
 from companion_daemon.world_v2.affect_acceptance_runtime import AffectAcceptanceRuntime
 from companion_daemon.world_v2.affect_proposal_compiler import AffectProposalCompiler
+from companion_daemon.world_v2.activity_plan_runtime import (
+    ActivityPlanCommand,
+    ActivityPlanRuntime,
+    ActivityPlanTransitionCommand,
+)
 from companion_daemon.world_v2.appraisal_acceptance_runtime import AppraisalAcceptanceRuntime
 from companion_daemon.world_v2.appraisal_proposal_compiler import AppraisalProposalCompiler
 from companion_daemon.world_v2.appraisal_proposal_worker import AppraisalProposalWorker
@@ -64,10 +69,14 @@ from companion_daemon.world_v2.relationship_proposal_compiler import (
     RelationshipProposalCompiler,
     RelationshipProposalCompilerError,
 )
+from companion_daemon.world_v2.plan_disruption_appraisal_trigger import (
+    PlanDisruptionAppraisalTriggerOpener,
+)
 from companion_daemon.world_v2.proposal_envelope import (
     DecisionProposal,
     validate_proposal_envelope,
 )
+from companion_daemon.world_v2.proposal_audit_schemas import RecordedModelResultAudit
 from companion_daemon.world_v2.schema_core import EvidenceRef
 from companion_daemon.world_v2.schemas import (
     AspirationProjection,
@@ -330,9 +339,19 @@ async def test_claimed_policy_survives_restart_and_new_policy_fails_closed() -> 
 
 
 class _Projection:
-    def __init__(self, *, source_ref: str = SOURCE_REF) -> None:
+    def __init__(
+        self,
+        *,
+        source_ref: str = SOURCE_REF,
+        source_refs: tuple[str, ...] | None = None,
+    ) -> None:
         self.source_ref = source_ref
+        self._source_refs = source_refs
         self.subjects = []
+
+    @property
+    def source_refs(self) -> tuple[str, ...]:
+        return self._source_refs or (self.source_ref,)
 
     async def project(self, *, subject):  # type: ignore[no-untyped-def]
         self.subjects.append(subject)
@@ -344,18 +363,18 @@ class _Projection:
             "situation": {
                 "availability": "available",
                 "content": {"current_activity": "living her own evening"},
-                "source_refs": (self.source_ref,),
+                "source_refs": self.source_refs,
             },
             "continuity": {
                 "availability": "available",
                 "content": {"emotional_continuity": "open to change"},
-                "source_refs": (self.source_ref,),
+                "source_refs": self.source_refs,
             },
             "facets": {
                 name: {
                     "availability": "available",
                     "content": {"summary": name},
-                    "source_refs": (self.source_ref,),
+                    "source_refs": self.source_refs,
                 }
                 for name in FACET_NAMES
             },
@@ -503,6 +522,7 @@ def _runtime_for_ledger(
     relationship_acceptance: RelationshipAcceptanceRuntime | None = None,
     merge_window_seconds: int = 300,
     expiry_seconds: int = 7 * 24 * 60 * 60,
+    subject_source_refs: tuple[str, ...] | None = None,
 ):  # type: ignore[no-untyped-def]
     appraisal_worker = AppraisalProposalWorker(
         compiler=AppraisalProposalCompiler(
@@ -522,7 +542,7 @@ def _runtime_for_ledger(
         actor="worker:affect",
     )
     authority = _DeferredInteriorAuthority()
-    projection = _Projection(source_ref=source_ref)
+    projection = _Projection(source_ref=source_ref, source_refs=subject_source_refs)
     interior = CharacterInterior(
         projection=projection,
         role=StructuredCharacterRoleFaculty(model=model, model_id=model.model),
@@ -2095,6 +2115,117 @@ async def test_settled_world_occurrence_relationship_signal_is_settled_once_and_
 
 
 @pytest.mark.asyncio
+async def test_merged_abandonment_relationship_signal_keeps_exact_opportunity_sources() -> None:
+    issuer = AcceptedLedgerBatchIssuer()
+    ledger = WorldLedger.in_memory(
+        world_id=WORLD_ID,
+        accepted_batch_issuer=issuer,
+    )
+    seed_through_proposal(ledger)
+    commit(ledger, settlement_batch())
+
+    # Finish the fixture's original occurrence so the next turn covers only
+    # the two subsequently opened abandonment opportunities.
+    initial_runtime, _ledger, _projection = _runtime_for_ledger(
+        ledger=ledger,
+        issuer=issuer,
+        model=_RoleModel(decision="no_change"),
+        source_ref=SOURCE_REF,
+        companion_actor_ref="actor:companion",
+    )
+    assert (await initial_runtime.drain_one()).work_status == "no_change"
+
+    logical_time = ledger.project().logical_time
+    assert logical_time is not None
+    activity_plans = ActivityPlanRuntime(
+        ledger=ledger,
+        owner_actor_ref="actor:companion",
+    )
+    opener = PlanDisruptionAppraisalTriggerOpener(
+        ledger=ledger,
+        owner_id="worker:appraisal",
+    )
+    abandoned_refs: list[str] = []
+    for suffix in ("first", "second"):
+        plan_id = f"plan:merged-abandonment:{suffix}"
+        activity_plans.plan(
+            ActivityPlanCommand(
+                command_id=f"command:{plan_id}",
+                world_id=ledger.world_id,
+                source_observation_id="message:plan-tea",
+                plan_id=plan_id,
+                activity_id=f"activity:{suffix}",
+                activity_kind="personal_project",
+                importance_bp=5_000,
+                participant_refs=("friend:wenjing",),
+            ),
+            logical_time=logical_time,
+            created_at=logical_time,
+            trace_id="trace:merged-abandonment",
+            causation_id=f"cause:{plan_id}",
+            correlation_id="correlation:merged-abandonments",
+        )
+        activity_plans.transition(
+            ActivityPlanTransitionCommand(
+                command_id=f"command:{plan_id}:abandon",
+                world_id=ledger.world_id,
+                source_observation_id="message:plan-tea",
+                plan_id=plan_id,
+                operation="abandon",
+            ),
+            logical_time=logical_time,
+            created_at=logical_time,
+            trace_id="trace:merged-abandonment",
+            causation_id=f"cause:{plan_id}:abandon",
+            correlation_id="correlation:merged-abandonments",
+        )
+        abandoned_refs.append(
+            next(
+                item.authority_origin.accepted_event_ref
+                for item in ledger.project().plans
+                if item.plan_id == plan_id and item.authority_origin is not None
+            )
+        )
+        # Open each opportunity before creating the next latest-abandonment
+        # anchor. The production opener intentionally exposes only the
+        # newest unappraised disruption at a time.
+        assert await opener.open_once() is not None
+    await _seed_relationship_state(
+        ledger=ledger,
+        issuer=issuer,
+        source_ref=abandoned_refs[0],
+        subject_ref="user:geoff",
+    )
+    model = _RoleModel(
+        decision="activate",
+        source_ref=abandoned_refs[0],
+        relationship_subject_ref="user:geoff",
+    )
+    runtime, _ledger, _projection = _runtime_for_ledger(
+        ledger=ledger,
+        issuer=issuer,
+        model=model,
+        source_ref=abandoned_refs[0],
+        companion_actor_ref="actor:companion",
+        settle_relationship=True,
+        subject_source_refs=tuple(sorted(abandoned_refs)),
+    )
+
+    result = await runtime.drain_one()
+
+    assert result.work_status == "accepted"
+    authored = next(
+        item
+        for item in ledger.project().relationship_signals
+        if item.signal_code == "她觉得这件事改变了自己对这段关系的感受"
+    )
+    assert tuple(item.ref_id for item in authored.evidence_refs) == tuple(
+        sorted(abandoned_refs)
+    )
+    assert ledger.rebuild() == ledger.project()
+
+
+@pytest.mark.asyncio
 async def test_relationship_compiler_failure_is_durable_and_recovers_without_reauthoring(
     monkeypatch,
 ) -> None:  # type: ignore[no-untyped-def]
@@ -2583,6 +2714,81 @@ async def test_character_can_open_one_source_bound_thread_in_the_same_experience
     assert replayed.status == "idle"
     assert replay_model.calls == 0
     assert len(ledger.project().proposal_audits) == 1
+
+
+@pytest.mark.asyncio
+async def test_expired_authored_thread_intent_completes_without_retrying_or_reopening() -> None:
+    model = _RoleModel(
+        decision="no_change",
+        experience_transition={
+            "domain": "thread",
+            "operation": "open",
+            "target_id": None,
+            "expected_entity_revision": 0,
+            "thread_kind": "reply_reconsideration",
+            "importance_bp": 6100,
+            "due_at": "2026-07-13T18:00:00Z",
+            # The intent was still generally valid when authored, but its
+            # declared due window had already elapsed by settlement time.
+            "expires_at": "2026-07-16T18:00:00Z",
+            "resolution_kind": None,
+            "cancellation_reason_code": None,
+            "source_refs": [SOURCE_REF],
+            "reason_summary": "她当时确实想过之后再联系，但这个时机已经过去了。",
+        },
+    )
+    runtime, ledger, _projection = _runtime(model=model)
+
+    result = await runtime.drain_one()
+
+    assert result.work_status == "no_change"
+    assert model.calls == 1
+    projection = ledger.project()
+    process = next(
+        item
+        for item in projection.trigger_processes
+        if item.process_kind == "npc_world_appraisal"
+    )
+    assert process.state == "terminal"
+    assert process.runtime_outcome_ref is not None
+    assert ":expired:experience-thread-intent" in process.runtime_outcome_ref
+    assert projection.threads == ()
+    settlement = runtime._experience_settlement  # noqa: SLF001 - recovery seam
+    assert settlement is not None
+    source_event = ledger.lookup_event_commit(SOURCE_REF)
+    assert source_event is not None
+    cursor = ProjectionCursor(
+        world_revision=projection.world_revision,
+        deliberation_revision=projection.deliberation_revision,
+        ledger_sequence=projection.ledger_sequence,
+    )
+    assert not settlement.is_pending(
+        audit_cursor=cursor,
+        current_cursor=cursor,
+        proposal_id=projection.proposal_audits[0].proposal_id,
+        source_event=source_event[0],
+    )
+    failure_codes = [
+        RecordedModelResultAudit.model_validate_json(item.audit_json).failure_code
+        for item in projection.model_result_audits
+    ]
+    assert "experience_settlement_failure" not in failure_codes
+    assert ledger.rebuild() == projection
+
+    replay_model = _RoleModel(
+        failure=AssertionError("expired intent recovery must not call the role again")
+    )
+    issuer = ledger._accepted_batch_issuer  # noqa: SLF001 - fixture authority
+    assert issuer is not None
+    replay, _ledger, _projection = _runtime_for_ledger(
+        ledger=ledger,
+        issuer=issuer,
+        model=replay_model,
+        source_ref=SOURCE_REF,
+        companion_actor_ref="actor:companion",
+    )
+    assert (await replay.drain_one()).status == "idle"
+    assert replay_model.calls == 0
 
 
 @pytest.mark.asyncio

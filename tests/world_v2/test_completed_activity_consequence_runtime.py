@@ -188,6 +188,73 @@ async def test_completed_attempt_scheduler_settlement_and_character_response_sur
         # The bounded current Capsule need not repeat every inner response;
         # its exact accepted Experience source was checked above.
         assert ledger.project().experiences == (experience,)
+
+        # The exact completed attempt result survives into the whole-candidate
+        # review as an attributable fact source. Lifecycle status remains a
+        # narrower, nonpersonal statement and cannot authorize the character's
+        # own action under grounded review v25.
+        from types import SimpleNamespace
+        from companion_daemon.world_v2.deliberation import TriggerMessage
+        from companion_daemon.world_v2.visible_grounded_review import (
+            PROTOCOL_V2, prepare_grounded_review,
+        )
+        from companion_daemon.world_v2.visible_source_composer import compile_visible_source_table
+        from test_visible_source_composer import _request
+        from test_visible_source_review_receipt import _candidate
+
+        capsule, _, _ = current_context(ledger, store, actor_ref=ACTOR)
+        request = _request(capsule).model_copy(update={"trigger_message": TriggerMessage(
+            event_ref=capsule.trigger_ref,
+            event_payload_hash="sha256:" + "1" * 64,
+            source_world_revision=max(1, capsule.world_revision),
+            observation_ref="observation:grounding-review-fixture",
+            actor="user:counterpart",
+            channel="qq_c2c",
+            reply_target="fixture:grounding-review",
+            text="后来呢？",
+        )})
+        table = compile_visible_source_table(request=request, capsule=capsule)
+        attempt_text = raw["authorized_attempt_result"]["text"]
+        prepared = prepare_grounded_review(
+            candidate=_candidate(SimpleNamespace(request=request), texts=(attempt_text,)),
+            source_table=table,
+            source_ref_aliases={},
+            protocol=PROTOCOL_V2,
+        )
+        attempt_reading = next(
+            item for item in prepared.as_dict()["catalog"]
+            if item["pointer"] == "/item/value/content/world_consequence/authorized_attempt_result/text"
+            and ["external_fact", "companion"] in item["permissions"]
+        )
+        lifecycle_readings = [
+            item for item in prepared.as_dict()["catalog"]
+            if item["pointer"] == "/item/value/status"
+        ]
+        assert attempt_reading["value"] == attempt_text
+        assert attempt_reading["source_ref_indexes"]
+        assert all(["activity_lifecycle", "companion"] not in item["permissions"]
+                   for item in lifecycle_readings)
+        accepted = prepared.inspect_response(json.dumps({
+            "contract": PROTOCOL_V2,
+            "beat_decisions": [{
+                "beat_index": 0,
+                "review_complete": True,
+                "facts": [{
+                    "segment_index": 0,
+                    "text": attempt_text,
+                    "proposition": attempt_text,
+                    "claim_scope": "external_fact",
+                    "subject_role": "companion",
+                    "reading_ids": [attempt_reading["reading_id"]],
+                    "fact_value_selections": [],
+                    "source_support": True,
+                    "rationale": "精确的完成尝试结果记录支持该命题",
+                }],
+                "non_record_expressions": [],
+                "unresolved_details": [],
+            }],
+        }, ensure_ascii=False, sort_keys=True, separators=(",", ":")))
+        assert accepted["beat_outcomes"] == ["closed"]
     finally:
         store.close()
         ledger.close()
@@ -314,6 +381,7 @@ async def test_completion_background_budget_and_failed_attempt_retry_use_existin
         assert recovered_author.calls == 1
         assert recovered.pending_completed_activity_ref() is None
         assert not ledger.project().world_occurrences
+        assert not ledger.project().experiences
     finally:
         store.close()
         ledger.close()

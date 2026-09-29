@@ -1,0 +1,1108 @@
+{
+  "contract": "luna-life-history-expansion-draft.1",
+  "status": "draft_unreviewed_not_accepted_not_imported",
+  "archive_id": "draft-archive:celia-life-expansion-20260929",
+  "actor_ref": "agent:companion",
+  "character_ref": "history:person:celia-self",
+  "candidate_notice": "这是隔离创作候选，尚未审阅、接受或导入，不表示生产世界中已发生。",
+  "world_boundary": {
+    "starts_at": "2026-08-13T17:42:55.383658+00:00",
+    "latest_allowed_event_date": "2026-08-13",
+    "timezone": "Asia/Shanghai"
+  },
+  "source_constraints": {
+    "character_file": "configs/character.yaml",
+    "world_seed_file": "configs/world_seed.yaml",
+    "existing_prehistory_file": "configs/prehistory/celia-everyday-20260929.json",
+    "existing_record_count": 12,
+    "existing_records_modified": false,
+    "age_and_education": {
+      "birthday": "2005-04-12",
+      "university_entry": "2024-09-01"
+    }
+  },
+  "directory": {
+    "periods": [
+      {
+        "period_id": "period:early-childhood",
+        "label": "嘉兴的家与幼年片段",
+        "time_from": "2005-04-12",
+        "time_until": "2011-08-31",
+        "time_precision": "year_or_month",
+        "summary": "早期内容以家人转述和零散日常片段为主。"
+      },
+      {
+        "period_id": "period:primary-school",
+        "label": "小学：家附近的日常",
+        "time_from": "2011-09-01",
+        "time_until": "2017-08-31",
+        "time_precision": "school_stage",
+        "summary": "家、学校和邻里生活并行，既有小兴趣也有普通失误。"
+      },
+      {
+        "period_id": "period:middle-school",
+        "label": "初中：身体、同伴与新习惯",
+        "time_from": "2017-09-01",
+        "time_until": "2020-08-31",
+        "time_precision": "school_stage",
+        "summary": "一些事当时显得很大，后来也有的淡了，有的仍未完全解决。"
+      },
+      {
+        "period_id": "period:high-school",
+        "label": "中学后期到离校前的学校生活",
+        "time_from": "2020-09-01",
+        "time_until": "2024-06-30",
+        "time_precision": "school_stage",
+        "summary": "这个较宽的时间段收录中学后期到离校前的校内日常；不为每年指定年级。"
+      },
+      {
+        "period_id": "period:transition",
+        "label": "毕业与离家上大学",
+        "time_from": "2024-07-01",
+        "time_until": "2024-09-30",
+        "time_precision": "month",
+        "summary": "从嘉兴到上海的过渡；入学日遵守2024-09-01。"
+      },
+      {
+        "period_id": "period:university-before-world",
+        "label": "大学前两年：逐渐熟悉上海",
+        "time_from": "2024-10-01",
+        "time_until": "2026-08-13",
+        "time_precision": "bounded_period",
+        "summary": "只到原World启动边界为止；不借档案预写启动后的关系或事件。"
+      }
+    ],
+    "recurring_experiences": [
+      {
+        "pattern_id": "pattern:family-small-routines",
+        "label": "家里随手做的小事",
+        "description": "餐桌、家务和家人顺手处理的小事。",
+        "record_ids": [
+          "luna-life-004",
+          "luna-life-009",
+          "luna-life-016"
+        ]
+      },
+      {
+        "pattern_id": "pattern:objects-that-stay",
+        "label": "常用物件与小修补",
+        "description": "损坏、借出、继续用或收进抽屉的小物件。",
+        "record_ids": [
+          "luna-life-002",
+          "luna-life-006",
+          "luna-life-018",
+          "luna-life-026"
+        ]
+      },
+      {
+        "pattern_id": "pattern:play-and-boredom",
+        "label": "玩、发呆和无聊",
+        "description": "临时改玩法、玩到一半散场和闲下来的片段。",
+        "record_ids": [
+          "luna-life-001",
+          "luna-life-003",
+          "luna-life-007",
+          "luna-life-013",
+          "luna-life-025"
+        ]
+      },
+      {
+        "pattern_id": "pattern:peer-misreadings",
+        "label": "同伴相处中的误读与修正",
+        "description": "同伴间错过的话、停顿和后来接着相处的片段。",
+        "record_ids": [
+          "luna-life-005",
+          "luna-life-011",
+          "luna-life-020",
+          "luna-life-029"
+        ]
+      },
+      {
+        "pattern_id": "pattern:trying-and-stopping",
+        "label": "尝试、笨拙和停下",
+        "description": "尝试一件事、换个办法或停下来的过程。",
+        "record_ids": [
+          "luna-life-014",
+          "luna-life-022",
+          "luna-life-030"
+        ]
+      },
+      {
+        "pattern_id": "pattern:food-and-shared-space",
+        "label": "吃饭与共享空间",
+        "description": "家里和宿舍里的吃饭、分食与小麻烦。",
+        "record_ids": [
+          "luna-life-010",
+          "luna-life-017",
+          "luna-life-032"
+        ]
+      },
+      {
+        "pattern_id": "pattern:school-not-only-study",
+        "label": "学校里的非学习片刻",
+        "description": "跑步、打扫、排队、等人的校园片段。",
+        "record_ids": [
+          "luna-life-008",
+          "luna-life-012",
+          "luna-life-015",
+          "luna-life-019",
+          "luna-life-026",
+          "luna-life-027"
+        ]
+      },
+      {
+        "pattern_id": "pattern:place-and-commute",
+        "label": "地点与来回路程",
+        "description": "上学、候车和往返嘉兴上海时留下的细节。",
+        "record_ids": [
+          "luna-life-021",
+          "luna-life-023",
+          "luna-life-031"
+        ]
+      },
+      {
+        "pattern_id": "pattern:family-and-distance",
+        "label": "离家后的联系与独立",
+        "description": "离家前后与父母联系、帮忙和返家的场景。",
+        "record_ids": [
+          "luna-life-024",
+          "luna-life-028"
+        ]
+      },
+      {
+        "pattern_id": "pattern:small-social-moments",
+        "label": "关系感受留下的小插曲",
+        "description": "一句玩笑、物件转交、饭桌分享等互动。",
+        "record_ids": [
+          "luna-life-008",
+          "luna-life-027",
+          "luna-life-032"
+        ]
+      }
+    ],
+    "historical_entities": [
+      {
+        "entity_ref": "history:person:celia-self",
+        "kind": "protagonist_historical_identity",
+        "label": "沈知栀 / Celia Shen",
+        "current_world_binding": null,
+        "note": "档案所属角色；并非第二个角色实例。"
+      },
+      {
+        "entity_ref": "history:person:shen-lan",
+        "kind": "family_member_historical",
+        "label": "沈岚（母亲）",
+        "current_world_binding": null,
+        "note": "与设定中母亲同名；本目录只是历史档案指代，不创建当前NPC或新关系状态。"
+      },
+      {
+        "entity_ref": "history:person:chen-yuan",
+        "kind": "family_member_historical",
+        "label": "陈远（父亲）",
+        "current_world_binding": null,
+        "note": "与设定中父亲同名；本目录只是历史档案指代。"
+      },
+      {
+        "entity_ref": "history:person:grandmother-shen",
+        "kind": "family_member_historical",
+        "label": "外婆",
+        "current_world_binding": null
+      },
+      {
+        "entity_ref": "history:person:classmate-a",
+        "kind": "historical_peer",
+        "label": "小学同学甲（匿名档案实体）",
+        "current_world_binding": null
+      },
+      {
+        "entity_ref": "history:person:classmate-b",
+        "kind": "historical_peer",
+        "label": "初中同学乙（匿名档案实体）",
+        "current_world_binding": null
+      },
+      {
+        "entity_ref": "history:person:classmate-c",
+        "kind": "historical_peer",
+        "label": "高中同学丙（匿名档案实体）",
+        "current_world_binding": null
+      },
+      {
+        "entity_ref": "history:person:college-peer-a",
+        "kind": "historical_peer",
+        "label": "大学同学丁（匿名档案实体）",
+        "current_world_binding": null
+      },
+      {
+        "entity_ref": "history:person:college-peer-b",
+        "kind": "historical_peer",
+        "label": "大学同学戊（匿名档案实体）",
+        "current_world_binding": null
+      },
+      {
+        "entity_ref": "history:person:roommate-historical-a",
+        "kind": "historical_peer",
+        "label": "大学室友甲（匿名档案实体）",
+        "current_world_binding": null,
+        "note": "不映射到当前world_seed中的林晚或乔宁。"
+      },
+      {
+        "entity_ref": "history:person:neighbor-woman",
+        "kind": "historical_acquaintance",
+        "label": "邻居阿姨（匿名档案实体）",
+        "current_world_binding": null
+      }
+    ]
+  },
+  "records": [
+    {
+      "id": "luna-life-001",
+      "period_id": "period:early-childhood",
+      "time": {
+        "from": "2007-01-01",
+        "until": "2010-12-31",
+        "precision": "year_range",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "母亲后来讲过，知栀小时候有一阵把塑料夹子从抽屉拿出来，在客厅矮桌上排队。她会按颜色分堆，也会把夹子夹在旧纸板边上拖着走；大人收桌子时，她就把夹子抱回去。家里人说不清她那时几岁，也记不得持续了多久。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "",
+      "later_understanding": "",
+      "related_record_ids": [
+        "luna-life-004"
+      ],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:play-and-boredom"
+      ]
+    },
+    {
+      "id": "luna-life-002",
+      "period_id": "period:early-childhood",
+      "time": {
+        "from": "2010-10",
+        "until": "2010-10",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "嘉兴家里一把儿童雨伞的伞骨松了，父亲用细铁丝固定过一次，伞柄缠着一圈发白的胶带。后来雨下得很大时，伞面还是朝外翻了，回家后那把伞被晾在门边，没再修。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "伞一翻过去，她就更烦了，鞋袜都湿着。",
+      "later_understanding": "",
+      "related_record_ids": [],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:chen-yuan"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:objects-that-stay"
+      ]
+    },
+    {
+      "id": "luna-life-003",
+      "period_id": "period:early-childhood",
+      "time": {
+        "from": "2011-02",
+        "until": "2011-02",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "春节前后，外婆教她用旧扑克牌玩一种配对小游戏，规则中途改过两次。玩到一半有人去厨房，她把手里的牌扣在桌面上，回来后大家各自忘了轮到谁。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "规则又改的时候她有点不耐烦，外婆把一张牌当成了另一张，几个人都笑起来。",
+      "later_understanding": "后来她还记得那阵笑，输赢倒没人算。",
+      "related_record_ids": [],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:grandmother-shen"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:play-and-boredom"
+      ]
+    },
+    {
+      "id": "luna-life-004",
+      "period_id": "period:early-childhood",
+      "time": {
+        "from": "2011-06",
+        "until": "2011-06",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "一个闷热的晚上，家里停电了一小会儿。母亲从冰箱拿出西瓜，父亲找来手电筒，光照在墙上晃来晃去；电很快恢复，西瓜还没吃完。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "她先担心冰箱，后来拿着手电筒照墙上的影子，吃瓜时也没再急。",
+      "later_understanding": "",
+      "related_record_ids": [
+        "luna-life-001"
+      ],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan",
+        "history:person:chen-yuan"
+      ],
+      "depth": "short",
+      "pattern_ids": [
+        "pattern:family-small-routines"
+      ]
+    },
+    {
+      "id": "luna-life-005",
+      "period_id": "period:primary-school",
+      "time": {
+        "from": "2012-11",
+        "until": "2012-11",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "小学一次手工课，知栀和同学甲用纸板做立体贺卡。她挤胶水时出来一大团，纸角立刻软下去，便把它翻到背面压住，继续贴彩纸。收尾时贺卡歪歪地站起来，同学甲说像在点头，两人都笑了。下课后她把卡片带回家，放在书桌上晾干。那天下课后她把贺卡带回家，在书桌上放了两天。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "她看着纸角软下去，脸有点发热，赶紧翻过来压在底下。没想到贴完装饰后那张贺卡还站得住，同学甲笑说它像歪着头。",
+      "later_understanding": "",
+      "related_record_ids": [
+        "luna-life-006",
+        "luna-life-011"
+      ],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:classmate-a"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:peer-misreadings"
+      ]
+    },
+    {
+      "id": "luna-life-006",
+      "period_id": "period:primary-school",
+      "time": {
+        "from": "2013-04",
+        "until": "2013-04",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "家里一个带弹簧的旧发夹松了，知栀把它放进铁皮糖盒里，隔了几天母亲用钳子把弹簧卡回去。夹子能合上但夹不牢，后来被放在抽屉最里面。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "夹子老往下滑，她试了好几回，最后把它搁到糖盒里。",
+      "later_understanding": "",
+      "related_record_ids": [
+        "luna-life-018"
+      ],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:objects-that-stay"
+      ]
+    },
+    {
+      "id": "luna-life-007",
+      "period_id": "period:primary-school",
+      "time": {
+        "from": "2014-07",
+        "until": "2014-07",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "暑假下午，知栀和同学甲在小区空地用粉笔画格子，画到一半起风，灰被吹散，她们改成在地上捡树叶按大小排。大人叫她们回家时，地面已经看不出最初画的格子。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "粉笔灰被风吹跑时她有点可惜，树叶排得比格子更整齐，她们蹲着看了半天。",
+      "later_understanding": "",
+      "related_record_ids": [],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:classmate-a"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:play-and-boredom"
+      ]
+    },
+    {
+      "id": "luna-life-008",
+      "period_id": "period:primary-school",
+      "time": {
+        "from": "2015-09",
+        "until": "2015-09",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "一次值日时，知栀和同学甲轮到擦黑板。她把黑板擦放回槽里，转身才发现袖口蹭了一道白粉。同学甲说像长了几根猫胡子，她低头看了看，也笑了。洗抹布时水龙头开得很小，两个人等了一会儿，回教室后铃还没响。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "她觉得自己袖口那道粉印挺滑稽，后来进教室时还故意把手举起来给同学甲看。",
+      "later_understanding": "",
+      "related_record_ids": [
+        "luna-life-012",
+        "luna-life-022"
+      ],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:classmate-a"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:school-not-only-study",
+        "pattern:small-social-moments"
+      ]
+    },
+    {
+      "id": "luna-life-009",
+      "period_id": "period:primary-school",
+      "time": {
+        "from": "2016-01",
+        "until": "2016-01",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "一个周末，父母忙着书店的事，知栀把一篮袜子拿到客厅配对，少了两只。她翻沙发和床底，最后发现一只在袖子里，另一只没找到；剩下的袜子被叠进抽屉。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "她翻了好几处，找到袖子里那只时自己先笑了；另一只袜子一直没出现。",
+      "later_understanding": "",
+      "related_record_ids": [],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan",
+        "history:person:chen-yuan"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:family-small-routines"
+      ]
+    },
+    {
+      "id": "luna-life-010",
+      "period_id": "period:primary-school",
+      "time": {
+        "from": "2016-08",
+        "until": "2016-08",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "跟家人吃饭时，知栀把一颗青豆从碗里夹出来放在盘边，聊别的时又夹回去，最后还是吃掉了。没人专门评论这件事，桌上说的是当天来客和第二天要买的菜。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "她把青豆拨到盘边，聊着天又吃了回去。",
+      "later_understanding": "",
+      "related_record_ids": [],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan",
+        "history:person:chen-yuan"
+      ],
+      "depth": "short",
+      "pattern_ids": [
+        "pattern:food-and-shared-space"
+      ]
+    },
+    {
+      "id": "luna-life-011",
+      "period_id": "period:primary-school",
+      "time": {
+        "from": "2017-03",
+        "until": "2017-03",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "一次课间，同学甲没等她说完就拿着球跑去操场。知栀站在走廊里，以为对方是不想和她继续玩；下午同学回来问她要不要一起分橘子，两人照常坐了一会儿。下午同学甲回来问她要不要一起分橘子，两人坐了一会儿，没提中午的事。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "同学甲拿球跑开时，她心里空了一下，没追上去。",
+      "later_understanding": "",
+      "related_record_ids": [
+        "luna-life-005"
+      ],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:classmate-a"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:peer-misreadings"
+      ]
+    },
+    {
+      "id": "luna-life-012",
+      "period_id": "period:primary-school",
+      "time": {
+        "from": "2017-06",
+        "until": "2017-06",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "小学快结束时，班里一张桌子被搬去别的教室。知栀帮忙抬桌角，走到门口才发现桌腿卡住，几个人一起换了方向才抬出去。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "桌腿卡在门边，几个人轮流挪，终于把它转了出去。她觉得那一下挺滑稽，帮忙时还笑了。",
+      "later_understanding": "",
+      "related_record_ids": [],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:classmate-a"
+      ],
+      "depth": "short",
+      "pattern_ids": [
+        "pattern:school-not-only-study"
+      ]
+    },
+    {
+      "id": "luna-life-013",
+      "period_id": "period:middle-school",
+      "time": {
+        "from": "2018-02",
+        "until": "2018-02",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "春节假期，她和表亲约好下午玩一款桌游，等人到齐后发现少了一颗棋子。大家用一枚硬币代替，规则走着走着又改过，最后没有算总分。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "硬币被拿来当棋子后，表亲说它走得比原来的棋还快，大家抢着替硬币编规则。",
+      "later_understanding": "",
+      "related_record_ids": [
+        "luna-life-025"
+      ],
+      "participant_entity_refs": [
+        "history:person:celia-self"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:play-and-boredom"
+      ]
+    },
+    {
+      "id": "luna-life-014",
+      "period_id": "period:middle-school",
+      "time": {
+        "from": "2018-10",
+        "until": "2018-10",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "体育课上，知栀试着学同学乙打羽毛球，连续几次挥空。她后来站到场边捡球和递拍，课程结束时没有再上场。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "她连着挥空几次，开始有点恼，后来到旁边帮忙捡球。",
+      "later_understanding": "",
+      "related_record_ids": [
+        "luna-life-008"
+      ],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:classmate-b"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:trying-and-stopping"
+      ]
+    },
+    {
+      "id": "luna-life-015",
+      "period_id": "period:middle-school",
+      "time": {
+        "from": "2019-05",
+        "until": "2019-05",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "一次午休下雨，教室窗边积了一小滩水，知栀把自己的纸巾递给同学乙擦桌角，后来发现纸巾盒也放在讲台上。她们又抽了几张把地面擦干，没有人因此迟到。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "她递出纸巾时觉得终于有件小事能马上处理好，擦完桌角就接着吃饭了。",
+      "later_understanding": "",
+      "related_record_ids": [],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:classmate-b"
+      ],
+      "depth": "short",
+      "pattern_ids": [
+        "pattern:school-not-only-study"
+      ]
+    },
+    {
+      "id": "luna-life-016",
+      "period_id": "period:middle-school",
+      "time": {
+        "from": "2019-12",
+        "until": "2019-12",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "有年冬天，父亲让她把书店一本旧账本带回家，母亲要核对几页进货记录。知栀把账本和练习册一起塞进布袋，水瓶盖没拧紧。到家打开时，账本边缘湿了，几页黏在一起，练习册角也洇出一片。她先把水瓶拿到水槽边，母亲铺开报纸，把黏住的页一点点分开；父亲打电话问哪些字还看得清。母亲用杯子压住卷起来的纸角，知栀在旁边递干布、翻小票。几页墨迹晕开了些，但多数能辨认，少数数字对照进货小票补回。练习册没有扔，晾干后她照样接着写。晚饭时账页还摊在桌上，母亲把最后一角压平，父亲说能核上就行。她那晚一直绕着桌边走，怕袖子又碰到纸。父亲后来把进货小票摊在桌子另一头，母亲念一笔，她就帮着找对应日期。纸页晾到半干时边缘卷着，翻动会发出很轻的脆响。母亲在没核完的页边夹了张书签，第二天接着看；知栀把练习册放到窗边，晚饭后继续做那道做到一半的题，水渍干了留下一圈浅印。第二天母亲把书签抽出来时，几页已经平了不少；知栀帮忙把核过的票据收回纸袋。她把布袋翻过来晾在门边，水瓶拧紧后才放回书包。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "她一开始很慌，怕账页撕坏。看见母亲慢慢把纸分开，又陪着对小票，心里才没那么悬着。",
+      "later_understanding": "后来她想起这事，总先看见桌上摊开的报纸和压纸角的杯子。",
+      "related_record_ids": [
+        "luna-life-024"
+      ],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan"
+      ],
+      "depth": "focus",
+      "pattern_ids": [
+        "pattern:family-small-routines"
+      ]
+    },
+    {
+      "id": "luna-life-017",
+      "period_id": "period:middle-school",
+      "time": {
+        "from": "2020-01",
+        "until": "2020-01",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "一次家里包馄饨，知栀把馅放得太满，封口总是张开。外婆示范了小一点的馅量，她包出几只歪的，煮后有两只散开，剩下的还是吃了。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "有两只馄饨在锅里散开，她和外婆都笑了。她把剩下几个歪的捞出来，蘸了醋还是吃完。",
+      "later_understanding": "",
+      "related_record_ids": [
+        "luna-life-001"
+      ],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:grandmother-shen"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:food-and-shared-space"
+      ]
+    },
+    {
+      "id": "luna-life-018",
+      "period_id": "period:middle-school",
+      "time": {
+        "from": "2020-06",
+        "until": "2020-06",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "初中毕业前，她把一把旧折叠尺借给同学乙，对方还回来时一端的卡扣已经松了。两人看了一下都没修，尺子仍能拉开测量，只是收回去时要按住卡扣。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "听见同学乙说“还能用”时她有点生气，尺子是她的，她不想假装没关系。她说下次借东西前先问，之后把卡扣按住继续用。",
+      "later_understanding": "",
+      "related_record_ids": [
+        "luna-life-006"
+      ],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:classmate-b"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:objects-that-stay"
+      ]
+    },
+    {
+      "id": "luna-life-019",
+      "period_id": "period:middle-school",
+      "time": {
+        "from": "2020-07",
+        "until": "2020-07",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "一次学校活动结束后，知栀和同学乙在门厅等家长来接。广播里反复播报失物招领，有人领走一只蓝水壶；她们坐到保安换班，才各自离开。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "广播把失物招领念了好几遍，她等得无聊，拿号码纸折出一条窄窄的船。",
+      "later_understanding": "",
+      "related_record_ids": [],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:classmate-b"
+      ],
+      "depth": "short",
+      "pattern_ids": [
+        "pattern:school-not-only-study"
+      ]
+    },
+    {
+      "id": "luna-life-020",
+      "period_id": "period:high-school",
+      "time": {
+        "from": "2021-03",
+        "until": "2021-03",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "午饭时同学丙和另一桌说笑，知栀走近时声音停了。她以为话题可能和自己有关，便把餐盘放到稍远的位置。后来同学丙来问她借橡皮，午休时两人说了几句别的，没有谈那阵笑声。午休时同学丙来借橡皮，两人照常说了几句话；知栀没有提刚才那阵笑声。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "她走近时同学丙正和另一桌的人笑得很开心，旁边空着的位置却没人招呼她。她有点嫉妒，也觉得自己被晾在一边，于是端着饭去了稍远的桌子。",
+      "later_understanding": "",
+      "related_record_ids": [
+        "luna-life-011",
+        "luna-life-029"
+      ],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:classmate-c"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:peer-misreadings"
+      ]
+    },
+    {
+      "id": "luna-life-021",
+      "period_id": "period:high-school",
+      "time": {
+        "from": "2021-10",
+        "until": "2021-10",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "一次下晚自习时下起小雨，知栀和同学丙把外套顶在头上走到公交站。车来了后她们各自上车，她下车时发现鞋边溅了泥点，在家门口用纸擦了几下。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "她们把外套举过头顶跑到站牌，鞋边溅了泥。那一小段路有点狼狈，也挺好笑。",
+      "later_understanding": "",
+      "related_record_ids": [],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:classmate-c"
+      ],
+      "depth": "short",
+      "pattern_ids": [
+        "pattern:place-and-commute"
+      ]
+    },
+    {
+      "id": "luna-life-022",
+      "period_id": "period:high-school",
+      "time": {
+        "from": "2022-04",
+        "until": "2022-04",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "有次校内接力活动，知栀和同学丙排在相邻棒次。练习时她把棒交得太靠后，两人停下来重新走了一遍。正式开始后，前一位同学跑近，她伸手早了，塑料棒从指尖滑下，落在跑道上。她弯腰捡起，握紧棒跑完自己的那一段，再把棒递给下一位。队伍最后跑完，没有拿到名次。她手掌没破皮，只留下很浅的一道红印；鞋底带了点跑道灰。她回到场边时还在懊恼，同学丙问她手有没有磕到，她说没有。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "她跑完还挺恼火，觉得那一下本来可以接稳；听见同学丙问手，她又有点不好意思，只说“没事”。",
+      "later_understanding": "隔几天想起时，她先记起棒落在跑道上那声轻响。",
+      "related_record_ids": [
+        "luna-life-008"
+      ],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:classmate-c"
+      ],
+      "depth": "focus",
+      "pattern_ids": [
+        "pattern:trying-and-stopping"
+      ]
+    },
+    {
+      "id": "luna-life-023",
+      "period_id": "period:high-school",
+      "time": {
+        "from": "2022-09",
+        "until": "2022-09",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "有天放学后，知栀绕过校门口排队的饮品店，走进旁边小超市买了一瓶常温豆奶。收银台旁的冰柜一直响，她站在门外喝完，瓶子扔进分类桶。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "她不想排队，进小超市买了常温豆奶，喝第一口时觉得正好。冰柜嗡嗡响，她在门口站了一会儿才回家。",
+      "later_understanding": "",
+      "related_record_ids": [],
+      "participant_entity_refs": [
+        "history:person:celia-self"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:place-and-commute"
+      ]
+    },
+    {
+      "id": "luna-life-024",
+      "period_id": "period:high-school",
+      "time": {
+        "from": "2023-02",
+        "until": "2023-02",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "一个周末，父亲发消息问她能不能帮忙找一份旧文件的电子版。她翻了几处聊天记录和网盘，最后发现文件在父亲自己的电脑桌面；她回了一个找到的截图，父亲说看到了。父亲回了句看到了，她这才接着做自己的事。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "她正要休息，父亲发来消息让她找文件，她翻聊天记录翻得有点烦。最后文件就在父亲电脑桌面，她把截图发过去，顺手回了句“下次先看桌面嘛”。",
+      "later_understanding": "",
+      "related_record_ids": [
+        "luna-life-016"
+      ],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:chen-yuan"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:family-and-distance"
+      ]
+    },
+    {
+      "id": "luna-life-025",
+      "period_id": "period:high-school",
+      "time": {
+        "from": "2023-08",
+        "until": "2023-08",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "暑假一个闷热下午，知栀原想整理手机里积着的截图，删了几张后开始看旧视频，最后躺在床上什么也没整理完。傍晚她去楼下买了冰水，回来时手机还停在相册页面。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "她本来想删截图，结果翻旧视频翻到忘了时间。冰水买回来时手机还停在相册，她躺着喝完，也没再打开清理页面。",
+      "later_understanding": "",
+      "related_record_ids": [
+        "luna-life-013"
+      ],
+      "participant_entity_refs": [
+        "history:person:celia-self"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:play-and-boredom"
+      ]
+    },
+    {
+      "id": "luna-life-026",
+      "period_id": "period:high-school",
+      "time": {
+        "from": "2024-03",
+        "until": "2024-03",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "一次校内模拟考试结束，知栀把透明文具袋留在抽屉里。第二天回教室才想起来，袋子还在原位，里面一支笔没墨。她把笔放回去，换另一支继续用。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "她先松了口气，随后才发现那支笔写不出来。",
+      "later_understanding": "",
+      "related_record_ids": [],
+      "participant_entity_refs": [
+        "history:person:celia-self"
+      ],
+      "depth": "short",
+      "pattern_ids": [
+        "pattern:objects-that-stay",
+        "pattern:school-not-only-study"
+      ]
+    },
+    {
+      "id": "luna-life-027",
+      "period_id": "period:high-school",
+      "time": {
+        "from": "2024-05",
+        "until": "2024-05",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "毕业前收拾教室时，知栀翻到一张拍糊的合照，自己正好闭着眼。同学丙说像她在对全班眨眼，她笑着把照片夹进毕业册。后来她又翻出来看过几次，每次都先找到那只闭上的眼睛。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "收拾教室时她翻到一张拍糊的合照，自己正好闭着眼。同学丙说像她在对全班眨眼，她笑着把照片夹进毕业册。",
+      "later_understanding": "",
+      "related_record_ids": [],
+      "participant_entity_refs": [
+        "history:person:celia-self"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:school-not-only-study",
+        "pattern:small-social-moments"
+      ]
+    },
+    {
+      "id": "luna-life-028",
+      "period_id": "period:transition",
+      "time": {
+        "from": "2024-08",
+        "until": "2024-08",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "去上海报到前，知栀和母亲把衣物、洗漱用品和几包零食装进箱子，拉链合到一半卡住。母亲挪开一件厚外套才拉上，知栀在车站又把零食拿出来分给家人。她追着问了一句，母亲笑着说先替她尝了。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "箱子拉链卡住时两人都停下来，母亲拿开厚外套才合上。到车站她又把零食拆开分给家人，临上车时发现自己最喜欢的那包已经被母亲拿走了。",
+      "later_understanding": "",
+      "related_record_ids": [
+        "luna-life-031"
+      ],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:family-and-distance"
+      ]
+    },
+    {
+      "id": "luna-life-029",
+      "period_id": "period:transition",
+      "time": {
+        "from": "2024-09",
+        "until": "2024-09",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "大学刚入学的一次小组迎新活动，几个人约着去食堂。知栀没听清集合时间，收拾完走到门口时大家已经散开。她站了一会儿，自己排队买饭，坐到靠边的位置吃完。晚些时候同学丁把活动照片发到群里，也问她中午吃了什么。照片里人不少，她不在其中。那天没有后续争执，第二天课程照常。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "她有点孤单，也有点恼自己没听清，午饭吃得很快。",
+      "later_understanding": "",
+      "related_record_ids": [
+        "luna-life-020"
+      ],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:college-peer-a"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:peer-misreadings"
+      ]
+    },
+    {
+      "id": "luna-life-030",
+      "period_id": "period:university-before-world",
+      "time": {
+        "from": "2025-01",
+        "until": "2025-01",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "寒假前宿舍有人留下几盆绿植，大学室友甲问谁记得浇水。知栀浇过一次，后来盆土仍干，室友甲说自己带回家处理；其中一盆叶子已经卷边。后来她没再见到那盆植物。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "看见叶子卷起来，她有点内疚，也担心自己是不是忘了浇。室友甲说会带回家，她就把小水壶放回原处。",
+      "later_understanding": "",
+      "related_record_ids": [],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:roommate-historical-a"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:trying-and-stopping"
+      ]
+    },
+    {
+      "id": "luna-life-031",
+      "period_id": "period:university-before-world",
+      "time": {
+        "from": "2025-07",
+        "until": "2025-07",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "一次从上海回嘉兴，她下车后在熟悉的路口等红灯，看见一家店换了招牌。她拍了一张发给母亲，母亲回复说那家早就换过一次；两人没有继续聊店的事。两个人后来拿这张糊照片开过一句玩笑。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "她拍下换了招牌的店发给母亲，母亲说那家早换过一次。她盯着照片看了看，发现自己拍到的招牌还是糊的。",
+      "later_understanding": "",
+      "related_record_ids": [
+        "luna-life-028"
+      ],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:place-and-commute"
+      ]
+    },
+    {
+      "id": "luna-life-032",
+      "period_id": "period:university-before-world",
+      "time": {
+        "from": "2026-05",
+        "until": "2026-05",
+        "precision": "month",
+        "timezone": "Asia/Shanghai"
+      },
+      "event": {
+        "factual_detail": "一次宿舍晚饭后，大学同学戊把最后一块煎蛋夹到知栀盘里，她说自己吃不下又把盘子推回去。两人推了两次，室友甲笑着把煎蛋分成两半；最后盘边还留了一点葱。",
+        "source_mode": "drafted_candidate_not_verified"
+      },
+      "then_understanding": "煎蛋在两个盘子之间推来推去，她嫌麻烦又忍不住笑。室友甲分成两半后，三个人各吃一口，盘边剩了几粒葱。",
+      "later_understanding": "",
+      "related_record_ids": [
+        "luna-life-010"
+      ],
+      "participant_entity_refs": [
+        "history:person:celia-self",
+        "history:person:college-peer-b",
+        "history:person:roommate-historical-a"
+      ],
+      "depth": "ordinary",
+      "pattern_ids": [
+        "pattern:food-and-shared-space",
+        "pattern:small-social-moments"
+      ]
+    }
+  ],
+  "draft_review": {
+    "independent_v4_1_review": "pending_other_agent",
+    "reviewed_by_author": false,
+    "approved_for_import": false,
+    "production_write": false
+  }
+}

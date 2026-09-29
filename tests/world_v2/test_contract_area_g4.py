@@ -7,6 +7,11 @@ import pytest
 from companion_daemon.world_v2.character_interior.inbound_tool_contract import (
     InboundToolContracts,
 )
+from companion_daemon.world_v2.character_interior.inbound_author import (
+    _compact_full_turn_transport_grammar,
+    _compact_gate_system_content,
+    _compact_reply_only_transport_grammar,
+)
 from companion_daemon.world_v2.expression_draft import (
     QQ_NAPCAT_EXPRESSION_CAPABILITIES,
     normalize_expression_draft_wire,
@@ -27,6 +32,31 @@ def test_compact_gate_schema_fits_g4_area_cap() -> None:
     assert required <= 3
     assert total <= 8
     assert depth <= 2
+
+
+def test_compact_gate_semantic_prompt_stays_bounded_and_preserves_truth_boundary() -> None:
+    reply_only = _compact_reply_only_transport_grammar(
+        response_expectation_assessment_required=False
+    )
+    full_turn = _compact_full_turn_transport_grammar(
+        capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,
+        response_expectation_assessment_required=False,
+    )
+    reply_decoded = reply_only["decoded_payload_json"]
+    full_decoded = full_turn["decoded_payload_json"]
+    system = _compact_gate_system_content(
+        identity_instruction="她是身份框架里的人。",
+        reply_only_specimen=reply_decoded["shape_only_nonsemantic_specimen"],
+        reply_only_rules={key: value for key, value in reply_only.items() if key != "decoded_payload_json"},
+        full_turn_specimen=full_decoded["shape_only_nonsemantic_specimen"],
+        full_turn_rules={key: value for key, value in full_turn.items() if key != "decoded_payload_json"},
+    )
+
+    assert len(system) <= 15_000
+    assert "空 world_claims 不是无事实证明" in system
+    assert "没有来源就不要说成已发生的事实" in system
+    assert "没有维持对话或提供帮助的任务" in system
+    assert "依照身份自然表达" in system
 
 
 def test_present_hard_boundary_prompt_drops_mechanism_essays() -> None:

@@ -65,7 +65,8 @@ async def test_only_an_explicitly_reviewed_life_author_gets_the_new_input(purpos
     old_packet = json.loads(old_messages[1]['content'])
     if purpose == 'world_stimulus_appraisal' and installed:
         from companion_daemon.world_v2.background_context_profile import profile_audit_record
-        from companion_daemon.world_v2.character_interior.life_source_state_readings import CONTRACT, life_source_profile
+        from companion_daemon.world_v2.character_interior.life_source_state_readings import life_source_profile
+        from companion_daemon.world_v2.character_interior.life_source_review import MINTED_CONTRACT as CONTRACT
         assert packet['background_context_profile'] == profile_audit_record(life_source_profile(CONTRACT))
         packet['background_context_profile'] = old_packet['background_context_profile']
         packet['inner_life_snapshot']['background_context_profile'] = old_packet['inner_life_snapshot']['background_context_profile']

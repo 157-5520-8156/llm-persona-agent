@@ -220,6 +220,25 @@ class ModelProviderRequestIdentityState:
     identity_extras: Mapping[str, object]
 
 
+def captured_reference_request_identity() -> dict[str, object] | None:
+    """Local audit material for an explicitly installed capture transport.
+
+    Never serialize credentials, headers, or arbitrary caller extras. Reference
+    bindings are host-only metadata, but failed calls also need them for replay
+    of the exact compact request, before a successful role checkpoint exists.
+    """
+    state = _MODEL_PROVIDER_REQUEST_IDENTITY.get()
+    if state is None or set(state.identity_extras) - {"tool_contract_identity", "reference_bindings"}:
+        return None
+    if not isinstance(state.identity_extras.get("reference_bindings"), dict):
+        return None
+    return {
+        "model_facing": False,
+        "request_hash": state.request_hash,
+        "identity_extras": json.loads(json.dumps(state.identity_extras, ensure_ascii=False)),
+    }
+
+
 def provider_invocation_request_hash(
     *,
     messages: list[dict[str, object]] | list[dict[str, str]],
@@ -2414,7 +2433,8 @@ def _arguments_content(
         return None
     name = function.get("name")
     if expected_tool_name is not None and name != expected_tool_name:
-        raise ValueError("model response used an unexpected tool identity")
+        raise ProviderToolIdentityError(expected_name=expected_tool_name, returned_name=name,
+                                        arguments=function.get("arguments"))
     arguments = function.get("arguments")
     if not isinstance(arguments, str) or not arguments.strip():
         return None
@@ -2426,6 +2446,16 @@ def _provider_usage_int(source: dict[str, object], key: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
         raise ValueError(f"provider usage {key} must be a non-negative integer")
     return value
+
+
+class ProviderToolIdentityError(ValueError):
+    """A returned tool carrier is invalid, rather than a network outage."""
+
+    def __init__(self, *, expected_name, returned_name, arguments):
+        super().__init__("model response used an unexpected tool identity")
+        self.expected_name = expected_name
+        self.returned_name = returned_name
+        self.arguments = arguments if isinstance(arguments, str) and len(arguments.encode()) <= 131072 else None
 
 
 def _optional_provider_usage_int(source: dict[str, object], key: str) -> int:
@@ -2475,6 +2505,7 @@ class FakeCompanionModel:
         if name in {
             "character_role_activity_lifecycle_choice_v1",
             "character_role_activity_lifecycle_choice_v2",
+            "character_role_activity_lifecycle_choice_v3",
         }:
             self.calls.append(messages)
             material = json.loads(messages[-1]["content"])

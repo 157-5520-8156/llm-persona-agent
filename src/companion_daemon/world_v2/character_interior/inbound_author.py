@@ -19,6 +19,7 @@ import logging
 from typing import Any, NamedTuple
 
 from companion_daemon.llm import (
+    ProviderToolIdentityError,
     model_call_scope,
     model_provider_request_identity_scope,
     model_request_emission_scope,
@@ -47,14 +48,13 @@ from ..present_prompt import (
     attach_hitchhiked_relationship_residue,
     combined_turn_system_lead,
     compact_gate_recall_instruction,
-    compact_gate_usage_specimens_prompt,
     compile_slim_consider_payload,
     forced_tool_recall_instruction,
     reply_only_bubble_clause,
     reply_only_completion_clause,
-    slim_consider_instruction,
     slim_peer_specimen,
 )
+from ..recall_audit import CharacterRecallRequest
 from ..source_closure_lane import SourceClosureReselectionLane
 from .inbound_appraisal_wire import (
     _active_affect_heads,
@@ -416,6 +416,35 @@ def _compact_slim_peer_specimen() -> dict[str, object]:
     return slim_peer_specimen()
 
 
+def _compact_gate_character_decision_brief() -> str:
+    """Keep the large transport contract separate from the role's short brief."""
+
+    return (
+        "\n你是上方身份中的她，正在用 QQ 和一个熟人说话。动机、感受、语气、"
+        "说不说、何时说、说几条、追不追问或沉默都由你决定；没有维持对话或提供帮助的任务。"
+        "内心状态、生活记录、关系、记忆和提醒是可用环境，不是话题清单或行为脚本；"
+        "可以默默用，也可以不提，不必逐条回应。recent_dialogue 中 current_turn / pending_interaction "
+        "表示尚无后续可见回应的对方报告；它们不是逐条作答命令，你自己判断哪些在意。\n"
+        "可见文字中的具体外部人物、地点、行动、身体情况、当下生活或过往经历，"
+        "以及关于具体人物的习惯或频率主张，都必须逐条列入 world_claims，填写匹配的 scope 和 "
+        "source_refs，并使用 expression_hard_boundaries 中精确的来源；"
+        "按来源的实际时间选 current_world 或 past_world。没有来源就不要说成已发生的事实，"
+        "程序创建前的空白也不能靠想象补成亲身经历。空 world_claims 不是无事实证明。"
+        "此刻的感受、想法、愿望、印象和未定猜测属于你，不需世界来源，也不能反过来证明事件。"
+        "开放问题和假设不声称可能答案；若问题本身预设了具体外部事实，该事实仍需来源。"
+        "可以自然复述对方刚报告的内容，但它仍只是对方的报告，不能变成你的经历或客观事实。\n"
+        "messages 每一项是一条你选择发出的气泡；空数组就是这一轮不回。meaning_of_this 和 my_state"
+        "分别写你的理解与此刻状态，不会自动变成台词。只有确实想留下持续感受或关系变化时才写 affect、"
+        "about_us/us_deltas 等可选状态；waiting_for 是短句，wait 必须是 30 到 86400 的整数秒（例如 3600），"
+        "两者要么一起写、要么一起省略；come_back 与 come_back_in 是另一组成对字段。later 只用于"
+        "已经写好的非空 messages，沉默时不要用；不需要这些状态就省略。life_intent 仅表达能力明确允许的"
+        "自我执行未来意图，不写未授权人物、地点或结果，也不证明已经执行。photo 只在你真想尝试时写，"
+        "而且不能声称媒体已成功生成或送达。"
+        "declared_display 只在你确实选择符合能力与隐私边界的展示时使用。范本里的占位文字不是话术；"
+        "依照身份自然表达。\n"
+    )
+
+
 def _compact_gate_system_content(
     *,
     identity_instruction: str,
@@ -469,8 +498,7 @@ def _compact_gate_system_content(
         "full character-interior-events.1 envelope for full_turn, or the exact "
         "private_turn_state plus recall_request object for recall. "
         + compact_gate_recall_instruction()
-        + slim_consider_instruction()
-        + compact_gate_usage_specimens_prompt()
+        + _compact_gate_character_decision_brief()
         + "\n\nREPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON:\n"
         + json.dumps(
             _compact_slim_peer_specimen(),
@@ -522,9 +550,7 @@ def _compact_gate_system_content(
         )
         + "\nEND FULL_TURN PAYLOAD_JSON CANONICAL SPECIMEN JSON.\n"
         "full_turn 的 events[].private_turn_state 里，contract / inner_state_summary / "
-        "attended_source_refs 之外的键在范本里写成 null，只是让你看见它们存在。"
-        "null 就是这一轮不用；省略这些键和写成 null 完全一样，都表示你这一轮选择不用。"
-        "看见键名不是建议你填。上面的 USAGE EXAMPLE 展示需要时怎么写；不需要时留空。"
+        "attended_source_refs 之外的 null 或省略都表示本轮不用；看见键名不是建议你填写。"
         "declared_display 在 reply_only 写在 slim 顶层，在 full_turn 写在 private_turn_state；"
         "收件人由宿主绑定，不要自己写 recipient_ref。\n"
         "For result_kind=full_turn, the decoded payload_json object copies this "
@@ -836,10 +862,17 @@ def _role_result_correction_instruction(
         detail = "上一轮结果没通过校验，但宿主没把具体原因写清楚。请按当前契约重写一份完整结果。"
     if detail_in_coordinate:
         detail = "见同一对象 coordinate.failure_detail 的完整失败原因；该诊断不是新的世界证据。"
+    wait_guidance = ""
+    if "wait" in detail and "秒" in detail:
+        wait_guidance = (
+            "若你仍选择定时等待，wait 请写成 30 到 86400 的整数秒（例如 3600），"
+            "并同时写 waiting_for；若不选择定时等待，两项都省略。宿主不会推断或代填时长。"
+        )
     return (
         "\n\n上一轮结果未通过校验，请按同一份钉住的 Context 和能力重写一份完整结果。"
         f"失败码 {failure_code}。具体原因：{detail} "
-        "校验失败不替你决定要不要说话、说什么、或什么心情。"
+        + wait_guidance
+        + "校验失败不替你决定要不要说话、说什么、或什么心情。"
     )
 
 
@@ -1203,9 +1236,11 @@ class _InboundRecallRequested(RuntimeError):
         response_hash: str,
         usage: ModelUsageProvenance | None,
         private_turn_state: PrivateTurnState | None,
+        recall_parameters: CharacterRecallRequest | None = None,
     ) -> None:
         super().__init__("character interior recall requested")
         self.query = query
+        self.recall_parameters = recall_parameters
         self.model_id = model_id
         self.model_version = model_version
         self.model_call_id = model_call_id
@@ -2522,12 +2557,20 @@ class _InboundCharacterAuthor:
         use_schema_references: bool = False,
         evidence_first_schema: bool = False,
         visible_source_review_version: str = "1",
+        ordinary_text_review_mode: str = "blocking",
+        text_shadow_observer=None,
         **_unused: object,
     ) -> None:
         del _unused
         if type(whole_candidate_mode) is not bool:
             raise TypeError("whole_candidate_mode must be an explicit boolean")
         self._whole_candidate_mode = whole_candidate_mode
+        if ordinary_text_review_mode not in {"blocking", "sampled"}:
+            raise ValueError("unknown ordinary text review mode")
+        if ordinary_text_review_mode == "sampled" and (not whole_candidate_mode or visible_source_review_version != "25"):
+            raise ValueError("sampled text requires the configured v25 whole-author lane")
+        self._ordinary_text_review_mode = ordinary_text_review_mode
+        self._text_shadow_observer = text_shadow_observer
         if type(visible_source_review_version) is not str or visible_source_review_version not in SUPPORTED_REVIEW_VERSIONS:
             raise ValueError("unsupported visible source review version")
         from ..visible_independent_review_runtime import validate_independent_reviewer_configuration
@@ -2803,6 +2846,9 @@ class _InboundCharacterAuthor:
 
         return self._character_interior_recall_delegate and self._recall is None
 
+    def ordinary_text_review_mode(self):
+        return self._ordinary_text_review_mode
+
     def visible_review_protocol(self):
         from ..visible_independent_review_receipt import independent_review_protocol
         return independent_review_protocol(self._visible_source_review_version)
@@ -2850,6 +2896,16 @@ class _InboundCharacterAuthor:
                     self._visible_review_rejections.popitem(last=False)
                 raise
             self._rejected_call_audits.pop(_rejected_call_pin(request), None)
+            if self._text_shadow_observer is not None and output.visible_source_review_json is not None:
+                from ..visible_review_evidence_storage import read_review_evidence
+                try:
+                    self._text_shadow_observer.offer(
+                        proposal=validate_proposal_envelope(output.raw_proposal),
+                        evidence=read_review_evidence(output.visible_source_review_json),
+                    )
+                except Exception:
+                    self._text_shadow_observer.offer_errors += 1
+                    logger.exception("text observer enqueue failed; candidate stays unchanged")
         return output
 
     async def correct_role_result(
@@ -4156,6 +4212,21 @@ class _InboundCharacterAuthor:
             "active_affect_heads": _active_affect_heads(request),
         }
         if not preserve_legacy_authoring:
+            from .lived_evidence_scope import LIVED_EVIDENCE_SCOPE
+
+            expression_user_material["lived_evidence_scope"] = LIVED_EVIDENCE_SCOPE
+            if self._visible_source_review_version == "25":
+                from .inbound_prompt import CONVERSATIONAL_GROUNDING
+                expression_user_material["lived_evidence_scope"] = {
+                    **LIVED_EVIDENCE_SCOPE, "contract": "character-lived-evidence.2-conversational",
+                    "instruction": LIVED_EVIDENCE_SCOPE["instruction"].replace(
+                        "缺少记录也不证明事情从没发生。", ""
+                    ) + CONVERSATIONAL_GROUNDING,
+                }
+            if self._atomic_tool_envelope_version == "slim":
+                from .personal_action_evidence import personal_action_evidence
+                expression_user_material["personal_action_evidence"] = personal_action_evidence(
+                    expression_user_material.get("inner_life_snapshot"))
             expression_user_material["appraisal_affect_hard_boundaries"]["update_scope"] = (
                 "Choose one offered episode_id; every updated component_id and dimension must belong "
                 "to that same episode. Do not combine components across episodes."
@@ -4192,6 +4263,7 @@ class _InboundCharacterAuthor:
                 "role": "system",
                 "content": "" if compact_atomic_prompt else (
                     combined_turn_system_lead(
+                        preserve_legacy_authoring=preserve_legacy_authoring,
                         private_turn_state_required=(
                             self._capabilities.private_turn_state_mode == "required"
                         ),
@@ -4348,12 +4420,12 @@ class _InboundCharacterAuthor:
         cognition_tool_choice = cognition_transport.tool_choice
         cognition_contract_identity = dict(cognition_transport.identity)
         if compact_atomic_prompt:
-            from ..visible_review_protocols import GROUNDED_REVIEW_PROTOCOL, PRIVATE_COGNITION_PROTOCOLS
+            from ..visible_review_protocols import GROUNDED_REVIEW_PROTOCOLS, PRIVATE_COGNITION_PROTOCOLS
 
             requirement = json.loads(request.visible_source_requirement_json or "{}")
             private_cognition_scope = (
                 requirement.get("review_protocol") in PRIVATE_COGNITION_PROTOCOLS
-                or requirement.get("review_protocol") == GROUNDED_REVIEW_PROTOCOL
+                or requirement.get("review_protocol") in GROUNDED_REVIEW_PROTOCOLS.values()
             )
             if self._atomic_tool_envelope_version == "slim":
                 # The carrier owns two keys; the prompt owns the decision. The
@@ -4363,6 +4435,7 @@ class _InboundCharacterAuthor:
                     identity_instruction=expression_adapter._identity_instruction(),  # noqa: SLF001
                     recall_available=bool(cognition_contract.recall_allowed),
                     private_cognition_scope=private_cognition_scope,
+                    concise_contract=self._visible_source_review_version == "25",
                 )
             else:
                 messages[0]["content"] = compact_atomic_system_prompt(
@@ -4457,6 +4530,27 @@ class _InboundCharacterAuthor:
                 "private_turn_state or recall_request still follows its complete schema."
                 + _atomic_branch_instruction(cognition_contract)
             )
+        if self._atomic_tool_envelope_version == "slim" and use_forced_tool:
+            messages[0]["content"] += (
+                "\n本轮唯一函数名称：" + cognition_tool_choice["function"]["name"]
+                + "。函数名按原样使用，不根据result_kind另造函数名。")
+        reference_bindings = None
+        if (self._whole_candidate_mode and self._atomic_tool_envelope_version == "slim"
+            and compact_atomic_prompt and use_forced_tool and transport_provider is None
+            and self._character_interior_recall_delegate
+            and request.visible_source_requirement_json is not None):
+            from ..reference_wire import prepare_reference_view
+            displayed = json.loads(messages[1]["content"])
+            snapshot_view = displayed.get("inner_life_snapshot", {})
+            material_view = snapshot_view.get("materials", {})
+            if isinstance(material_view, dict) and material_view.get("contract") == "shared-string-view.1":
+                snapshot_view["materials"] = unpack_shared_strings(material_view)
+            displayed, reference_bindings = prepare_reference_view(displayed)
+            messages[1] = {"role": "user", "content": json.dumps(displayed, ensure_ascii=False, separators=(",", ":"))}
+        invocation_extras = {
+            **({"tool_contract_identity": cognition_contract_identity} if use_forced_tool else {}),
+            **({"reference_bindings": reference_bindings} if reference_bindings is not None else {}),
+        } or None
         winning_provider_identity = _provider_invocation_identity(
             parent_call_id=provider_request.call_id,
             purpose="paired_cognition_initial",
@@ -4465,6 +4559,7 @@ class _InboundCharacterAuthor:
             tools=(cognition_tools if use_forced_tool else None),
             tool_choice=(cognition_tool_choice if use_forced_tool else None),
             tool_contract_identity=(cognition_contract_identity if use_forced_tool else None),
+            reference_bindings=reference_bindings,
         )
         if request.visible_source_requirement_json is not None:
             from ..visible_source_author_request import prepare_visible_source_author_request
@@ -4474,11 +4569,7 @@ class _InboundCharacterAuthor:
                 temperature=self._temperature,
                 tools=cognition_tools if use_forced_tool else None,
                 tool_choice=cognition_tool_choice if use_forced_tool else None,
-                identity_extras=(
-                    {"tool_contract_identity": cognition_contract_identity}
-                    if use_forced_tool
-                    else None
-                ),
+                identity_extras=invocation_extras,
                 expected_request_hash=winning_provider_identity.request_hash,
             )
             self._visible_source_author_requests[winning_provider_identity.model_call_id] = (
@@ -4508,11 +4599,7 @@ class _InboundCharacterAuthor:
                 ),
                 model_provider_request_identity_scope(
                     request_hash=winning_provider_identity.request_hash,
-                    identity_extras=(
-                        {"tool_contract_identity": (cognition_contract_identity)}
-                        if use_forced_tool
-                        else None
-                    ),
+                    identity_extras=invocation_extras,
                 ),
             ):
                 if transport_provider is not None:
@@ -4581,7 +4668,8 @@ class _InboundCharacterAuthor:
                 self._retain_rejected_return(request, returned_candidate_audit, winning_provider_identity)
             if use_forced_tool and transport_provider is None:
                 try:
-                    raw = cognition_contract.unwrap(raw)
+                    from ..reference_wire import expand_inbound_arguments
+                    raw = cognition_contract.unwrap(expand_inbound_arguments(raw, reference_bindings))
                 except ValueError as exc:
                     # Preserve the candidate for the existing bounded
                     # same-role envelope correction below; a transport error
@@ -4589,6 +4677,25 @@ class _InboundCharacterAuthor:
                     forced_transport_error = exc
             if not exact_request_emission:
                 mark_first_role_provider_completion(winning_provider_identity.model_call_id)
+        except ProviderToolIdentityError as exc:
+            self._failed_combined.add(_failed_cache_key(request))
+            audit = None
+            if exc.arguments is not None:
+                audit = AuthoredCandidateInvocationAudit(
+                    purpose="primary_initial", model_call_id=winning_provider_identity.model_call_id,
+                    request_hash=winning_provider_identity.request_hash,
+                    response_hash=sha256(exc.arguments.encode("utf-8")).hexdigest(),
+                    model_id=model_id, model_version=self.VERSION, outcome="validation_rejected", usage=usage,
+                )
+            detail = "返回的函数名与本次唯一提供的函数不一致；请调用 " + str(exc.expected_name) + " 并重新提交完整结果。"
+            raise ValidationTechnicalFailure(
+                "authored_expression_reselection_invalid", model_call_id=winning_provider_identity.model_call_id,
+                request_hash=winning_provider_identity.request_hash, attempted_model_id=model_id,
+                attempted_model_version=self.VERSION, usage=usage,
+                authored_candidate_audits=self._retain_rejected_return(request, audit, winning_provider_identity),
+                **({**(_role_failure_payload_kwargs(exc.arguments, ValueError(detail)) if exc.arguments is not None else {}),
+                    "failure_detail": detail}),
+            ) from exc
         except asyncio.CancelledError:
             # Deliberation cancels the paired provider task when its deadline
             # expires.  Preserve the same-trigger marker so the later
@@ -4696,11 +4803,13 @@ class _InboundCharacterAuthor:
             )
             raise _InboundRecallRequested(
                 query=parsed_recall_request.query_text,
+                recall_parameters=parsed_recall_request,
                 model_id=model_id,
                 model_version=self.VERSION,
                 model_call_id=winning_provider_identity.model_call_id,
                 request_hash=winning_provider_identity.request_hash,
-                response_hash=sha256(raw.encode("utf-8")).hexdigest(),
+                response_hash=(returned_candidate_audit.response_hash if reference_bindings is not None and returned_candidate_audit is not None
+                               else sha256(raw.encode("utf-8")).hexdigest()),
                 usage=usage,
                 private_turn_state=private_turn_state,
             )

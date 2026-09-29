@@ -135,12 +135,7 @@ async def test_real_host_http_input_and_authored_current_life_sources(
     shape = json.loads(
         system.split("REPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON:\n", 1)[1].split("\nEND", 1)[0]
     )
-    mapping = json.loads(
-        system.split("WORLD CLAIM SOURCE MAPPING EXAMPLE JSON:\n", 1)[1].split("\nEND", 1)[0]
-    )
     assert shape["world_claims"] == []
-    assert mapping["world_claims"][0]["claim_text"] == mapping["messages"][0]
-    assert mapping["world_claims"][0]["source_refs"]
     assert all(
         json.loads(record["model_content_json"]) == body
         for record, body in zip(requests, bodies, strict=True)
@@ -154,6 +149,13 @@ async def test_real_host_http_input_and_authored_current_life_sources(
             if "inner_life_snapshot" in payload and "current_trigger_message" in payload:
                 inputs.append(payload)
     assert inputs
+    # The compact prompt no longer embeds a fictional claim example. Check
+    # the actual source vocabulary sent to the author instead; the invalid
+    # source variant above still has to fail the real acceptance pipeline.
+    boundaries = inputs[0]["expression_hard_boundaries"]
+    assert isinstance(boundaries["world_claim_source_refs"], dict)
+    assert all("event:never-accepted-library-activity" not in refs
+               for refs in boundaries["world_claim_source_refs"].values())
     if invalid_fact_source:
         snapshots = [item["inner_life_snapshot"] for item in inputs]
         corrections = [item for item in snapshots if "role_result_correction" in item]
@@ -174,7 +176,7 @@ async def test_real_host_http_input_and_authored_current_life_sources(
     # The provider copy of the pinned materials is presented through the
     # lossless shared-string view; read it back exactly as the model must.
     materials = unpack_shared_strings(inputs[0]["inner_life_snapshot"]["materials"])
-    assert "图书馆看书" in str(materials["routine_background"])  # Habit remains available to the character.
+    assert "课程或个人学习" in str(materials["routine_background"])  # Habit remains available to the character.
     assert "（现在）" not in materials["day_sheet"]
     assert "此刻窗口是" not in materials["day_sheet"]
     assert "天气：" not in materials["day_sheet"]

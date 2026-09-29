@@ -38,7 +38,6 @@ from .schemas import (
 from .world_life_context import WorldLifeContextItem
 
 
-MAX_RECALL_CORPUS_DOCUMENTS = 256
 
 
 class AffectOpeningRecallItem(FrozenModel):
@@ -76,7 +75,7 @@ class RecallCorpusSources(FrozenModel):
     appraisals: tuple[AppraisalProjection, ...] = ()
     private_impressions: tuple[PrivateImpressionProjection, ...] = ()
     npc_identities: tuple[NpcIdentityRecallItem, ...] = ()
-    authority_bindings: tuple[RecallSourceBinding, ...] = Field(default=(), max_length=4_096)
+    authority_bindings: tuple[RecallSourceBinding, ...] = ()
 
 
 def required_recall_authority_refs(sources: RecallCorpusSources) -> frozenset[str]:
@@ -174,7 +173,7 @@ def _subjects(*values: str) -> tuple[str, ...]:
 class RecallCorpusCompiler:
     """Deep compiler for a source-closed hybrid recall corpus."""
 
-    VERSION = "world-v2-recall-corpus.6"
+    VERSION = "world-v2-recall-corpus.9"
 
     def compile(
         self,
@@ -397,34 +396,57 @@ class RecallCorpusCompiler:
                 if not all(authority.get(binding.ref) == binding for binding in bindings):
                     continue
                 assert excerpt.text is not None
-                document = self._document(
-                    memory_kind="episodic", source_item_ref=excerpt.source_id,
-                    source_slice="active_memory_candidates", bindings=bindings,
-                    text=excerpt.text,
-                    # Index only identity labels already present in this
-                    # retained reading, never the archive's other people or
-                    # places. Labels aid access; they add no occurrence text.
-                    retrieval_text=(excerpt.text + "\n" + "\n".join(
-                        entity.label for entity in historical.entities
-                    )) if historical.entities else None,
-                    actor_ref=actor_ref, subject_refs=(actor_ref,),
-                    link_refs=(candidate.candidate_id,), occurred_from=historical.occurred_from,
-                    occurred_to=historical.occurred_until, status="active",
-                    privacy_class=candidate.privacy_ceiling, epistemic_scope="character_prehistory",
-                    prehistory=historical,
-                )
-                previous = historical_documents.get(document.document_id)
-                if previous is not None:
-                    if previous.model_dump(exclude={"link_refs", "privacy_class"}) != document.model_dump(
-                        exclude={"link_refs", "privacy_class"},
-                    ):
-                        raise ValueError("prehistory recall contains conflicting readings of one source")
-                    privacy_order = ("public", "shareable", "personal", "private", "withhold")
-                    document = document.model_copy(update={
-                        "link_refs": tuple(sorted(set(previous.link_refs) | set(document.link_refs))),
-                        "privacy_class": max((previous.privacy_class, document.privacy_class), key=privacy_order.index),
-                    })
-                historical_documents[document.document_id] = document
+                # Recover full text only from the typed record privately
+                # attached by MemoryRetrievalCompiler after its exact source,
+                # archive, owner and active-candidate proofs. Recheck its
+                # content identity here so a hand-built excerpt/private attr
+                # cannot introduce alternate index prose.
+                from .character_prehistory import digest as prehistory_record_digest
+
+                source_record = excerpt._recall_source_record
+                full_text = excerpt.text
+                if (
+                    source_record is not None
+                    and source_record.record_id == excerpt.source_id
+                    and prehistory_record_digest(source_record) == excerpt.source_values_hash
+                ):
+                    full_text = source_record.statement
+                windowed = len(full_text) > len(excerpt.text)
+                starts = range(0, len(full_text), 416) if windowed else (0,)
+                for start in starts:
+                    text = full_text[start : start + 480]
+                    if not text:
+                        continue
+                    window_ref = f"{excerpt.source_id}:window:{start}" if windowed else excerpt.source_id
+                    document = self._document(
+                        memory_kind="episodic", source_item_ref=window_ref,
+                        source_slice="active_memory_candidates", bindings=bindings,
+                        text=text,
+                        # Full prehistory bytes stay in this local, source-bound
+                        # index compiler. Each document carries only one exact
+                        # bounded window and already-retained identity labels.
+                        retrieval_text=(text + "\n" + "\n".join(
+                            entity.label for entity in historical.entities
+                        )) if historical.entities else None,
+                        actor_ref=actor_ref, subject_refs=(actor_ref,),
+                        link_refs=(candidate.candidate_id,), occurred_from=historical.occurred_from,
+                        occurred_to=historical.occurred_until, status="active",
+                        privacy_class=candidate.privacy_ceiling, epistemic_scope="character_prehistory",
+                        prehistory=historical,
+                        source_window_start=start if windowed else None,
+                    )
+                    previous = historical_documents.get(document.document_id)
+                    if previous is not None:
+                        if previous.model_dump(exclude={"link_refs", "privacy_class"}) != document.model_dump(
+                            exclude={"link_refs", "privacy_class"},
+                        ):
+                            raise ValueError("prehistory recall contains conflicting readings of one source")
+                        privacy_order = ("public", "shareable", "personal", "private", "withhold")
+                        document = document.model_copy(update={
+                            "link_refs": tuple(sorted(set(previous.link_refs) | set(document.link_refs))),
+                            "privacy_class": max((previous.privacy_class, document.privacy_class), key=privacy_order.index),
+                        })
+                    historical_documents[document.document_id] = document
         documents.extend(historical_documents.values())
 
         experiences_by_id = {item.experience_id: item for item in sources.recent_experiences}
@@ -530,7 +552,7 @@ class RecallCorpusCompiler:
                     ),
                     RecallSourceBinding(
                         source_kind="committed_event",
-                        authority_type="LifeContentDescriptorAccepted",
+                        authority_type="LifeContentRecorded",
                         ref=item.content.descriptor_event_ref,
                         source_world_revision=item.content.descriptor_world_revision,
                         immutable_hash=item.content.descriptor_payload_hash,
@@ -538,19 +560,23 @@ class RecallCorpusCompiler:
                 )
             )
             if item.content.world_consequence is not None:
-                world = item.content.world_consequence
-                fields = [("environment", world.environment)]
-                if world.authorized_attempt_result is not None:
-                    fields.append(("authorized_attempt_result", world.authorized_attempt_result))
-                for field, excerpt in fields:
+                from .life_recall_windows import life_recall_windows
+                attempt = item.content.world_consequence.authorized_attempt_result
+                binding = attempt.execution_binding if attempt else None
+                links = (item.result_id,)
+                if binding is not None and binding.source_kind == "activity_execution":
+                    links += (binding.plan_id, binding.source_event_ref)
+                for field, start, text, carrier, retrieval_text in life_recall_windows(
+                    item,
+                ):
                     documents.append(self._document(
-                        memory_kind="episodic",
-                        source_item_ref=item.occurrence_id + ":" + field,
-                        source_slice="world_life", bindings=bindings, text=excerpt.text,
-                        retrieval_text=(field + ": " + excerpt.text),
+                        memory_kind="episodic", source_item_ref=item.occurrence_id + ":" + field,
+                        source_slice="world_life", bindings=bindings, text=text,
+                        retrieval_text=retrieval_text,
                         actor_ref=actor_ref, subject_refs=_subjects(*item.participant_refs),
-                        link_refs=(item.result_id,), occurred_from=item.settled_at,
-                        privacy_class=item.privacy_class,
+                        link_refs=links, occurred_from=item.settled_at,
+                        privacy_class=item.privacy_class, settled_life=carrier,
+                        source_window_start=start,
                     ))
                 continue
             assert item.content.text is not None
@@ -809,16 +835,6 @@ class RecallCorpusCompiler:
                 )
             )
 
-        if len(documents) > MAX_RECALL_CORPUS_DOCUMENTS:
-            documents = sorted(
-                documents,
-                key=lambda item: (
-                    item.status == "active",
-                    item.occurred_to or item.occurred_from,
-                    item.document_id,
-                ),
-                reverse=True,
-            )[:MAX_RECALL_CORPUS_DOCUMENTS]
         ordered = tuple(sorted(documents, key=lambda item: item.document_id))
         if len({item.document_id for item in ordered}) != len(ordered):
             raise ValueError("recall corpus contains duplicate document identities")
@@ -889,6 +905,8 @@ class RecallCorpusCompiler:
         speaker_ref: str | None = None,
         prehistory: PrehistoryMemoryReading | None = None,
         accepted_fact: FactRecallItem | HistoricalFactRecallItem | None = None,
+        settled_life: WorldLifeContextItem | None = None,
+        source_window_start: int | None = None,
     ) -> RecallDocument:
         canonical = _canonical_bindings(bindings)
         return RecallDocument(
@@ -896,6 +914,7 @@ class RecallCorpusCompiler:
                 source_slice,
                 source_item_ref,
                 *(item.ref for item in canonical),
+                *((f"window:{source_window_start}",) if source_window_start is not None else ()),
             ),
             memory_kind=memory_kind,
             source_item_ref=source_item_ref,
@@ -929,6 +948,8 @@ class RecallCorpusCompiler:
             speaker_ref=speaker_ref,
             prehistory=prehistory,
             accepted_fact=accepted_fact,
+            settled_life_json=settled_life.model_dump_json() if settled_life is not None else None,
+            source_window_start=source_window_start,
         )
 
 
@@ -937,7 +958,6 @@ __all__ = [
     "NpcIdentityRecallItem",
     "RecallCorpusCompiler",
     "RecallCorpusSources",
-    "MAX_RECALL_CORPUS_DOCUMENTS",
     "required_recall_authority_refs",
     "select_recall_authority_bindings",
 ]

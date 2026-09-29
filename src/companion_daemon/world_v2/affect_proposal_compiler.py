@@ -306,6 +306,14 @@ class AffectProposalCompiler:
                 # still current, so pin acceptance to the caller's fresh head.
                 acceptance_cursor=current_cursor,
             )
+        from .affect_source_lifecycle import source_appraisal_closed
+        if source_appraisal_closed(proposal=proposal, projection=projection):
+            return AffectProposalCompilation(
+                status="no_change",
+                source_proposal_id=proposal.proposal_id,
+                source_proposal_event_ref=authority.audit.event_ref,
+                skip_reason="affect_proposal_compiler.source_appraisal_closed",
+            )
         if self._target_lower_bound_changed_after_pin(
             raw=raw,
             pinned_projection=pinned_projection,

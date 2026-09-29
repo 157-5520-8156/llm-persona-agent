@@ -33,6 +33,10 @@ async def run_completed_journey(
         value = json.loads(raw)
         if "payload_json" in value:
             context = json.loads(body["messages"][1]["content"])
+            from companion_daemon.world_v2.shared_string_view import unpack_shared_strings
+            presented = context["inner_life_snapshot"]["materials"]
+            if presented.get("contract") == "shared-string-view.1":
+                context["inner_life_snapshot"]["materials"] = unpack_shared_strings(presented)
             chats.append(context)
             authored = json.loads(value["payload_json"])
             authored["world_claims"] = []
@@ -90,7 +94,7 @@ async def run_completed_journey(
                                 "finish the current abstract activity"
                             )
                         ),
-                        openings[0],
+                        next((item for item in openings if item["safe_summary"].startswith("begin an abstract planned activity")), None),
                     )
                     raw = json.dumps(
                         {
@@ -102,8 +106,8 @@ async def run_completed_journey(
                             "decision": {
                                 "source_refs": capability["source_refs"],
                                 "payload": {
-                                    "decision": "select",
-                                    "selected_token": selected["opening_token"],
+                                    "decision": "select" if selected is not None else "no_op",
+                                    "selected_token": selected["opening_token"] if selected is not None else None,
                                 },
                             },
                         }

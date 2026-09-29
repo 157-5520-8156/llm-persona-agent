@@ -1166,6 +1166,7 @@ _CONTRACTS: Mapping[str, EventContract] = MappingProxyType(
                 successors=(
                     "MemoryCandidateOpened",
                     "MemoryCandidateRevised",
+                    "MemoryCandidateReviewed",
                     "TriggerProcessCompleted",
                 ),
             ),

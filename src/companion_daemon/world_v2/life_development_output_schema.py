@@ -17,9 +17,17 @@ _HISTORICAL_OUTCOME_DESCRIPTION = (
 )
 
 
-def life_possibility_output_schema(*, outcome_contract: str | None = None) -> dict[str, object]:
+def life_possibility_output_schema(*, outcome_contract: str | None = None,
+                                  authorized_attempt_claims: bool = False) -> dict[str, object]:
     schema = LifeDevelopmentPossibilityDraft.model_json_schema(mode="validation")
     definitions = schema["$defs"]
+    if not authorized_attempt_claims:
+        # Frozen legacy/v1-v4 wire: adding a new live declaration must not
+        # change the schema or request hash of already-recorded author calls.
+        allowed = definitions["LifeDevelopmentClaimDeclaration"]["properties"]["subject_scope"]["enum"]
+        allowed.remove("authorized_attempt_result")
+    elif outcome_contract != "world-consequence.2":
+        raise ValueError("attempt-result claims require the bounded World.2 contract")
     outcome = definitions["LifeDevelopmentOutcomeDraft"]
     if outcome_contract == "world-consequence.2":
         outcome["properties"].pop("text")

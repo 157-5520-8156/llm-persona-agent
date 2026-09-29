@@ -1,0 +1,184 @@
+{
+  "contract": "character-prehistory-archive.1",
+  "archive_id": "prehistory-archive:celia-everyday-20260929",
+  "world_id": "world:companion-v2:qq-c2c:geoff",
+  "actor_ref": "agent:companion",
+  "source_artifact_ref": "configs/prehistory/celia-everyday-20260929.json",
+  "entities": [
+    {
+      "entity_ref": "history:person:celia-self",
+      "kind": "person",
+      "label": "沈知栀（档案所属角色的历史身份）"
+    }
+  ],
+  "records": [
+    {
+      "record_id": "prehistory-record:celia-everyday-00",
+      "occurred_from": "2012-08-01T00:00:00+08:00",
+      "occurred_until": "2012-08-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "小时候有次在家吃西瓜，沈知栀把籽一颗颗留在小碟里，数到一半忘了前面数到多少，最后也没重新数。",
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "location_ref": null,
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-everyday-01",
+      "occurred_from": "2015-02-01T00:00:00+08:00",
+      "occurred_until": "2015-02-28T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "一次春节在嘉兴家里，沈知栀学着包饺子，最先包的几个开了口。母亲帮她把边重新捏上，那顿她还能认出自己包的歪饺子。",
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "location_ref": null,
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-everyday-02",
+      "occurred_from": "2017-07-01T00:00:00+08:00",
+      "occurred_until": "2017-07-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "一次去家附近的小店买冰棍，沈知栀出门才发现手里还攥着找回来的硬币，在门口站着把硬币塞进衣服口袋，冰棍已经有点化了。",
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "location_ref": null,
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-everyday-03",
+      "occurred_from": "2019-10-01T00:00:00+08:00",
+      "occurred_until": "2019-10-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "中学时一次体育课，沈知栀和同学踢毽子，轮到她时只接住两下，后来干脆负责给旁边的人数数。",
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "location_ref": null,
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-everyday-04",
+      "occurred_from": "2021-11-01T00:00:00+08:00",
+      "occurred_until": "2021-11-30T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "高中时一次发校刊，沈知栀把同一摞来回数了两遍，才发现两次都漏掉了压在胳膊下面的一本。",
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "location_ref": null,
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-everyday-05",
+      "occurred_from": "2022-04-01T00:00:00+08:00",
+      "occurred_until": "2022-04-30T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "一次和高中同学聊天，沈知栀说自己记得某首歌的名字，打开播放器才发现记的是另一首。她把两首都放出来听了一小段。",
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "location_ref": null,
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-everyday-06",
+      "occurred_from": "2024-06-01T00:00:00+08:00",
+      "occurred_until": "2024-06-30T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "高中毕业离校那天，沈知栀在校门附近把借过的一支蓝色圆珠笔还给同学。她原本忘了归还，收书包时才又发现那支笔。",
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "location_ref": null,
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-everyday-07",
+      "occurred_from": "2024-09-01T00:00:00+08:00",
+      "occurred_until": "2024-09-30T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "大学刚住进宿舍时，沈知栀带来的收纳箱比床下空间高了一点，最后把箱子放在柜子旁边。",
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "location_ref": null,
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-everyday-08",
+      "occurred_from": "2024-12-01T00:00:00+08:00",
+      "occurred_until": "2024-12-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "一次在宿舍煮速冻水饺，沈知栀发现手边没有漏勺，拿普通勺子慢慢捞，最后一只滑回锅里，她又捞了一次。",
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "location_ref": null,
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-everyday-09",
+      "occurred_from": "2025-03-01T00:00:00+08:00",
+      "occurred_until": "2025-03-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "一个周末沈知栀在宿舍刷短视频，连续刷到同一段配乐，后来不知不觉跟着哼了两句，被室友听见后自己也笑了。",
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "location_ref": null,
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-everyday-10",
+      "occurred_from": "2025-05-01T00:00:00+08:00",
+      "occurred_until": "2025-05-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "沈知栀和大学室友有次因为夜里房间里的声音拌过嘴。第二天两人商量了戴耳机和关灯的时间，这件事后来没有再争执。",
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "location_ref": null,
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    },
+    {
+      "record_id": "prehistory-record:celia-everyday-11",
+      "occurred_from": "2025-08-01T00:00:00+08:00",
+      "occurred_until": "2025-08-31T23:59:59+08:00",
+      "time_precision": "month",
+      "timezone_name": "Asia/Shanghai",
+      "statement": "一次从嘉兴返回上海，沈知栀到车站时错过了原先要乘的班次。她联系家里说明改乘下一班，到上海后再返校。",
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "location_ref": null,
+      "related_record_refs": [],
+      "privacy_class": "personal"
+    }
+  ]
+}

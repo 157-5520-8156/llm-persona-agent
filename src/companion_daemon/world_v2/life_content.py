@@ -179,10 +179,14 @@ class LifeContentCompiler:
         cursor: ProjectionCursor,
         actor_ref: str,
         viewer_privacy_ceiling: PrivacyClass,
-        budget: LifeContentBudget = LifeContentBudget(),
+        budget: LifeContentBudget | None = LifeContentBudget(),
         projection: LedgerProjection,
         user_channel_limited_content_refs: frozenset[str] = frozenset(),
     ) -> LifeContentResult:
+        # None is for local recall-corpus construction only. Presentation
+        # truncation must not delete older source documents before retrieval.
+        # All source, participant, privacy and hash checks below still apply.
+        item_characters = budget.max_item_characters if budget is not None else None
         if (
             projection.world_revision != cursor.world_revision
             or projection.deliberation_revision != cursor.deliberation_revision
@@ -384,7 +388,7 @@ class LifeContentCompiler:
                     reading = read_character_life_experience_content(
                         store=self._store, projection=projection, experience=experience,
                         actor_ref=actor_ref, viewer_privacy_ceiling=viewer_privacy_ceiling,
-                        max_characters=budget.max_item_characters,
+                        max_characters=item_characters,
                         user_channel_limited_content_refs=user_channel_limited_content_refs,
                     )
                 elif descriptor.source_kind == "occurrence_settlement" and any(
@@ -398,14 +402,14 @@ class LifeContentCompiler:
                             actor_ref=actor_ref, viewer_privacy_ceiling=viewer_privacy_ceiling,
                             user_channel_limited_content_refs=user_channel_limited_content_refs,
                         )
-                    )).bounded(budget.max_item_characters)
+                    )).bounded(item_characters)
             except ValueError:
                 candidate_rows.append((rank, descriptor.content_id, None, LifeContentSuppression(
                     content_id=descriptor.content_id, source_entity_id=descriptor.source_entity_id,
                     reason="structured_content_unavailable",
                 )))
                 continue
-            text = stored.text[: budget.max_item_characters] if reading is None else None
+            text = stored.text[:item_characters] if reading is None else None
             excerpt = LifeContentExcerpt(
                 content_id=descriptor.content_id,
                 content_kind=descriptor.content_kind,
@@ -460,7 +464,7 @@ class LifeContentCompiler:
                     ),
                 )
             )
-        remaining = budget.max_total_characters
+        remaining = budget.max_total_characters if budget is not None else None
         settled: list[LifeContentExcerpt] = []
         experiences_out: list[RecentExperienceContextItem] = []
         suppressions: list[LifeContentSuppression] = []
@@ -468,7 +472,7 @@ class LifeContentCompiler:
             if suppression is not None:
                 suppressions.append(suppression)
             elif item is not None:
-                if remaining <= 0:
+                if remaining is not None and remaining <= 0:
                     content_id = (
                         item.content.content_id
                         if isinstance(item, RecentExperienceContextItem)
@@ -488,7 +492,7 @@ class LifeContentCompiler:
                 else:
                     original = item.content if isinstance(item, RecentExperienceContextItem) else item
                     try:
-                        content = original.bounded(remaining)
+                        content = original if remaining is None else original.bounded(remaining)
                     except ValueError:
                         suppressions.append(LifeContentSuppression(
                             content_id=original.content_id,
@@ -498,10 +502,12 @@ class LifeContentCompiler:
                         continue
                     if isinstance(item, RecentExperienceContextItem):
                         view = item.model_copy(update={"content": content})
-                        remaining -= content.text_characters()
+                        if remaining is not None:
+                            remaining -= content.text_characters()
                         experiences_out.append(view)
                     else:
-                        remaining -= content.text_characters()
+                        if remaining is not None:
+                            remaining -= content.text_characters()
                         settled.append(content)
         return LifeContentResult(
             settled_items=tuple(settled),

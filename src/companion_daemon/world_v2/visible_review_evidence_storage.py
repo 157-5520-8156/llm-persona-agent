@@ -8,7 +8,9 @@ import hashlib
 import json
 import zlib
 
-from .visible_review_protocols import CONTENT_FIELD_PROTOCOLS
+from .visible_review_protocols import CONTENT_FIELD_PROTOCOLS, GROUNDED_REVIEW_PROTOCOLS
+
+_COMPRESSED_PROTOCOLS = CONTENT_FIELD_PROTOCOLS | frozenset(GROUNDED_REVIEW_PROTOCOLS.values())
 
 STORAGE_CONTRACT = "visible-source-runtime-evidence.deflate.1"
 MAX_STORED_BYTES = 1_048_576
@@ -29,8 +31,8 @@ def _object(raw):
 
 
 def _require_new_protocol(value):
-    if (value.get("contract") != "visible-source-runtime-evidence.3"
-        or json.loads(value["requirement_json"]).get("review_protocol") not in CONTENT_FIELD_PROTOCOLS):
+    if (value.get("contract") not in {"visible-source-runtime-evidence.3", "visible-source-text-observation-evidence.1"}
+        or json.loads(value["requirement_json"]).get("review_protocol") not in _COMPRESSED_PROTOCOLS):
         raise ValueError("compressed review evidence requires its explicit pinned protocol")
 
 

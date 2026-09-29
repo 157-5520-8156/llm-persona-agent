@@ -105,7 +105,9 @@ async def _run_http_journey(
                     if m["content"].startswith("{")
                     and "inner_life_snapshot" in json.loads(m["content"])
                 )
-                active = context["inner_life_snapshot"]["materials"]["current_activities"][0]
+                from companion_daemon.world_v2.shared_string_view import unpack_shared_strings
+
+                active = unpack_shared_strings(context["inner_life_snapshot"]["materials"])["current_activities"][0]
                 authored["messages"] = ["这会儿在整理写作思路。"]
                 authored["world_claims"] = [
                     {

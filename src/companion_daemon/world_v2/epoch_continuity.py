@@ -9,7 +9,7 @@ never reuses the archive's observation idempotency namespace.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 import json
 
 from .character_core_reducers import (
@@ -46,7 +46,7 @@ from .schemas import (
 )
 
 
-EPOCH_CONTINUITY_VERSION = "epoch-continuity.1"
+EPOCH_CONTINUITY_VERSION = "epoch-continuity.2"
 _EXPERIENCE_WINDOW = timedelta(days=30)
 _FACT_LIMIT = 64
 _MEMORY_LIMIT = 32
@@ -73,7 +73,7 @@ class ContinuitySnapshot(FrozenModel):
     archive_world_id: str
     archive_head_hash: str
     archive_world_revision: int
-    continuity_version: str = EPOCH_CONTINUITY_VERSION
+    continuity_version: Literal["epoch-continuity.1", "epoch-continuity.2"] = EPOCH_CONTINUITY_VERSION
     facts: tuple[dict[str, Any], ...] = ()
     memory_candidates: tuple[dict[str, Any], ...] = ()
     relationship_states: tuple[dict[str, Any], ...] = ()
@@ -235,6 +235,7 @@ def _rebind_fact(
     *,
     genesis_event_id: str,
     genesis: EvidenceRef,
+    preserve_archive_binding: bool = False,
 ) -> FactProjection:
     fact = _hydrate(FactProjection, raw)
     transition_id = _genesis_transition_id("fact", fact.fact_id)
@@ -256,12 +257,13 @@ def _rebind_fact(
                 immutable_hash=binding.content_payload_hash,
             ),
         )
-        binding = FactAssertionBinding(
-            source_kind="operator_observation",
-            source_ref=genesis_event_id,
-            asserted_subject_ref=binding.asserted_subject_ref,
-            content_payload_hash=fact.values.value_hash,
-        )
+        if not preserve_archive_binding:
+            binding = FactAssertionBinding(
+                source_kind="operator_observation",
+                source_ref=genesis_event_id,
+                asserted_subject_ref=binding.asserted_subject_ref,
+                content_payload_hash=fact.values.value_hash,
+            )
     # Keep rebound originals first: a newly built archive EvidenceRef can
     # share (type, ref_id) with a richer original and would otherwise drop
     # the object that anchors still point at.
@@ -349,13 +351,16 @@ def apply_continuity_snapshot(
     genesis_event_id: str,
     genesis_payload_hash: str,
     logical_time: datetime,
+    legacy_fact_binding: Literal["genesis", "archive"] = "genesis",
 ) -> dict[str, object]:
     """Hydrate remembered fields. Process tables stay empty."""
 
     at = _as_utc(logical_time)
     genesis = _genesis_evidence(genesis_event_id, genesis_payload_hash)
     facts = tuple(
-        _rebind_fact(raw, genesis_event_id=genesis_event_id, genesis=genesis)
+        _rebind_fact(raw, genesis_event_id=genesis_event_id, genesis=genesis,
+                     preserve_archive_binding=(snapshot.continuity_version == "epoch-continuity.1"
+                                               and legacy_fact_binding == "archive"))
         for raw in snapshot.facts
     )
     fact_transitions = tuple(

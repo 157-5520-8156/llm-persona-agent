@@ -30,7 +30,7 @@ def test_a_routine_window_cannot_become_a_lived_moment() -> None:
 
     materials = snapshot.model_view()["materials"]
 
-    assert "图书馆看书" in str(materials["routine_background"])
+    assert "课程或个人学习" in str(materials["routine_background"])
     assert "lived_moment" not in materials
 
 

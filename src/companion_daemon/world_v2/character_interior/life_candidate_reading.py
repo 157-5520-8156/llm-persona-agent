@@ -83,7 +83,7 @@ def _text_fields(value, path="", *, depth=0, drop_identifiers=False):
                                     drop_identifiers=drop_identifiers)
 
 
-def _candidate(raw, *, drop_identifier_fields=False):
+def _candidate(raw, *, drop_identifier_fields=False, drop_protocol_fields=False):
     if not isinstance(raw, str) or len(raw.encode()) > MAX_CANDIDATE_BYTES:
         raise ValueError("Life candidate exceeds its byte bound")
     value = json.loads(raw, object_pairs_hook=_unique)
@@ -100,7 +100,26 @@ def _candidate(raw, *, drop_identifier_fields=False):
         raise ValueError("Life reading requires exactly one complete Life proposal")
     # Do not curate known prose fields: new nested prose must enter the same
     # inventory. Null/numeric data remains in the full candidate for context.
-    fields = list(_text_fields(value, drop_identifiers=drop_identifier_fields))
+    fields = list(_text_fields(value, drop_identifiers=drop_identifier_fields and not drop_protocol_fields))
+    if drop_protocol_fields:
+        # These are the closed role-result envelope and capability identity,
+        # validated by the host, not narrative fields. New nested prose still
+        # enters the inventory; no topic, wording or semantic classifier here.
+        protocol_paths = {"/status", "/proposals/0/proposal_type", "/proposals/0/contract",
+                          "/proposals/0/capability_ref", "/proposals/0/payload/contract"}
+        reference_fields = {
+            "source_ref", "source_refs", "source_event_ref", "source_event_refs", "attended_source_refs",
+            "actor_ref", "owner_actor_ref", "counterpart_ref", "subject_ref", "participant_refs",
+            "plan_id", "activity_id", "thread_id", "experience_id", "candidate_id", "target_id",
+            "evidence_refs", "capability_ref", "proposal_id", "event_id", "transition_id",
+        }
+        def protocol_field(field):
+            tokens = field["path"].split("/")
+            leaf = tokens[-1]
+            parent = tokens[-2] if len(tokens) > 1 else ""
+            return (field["path"] in protocol_paths or leaf in reference_fields
+                    or (leaf.isdigit() and parent in reference_fields))
+        fields = [field for field in fields if not protocol_field(field)]
     if not fields or len(fields) > MAX_FIELDS:
         raise ValueError("Life candidate text inventory exceeds its bound")
     return value, fields

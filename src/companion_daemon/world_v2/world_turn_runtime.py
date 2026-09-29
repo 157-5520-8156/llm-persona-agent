@@ -216,6 +216,9 @@ class WorldTurnRuntime:
 
         return await self._runtime.drain_action(action_id)
 
+    async def memory_consolidation_next_due(self):
+        return await self._runtime.memory_consolidation_next_due()
+
     async def drain_background_once(
         self,
     ) -> (

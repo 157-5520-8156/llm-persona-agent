@@ -167,14 +167,31 @@ async def test_active_attempt_actual_author_review_settlement_and_life_reading(
         ledger.close()
     provider = _ResponseHTTP(text="我想把这件小事记在心里。")
     model = _model(provider)
+    # Unlike the private-only fixture, resumed setup includes a user reply.
+    # Give that authorized reply a real transport receipt before Life drains.
+    import test_world_stimulus_life_intent as shared
+    from test_production_turn_application import _DeliveredTransport
+    transport = _DeliveredTransport(received_at=due.logical_time)
+    monkeypatch.setattr(shared, '_NoExternalActions', lambda: transport)
     app = build_app(path, model, ecology=True)
     try:
-        await app.drain_background_once()
+        # The resumed fixture has a real inbound reply waiting for dispatch.
+        # The host drains actions before yielding capacity to background Life.
+        for _ in range(8):
+            await app.drain_actions_once()
+            await app.drain_background_once()
+            if app.export_replay_evidence().projection.experiences:
+                break
         evidence = app.export_replay_evidence()
         assert evidence.projection.semantic_hash == evidence.replay.semantic_hash
         (experience,) = evidence.projection.experiences
         assert experience.values.source_bindings[0].settlement.authority_event_ref == settlement_ref
-        assert len(provider.stimulus_requests) == 1
+        # A resumed fixture also has its delivered-reply stimulus. Require
+        # exactly one reading of this settlement, not one global worker call.
+        settlement_calls = [body for body in provider.stimulus_requests
+            if settlement_ref in json.loads(body['messages'][-1]['content'])[
+                'capability_manifest']['payload'].get('world_life_response', {}).get('source_event_refs', [])]
+        assert len(settlement_calls) == 1
     finally:
         await app.aclose()
         await model.aclose()
@@ -237,17 +254,25 @@ async def test_active_attempt_budget_backoff_technical_retry_no_op_and_obsolete_
     ledger = SQLiteWorldLedger(path=path, world_id=WORLD)
     store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD)
     try:
-        recovered_author = _SequenceModel(model="fixture:no-op", outputs=('{"decision":"no_op"}',))
+        recovered_author = _SequenceModel(model="fixture:no-op", outputs=(
+            '{"decision":"no_op"}', '{"decision":"no_op"}',
+        ))
         runtime = _author_runtime(ledger, store, recovered_author)
         due = _due_wake(ledger, "retry")
         result = await _advance(_ecology(ledger, runtime), due)
         assert result.life_development_followup_status == "no_op" and recovered_author.calls == 1
+        # Failure backoff yields one due slot to independent life work. That
+        # no-op does not consume the original attempt; its next slot must.
+        assert runtime.pending_active_attempt_ref() == source
+        due = _due_wake(ledger, "retry-after-independent-slot")
+        result = await _advance(_ecology(ledger, runtime), due)
+        assert result.life_development_followup_status == "no_op" and recovered_author.calls == 2
         assert runtime.pending_active_attempt_ref() is None
         assert not ledger.project().world_occurrences
-        assert (await _active(runtime, source, due)).status == "no_op" and recovered_author.calls == 1
+        assert (await _active(runtime, source, due)).status == "no_op" and recovered_author.calls == 2
         _operator_transition(ledger, plan.plan_id, "ActivityPaused", "event:pause-obsolete")
         assert (await _active(runtime, source, old_clock)).status == "no_op"
-        assert runtime.pending_active_attempt_ref() is None and recovered_author.calls == 1
+        assert runtime.pending_active_attempt_ref() is None and recovered_author.calls == 2
         evidence = ledger.export_replay_evidence()
         assert evidence.projection.semantic_hash == evidence.replay.semantic_hash
     finally:
@@ -366,5 +391,3 @@ async def test_active_attempt_retries_new_draft_after_orphaned_sidecars_and_rest
     finally:
         store.close()
         ledger.close()
-
-

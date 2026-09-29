@@ -28,9 +28,10 @@ from .audited_proposal_settlement import (
     AuditedChangeTerminalSettlement,
     find_terminal_audited_change,
 )
+from .dashboard_mechanism_activity import DashboardMechanismActivity, mechanism_activity, ZERO_NOTES
 from .dashboard_projection_adapter import DashboardRoomRouteCatalog, DashboardSceneRoute
 from .dashboard_life_intention import DashboardLifeIntention, read_dashboard_life_intention
-from .dashboard_world_occurrence import DashboardWorldOccurrenceReading, read_dashboard_world_occurrence
+from .dashboard_world_occurrence import DashboardWorldOccurrenceReading, read_dashboard_world_occurrence, experience_world_occurrence
 from .ledger import LedgerPort
 from .life_content_store import ImmutableLifeContentStore
 from .proposal_audit_schemas import ProposalAuditProjection
@@ -778,6 +779,7 @@ class DashboardMetric(FrozenModel):
     key: str
     label: str
     count: int = Field(ge=0)
+    count_note: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class DashboardLabeledValue(FrozenModel):
@@ -864,6 +866,7 @@ class DashboardRelationshipLifecycleData(FrozenModel):
 
 class DashboardOperationsData(FrozenModel):
     metrics: tuple[DashboardMetric, ...]
+    mechanisms: tuple[DashboardMechanismActivity, ...] = Field(default=(), exclude_if=lambda value: not value)
     highlights: tuple[DashboardEntitySummary, ...] = ()
     notices: tuple[DashboardNotice, ...] = ()
 
@@ -1260,12 +1263,23 @@ class DashboardHomeSnapshotModule:
         occurrences = sorted(projection.world_occurrences, key=lambda item: (
             item.settled_at or item.activated_at or datetime.min.replace(tzinfo=UTC), item.occurrence_id,
         ))[-_KIND_KEEP_DEFAULT:]
+        # Experiences can refer to an older settlement than the latest World
+        # cards. Read only the additional exact sources of displayed experiences.
+        experiences = sorted(projection.experiences, key=lambda item: (
+            getattr(getattr(item, 'values', item), 'occurred_to', None) or datetime.min.replace(tzinfo=UTC),
+            item.experience_id,
+        ))[-_KIND_KEEP_DEFAULT:]
+        occurrence_map = {item.occurrence_id: item for item in occurrences}
+        for experience in experiences:
+            source = experience_world_occurrence(projection, experience)
+            if source is not None:
+                occurrence_map[source.occurrence_id] = source
         world_readings = {
             item.occurrence_id: read_dashboard_world_occurrence(
                 ledger=self._ledger, store=self._life_content_store, projection=projection,
                 cursor=cursor, occurrence=item, actor_ref=self._life_actor_ref,
                 viewer_privacy_ceiling=self._life_privacy_ceiling,
-            ) for item in occurrences
+            ) for item in occurrence_map.values()
         } if self._life_content_store is not None and self._life_actor_ref else {}
         all_highlights = _overview_life_summaries(
             projection, intentions=intentions, plan_display_candidates=plans,
@@ -1306,7 +1320,11 @@ class DashboardHomeSnapshotModule:
         cursor: ProjectionCursor,
     ) -> DashboardRelationshipLifecycleSection:
         metrics = _relationship_metrics(projection)
-        all_highlights = _relationship_summaries(projection)
+        from .dashboard_pending_reading import read_thread_reason
+        visible_threads = sorted(projection.threads, key=lambda item: (item.updated_at, item.thread_id))[-_KIND_KEEP["thread"]:]
+        thread_reasons = {item.thread_id: read_thread_reason(
+            ledger=self._ledger, projection=projection, thread=item) for item in visible_threads}
+        all_highlights = _relationship_summaries(projection, thread_reasons=thread_reasons)
         highlights = _bounded_summaries(all_highlights)
         candidates = _relationship_terminal_candidates(projection)
         located: list[
@@ -1422,6 +1440,7 @@ class DashboardHomeSnapshotModule:
             coverage=_coverage(len(all_highlights), len(highlights)),
             data=DashboardOperationsData(
                 metrics=metrics,
+                mechanisms=mechanism_activity(projection),
                 highlights=highlights,
                 notices=notices,
             ),
@@ -1557,7 +1576,8 @@ def _metric(key: str, label: str, value: Sequence[object] | int | None) -> Dashb
         count = 0
     else:
         count = len(value)
-    return DashboardMetric(key=key, label=label, count=count)
+    return DashboardMetric(key=key, label=label, count=count,
+        count_note=ZERO_NOTES.get(key, '本世界当前投影没有此类记录；单凭零值无法判断是否启用。') if count == 0 else None)
 
 
 def _overview_life_metrics(projection: LedgerProjection) -> tuple[DashboardMetric, ...]:
@@ -1940,6 +1960,8 @@ def _overview_life_summaries(
             )
         )
     for item in projection.experiences:
+        source = experience_world_occurrence(projection, item)
+        reading = (world_readings or {}).get(source.occurrence_id) if source is not None else None
         values = getattr(item, "values", None)
         if values is None:
             occurred_at = item.occurred_to
@@ -1955,6 +1977,7 @@ def _overview_life_summaries(
                 kind_label="经历",
                 entity_id=item.experience_id,
                 title="一段经历",
+                detail=reading.text if reading is not None else None,
                 status=getattr(item, "status", None),
                 occurred_at=occurred_at,
                 privacy_class=privacy_class,
@@ -1964,14 +1987,14 @@ def _overview_life_summaries(
                         "参与者",
                         len(participant_refs),
                     ),
-                    *_experience_source_values(values),
+                    *_experience_source_values(values, reading=reading),
                 ),
             )
         )
     return tuple(summaries)
 
 
-def _experience_source_values(values) -> tuple[DashboardLabeledValue, ...]:
+def _experience_source_values(values, *, reading=None) -> tuple[DashboardLabeledValue, ...]:
     bindings = getattr(values, "source_bindings", ())
     if len(bindings) != 1:
         return ()
@@ -1985,7 +2008,14 @@ def _experience_source_values(values) -> tuple[DashboardLabeledValue, ...]:
         return ()
     result = [_value("source_kind", "经历来源", source.source_kind, labels[source.source_kind])]
     if source.source_kind in {"occurrence_settlement", "world_life_response"}:
-        result.append(_value("world_environment_status", "环境结果正文", "not_read", "未读取"))
+        status = reading.status if reading is not None else "not_read"
+        result.append(_value("world_environment_status", "环境结果正文", status, {
+            "read": "已读取", "not_read": "本次摘要未接入正文",
+            "not_settled": "尚未结算", "unavailable": "来源或正文不可用",
+            "withheld": "受可见范围限制",
+        }[status]))
+        if reading is not None and reading.truncated:
+            result.append(_value("world_environment_truncated", "正文范围", True, "已节选"))
     # Only this composite contains a response to this exact settlement. Nearby
     # appraisals or activities cannot fill in a missing response, including null.
     if isinstance(source, ExperienceWorldLifeResponseBinding):
@@ -2131,7 +2161,7 @@ def _facts_memory_inner_summaries(
 
 
 def _relationship_summaries(
-    projection: LedgerProjection,
+    projection: LedgerProjection, *, thread_reasons=None,
 ) -> tuple[DashboardEntitySummary, ...]:
     summaries: list[DashboardEntitySummary] = []
     for item in projection.npcs:
@@ -2258,10 +2288,17 @@ def _relationship_summaries(
                 kind_label="关系线程",
                 entity_id=item.thread_id,
                 title=_label(values.kind, _STATUS_LABELS),
+                detail=(thread_reasons or {}).get(item.thread_id),
                 status=values.status,
                 occurred_at=item.updated_at,
                 privacy_class=values.privacy_class,
-                values=(_value("importance_bp", "重要度", values.importance_bp),),
+                values=(
+                    _value("importance_bp", "重要度", values.importance_bp),
+                    _value("description_status", "事项说明", "read" if (thread_reasons or {}).get(item.thread_id) else "unavailable",
+                           "已读取角色留下此事项的说明" if (thread_reasons or {}).get(item.thread_id) else "未找到可核对的事项说明"),
+                    *((_value("due_at", "待处理时间", values.due_window.closes_at.isoformat(), _clock_label(values.due_window.closes_at)),) if values.due_window else ()),
+                    *((_value("expires_at", "有效期至", values.expires_at.isoformat(), _clock_label(values.expires_at)),) if values.expires_at else ()),
+                ),
             )
         )
     for item in projection.commitments:
@@ -2465,14 +2502,29 @@ def _operations_summaries(
                 ),
             )
         )
+    from .dashboard_expression_reading import read_dashboard_expression, expectation_display_status, window_display_status
     for item in projection.expression_plans:
+        reading = read_dashboard_expression(projection, item)
         summaries.append(
             _summary(
                 kind="expression_plan",
-                kind_label="说过的话",
+                kind_label="表达计划",
                 entity_id=item.plan_id,
-                title="对你说的话",
+                title="一组表达",
                 status=item.state,
+                detail=reading.text,
+                occurred_at=reading.occurred_at,
+                values=(
+                    _value("expression_body_status", "正文状态", reading.status, {
+                        "read": "已读取送达正文", "partial": "部分已送达正文",
+                        "not_delivered": "尚未送达，不展示待发表正文",
+                        "not_displayable": "受可见范围或载荷类型限制",
+                        "unavailable": "缺少匹配的表达来源",
+                    }[reading.status]),
+                    _value("beat_count", "表达段数", reading.beat_count),
+                    _value("delivered_count", "已送达段数", reading.delivered_count),
+                    _value("shown_count", "可展示段数", reading.shown_count),
+                ),
             )
         )
     for item in projection.expression_plan_manifests:
@@ -2481,10 +2533,10 @@ def _operations_summaries(
             summaries.append(
                 _summary(
                     kind="response_expectation",
-                    kind_label="她在等",
+                    kind_label="回应期待",
                     entity_id=item.plan_id,
                     title=_short_text(expectation.hoped_response) or "等你回一句",
-                    status="open",
+                    status=expectation_display_status(projection, item),
                     occurred_at=expectation.not_before,
                     values=(
                         _value(
@@ -2508,10 +2560,10 @@ def _operations_summaries(
             summaries.append(
                 _summary(
                     kind="revisit_intention",
-                    kind_label="她还惦记",
+                    kind_label="再次考虑安排",
                     entity_id=item.plan_id,
                     title=_short_text(leftover.thought) or "还想再回来想这件事",
-                    status="open",
+                    status=window_display_status(projection.logical_time, leftover),
                     occurred_at=leftover.not_before,
                     values=(
                         _value(

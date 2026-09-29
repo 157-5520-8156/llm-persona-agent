@@ -383,6 +383,9 @@ class Settings(BaseSettings):
     world_v2_http_database_path: Path | None = Field(
         default=None, alias="WORLD_V2_HTTP_DATABASE_PATH"
     )
+    world_v2_prehistory_package_path: Path | None = Field(
+        default=None, alias="WORLD_V2_PREHISTORY_PACKAGE_PATH"
+    )
     attachment_cache_path: Path = Field(
         default=Path("data/attachments"), alias="ATTACHMENT_CACHE_PATH"
     )
@@ -537,20 +540,28 @@ class Settings(BaseSettings):
             "on visible chat; Life owns its independent review topology separately."
         ),
     )
-    world_v2_visible_expression_profile: Literal["compact", "whole_v3_review_v6", "whole_v3_review_v7", "whole_v3_review_v8", "experimental_independent_v21", "experimental_independent_v22", "experimental_independent_v23"] = Field(
+    world_v2_ordinary_text_review_mode: Literal["blocking", "sampled"] = Field(
+        default="blocking", alias="WORLD_V2_ORDINARY_TEXT_REVIEW_MODE",
+        description="Explicit ordinary inbound text policy; sampled records provenance without a synchronous semantic verdict. Other actions retain review.",
+    )
+    world_v2_text_review_sample_every: int = Field(default=10, ge=1, le=1000, alias="WORLD_V2_TEXT_REVIEW_SAMPLE_EVERY")
+    world_v2_visible_expression_profile: Literal["compact", "whole_v3_review_v6", "whole_v3_review_v7", "whole_v3_review_v8", "experimental_independent_v21", "experimental_independent_v22", "experimental_independent_v23", "grounded_review_v24", "grounded_review_v25"] = Field(
         default="compact",
         alias="WORLD_V2_VISIBLE_EXPRESSION_PROFILE",
         description=(
             "Explicit QQ expression composition. whole_v3_review_v6/v7/v8 installs the "
             "whole author v3 and full source reviewer v6 with metered, owned providers; "
-            "requires expression episode mode off. experimental_independent_v21/v22/v23 installs "
-            "the corresponding independently metered readers/source route. Selection is not release qualification."
+            "experimental_independent_v21/v22/v23 installs the corresponding independently "
+            "metered readers/source route. grounded_review_v24 installs the historical one-call "
+            "grounded review; grounded_review_v25 keeps its receipt history and removes direct "
+            "personal-action authority from lifecycle-only fields. Reviewed profiles require "
+            "expression episode mode off. Selection is not release qualification."
         ),
     )
     world_v2_visible_source_review_model: str = Field(
         default="deepseek-v4-pro", min_length=1,
         alias="WORLD_V2_VISIBLE_SOURCE_REVIEW_MODEL",
-        description="Source adjudicator only for experimental_independent_v21/v22/v23; never changes the character route.",
+        description="Separate visible-source reviewer model for reviewed profiles; never changes the character author route.",
     )
     world_v2_life_candidate_review_enabled: bool = Field(
         default=False, alias="WORLD_V2_LIFE_CANDIDATE_REVIEW_ENABLED",
@@ -772,6 +783,10 @@ class Settings(BaseSettings):
     world_v2_monthly_cost_target_cny: float = Field(
         default=100.0, gt=0, allow_inf_nan=False, alias="WORLD_V2_MONTHLY_COST_TARGET_CNY",
         description="Instance API cost design target for forecasts, distinct from hard spend caps.",
+    )
+    world_v2_reference_wire_enabled: bool = Field(
+        default=False, alias="WORLD_V2_REFERENCE_WIRE_ENABLED",
+        description="Lossless dictionary for repeated opaque background-role references.",
     )
     monthly_budget_cny: float = Field(default=80.0, alias="MONTHLY_BUDGET_CNY")
     daily_budget_cny: float = Field(default=3.0, alias="DAILY_BUDGET_CNY")

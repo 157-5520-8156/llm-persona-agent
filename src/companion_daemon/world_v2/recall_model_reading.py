@@ -9,11 +9,16 @@ if TYPE_CHECKING:
     from .recall_index import RecallDocument
 
 
-RECALL_INDEX_POLICY_VERSION = "world-v2-recall-index.hybrid.9"
+RECALL_INDEX_POLICY_VERSION = "world-v2-recall-index.hybrid.11"
 _ATTRIBUTED_READING_POLICIES = frozenset({
     "world-v2-recall-index.hybrid.8", "world-v2-recall-index.hybrid.9",
+    "world-v2-recall-index.hybrid.10", "world-v2-recall-index.hybrid.11",
 })
-_FACT_READING_POLICIES = frozenset({"world-v2-recall-index.hybrid.9"})
+_FACT_READING_POLICIES = frozenset({"world-v2-recall-index.hybrid.9", "world-v2-recall-index.hybrid.10", "world-v2-recall-index.hybrid.11"})
+
+
+def supports_life_reading(index_version: str) -> bool:
+    return index_version.partition("+embedding:")[0] in {"world-v2-recall-index.hybrid.10", "world-v2-recall-index.hybrid.11"}
 
 
 def supports_fact_reading(index_version: str) -> bool:
@@ -34,6 +39,7 @@ def interior_recall_item(
 ) -> dict[str, object]:
     attributed = _includes_attribution(index_version)
     fact = document.accepted_fact if supports_fact_reading(index_version) else None
+    life = document.settled_life if supports_life_reading(index_version) else None
     accepted_value = None
     fact_metadata: dict[str, object] = {}
     if fact is not None:
@@ -59,6 +65,7 @@ def interior_recall_item(
         "source_ref": (
             fact.accepted_fact_event_ref
             if fact is not None and fact.status == "historical"
+            else life.occurrence_id if life is not None
             else document.source_item_ref
         ),
         "memory_kind": document.memory_kind,
@@ -75,4 +82,11 @@ def interior_recall_item(
         **({"prehistory": document.prehistory.model_dump(mode="json")}
            if document.prehistory is not None else {}),
         **({"accepted_fact": fact_metadata} if fact is not None else {}),
+        **({"source_window_start": document.source_window_start}
+           if document.source_window_start is not None and index_version.partition("+embedding:")[0] == "world-v2-recall-index.hybrid.11" else {}),
+        **({"settled_life": {
+            "settled_at": life.settled_at.isoformat(),
+            "world_consequence": life.content.world_consequence.model_dump(mode="json"),
+        }}
+           if life is not None else {}),
     }

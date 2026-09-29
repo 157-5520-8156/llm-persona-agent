@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 import asyncio
 import json
 from pathlib import Path
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -818,6 +819,43 @@ async def test_semantic_endpoint_commits_a_likely_complete_single_bubble_after_1
         # itself remains the independently asserted 100ms below.
         assert clock["now"] <= NOW + timedelta(milliseconds=200)
         assert host.text_endpoint_health()["last_schedule"]["wait_ms"] == 100  # type: ignore[index]
+    finally:
+        await host.aclose()
+
+
+@pytest.mark.asyncio
+async def test_slow_endpoint_prediction_runs_alongside_the_quiet_gap() -> None:
+    class SlowEndpoint:
+        model = "fixture:slow-semantic-endpoint"
+
+        async def predict(self, evidence):  # type: ignore[no-untyped-def]
+            del evidence
+            await asyncio.sleep(0.35)
+            return SemanticEndpointPrediction(
+                continuation_probability_bp=500,
+                confidence_bp=8_000,
+                evidence_summary="completed after the bounded first-pass wait",
+                model_id=self.model,
+            )
+
+    world = _WorldHost()
+    host = QQC2CHost(
+        host=world,  # type: ignore[arg-type]
+        recipient_id="10001",
+        canonical_user_id="geoff",
+        ingress_store=MemoryQQIngressStore(catalog=_catalog_with_window(100)),
+        endpoint_controller=TextTurnEndpointController(model=SlowEndpoint()),
+    )
+    started = time.perf_counter()
+    try:
+        result = await host.inbound_fragment(
+            _text("message:endpoint-slow", "早", observed_at=NOW)
+        )
+        elapsed = time.perf_counter() - started
+
+        assert result.status == "observed_only"
+        assert elapsed < 0.30
+        assert host.text_endpoint_health()["prediction_in_flight"] is True  # type: ignore[index]
     finally:
         await host.aclose()
 

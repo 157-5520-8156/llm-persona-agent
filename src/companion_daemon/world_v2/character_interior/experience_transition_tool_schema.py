@@ -15,6 +15,7 @@ def specialize_experience_transition_schema(
     *,
     capability_payload: object,
     source_tokens: tuple[tuple[str, str], ...],
+    native_branches: bool = False,
 ) -> dict[str, object]:
     capability = ExperienceTransitionCapability.model_validate_json(
         json.dumps(capability_payload, ensure_ascii=False)
@@ -56,6 +57,9 @@ def specialize_experience_transition_schema(
             "minItems": len(sources),
             "maxItems": len(sources),
         }
+        if native_branches:
+            result["items"] = {"type": "string", "enum": [token for ref in sources for token in aliases(ref)]}
+            result["description"] = "Include each required source exactly once: the current stimulus and the selected head authority, if any."
         heads = [ref for ref in sources if ref != capability.current_source_ref]
         if heads:
             assert len(heads) == 1
@@ -136,6 +140,48 @@ def specialize_experience_transition_schema(
         # third reference or alias of an already chosen authority can enter.
         value["properties"]["source_refs"]["contains"] = {"enum": aliases(current)}
         value["properties"]["source_refs"]["uniqueItems"] = True
-        value["allOf"] = [{"anyOf": choices}]
-        branches.append(value)
+        if not native_branches:
+            value["allOf"] = [{"anyOf": choices}]
+            branches.append(value)
+            continue
+        # DeepSeek removes allOf. Materialize complete alternative objects
+        # before strict projection, so operation/head constraints survive.
+        # This describes the existing canonical grammar, never a preferred act.
+        for choice in choices:
+            operation = choice["properties"].get("operation", {})
+            operations = operation.get("enum", [operation.get("const")])
+            for selected_operation in operations:
+                complete = deepcopy(value)
+                properties = complete["properties"]
+                for name, binding in choice["properties"].items():
+                    if name == "source_refs":
+                        properties[name].update(deepcopy(binding))
+                    elif "const" in binding:
+                        selected = binding["const"]
+                        properties[name] = {"type": "null"} if selected is None else {
+                            "type": "integer" if isinstance(selected, int) else "string", "const": selected,
+                        }
+                properties["operation"] = {"type": "string", "const": selected_operation}
+                required = list(dict.fromkeys([*complete.get("required", []), *choice["properties"]]))
+                if domain == "thread":
+                    null_fields = {
+                        "open": ("resolution_kind", "cancellation_reason_code"),
+                        "update": ("thread_kind", "resolution_kind", "cancellation_reason_code"),
+                        "resolve": ("thread_kind", "importance_bp", "due_at", "expires_at", "cancellation_reason_code"),
+                        "cancel": ("thread_kind", "importance_bp", "due_at", "expires_at", "resolution_kind"),
+                    }[selected_operation]
+                    nonnull_fields = {
+                        "open": ("thread_kind", "importance_bp"),
+                        "update": ("importance_bp",),
+                        "resolve": ("resolution_kind",),
+                        "cancel": ("cancellation_reason_code",),
+                    }[selected_operation]
+                    for name in null_fields:
+                        properties[name] = {"type": "null"}
+                    for name in nonnull_fields:
+                        options = [part for part in properties[name].get("anyOf", [properties[name]]) if part.get("type") != "null"]
+                        properties[name] = options[0] if len(options) == 1 else {"anyOf": options}
+                    required = list(dict.fromkeys([*required, *null_fields, *nonnull_fields]))
+                complete["required"] = required
+                branches.append(complete)
     return {"anyOf": [*branches, {"type": "null"}]} if branches else {"type": "null"}

@@ -12,6 +12,7 @@ from companion_daemon.world_v2.visible_independent_review_runtime import Indepen
 
 
 EXPERIMENTAL_PROFILES = ("experimental_independent_v21", "experimental_independent_v22", "experimental_independent_v23")
+GROUNDED_PROFILES = ("grounded_review_v24", "grounded_review_v25")
 
 
 def settings(tmp_path, **overrides):
@@ -25,7 +26,7 @@ def settings(tmp_path, **overrides):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("profile", [None, "whole_v3_review_v6", "whole_v3_review_v7", "whole_v3_review_v8", *EXPERIMENTAL_PROFILES])
+@pytest.mark.parametrize("profile", [None, "whole_v3_review_v6", "whole_v3_review_v7", "whole_v3_review_v8", *EXPERIMENTAL_PROFILES, *GROUNDED_PROFILES])
 async def test_onebot_explicit_release_profile_owns_metered_whole_reviewer(tmp_path, monkeypatch, profile):
     async def forbidden(*args, **kwargs):
         pytest.fail("composition check must not send HTTP")
@@ -42,7 +43,9 @@ async def test_onebot_explicit_release_profile_owns_metered_whole_reviewer(tmp_p
     semantic = host._semantic_chat
     try:
         assert captured["visible_source_review_required"] is bool(profile)
-        assert captured["visible_author_tool_version"] == ("3" if profile else "1")
+        assert captured["visible_author_tool_version"] == (
+            "slim" if profile == "grounded_review_v25" else "3" if profile else "1"
+        )
         assert captured["visible_source_review_version"] == (profile.rsplit("_v", 1)[1] if profile else "1")
         assert captured["usage_observer"] is not None
         reviewer = semantic.source_closure_model
@@ -57,6 +60,13 @@ async def test_onebot_explicit_release_profile_owns_metered_whole_reviewer(tmp_p
             assert all(client in semantic._owned_models and not client.thinking_enabled for client in clients)
             assert all(client.usage_observer is captured["usage_observer"] for client in clients)
             assert not semantic._owned_finalizers
+        elif profile in GROUNDED_PROFILES:
+            from companion_daemon.world_v2.visible_independent_review_configuration import GroundedVisibleReviewer
+            assert isinstance(reviewer, GroundedVisibleReviewer)
+            assert reviewer.source_model in semantic._owned_models
+            assert reviewer.source_model.model == "deepseek-v4-pro"
+            assert reviewer.source_model.usage_observer is captured["usage_observer"]
+            assert not reviewer.source_model.thinking_enabled
         elif profile:
             assert reviewer is not None and reviewer in semantic._owned_models
             assert reviewer is not semantic.world_support_model
@@ -69,7 +79,7 @@ async def test_onebot_explicit_release_profile_owns_metered_whole_reviewer(tmp_p
     assert semantic._models_closed
 
 
-@pytest.mark.parametrize("profile", ["whole_v3_review_v6", "whole_v3_review_v7", "whole_v3_review_v8", *EXPERIMENTAL_PROFILES])
+@pytest.mark.parametrize("profile", ["whole_v3_review_v6", "whole_v3_review_v7", "whole_v3_review_v8", *EXPERIMENTAL_PROFILES, *GROUNDED_PROFILES])
 @pytest.mark.parametrize("mode", ["shadow", "stream"])
 def test_release_profile_refuses_nonatomic_expression_before_database_creation(tmp_path, mode, profile):
     with pytest.raises(ValueError, match="atomic expression"):

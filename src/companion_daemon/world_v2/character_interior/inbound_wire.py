@@ -1350,6 +1350,7 @@ def _provider_invocation_identity(
     tools: list[dict[str, object]] | None = None,
     tool_choice: object | None = None,
     tool_contract_identity: dict[str, str] | None = None,
+    reference_bindings: dict | None = None,
 ) -> _ProviderInvocationIdentity:
     """Bind one adapter sub-call to the exact payload supplied to its provider."""
 
@@ -1359,9 +1360,9 @@ def _provider_invocation_identity(
         tools=tools,
         tool_choice=tool_choice,
         identity_extras=(
-            {"tool_contract_identity": tool_contract_identity}
-            if tool_contract_identity is not None
-            else None
+            {**({"tool_contract_identity": tool_contract_identity} if tool_contract_identity is not None else {}),
+             **({"reference_bindings": reference_bindings} if reference_bindings is not None else {})}
+            if tool_contract_identity is not None or reference_bindings is not None else None
         ),
     )
     return _ProviderInvocationIdentity(

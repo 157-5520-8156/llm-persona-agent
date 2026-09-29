@@ -22,13 +22,13 @@ from companion_daemon.world_v2.schemas import WorldEvent
 
 def brief_from_database(*, database, profile_path, world_id, actor_ref, born_at, author_ref, source_ref):
     """Read original start and accepted archives through SQLite's read-only URI."""
-    starts, archives, records = [], {}, {}
+    starts, archives, records, chronologies = [], {}, {}, []
     uri = Path(database).resolve().as_uri() + "?mode=ro"
     with sqlite3.connect(uri, uri=True) as db:
         rows = db.execute(
             "SELECT event_json,event_hash FROM world_v2_events WHERE world_id=? "
             "AND json_extract(event_json,'$.event_type') IN "
-            "('WorldStarted','CharacterPrehistoryArchiveAccepted','CharacterPrehistoryRecordImported') "
+            "('WorldStarted','BiographicalTimelineConfigured','CharacterPrehistoryArchiveAccepted','CharacterPrehistoryRecordImported') "
             "ORDER BY ledger_sequence", (world_id,),
         )
         for raw, event_hash in rows:
@@ -39,6 +39,9 @@ def brief_from_database(*, database, profile_path, world_id, actor_ref, born_at,
                 raise ValueError("event differs from selected World")
             if event.event_type == "WorldStarted":
                 starts.append((event, event_hash))
+            elif event.event_type == "BiographicalTimelineConfigured":
+                chronologies.append({"event_ref": event.event_id, "event_hash": event_hash,
+                                     "payload": json.loads(event.payload_json)})
             elif event.event_type == "CharacterPrehistoryArchiveAccepted":
                 archive = PrehistoryArchiveAcceptedPayload.model_validate_json(event.payload_json)
                 if archive.manifest.actor_ref == actor_ref:
@@ -67,6 +70,9 @@ def brief_from_database(*, database, profile_path, world_id, actor_ref, born_at,
         "name", "identity", "appearance", "background", "canonical_facts",
         "personality", "values", "daily_life",
     })
+    # Dates such as university enrollment are authoritative World configuration,
+    # not recoverable from a prose persona alone. Bind them into creation/review.
+    historical_profile["accepted_biographical_chronology"] = chronologies
     return PrehistoryAuthoringBrief(
         world_id=world_id, actor_ref=actor_ref, world_started_at=start.logical_time,
         world_start_event_ref=start.event_id, world_start_event_hash=start_hash,

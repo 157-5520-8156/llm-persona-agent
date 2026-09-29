@@ -68,7 +68,12 @@ def verify_original_capability(*, requirement, lineage, author_request_json):
     carrier = json.loads(author_request_json)
     if carrier["contract"] != "visible-source-proactive-author-request.1":
         raise ValueError("proactive review requires the proactive author body contract")
-    user = json.loads(carrier["messages"][1]["content"])
+    from .reference_wire import expand_reference_view
+
+    user = expand_reference_view(
+        json.loads(carrier["messages"][1]["content"]),
+        (carrier["identity_extras"] or {}).get("reference_bindings"),
+    )
     manifest = user["capability_manifest"]
     payload = manifest["payload"]
     if REQUIREMENT_KEY in payload or payload.get("contract") != CAPABILITY_CONTRACT:

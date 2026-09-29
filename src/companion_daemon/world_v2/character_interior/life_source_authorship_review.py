@@ -26,8 +26,13 @@ CONTRACT = 'life-source-review.13'
 # coverage and exact-value obligations, only a smaller wire.
 LEAN_CONTRACT = 'life-source-review.15'
 COMPACT_CONTRACT = 'life-source-review.16'
+INTENT_CONTRACT = 'life-source-review.17'
+NATIVE_REPAIR_CONTRACT = 'life-source-review.18'
+STATE_ALIGNMENT_CONTRACT = 'life-source-review.19'
+RUNTIME_READING_CONTRACT = 'life-source-review.20'
+COMPACT_RUNTIME_CONTRACT = 'life-source-review.21'
 EXACT_VALUE_CONTRACTS = {EXACT_VALUE_CONTRACT, BOUND_PERMISSION_CONTRACT, CONTRACT, CLAIM_AUTHORITY_CONTRACT,
-    LEAN_CONTRACT, COMPACT_CONTRACT}
+    LEAN_CONTRACT, COMPACT_CONTRACT, INTENT_CONTRACT, NATIVE_REPAIR_CONTRACT, STATE_ALIGNMENT_CONTRACT, RUNTIME_READING_CONTRACT, COMPACT_RUNTIME_CONTRACT}
 TEMPORAL_CONTRACTS = {TEMPORAL_CONTRACT, COVERAGE_CONTRACT, PERMISSION_CONTRACT, *EXACT_VALUE_CONTRACTS}
 COVERAGE_CONTRACTS = {COVERAGE_CONTRACT, PERMISSION_CONTRACT, *EXACT_VALUE_CONTRACTS}
 
@@ -262,9 +267,10 @@ def inspect(*, raw, prepared_json, validate_support, validate_claim=None):
     if not isinstance(raw, str) or len(raw.encode()) > 64_000:
         raise ValueError('Life review response exceeds its audit bound')
     response = json.loads(raw, object_pairs_hook=_unique)
-    request = json.loads(prepared_json)['request']
+    prepared = json.loads(prepared_json)
+    request = prepared['request']
     packet = json.loads(request['messages'][1]['content'])
-    Draft202012Validator(request['tools'][0]['function']['parameters']).validate(response)
+    Draft202012Validator(prepared.get('validation_schema', request['tools'][0]['function']['parameters'])).validate(response)
     texts = {field['path']: field['text'] for field in packet['text_fields']}
     paths = [field['path'] for field in response['fields']]
     if len(paths) != len(set(paths)) or set(paths) != set(texts):

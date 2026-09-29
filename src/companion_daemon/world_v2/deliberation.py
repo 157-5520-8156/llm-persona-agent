@@ -2309,7 +2309,9 @@ class Deliberation:
             from .visible_source_runtime import compile_requirement
             protocol_reader = getattr(self._main, "visible_review_protocol", None)
             protocol = protocol_reader() if callable(protocol_reader) else None
-            model_input = model_input.model_copy(update={"visible_source_requirement_json": compile_requirement(request=model_input, capsule=trusted, review_protocol=protocol)})
+            mode_reader = getattr(self._main, "ordinary_text_review_mode", None)
+            mode = mode_reader() if callable(mode_reader) else "blocking"
+            model_input = model_input.model_copy(update={"visible_source_requirement_json": compile_requirement(request=model_input, capsule=trusted, review_protocol=protocol, ordinary_text_review_mode=mode)})
         request_hash = _digest(model_input.model_dump(mode="json"))
         if budget is not None:
             return await self._deliberate_first_valid(

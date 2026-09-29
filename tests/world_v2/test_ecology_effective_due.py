@@ -30,6 +30,7 @@ def test_owner_ecology_peek_supersedes_an_older_projected_cadence(effective_due)
         "life.ecology": effective_due,
         "social.initiative.cadence": None,
         "private_impression.interval": None,
+            "memory.candidate_consolidation": None,
     })
     assert [item.due_at for item in dues if item.kind == "life.ecology"] == (
         [] if effective_due is None else [effective_due]
@@ -49,6 +50,7 @@ def test_ecology_peek_does_not_suppress_another_owners_exact_due():
         "life.ecology": NOW + timedelta(hours=1),
         "social.initiative.cadence": None,
         "private_impression.interval": None,
+            "memory.candidate_consolidation": None,
     })
     selected = select_clock_wake(
         after=NOW, through=NOW + timedelta(minutes=5), dues=dues,

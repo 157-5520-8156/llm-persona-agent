@@ -1,4 +1,6 @@
-"""A completed owned activity can offer thought, never dictate the next act."""
+"""A terminal owned activity can offer thought, never dictate the next act."""
+
+from typing import Literal
 
 from pydantic import Field
 
@@ -6,6 +8,9 @@ from .schema_core import FrozenModel
 
 
 class ActivityCompletionSource(FrozenModel):
+    terminal_kind: Literal["completed", "abandoned"] = Field(
+        default="completed", exclude_if=lambda value: value == "completed",
+    )
     event_ref: str = Field(min_length=1)
     world_revision: int = Field(ge=1)
     payload_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -20,13 +25,13 @@ def validate_completion_source(state, source, *, actor_ref, cursor_revision):
     event = next((x for x in state.committed_world_event_refs if x.event_id == source.event_ref), None)
     plan = next((x for x in state.plans if x.plan_id == source.plan_id), None)
     if event is None or plan is None or any((
-        event.event_type != "ActivityCompleted",
+        event.event_type != {"completed": "ActivityCompleted", "abandoned": "ActivityAbandoned"}[source.terminal_kind],
         event.world_revision != source.world_revision,
         event.payload_hash != source.payload_hash,
         event.world_revision > cursor_revision,
         plan.owner_actor_ref != actor_ref,
         plan.entity_revision != source.plan_revision,
-        plan.status != "completed",
+        plan.status != source.terminal_kind,
         plan.authority_origin is None,
     )):
         raise ValueError("activity_continuation.completion_authority_invalid")
@@ -38,11 +43,12 @@ def validate_completion_source(state, source, *, actor_ref, cursor_revision):
     return event
 
 
-def latest_completion_source(state, *, actor_ref):
-    """Offer only the latest owned completion, without reviving an old backlog."""
+def latest_completion_source(state, *, actor_ref, include_abandoned=False):
+    """Offer the latest terminal activity; legacy callers keep completion-only semantics."""
+    terminal_statuses = {"completed", "abandoned"} if include_abandoned else {"completed"}
     candidates = [
         plan for plan in state.plans
-        if plan.owner_actor_ref == actor_ref and plan.status == "completed"
+        if plan.owner_actor_ref == actor_ref and plan.status in terminal_statuses
         and plan.authority_origin is not None
     ]
     if not candidates:
@@ -58,6 +64,7 @@ def latest_completion_source(state, *, actor_ref):
     ):
         return None
     source = ActivityCompletionSource(
+        terminal_kind=plan.status,
         event_ref=origin.accepted_event_ref,
         world_revision=origin.accepted_world_revision,
         payload_hash=origin.accepted_payload_hash,

@@ -39,7 +39,7 @@ class LifeSourceView(FrozenModel):
     write_authority: Literal[False] = False
     semantic_coverage: Literal["not_assessed"] = "not_assessed"
     source_permission_coverage: Literal["not_assessed"] = "not_assessed"
-    review_contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8', 'life-source-review.9', 'life-source-review.10', 'life-source-review.11', 'life-source-review.12', 'life-source-review.13', 'life-source-review.14', 'life-source-review.15', 'life-source-review.16'] | None = Field(default=None, exclude_if=lambda value: value is None)
+    review_contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8', 'life-source-review.9', 'life-source-review.10', 'life-source-review.11', 'life-source-review.12', 'life-source-review.13', 'life-source-review.14', 'life-source-review.15', 'life-source-review.16', 'life-source-review.17', 'life-source-review.18', 'life-source-review.19', 'life-source-review.20', 'life-source-review.21'] | None = Field(default=None, exclude_if=lambda value: value is None)
     snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     capsule_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     request_binding_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -75,7 +75,7 @@ class LifeSourceView(FrozenModel):
             raise ValueError("Life source view lacks complete provider request controls")
         if checked.provider_request_hash != "sha256:" + provider_invocation_request_hash(messages=messages, **controls):
             raise ValueError("Life source view differs from the actual provider request hash")
-        payload = _payload(messages)
+        payload = _payload(messages, controls)
         from .life_source_state_readings import STATE_REVIEW_CONTRACTS, life_source_profile
 
         profile = life_source_profile(checked.review_contract)
@@ -100,17 +100,24 @@ class LifeSourceView(FrozenModel):
             "purpose": request.purpose, "context_note": request.context_note,
             "subject_source_refs": list(request.subject_source_refs),
         }
-        if (_payload(json.loads(checked.messages_json))["inner_turn"] != expected_turn
+        if (_payload(json.loads(checked.messages_json), json.loads(checked.provider_controls_json))["inner_turn"] != expected_turn
             or checked.request_binding_sha256 != digest(canonical(request.model_dump(mode="json")))):
             raise ValueError("Life source view belongs to another role request or correction")
         return checked
 
+    def author_payload(self) -> dict:
+        """Read the original displayed values using its pinned local bindings."""
+        return _payload(json.loads(self.messages_json), json.loads(self.provider_controls_json))
 
-def _payload(messages):
+
+def _payload(messages, controls=None):
     if (not isinstance(messages, list) or len(messages) != 2
         or [m.get("role") for m in messages] != ["system", "user"]):
         raise ValueError("Life source view requires the complete original role messages")
-    value = json.loads(messages[1]["content"])
+    from ..reference_wire import expand_reference_view
+
+    extras = (controls or {}).get("identity_extras") or {}
+    value = expand_reference_view(json.loads(messages[1]["content"]), extras.get("reference_bindings"))
     if not isinstance(value, dict) or value.get("inner_turn", {}).get("purpose") != "world_stimulus_appraisal":
         raise ValueError("Life source view requires its original Life author purpose")
     return value
@@ -140,6 +147,6 @@ def prepare_life_source_view(*, request, messages, provider_controls: dict, prov
         provider_request_hash=provider_request_hash,
         messages_json=canonical(messages), provider_controls_json=canonical(provider_controls),
         source_table_json=table.payload_json,
-        unmatched_visible_source_refs=_unmatched(_payload(messages), table.as_dict()),
+        unmatched_visible_source_refs=_unmatched(_payload(messages, provider_controls), table.as_dict()),
     )
     return prepared.verify_request(request)

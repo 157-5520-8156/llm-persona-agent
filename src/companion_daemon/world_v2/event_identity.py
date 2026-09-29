@@ -701,6 +701,7 @@ def _life_identity_components(
             "life_reflection",
             "social_action_deliberation",
             "memory_candidate_review",
+            "memory_consolidation_review",
             "expression_episode",
         }:
             attempts = process.get("attempt_ids")

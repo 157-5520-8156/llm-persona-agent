@@ -36,18 +36,42 @@ def _cursor(projection):
 
 
 class DayOpenLifeWorker:
-    def __init__(self, *, ledger, interior, actor_ref, daily, spends, timezone):
+    def __init__(self, *, ledger, interior, actor_ref, daily, spends, timezone, plan_material_reader=None):
         self.ledger, self.interior, self.actor_ref = ledger, interior, actor_ref
         self.daily, self.spends, self.timezone = daily, spends, timezone
         self.store = day_open_store_for_ledger(ledger)
+        self.plan_material_reader = plan_material_reader
+
+    def _prior_intention_note(self, source):
+        if source is None or self.plan_material_reader is None:
+            return ""
+        try:
+            material = self.plan_material_reader.read_for_plan(plan_id=source.plan_id)
+            text = getattr(material, "character_intention", None)
+        except (ValueError, TypeError, KeyError):
+            return ""
+        if not isinstance(text, str) or not text.strip():
+            return ""
+        if len(text) > 480:
+            return "The previous intention is available via its Plan source; it exceeds this short note's budget. "
+        return (
+            "Previous accepted intention, historical data only (not a current obligation or proof of execution): "
+            + "\n" + text + "\n"
+        )
 
     def pending(self):
-        return next((x for x in self.store.records(self.actor_ref) if not x.terminal), None)
+        from .day_open_opportunity import waiting_reconsiderations
 
-    def _opportunity(self, *, projection, wake_event_ref, catalog, previous=None, completion_source=None):
+        records = self.store.records(self.actor_ref)
+        return next((x for x in records if not x.terminal), None) or min(
+            waiting_reconsiderations(records), key=lambda x: x.reconsider_at, default=None,
+        )
+
+    def _opportunity(self, *, projection, wake_event_ref, catalog, previous=None, completion_source=None, reconsideration_ref=None):
         from .day_open_life_intent_contract import day_open_opportunity_ref
 
-        if catalog.status != "no_openings":
+        reconsideration_ref = previous.reconsideration_ref if previous else reconsideration_ref
+        if catalog.status not in {"no_openings", "openings_available"} or (catalog.status != "no_openings" and reconsideration_ref is None):
             raise ValueError("day_open.catalog_not_empty")
         wake = next(
             (x for x in projection.committed_world_event_refs if x.event_id == wake_event_ref), None
@@ -76,6 +100,7 @@ class DayOpenLifeWorker:
             day_key=day,
             first_clock_ref=first["first_clock_ref"],
             completion_source=completion_source,
+            reconsideration_ref=reconsideration_ref,
         )
         sources = tuple(sorted({first["first_clock_ref"], wake.event_id} | (
             {completion_source.event_ref} if completion_source is not None else set()
@@ -86,15 +111,14 @@ class DayOpenLifeWorker:
             purpose="activity_lifecycle_choice",
         ).identity_for_refs(sources, epoch=f"{day_ref}:attempt:{ordinal}")
         payload = {
-            "contract": ("character-interior-activity-lifecycle-capability.4"
-                         if completion_source else "character-interior-activity-lifecycle-capability.3"),
+            "contract": "character-interior-activity-lifecycle-capability.5",
             "catalog_version": catalog.catalog_version,
             "catalog_hash": catalog.catalog_hash,
             "offered_tokens": [],
             "openings": [],
             "self_directed_intent": {
-                "contract": ("day-open-life-intent-capability.2"
-                             if completion_source else "day-open-life-intent-capability.1"),
+                "contract": "day-open-life-intent-capability.3",
+                **({"reconsideration_ref": reconsideration_ref} if reconsideration_ref else {}),
                 **({"completion_source": completion_source.model_dump(mode="json")}
                    if completion_source else {}),
                 "execution_scope": "self_directed",
@@ -135,16 +159,21 @@ class DayOpenLifeWorker:
             purpose="activity_lifecycle_choice",
             source_refs=sources,
             capability_manifest=manifest,
-            occasion=(mint_life_beat if completion_source else mint_day_open)(
+            occasion=(mint_life_beat if completion_source or reconsideration_ref else mint_day_open)(
                 source_event_ref=(completion_source.event_ref if completion_source else first["first_clock_ref"]),
                 created_at=wake.logical_time,
-                merge_key=day_ref if completion_source else day,
+                merge_key=day_ref if completion_source or reconsideration_ref else day,
             ),
-            context_note=("One owned activity has ended. This is one opportunity to consider a future private self-directed "
-            if completion_source else "This is the daily opportunity to consider a future private self-directed ") +
-            "intention in an empty activity catalog. Choose your own intention or no_op. "
-            "Routine windows are background, not actions. A Plan is neither a started activity "
-            "nor a completed result; this opportunity cannot move anyone or send a message.",
+            context_note=(
+                ("You asked to reconsider now. " if reconsideration_ref else
+                 "One owned activity has ended. " if completion_source else
+                 "This is an opportunity to decide how to spend your own time. ")
+                + "Choose your own intention, no_op, or reconsider. You need not continue the last activity "
+                "or conversation. A Plan is not execution, success, presence or a message. Routine is background. "
+                + ("The previous activity was abandoned, not completed. "
+                   if completion_source and completion_source.terminal_kind == "abandoned" else "")
+                + self._prior_intention_note(completion_source)
+            ),
         )
 
     def _recover(self, attempt):
@@ -179,9 +208,44 @@ class DayOpenLifeWorker:
 
         row = self.pending()
         day = local_day_key(projection.logical_time, self.timezone)
+        if row is not None and row.reconsider_at is not None:
+            from .day_open_life_intent_contract import digest
+
+            original = self._recover(row.attempts[-1])
+            if original is None:
+                return ActivityLifecycleFollowupResult(
+                    status="technical_failure", reason_code="day_open.reconsideration_author_unavailable",
+                )
+            if materialize_day_open_proposal(
+                original, json.loads(row.attempts[-1].opportunity.capability_manifest.payload_json),
+                world_id=self.ledger.world_id,
+            ) is not None:
+                raise ValueError("day_open.reconsideration_choice_is_a_plan")
+            choice = original.decision["payload"]
+            expected_at = row.attempts[-1].opportunity.logical_time + timedelta(seconds=choice.get("reconsider_after_seconds", 0))
+            if choice.get("decision") != "reconsider" or expected_at != row.reconsider_at or digest(original.model_dump(mode="json")) != row.deferred_choice_hash:
+                raise ValueError("day_open.reconsideration_binding_invalid")
+            if projection.logical_time < row.reconsider_at:
+                return (ActivityLifecycleFollowupResult(status="no_op", reason_code="day_open.reconsideration_wait")
+                        if catalog.status == "no_openings" else None)
+            if catalog.status not in {"no_openings", "openings_available"}:
+                return ActivityLifecycleFollowupResult(status="blocked", reason_code=catalog.reason_code)
+            # Reconsidering is thought, not execution. An intervening Plan
+            # changes the context she sees; it does not cancel her request
+            # to think. New Plans still need normal lifecycle acceptance.
+            reference = "reconsider:" + row.deferred_choice_hash
+            opportunity = self._opportunity(
+                projection=projection, wake_event_ref=wake_event_ref, catalog=catalog,
+                completion_source=row.completion_source, reconsideration_ref=reference,
+            )
+            row = self.store.save(DayOpenJournal(
+                contract="day-open-opportunity-journal.3", actor_ref=self.actor_ref, day_key=day,
+                completion_source=row.completion_source, reconsideration_ref=reference,
+                attempts=(DayOpenAttempt(ordinal=1, opportunity=opportunity),),
+            ))
         if row is None:
             records = self.store.records(self.actor_ref)
-            completion = latest_completion_source(projection, actor_ref=self.actor_ref)
+            completion = latest_completion_source(projection, actor_ref=self.actor_ref, include_abandoned=True)
             if completion is not None and any(
                 x.completion_source is not None and x.completion_source.event_ref == completion.event_ref
                 for x in records
@@ -201,7 +265,7 @@ class DayOpenLifeWorker:
             )
             row = self.store.save(
                 DayOpenJournal(
-                    contract="day-open-opportunity-journal.2" if completion else "day-open-opportunity-journal.1",
+                    contract="day-open-opportunity-journal.3",
                     actor_ref=self.actor_ref,
                     day_key=day,
                     completion_source=completion,
@@ -215,7 +279,7 @@ class DayOpenLifeWorker:
                 return ActivityLifecycleFollowupResult(
                     status="blocked", reason_code=catalog.reason_code
                 )
-            if catalog.status != "no_openings":
+            if catalog.status != "no_openings" and row.reconsideration_ref is None:
                 # An already paid terminal still belongs to its original empty
                 # catalog. Without one, changed opportunity eligibility cannot
                 # be presented as another empty-catalog character decision.
@@ -268,19 +332,25 @@ class DayOpenLifeWorker:
             json.loads(opportunity.capability_manifest.payload_json),
             world_id=self.ledger.world_id,
         )
-        if row.completion_source is None:
+        if row.completion_source is None or row.reconsideration_ref is not None:
             self.daily.mark("day_open", row.day_key)
         if proposal is None:
+            from .day_open_life_intent_contract import digest
+
             model_result = self._model_result(
                 result=result, opportunity=opportunity, proposal_hash=None
             )
+            reconsider = result.decision["payload"].get("decision") == "reconsider"
             self.store.save(
-                row.model_copy(update={"terminal": True, "terminal_reason": "role_no_op"}),
+                row.model_copy(update={"terminal": True,
+                                      "terminal_reason": "role_reconsider" if reconsider else "role_no_op",
+                                      **({"reconsider_at": opportunity.logical_time + timedelta(seconds=result.decision["payload"]["reconsider_after_seconds"]),
+                                          "deferred_choice_hash": digest(result.model_dump(mode="json"))} if reconsider else {})}),
                 expected=row,
             )
             return ActivityLifecycleFollowupResult(
                 status="no_op",
-                reason_code="activity_lifecycle.model_declined",
+                reason_code="activity_lifecycle.model_reconsider_later" if reconsider else "activity_lifecycle.model_declined",
                 character_interior_model_result=model_result,
                 character_decision_json=_canonical(result.model_dump(mode="json")),
             )

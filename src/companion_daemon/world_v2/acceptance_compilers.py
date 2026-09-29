@@ -7,6 +7,8 @@ enables accepted manifests or mutates reducer state.
 
 from __future__ import annotations
 
+from .proposal_envelope import validate_proposal_envelope
+
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -14,7 +16,7 @@ import hashlib
 import json
 from typing import Literal, Protocol
 
-from pydantic import Field, TypeAdapter, ValidationError, computed_field, model_validator
+from pydantic import Field, ValidationError, computed_field, model_validator
 
 from .acceptance_manifest import (
     EffectAuthorityRefV2,
@@ -24,7 +26,6 @@ from .acceptance_manifest import (
 from .proposal_audit_schemas import ProposalAuditProjection
 from .proposal_envelope import (
     CHANGE_TRANSITION_REGISTRY,
-    ProposalInput,
     TypedChange,
 )
 from .schema_core import FrozenModel
@@ -575,7 +576,6 @@ DOMAIN_COMPILER_OWNERSHIP_CONTRACTS = tuple(
     for item in DOMAIN_COMPILER_COVERAGE_CATALOG
 )
 _OWNERSHIP_BY_KEY = {item.key: item for item in DOMAIN_COMPILER_OWNERSHIP_CONTRACTS}
-_PROPOSAL_ADAPTER = TypeAdapter(ProposalInput)
 
 
 class DomainCompilerRegistry:
@@ -845,7 +845,7 @@ class DomainCompilerRegistry:
             strict_change = TypedChange.model_validate(
                 dict(object.__getattribute__(change, "__dict__")), strict=True
             )
-            proposal = _PROPOSAL_ADAPTER.validate_json(audit.proposal_json, strict=True)
+            proposal = validate_proposal_envelope(json.loads(audit.proposal_json))
         except AcceptanceCompilerError:
             raise
         except (AttributeError, TypeError, ValidationError, ValueError) as exc:

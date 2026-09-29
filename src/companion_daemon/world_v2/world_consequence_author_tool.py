@@ -17,15 +17,17 @@ from .character_interior.inbound_tool_contract import (
 )
 from .character_interior.single_tool_transport import resolve_single_tool_transport
 from .character_interior.local_schema_references import factor_local_schema_references
-from .life_development_draft import ORDINARY_LIFE_PHOTO_PRIVACY, LifeDevelopmentNoOpDraft
+from .life_development_draft import ORDINARY_LIFE_PHOTO_PRIVACY, LifeDevelopmentNoOpDraft, _NARRATIVE_TAG
 from .life_development_output_schema import life_possibility_output_schema
 
 
-CONTRACT = "world-consequence-author-tool.3"
-TOOL_NAME = "author_world_consequence_v3"
+CONTRACT = "world-consequence-author-tool.5"
+TOOL_NAME = "author_world_consequence_v5"
 _CONTRACTS = {
     "world-consequence-author-tool.1": "author_world_consequence_v1",
     "world-consequence-author-tool.2": "author_world_consequence_v2",
+    "world-consequence-author-tool.3": "author_world_consequence_v3",
+    "world-consequence-author-tool.4": "author_world_consequence_v4",
     CONTRACT: TOOL_NAME,
 }
 
@@ -36,9 +38,12 @@ def world_consequence_author_tool_contract(
     if not isinstance(contract_id, str) or contract_id not in _CONTRACTS:
         raise ValueError("unknown World author tool contract")
     tool_name = _CONTRACTS[contract_id]
-    propose = life_possibility_output_schema(outcome_contract="world-consequence.2")
-    if contract_id == CONTRACT:
+    propose = life_possibility_output_schema(outcome_contract="world-consequence.2", authorized_attempt_claims=contract_id == CONTRACT)
+    if contract_id in {"world-consequence-author-tool.3", "world-consequence-author-tool.4", CONTRACT}:
         _bind_nonempty_visual_environment(propose)
+    if contract_id in {"world-consequence-author-tool.4", CONTRACT}:
+        for kind in ("ProvisionalNpcDraft", "ProvisionalPlaceDraft"):
+            propose["$defs"][kind]["properties"]["narrative_tags"]["items"]["pattern"] = _NARRATIVE_TAG.pattern
     # The two branches have disjoint source_kind literals. Keep that exact
     # union using the provider's supported anyOf, before its subset projection
     # removes oneOf. This changes only this new tool's schema carrier.
@@ -168,11 +173,50 @@ def bind_world_consequence_author_tool(
     if "world_author_wire" in user:
         raise ValueError("World author wire is already bound")
     user["world_author_wire"] = _wire_identity(tool_contract)
+    if user["world_author_wire"]["contract"] in {"world-consequence-author-tool.4", CONTRACT}:
+        output = user.get("output_contract")
+        if isinstance(output, dict) and isinstance(output.get("propose"), dict):
+            # Native parameters already carry every shape, enum and description.
+            # Retain the constraints omitted by the provider's strict subset;
+            # canonical parsing and semantic source review still run afterward.
+            user["output_contract"] = {
+                "no_op": {"decision": "no_op"},
+                "propose": {
+                    "schema_source": "complete_forced_tool_parameters",
+                    "tool_name": user["world_author_wire"]["tool_name"],
+                    "host_constraints": _host_constraints(output["propose"]),
+                },
+            }
     return [
         messages[0],
         {"role": messages[1]["role"], "content": json.dumps(user, ensure_ascii=False)},
         *messages[2:],
     ]
+
+
+def _host_constraints(schema):
+    """Keep scalar/cardinality limits lost by the native strict projection."""
+    limits = {"minItems", "maxItems", "minLength", "maxLength", "minimum", "maximum",
+              "exclusiveMinimum", "exclusiveMaximum", "uniqueItems", "multipleOf"}
+    result = {}
+
+    def visit(node, path):
+        if not isinstance(node, dict):
+            return
+        selected = {key: value for key, value in node.items() if key in limits}
+        if selected:
+            result[path] = selected
+        for name in ("properties", "$defs", "definitions", "patternProperties"):
+            for key, child in node.get(name, {}).items():
+                visit(child, path + "/" + name + "/" + key.replace("~", "~0").replace("/", "~1"))
+        for name in ("items", "additionalProperties", "not", "if", "then", "else"):
+            visit(node.get(name), path + "/" + name)
+        for name in ("anyOf", "oneOf", "allOf", "prefixItems"):
+            for index, child in enumerate(node.get(name, [])):
+                visit(child, path + "/" + name + "/" + str(index))
+
+    visit(schema, "#")
+    return result
 
 
 def recover_world_consequence_author_tool(
@@ -215,5 +259,8 @@ def _wire_identity(tool_contract: dict[str, object]) -> dict[str, object]:
         "tool_name": tool_name,
         "tool_choice": tool_contract["tool_choice"],
         "tool_contract_sha256": hashlib.sha256(encoded.encode("utf-8")).hexdigest(),
-        "arguments_contract": "exact_replacement_envelope_of_output_contract",
+        "arguments_contract": (
+            "exact_replacement_envelope_of_native_tool_schema"
+            if contract_id in {"world-consequence-author-tool.4", CONTRACT} else "exact_replacement_envelope_of_output_contract"
+        ),
     }

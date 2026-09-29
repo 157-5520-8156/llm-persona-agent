@@ -28,10 +28,10 @@ from .activity_timing import (
     activity_window_completion_allowed,
 )
 from .schema_core import FrozenModel
-from .schemas import LedgerProjection, PlanStateProjection
+from .schemas import LedgerProjection, PlanStateProjection, plan_authority_projection_hash
 
 
-ACTIVITY_OPENING_CATALOG_VERSION = "activity-opening.7"
+ACTIVITY_OPENING_CATALOG_VERSION = "activity-opening.9"
 """Current frozen semantics of the abstract-plan opening catalog."""
 
 # ``activity-opening.1`` and ``.2`` were already persisted by long-lived
@@ -287,6 +287,24 @@ class ActivityOpeningCatalog:
                 capability for capability in _CAPABILITY_ORDER if capability in blocked_capabilities
             ],
         }
+        if self._catalog_version in {"activity-opening.8", "activity-opening.9"}:
+            # Audit-only writes must not revoke an already offered activity.
+            # Bind the exact world, clock and eligible plans instead of every
+            # unrelated deliberation in the projection. Older catalogues keep
+            # their complete original material for immutable replay.
+            catalog_material.pop("cursor")
+            catalog_material.pop("projection_semantic_hash")
+            wake = next(item for item in projection.committed_world_event_refs if item.event_id == wake_event_ref)
+            plan_ids = {binding.plan_id for binding in eligible_bindings}
+            catalog_material.update(
+                world_revision=projection.world_revision,
+                owner_actor_ref=self._owner_actor_ref,
+                wake_payload_hash=wake.payload_hash,
+                eligible_plan_authority={
+                    plan.plan_id: plan_authority_projection_hash(plan)
+                    for plan in projection.plans if plan.plan_id in plan_ids
+                },
+            )
         catalog_hash = _digest(catalog_material)
         openings = tuple(
             ActivityOpening(
@@ -623,6 +641,18 @@ class ActivityOpeningCatalog:
         catalog_version: str = ACTIVITY_OPENING_CATALOG_VERSION,
     ) -> tuple[ActivityOpeningOperation, ...]:
         operations = _OPERATIONS_BY_STATUS[plan.status]
+        # A paused attempt cannot resume execution outside its accepted time
+        # authority. The old catalog let an expired activity resume, then the
+        # next clock offered pause for that very same expired window forever.
+        # A new intention can establish a new window after the owner lets go;
+        # this boundary neither abandons the plan nor chooses its replacement.
+        if (
+            catalog_version == "activity-opening.9"
+            and plan.status == "paused"
+            and plan.scheduled_window is not None
+            and not plan.scheduled_window.opens_at <= logical_time < plan.scheduled_window.closes_at
+        ):
+            operations = tuple(operation for operation in operations if operation != "resume")
         legacy = catalog_version in _LEGACY_ACTIVITY_OPENING_CATALOG_VERSIONS
         pre_shield = legacy or (
             catalog_version in _ELAPSED_ONLY_COMPLETION_CATALOG_VERSIONS

@@ -59,3 +59,24 @@ def test_changing_a_pinned_habit_cannot_keep_the_original_identity():
     raw["routine_background"]["daily_habits"][0]["title"] = "改写的习惯"
     with pytest.raises(ValueError, match="snapshot hash is invalid"):
         InnerLifeSnapshot.model_validate_json(json.dumps(raw), strict=True)
+
+
+def test_explicit_advisory_profile_does_not_reinstall_legacy_weekly_hobby_templates(tmp_path):
+    from companion_daemon.world_v2.day_skeleton import load_world_day_skeleton
+
+    path = tmp_path / "seed.yaml"
+    path.write_text('''
+character_routine_background:
+  daily_schedule:
+    - {slot: free, title: 自选安排, starts_hour: 18, ends_hour: 22}
+  weekly_themes: []
+daily_schedule:
+  - {slot: legacy, title: 旧执行模板, starts_hour: 18, ends_hour: 22}
+weekly_themes:
+  - {id: legacy-hobby, title: 旧固定爱好, weekdays: [1], starts_hour: 18}
+''')
+    skeleton = load_world_day_skeleton(path)
+    assert [slot.title for slot in skeleton.slots] == ["自选安排"]
+    assert skeleton.themes == ()
+    path.write_text('daily_schedule:\n  - {slot: legacy, title: 旧执行模板, starts_hour: 18, ends_hour: 22}\n')
+    assert load_world_day_skeleton(path).slots[0].title == "旧执行模板"

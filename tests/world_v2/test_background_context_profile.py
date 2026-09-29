@@ -109,6 +109,30 @@ def test_background_context_profile_coverage_gate() -> None:
     assert "world_stimulus_appraisal" in required_background_context_purposes()
 
 
+def test_inventory_projection_preserves_each_scope_revision_and_privacy():
+    from copy import deepcopy
+    from dataclasses import replace
+
+    snapshot = _sample_snapshot()
+    rows = [
+        {"source_ref": "fact:1", "scope": scope, "privacy_class": privacy,
+         "entity_revision": revision, "expires_at": "2026-09-30T00:00:00Z",
+         "content_hash": "a" * 64, "authority_refs": ["event:authority"],
+         "direct_source_refs": ["event:direct"]}
+        for scope, privacy, revision in (("relevant_facts", "personal", 1), ("situation", "private", 2))
+    ]
+    snapshot["source_inventory"] = deepcopy(rows)
+    profile = background_context_profile_for_purpose("activity_lifecycle_choice")
+    original = slice_background_inner_life_snapshot(snapshot, replace(profile, omit_inventory_proofs=False))
+    compact = slice_background_inner_life_snapshot(snapshot, profile)
+    assert compact["materials"] == original["materials"]
+    assert compact["source_inventory"] == [
+        {k: v for k, v in row.items() if k not in {"content_hash", "authority_refs", "direct_source_refs"}}
+        for row in rows
+    ]
+    assert snapshot["source_inventory"] == rows
+
+
 def test_life_choice_keeps_her_prior_readings_and_relationship_history() -> None:
     profile = background_context_profile_for_purpose("activity_lifecycle_choice")
     sliced = slice_background_inner_life_snapshot(_sample_snapshot(), profile)
@@ -370,3 +394,28 @@ def test_the_appraisal_lane_sends_only_the_inventory_columns_it_can_use() -> Non
         },
         {"source_ref": "fact:2", "scope": "relevant_facts"},
     ]
+
+
+def test_current_world_author_does_not_inherit_character_private_continuity():
+    from copy import deepcopy
+
+    context = _sample_capsule_context()
+    for key in ("affect_episodes", "relationship_slice", "open_threads"):
+        context["slices"][key] = {"items": [{"item_ref": key, "value": {"text": "她惦记着没说完的话"}}]}
+    before = deepcopy(context)
+    world = slice_background_capsule_context(
+        context, background_context_profile_for_purpose("world_consequence_draft"),
+    )
+    assert context == before
+    assert set(world["slices"]) == {"character_core", "current_situation", "relevant_facts", "world_life"}
+    assert world["slices"]["current_situation"] == before["slices"]["current_situation"]
+    assert world["slices"]["world_life"]["items"] == before["slices"]["world_life"]["items"][:6]
+    legacy = slice_background_capsule_context(
+        context, background_context_profile_for_purpose("life_development_draft"),
+    )
+    assert "affect_episodes" in legacy["slices"]
+    character = slice_background_inner_life_snapshot(
+        _sample_snapshot(), background_context_profile_for_purpose("world_stimulus_appraisal"),
+    )
+    assert "affect" in character["materials"]
+    assert "relationship" in character["materials"]

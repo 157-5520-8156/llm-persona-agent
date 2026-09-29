@@ -41,8 +41,10 @@ class DayOpenLifeIntentError(ValueError):
         super().__init__(self.code)
 
 
-def day_open_life_plan_id(*, world_id: str, actor_ref: str, day_key: str, completion_source=None) -> str:
+def day_open_life_plan_id(*, world_id: str, actor_ref: str, day_key: str, completion_source=None, reconsideration_ref=None) -> str:
     """One effect per daily opening or completion, independent of retry Clock."""
+    if reconsideration_ref is not None:
+        return PLAN_PREFIX + digest([world_id, actor_ref, reconsideration_ref])
     if completion_source is not None:
         return PLAN_PREFIX + digest([world_id, actor_ref, "activity-completed", completion_source.event_ref])
     return PLAN_PREFIX + digest([world_id, actor_ref, day_key])
@@ -71,12 +73,21 @@ def _role_material(result, capability_payload, *, world_id):
             world_id=world_id, actor_ref=result.actor_ref, day_key=supplied.day_key,
             first_clock_ref=supplied.first_clock_ref,
             completion_source=supplied.completion_source,
+            reconsideration_ref=supplied.reconsideration_ref,
         )
     ):
         raise DayOpenLifeIntentError("role_capability_binding_invalid")
     payload = decision.get("payload")
-    if not isinstance(payload, dict) or payload.get("contract") != DAY_OPEN_CHOICE_CONTRACT:
+    from .day_open_life_intent_contract import RECONSIDER_CHOICE_CONTRACT, DayOpenReconsiderChoice
+
+    current = capability.contract.endswith(".5")
+    if not isinstance(payload, dict) or payload.get("contract") != (
+        RECONSIDER_CHOICE_CONTRACT if current else DAY_OPEN_CHOICE_CONTRACT
+    ):
         raise DayOpenLifeIntentError("role_contract_invalid")
+    if current and payload.get("decision") == "reconsider":
+        DayOpenReconsiderChoice.model_validate({k: v for k, v in payload.items() if k != "contract"})
+        return result, capability, None
     if payload.get("decision") == "no_op" and (
         set(payload) <= {"contract", "decision", "life_intent"}
         and payload.get("life_intent") is None
@@ -133,6 +144,7 @@ def materialize_day_open_proposal(result, capability_payload, *, world_id: str):
             target_id=day_open_life_plan_id(
                 world_id=world_id, actor_ref=result.actor_ref, day_key=supplied.day_key,
                 completion_source=supplied.completion_source,
+                reconsideration_ref=supplied.reconsideration_ref,
             ),
             kind="day_open_life_intent", transition="plan", expected_entity_revision=0,
             evidence_refs=tuple(item.ref_id for item in evidence),
@@ -251,7 +263,9 @@ def derive_day_open_life_plan(*, state, world_id: str, proposal_id: str, owner_a
     if selected_head is None or selected_head.logical_time != selected.logical_time:
         raise DayOpenLifeIntentError("selection_clock_invalid")
     origin = DayOpenLifeIntentOrigin(
-        contract="day-open-life-intent-origin.2" if completion else "day-open-life-intent-origin.1",
+        contract=("day-open-life-intent-origin.3" if capability.contract.endswith(".5") else
+                  "day-open-life-intent-origin.2" if completion else "day-open-life-intent-origin.1"),
+        reconsideration_ref=supplied.reconsideration_ref,
         completion_source=completion,
         world_id=world_id, actor_ref=owner_actor_ref, opportunity_ref=supplied.opportunity_ref,
         day_key=supplied.day_key, timezone_name=supplied.timezone_name,
@@ -394,7 +408,12 @@ class DayOpenLifeIntentRuntime:
         catalog = ActivityOpeningCatalog(
             owner_actor_ref=self._owner, catalog_version=declared["catalog_version"],
         ).openings_for(projection=original, wake_event_ref=origin.source_event_ref)
-        if catalog.status != "no_openings" or catalog.catalog_hash != declared["catalog_hash"]:
+        permitted = {"no_openings"}
+        if origin.contract == "day-open-life-intent-origin.3" and origin.reconsideration_ref is not None:
+            # The current capability permits future planning alongside an
+            # existing activity. It grants no start/pause/complete effect.
+            permitted.add("openings_available")
+        if catalog.status not in permitted or catalog.catalog_hash != declared["catalog_hash"]:
             raise DayOpenLifeIntentError("original_catalog_invalid")
 
     def read_for_plan(self, *, plan_id: str):

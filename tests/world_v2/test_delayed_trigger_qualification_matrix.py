@@ -64,11 +64,11 @@ def test_catalog_is_a_complete_read_only_static_declaration_inventory() -> None:
         if row.release_status != "dormant"
     )
     by_id = {row.mechanism_id: row for row in catalog.mechanisms}
-    assert by_id["memory.candidate_consolidation"].release_status == "dormant"
-    assert by_id["memory.candidate_consolidation"].model_contract is None
-    assert by_id["memory.candidate_consolidation"].vertical_lanes == ()
-    assert by_id["memory.candidate_consolidation"].controlled_injection.public_seams == ()
-    assert by_id["memory.candidate_consolidation"].projection_due_fields == ()
+    assert by_id["memory.candidate_consolidation"].release_status == "limited"
+    assert by_id["memory.candidate_consolidation"].model_contract.purpose == "memory_consolidation"
+    assert by_id["memory.candidate_consolidation"].vertical_lanes == ("memory_consolidation_review",)
+    assert by_id["memory.candidate_consolidation"].controlled_injection.public_seams == ("QQC2CHost.tick", "QQC2CHost.drain")
+    assert by_id["memory.candidate_consolidation"].projection_due_fields == ("MemoryCandidateValues.review_due_at",)
     assert by_id["reflection.life"].release_status == "limited"
     assert by_id["reflection.life"].projection_due_fields == ()
     assert by_id["reflection.life"].model_contract is None

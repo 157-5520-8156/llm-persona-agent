@@ -67,6 +67,7 @@ BACKGROUND_LANE_PRIORITY = MappingProxyType(
         "outcome_selection": 1,
         "experience_memory_retention": 1,
         "fact_memory_retention": 1,
+        "memory_consolidation": 1,
         # Kept, but they yield the last of the envelope to tier 1.
         "activity_lifecycle_choice": 2,
         "proactive_contact": 2,

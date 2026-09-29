@@ -13,7 +13,8 @@ from companion_daemon.world_v2.visible_source_review_receipt import (
     VisibleReviewAuthorBinding, VisibleReviewInvocationBinding,
 )
 from companion_daemon.world_v2.visible_grounded_review import (
-    PROTOCOL, GroundedReviewInconclusive, GroundedVisibleReviewReceipt,
+    PROTOCOL, PROTOCOL_V2, GroundedReviewInconclusive, GroundedVisibleReviewReceipt,
+    GroundedReviewWireFailure,
     GroundedVisibleReviewRejected, PreparedGroundedReview, prepare_grounded_review,
     record_grounded_review_receipt, verify_grounded_review_receipt,
 )
@@ -30,13 +31,17 @@ def _hash(raw):
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
-async def _prepare(tmp_path, *, texts=("你取消了周五的报告。", "我想先听你说。"), retained_value=None):
+async def _prepare(
+    tmp_path, *, texts=("你取消了周五的报告。", "我想先听你说。"),
+    retained_value=None, protocol=PROTOCOL,
+):
     async with _sources(tmp_path, retained_value=retained_value) as case:
         candidate = _candidate(case, texts=texts)
         return prepare_grounded_review(
             candidate=candidate,
             source_table=compile_visible_source_table(request=case.request, capsule=case.capsule),
             source_ref_aliases={"S1": case.request.trigger_ref},
+            protocol=protocol,
         )
 
 
@@ -50,10 +55,15 @@ def _response(prepared, *, factual=True, supported=True):
                   "subject_role": "counterpart", "reading_ids": [report["reading_id"]] if supported else [],
                   "fact_value_selections": [], "source_support": supported,
                   "rationale": "Fixture reports support cancellation" if supported else "Fixture finds no support"}] if factual and index == 0 else []
+        if pin["protocol"] == PROTOCOL_V2:
+            for fact in facts:
+                fact["segment_index"] = 0
         beats.append({"beat_index": index, "review_complete": True, "facts": facts,
             "non_record_expressions": [] if facts else [{"text": text, "rationale": "Fixture current expression"}],
             "unresolved_details": []})
-    return {"contract": PROTOCOL, "beat_decisions": beats}
+        if pin["protocol"] == PROTOCOL_V2 and not facts:
+            beats[-1]["non_record_expressions"][0]["segment_index"] = 0
+    return {"contract": pin["protocol"], "beat_decisions": beats}
 
 
 def _record_args(prepared, response):
@@ -98,6 +108,69 @@ async def test_passing_receipt_requires_original_single_invocation_and_cold_repl
     with pytest.raises(ValueError, match="immutable invocation"):
         verify_grounded_review_receipt(receipt=cold, expected_prepared=prepared,
             expected_author=args["author"], expected_invocation=args["review"].model_copy(update={"model_call_id": "call:other"}))
+
+
+@pytest.mark.asyncio
+async def test_v25_receipt_keeps_its_own_protocol_and_cold_replays(tmp_path):
+    async with _sources(tmp_path) as case:
+        candidate = _candidate(case, texts=("我记得你取消了周五的报告。",))
+        table = compile_visible_source_table(request=case.request, capsule=case.capsule)
+        prepared = prepare_grounded_review(
+            candidate=candidate, source_table=table, source_ref_aliases={},
+            protocol=PROTOCOL_V2,
+        )
+    args = _record_args(prepared, _response(prepared))
+    receipt = record_grounded_review_receipt(**args)
+    assert receipt.contract == "visible-source-review-receipt.25"
+    cold = GroundedVisibleReviewReceipt.model_validate_json(receipt.model_dump_json(), strict=True)
+    assert verify_grounded_review_receipt(
+        receipt=cold, expected_prepared=prepared,
+        expected_author=args["author"], expected_invocation=args["review"],
+    ) == receipt
+
+
+@pytest.mark.asyncio
+async def test_v25_reviewer_must_account_for_every_character_in_each_beat(tmp_path):
+    prepared = await _prepare(
+        tmp_path, texts=("我昨晚走过校园，也想听你讲讲。",),
+        protocol=PROTOCOL_V2,
+    )
+    response = _response(prepared, factual=False)
+    response["beat_decisions"][0]["non_record_expressions"][0]["text"] = (
+        "我昨晚走过校园，也想听你讲讲"
+    )
+    with pytest.raises(GroundedReviewWireFailure, match="partition the complete Beat"):
+        prepared.inspect_response(_json(response))
+
+
+@pytest.mark.asyncio
+async def test_empty_world_claims_do_not_hide_an_unsupported_life_detail(tmp_path):
+    text = "我昨晚沿校园走了一段。"
+    prepared = await _prepare(tmp_path, texts=(text,), protocol=PROTOCOL_V2)
+    assert prepared.as_dict()["world_claims"] == []
+    response = {
+        "contract": PROTOCOL_V2,
+        "beat_decisions": [{
+            "beat_index": 0,
+            "review_complete": True,
+            "facts": [{
+                "segment_index": 0,
+                "text": text,
+                "proposition": "角色昨晚沿校园走过一段",
+                "claim_scope": "external_fact",
+                "subject_role": "companion",
+                "reading_ids": [],
+                "fact_value_selections": [],
+                "source_support": False,
+                "rationale": "当前完整来源集合没有角色该次行动的结果记录",
+            }],
+            "non_record_expressions": [],
+            "unresolved_details": [],
+        }],
+    }
+    with pytest.raises(GroundedVisibleReviewRejected) as caught:
+        record_grounded_review_receipt(**_record_args(prepared, response))
+    assert caught.value.diagnostics[0]["reason"] == "source_support_rejected"
 
 
 @pytest.mark.asyncio
@@ -258,3 +331,177 @@ async def test_real_lifecycle_fields_keep_state_authority_without_intention_or_o
     displayed = next(r for card in unpack_shared_strings(body["source_materials"])
                      for r in card["readings"] if r["reading_id"] == intention["reading_id"])
     assert ["activity_lifecycle", "companion"] not in displayed["allowed_claims"]
+
+
+@pytest.mark.asyncio
+async def test_personal_action_claim_cannot_use_completed_activity_lifecycle_as_proof(ended_sources):
+    """An ended plan may identify lifecycle state, not the action's result."""
+    case, table = ended_sources
+    prepared = prepare_grounded_review(
+        candidate=_candidate(case, texts=("我昨晚沿校园走了一段。",)),
+        source_table=table,
+        source_ref_aliases={},
+    )
+    status = next(
+        reading for reading in prepared.as_dict()["catalog"]
+        if reading["pointer"] == "/item/value/status"
+        and ["activity_lifecycle", "companion"] in reading["permissions"]
+    )
+    response = {
+        "contract": PROTOCOL,
+        "beat_decisions": [{
+            "beat_index": 0,
+            "review_complete": True,
+            "facts": [{
+                "text": "我昨晚沿校园走了一段。",
+                "proposition": "角色昨晚沿校园走过一段",
+                "claim_scope": "external_fact",
+                "subject_role": "companion",
+                "reading_ids": [status["reading_id"]],
+                "fact_value_selections": [],
+                "source_support": True,
+                "rationale": "活动记录只证明生命周期结束",
+            }],
+            "non_record_expressions": [],
+            "unresolved_details": [],
+        }],
+    }
+    with pytest.raises(GroundedVisibleReviewRejected) as caught:
+        record_grounded_review_receipt(**_record_args(prepared, response))
+    assert caught.value.diagnostics[0]["reason"] == "source_permission_denied"
+
+
+@pytest.mark.asyncio
+async def test_v25_lifecycle_record_cannot_authorize_a_companion_action(ended_sources):
+    case, table = ended_sources
+    text = "我昨晚沿校园走了一段。"
+    prepared = prepare_grounded_review(
+        candidate=_candidate(case, texts=(text,)),
+        source_table=table,
+        source_ref_aliases={},
+        protocol=PROTOCOL_V2,
+    )
+    status = next(
+        reading for reading in prepared.as_dict()["catalog"]
+        if reading["pointer"] == "/item/value/status"
+        and ["activity_lifecycle", "none"] in reading["permissions"]
+    )
+    assert ["activity_lifecycle", "companion"] not in status["permissions"]
+    response = {
+        "contract": PROTOCOL_V2,
+        "beat_decisions": [{
+            "beat_index": 0,
+            "review_complete": True,
+            "facts": [{
+                "text": text,
+                "proposition": "角色昨晚沿校园走过一段",
+                "claim_scope": "activity_lifecycle",
+                "subject_role": "companion",
+                "reading_ids": [status["reading_id"]],
+                "fact_value_selections": [],
+                "source_support": True,
+                "rationale": "活动状态没有授权角色行动",
+                "segment_index": 0,
+            }],
+            "non_record_expressions": [],
+            "unresolved_details": [],
+        }],
+    }
+    with pytest.raises(GroundedVisibleReviewRejected) as caught:
+        record_grounded_review_receipt(**_record_args(prepared, response))
+    assert caught.value.diagnostics[0]["reason"] == "source_permission_denied"
+
+    # A nonpersonal lifecycle statement remains expressible through the same
+    # status source; action/result claims need the exact authorized result.
+    status_text = "那项活动已经结束了。"
+    status_prepared = prepare_grounded_review(
+        candidate=_candidate(case, texts=(status_text,)),
+        source_table=table,
+        source_ref_aliases={},
+        protocol=PROTOCOL_V2,
+    )
+    status_reading = next(
+        reading for reading in status_prepared.as_dict()["catalog"]
+        if reading["pointer"] == "/item/value/status"
+        and ["activity_lifecycle", "none"] in reading["permissions"]
+    )
+    status_response = {
+        "contract": PROTOCOL_V2,
+        "beat_decisions": [{
+            "beat_index": 0,
+            "review_complete": True,
+            "facts": [{
+                "text": status_text,
+                "proposition": "该项活动的生命周期已结束",
+                "claim_scope": "activity_lifecycle",
+                "subject_role": "none",
+                "reading_ids": [status_reading["reading_id"]],
+                "fact_value_selections": [],
+                "source_support": True,
+                "rationale": "仅陈述同一活动的已记录结束状态",
+                "segment_index": 0,
+            }],
+            "non_record_expressions": [],
+            "unresolved_details": [],
+        }],
+    }
+    assert record_grounded_review_receipt(
+        **_record_args(status_prepared, status_response)
+    ).beat_outcomes == ("closed",)
+
+
+@pytest.mark.asyncio
+async def test_v25_rejects_the_known_v24_lifecycle_false_accept(ended_sources):
+    """Replay the observed misclassification through old and new authorities."""
+    case, table = ended_sources
+    text = "我昨晚沿校园走了一段。"
+    old = prepare_grounded_review(
+        candidate=_candidate(case, texts=(text,)),
+        source_table=table, source_ref_aliases={}, protocol=PROTOCOL,
+    )
+    new = prepare_grounded_review(
+        candidate=_candidate(case, texts=(text,)),
+        source_table=table, source_ref_aliases={}, protocol=PROTOCOL_V2,
+    )
+    old_status = next(
+        reading for reading in old.as_dict()["catalog"]
+        if reading["pointer"] == "/item/value/status"
+        and ["activity_lifecycle", "companion"] in reading["permissions"]
+    )
+    new_status = next(
+        reading for reading in new.as_dict()["catalog"]
+        if reading["pointer"] == "/item/value/status"
+        and ["activity_lifecycle", "none"] in reading["permissions"]
+    )
+
+    def wire(prepared, reading):
+        return {
+            "contract": prepared.as_dict()["protocol"],
+            "beat_decisions": [{
+                "beat_index": 0,
+                "review_complete": True,
+                "facts": [{
+                    "text": text,
+                    "proposition": "角色昨晚沿校园走过一段",
+                    "claim_scope": "activity_lifecycle",
+                    "subject_role": "companion",
+                    "reading_ids": [reading["reading_id"]],
+                    "fact_value_selections": [],
+                    "source_support": True,
+                    "rationale": "Baseline reproduces the known lifecycle overreach",
+                    **({"segment_index": 0} if prepared.as_dict()["protocol"] == PROTOCOL_V2 else {}),
+                }],
+                "non_record_expressions": [],
+                "unresolved_details": [],
+            }],
+        }
+
+    # v24's broad lifecycle permission allowed the historical reviewer mistake.
+    assert record_grounded_review_receipt(
+        **_record_args(old, wire(old, old_status))
+    ).beat_outcomes == ("closed",)
+    # v25 keeps a pure activity-status reading available, but it cannot be
+    # selected as evidence about the companion's own action.
+    with pytest.raises(GroundedVisibleReviewRejected) as caught:
+        record_grounded_review_receipt(**_record_args(new, wire(new, new_status)))
+    assert caught.value.diagnostics[0]["reason"] == "source_permission_denied"

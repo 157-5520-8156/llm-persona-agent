@@ -353,3 +353,59 @@ def test_choice_bearing_materials_stay_literal_for_the_role_to_copy_back():
     assert not any(token in json.dumps(materials["value"]["moments_i_can_share"])
                    for token in materials["strings"])
     assert unpack_shared_strings(materials) == snapshot["materials"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("context_profile", ["full", "bounded"])
+async def test_current_v25_slim_prompt_is_bound_through_http_acceptance_and_replay(tmp_path, monkeypatch, context_profile):
+    import test_slim_atomic_author as fixture
+    from test_world_stimulus_life_intent import _http_result
+    from test_whole_candidate_author import _inbound
+    from test_launch_visible_source_gate import _audits
+    from companion_daemon.world_v2.visible_source_runtime import verify_recorded_candidate
+    from companion_daemon.world_v2.visible_review_evidence_storage import read_review_evidence
+    original = fixture._InboundCharacterAuthor
+
+    def author(**kwargs):
+        kwargs['visible_source_review_version'] = '25'
+        return original(**kwargs)
+
+    monkeypatch.setattr(fixture, '_InboundCharacterAuthor', author)
+    if context_profile == "bounded":
+        from companion_daemon.world_v2 import reference_wire
+        from companion_daemon.world_v2.character_interior.inbound_context_window import bounded_inbound_context
+        original_view = reference_wire.prepare_reference_view
+        monkeypatch.setattr(reference_wire, 'prepare_reference_view', lambda value: original_view(
+            bounded_inbound_context(value) if 'expression_hard_boundaries' in value else value))
+
+
+    class HTTP(fixture._SlimHTTP):
+        async def __call__(self, request):
+            body = json.loads(request.content)
+            if body.get('tool_choice',{}).get('function',{}).get('name','').startswith('review_grounded'):
+                self.requests.append(body)
+                self.reviews += 1
+                value = json.loads(body['messages'][1]['content'])
+                return _http_result(body, {'beat_decisions': [
+                    {'beat_index': b['beat_index'], 'review_complete': True,
+                     'segments': [{'kind': 'non_record', 'text': b['text'], 'rationale': '当前回应'}]}
+                    for b in value['visible_beats']]})
+            return await super().__call__(request)
+
+    http = HTTP()
+    async with fixture._application(tmp_path, monkeypatch, http) as app:
+        result = await app.respond(_inbound())
+        assert result.status == 'action_authorized'
+        assert (await app.drain_actions_once()).status == 'settled'
+        evidence = app.export_replay_evidence()
+        assert evidence.projection.semantic_hash == evidence.replay.semantic_hash
+        body = json.loads(http.requests[0]['messages'][1]['content'])
+        assert 'author_evidence_view' not in body
+        assert ('context_window' in body) == (context_profile == 'bounded')
+        assert http.requests[0]['messages'][0]['content'].startswith('character-inbound-prompt.4-slim\n')
+        winner = next(a for a in _audits(app) if a.visible_source_review_json)
+        stored = read_review_evidence(winner.visible_source_review_json)
+        carrier = json.loads(stored['author_request_json'])
+        assert carrier['messages'] == http.requests[0]['messages']
+        proposal = next(p for p in evidence.projection.proposal_audits if p.proposal_kind=='decision')
+        assert verify_recorded_candidate(audit=proposal, model_result_audits=evidence.projection.model_result_audits)

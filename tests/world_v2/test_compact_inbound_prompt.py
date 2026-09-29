@@ -181,3 +181,35 @@ async def test_legacy_stream_and_nonforced_requests_do_not_use_compact_prompt(
     with pytest.raises(_CapturedRequest):
         await author._propose_appraisal(request, transport_provider=provider if stream else None)
     assert "character-inbound-prompt.1" not in provider.parameters["messages"][0]["content"]
+
+
+def test_current_slim_contract_is_shorter_and_does_not_promise_semantic_fallback():
+    from companion_daemon.world_v2.character_interior.inbound_prompt import compact_atomic_slim_system_prompt
+    from companion_daemon.world_v2.present_prompt import SLIM_CONSIDER_KEYS
+    args = dict(identity_instruction='EXACT_IDENTITY', recall_available=True, private_cognition_scope=True)
+    old = compact_atomic_slim_system_prompt(**args)
+    current = compact_atomic_slim_system_prompt(**args, concise_contract=True)
+    assert current.startswith('character-inbound-prompt.4-slim\n')
+    assert old.startswith('character-inbound-prompt.2-slim\n')
+    assert len(current) < len(old) * .70
+    assert '只对那份写坏的 appraisal 记 affect no_change' not in current
+    assert 'expression_draft.world_claims' not in current
+    assert PRIVATE_COGNITION_INSTRUCTION in current and 'EXACT_IDENTITY' in current
+    assert all(key in current for key in SLIM_CONSIDER_KEYS)
+    assert '错误坐标是技术失败' in current
+
+
+def test_slim_recall_shape_matches_actual_contract_and_is_offered_only_when_available():
+    from companion_daemon.world_v2.character_interior.inbound_prompt import (
+        compact_atomic_slim_system_prompt, _current_slim_recall_instruction,
+    )
+    from companion_daemon.world_v2.private_turn_state import PrivateTurnState
+    from companion_daemon.world_v2.recall_audit import CharacterRecallRequest
+    text = _current_slim_recall_instruction()
+    start = text.index('{')
+    shape, _ = json.JSONDecoder().raw_decode(text[start:])
+    PrivateTurnState.model_validate_json(json.dumps(shape['private_turn_state']))
+    CharacterRecallRequest.model_validate_json(json.dumps(shape['recall_request']))
+    common = dict(identity_instruction='identity', concise_contract=True)
+    assert text in compact_atomic_slim_system_prompt(**common, recall_available=True)
+    assert text not in compact_atomic_slim_system_prompt(**common, recall_available=False)

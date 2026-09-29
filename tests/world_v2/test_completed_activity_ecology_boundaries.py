@@ -91,7 +91,7 @@ async def test_new_completion_failure_overrides_activity_success_for_retry_outco
     assert result.life_development_followup_status == "technical_failure"
     assert result.technical_failure_code == "life_development.world_author_unavailable"
     assert trigger_store.completed[0][2] == (
-        "technical_failure.life_development.world_author_unavailable"
+        "technical_failure.consequence.life_development.world_author_unavailable"
     )
 
 

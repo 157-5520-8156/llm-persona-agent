@@ -61,6 +61,10 @@ class BackgroundContextProfile:
     # changes no other path.  None of the three is referenced in
     # structured_role, so the model's own output contract cannot use them.
     compact_source_inventory: bool = False
+    # Unlike the historical compact view, this preserves every row, scope,
+    # revision, privacy and expiry. Only hashes and duplicate host proof edges
+    # stay in the canonical snapshot instead of being sent to the role.
+    omit_inventory_proofs: bool = False
 
 
 def _limit_material_items(value: object, limit: int, *, key: str) -> object:
@@ -227,7 +231,18 @@ _CHARACTER_CONTINUITY_LIMITS = {
 
 _PROFILES: tuple[BackgroundContextProfile, ...] = (
     BackgroundContextProfile(
+        profile_id="world_consequence_author",
+        purposes=frozenset({"world_consequence_draft"}),
+        # The external World author does not decide or continue her private
+        # emotional arc. Character cognition retains its full continuity
+        # profile. Exact attempts are supplied separately by their reader.
+        capsule_slices=("character_core", "current_situation", "relevant_facts", "world_life"),
+        capsule_item_exclusions={"world_life": frozenset({"active_activity", "completed_activity", "planned_activity"})},
+        capsule_slice_limits={"world_life": 6, "relevant_facts": 8},
+    ),
+    BackgroundContextProfile(
         profile_id="life_ecology_core",
+        omit_inventory_proofs=True,
         purposes=frozenset(
             {
                 "life_development_choice",
@@ -263,23 +278,27 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
     ),
     BackgroundContextProfile(
         profile_id="private_impression",
+        omit_inventory_proofs=True,
         purposes=frozenset({"private_impression_reflection"}),
         snapshot_material_keys=_CHARACTER_CONTINUITY_MATERIALS,
         snapshot_material_limits=_CHARACTER_CONTINUITY_LIMITS,
     ),
     BackgroundContextProfile(
         profile_id="proactive_contact",
+        omit_inventory_proofs=True,
         purposes=frozenset({"proactive_contact"}),
         snapshot_material_keys=_CHARACTER_CONTINUITY_MATERIALS,
         snapshot_material_limits=_CHARACTER_CONTINUITY_LIMITS,
     ),
     BackgroundContextProfile(
         profile_id="memory_retention",
+        omit_inventory_proofs=True,
         purposes=frozenset(
             {
                 "fact_memory_retention",
                 "experience_memory_retention",
                 "memory_withdrawal_review",
+                "memory_consolidation",
             }
         ),
         snapshot_material_keys=(
@@ -300,6 +319,7 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
     ),
     BackgroundContextProfile(
         profile_id="interaction_background",
+        omit_inventory_proofs=True,
         purposes=frozenset(
             {
                 "media_selection",
@@ -440,6 +460,12 @@ def slice_background_inner_life_snapshot(
         filtered[key] = value
 
     visible_refs = _material_source_refs(filtered)
+    selected_recall = filtered.get("selected_recall")
+    if isinstance(selected_recall, dict):
+        # The recall merger binds these to the canonical snapshot. A result
+        # may carry prose rather than nested source_ref objects; its wrapper
+        # must still keep the returned authority in the presented inventory.
+        visible_refs.update(ref for ref in selected_recall.get("source_refs", ()) if isinstance(ref, str))
     result = dict(snapshot)
     result["materials"] = _order_materials(filtered)
     result["background_context_profile"] = profile.profile_id
@@ -470,6 +496,12 @@ def slice_background_inner_life_snapshot(
         ]
         if profile.compact_source_inventory:
             result["source_inventory"] = collapse_presented_source_inventory(kept)
+        elif profile.omit_inventory_proofs:
+            result["source_inventory"] = [
+                {key: value for key, value in item.items()
+                 if key not in {"content_hash", "direct_source_refs", "authority_refs"}}
+                for item in kept
+            ]
         elif lean_source_inventory:
             result["source_inventory"] = [
                 {key: item[key] for key in _PRESENTED_INVENTORY_COLUMNS if key in item}
@@ -576,6 +608,8 @@ def profile_audit_record(profile: BackgroundContextProfile) -> dict[str, object]
         "capsule_item_exclusions": {
             key: sorted(kinds) for key, kinds in dict(profile.capsule_item_exclusions).items()
         },
+        **({"inventory_presentation": "source-inventory-without-host-proofs.1"}
+           if profile.omit_inventory_proofs else {}),
     }
 
 

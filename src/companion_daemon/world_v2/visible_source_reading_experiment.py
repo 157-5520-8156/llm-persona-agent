@@ -66,7 +66,11 @@ def _direct_paths(row: dict, shown: dict, *, content_fields_only: bool = False, 
     return paths
 
 
-def _catalog(packet: dict, *, report_uptake: bool = False, content_fields_only: bool = False, prehistory_authority: bool = False, fact_value_authority: bool = False) -> list[dict]:
+def _catalog(
+    packet: dict, *, report_uptake: bool = False, content_fields_only: bool = False,
+    prehistory_authority: bool = False, fact_value_authority: bool = False,
+    allow_companion_activity_lifecycle: bool = True,
+) -> list[dict]:
     """Merge only exact scalar/material/owner/permission equivalents.
 
     Original aliases and proofs remain in the host preparation. Baseline and
@@ -92,7 +96,10 @@ def _catalog(packet: dict, *, report_uptake: bool = False, content_fields_only: 
             continue
         shown = packet["shown_materials"][material_index]
         paths = _direct_paths(row, shown, content_fields_only=content_fields_only, prehistory_authority=prehistory_authority)
-        permissions_by_pointer = source_subject_permissions(row=row, pointers=paths, prehistory_authority=prehistory_authority)
+        permissions_by_pointer = source_subject_permissions(
+            row=row, pointers=paths, prehistory_authority=prehistory_authority,
+            allow_companion_activity_lifecycle=allow_companion_activity_lifecycle,
+        )
         for pointer in paths:
             value, _ = _reading(shown, pointer)
             original, _ = _reading(row["review_material"], pointer)

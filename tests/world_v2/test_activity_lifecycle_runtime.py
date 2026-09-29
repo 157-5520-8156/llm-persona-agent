@@ -336,6 +336,69 @@ class _Interior:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("drift", ["deliberation", "world", "claim"])
+async def test_paid_choice_survives_only_unrelated_deliberation_drift(drift):
+    from companion_daemon.world_v2.errors import ConcurrencyConflict
+
+    projection, trigger_id = _claimed_projection()
+    ledger = _Ledger(projection)
+    ledger.issuer = AcceptedLedgerBatchIssuer()
+
+    class DriftingInterior(_Interior):
+        async def consider(self, opportunity):
+            result = await super().consider(opportunity)
+            updates = {"deliberation_revision": projection.deliberation_revision + 1,
+                       "ledger_sequence": projection.ledger_sequence + 1}
+            if drift == "world":
+                updates["world_revision"] = projection.world_revision + 1
+            elif drift == "claim":
+                updates["trigger_processes"] = tuple(
+                    item.model_copy(update={"claim_lease": item.claim_lease.model_copy(update={"owner_id": "worker:other"})})
+                    if item.trigger_id == trigger_id else item for item in projection.trigger_processes
+                )
+            ledger.projection = projection.model_copy(update=updates)
+            return result
+
+    interior = DriftingInterior()
+    worker = ActivityLifecycleWorker(
+        ledger=ledger, catalog=_catalog(), character_interior=interior,
+        owner_actor_ref="actor:companion",
+        proposal_recorder=ActivityLifecycleProposalRecorder(ledger=ledger),
+        acceptance_runtime=ActivityLifecycleAcceptanceRuntime(ledger=ledger, batch_issuer=ledger.issuer),
+        ecology_catalog_version=ECOLOGY_CATALOG_VERSION,
+    )
+    arguments = dict(wake_event_ref="event:clock:opening", trigger_id=trigger_id,
+                     logical_time=NOW, actor="worker:life-ecology", trace_id="trace:rebase", correlation_id="rebase")
+    if drift != "deliberation":
+        with pytest.raises(ConcurrencyConflict, match="authority changed"):
+            await worker.advance_once(**arguments)
+        assert not ledger.accepted
+    else:
+        result = await worker.advance_once(**arguments)
+        assert result.status == "transitioned"
+        assert [event.event_type for event in ledger.accepted] == ["AcceptanceRecorded", "ActivityStarted"]
+        recorded = next(iter(ledger.events.values())).payload()
+        assert recorded["evaluated_deliberation_revision"] == projection.deliberation_revision + 1
+    assert len(interior.opportunities) == 1
+
+
+def test_catalog_v7_identity_remains_frozen_while_v8_ignores_only_audit_drift():
+    projection, _ = _claimed_projection()
+    old = ActivityOpeningCatalog(owner_actor_ref="actor:companion", catalog_version="activity-opening.7")
+    before = old.openings_for(projection=projection, wake_event_ref="event:clock:opening")
+    assert before.catalog_hash == "983497b371a4ca9b19922cdb05dcb7ade8464539992909ed1203e0fe38dd3162"
+    drifted = projection.model_copy(update={
+        "deliberation_revision": projection.deliberation_revision + 1,
+        "ledger_sequence": projection.ledger_sequence + 1, "semantic_hash": "e" * 64,
+    })
+    assert old.openings_for(projection=drifted, wake_event_ref="event:clock:opening").catalog_hash != before.catalog_hash
+    current = ActivityOpeningCatalog(owner_actor_ref="actor:companion")
+    assert current.openings_for(projection=drifted, wake_event_ref="event:clock:opening") == current.openings_for(
+        projection=projection, wake_event_ref="event:clock:opening",
+    )
+
+
+@pytest.mark.asyncio
 async def test_worker_turns_one_claimed_wake_into_one_accepted_transition() -> None:
     projection, trigger_id = _claimed_projection()
     ledger = _Ledger(projection)

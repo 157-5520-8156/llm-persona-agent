@@ -960,6 +960,10 @@ class QQC2CHost:
     _DEFAULT_QUIET_GAP_SECONDS = 0.10
     _MIN_QUIET_GAP_SECONDS = 0.08
     _MAX_QUIET_GAP_SECONDS = 0.30
+    # The endpoint predictor is advisory. Let it finish concurrently with the
+    # existing quiet-gap hold, but never add its full model timeout to a
+    # single-bubble reply before that hold even starts.
+    _ENDPOINT_INLINE_WAIT_SECONDS = 0.10
     # Only observed continuation earns the wider rolling window.  This keeps
     # a single bubble fast while retaining multi-bubble turns at real typing
     # cadences; the wider value is never charged speculatively.
@@ -1023,16 +1027,29 @@ class QQC2CHost:
 
         task.add_done_callback(observe)
 
-    async def _endpoint_wait_seconds(self) -> tuple[float | None, object | None]:
+    async def _endpoint_wait_seconds(
+        self,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> tuple[float | None, object | None]:
         task = self._endpoint_task
         if task is None:
             return None, None
+        if timeout_seconds is not None and not task.done():
+            # asyncio.wait does not cancel the task on timeout. The endpoint
+            # remains an independent advisory and can still finish while the
+            # ordinary cadence hold is running.
+            await asyncio.wait((task,), timeout=max(0.0, timeout_seconds))
+        if not task.done():
+            return None, task
         try:
-            schedule = await asyncio.shield(task)
+            schedule = task.result()
         except asyncio.CancelledError:
             current = asyncio.current_task()
             if current is not None and current.cancelling():
                 raise
+            return None, task
+        except Exception:
             return None, task
         source_ids = self._endpoint_source_ids_by_task.get(task, ())
         self._record_endpoint_schedule(task, schedule, source_ids)
@@ -1211,7 +1228,9 @@ class QQC2CHost:
         """
 
         quiet_gap = self._quiet_gap_seconds(fragment.text, burst=burst_continuation)
-        endpoint_gap, observed_endpoint_task = await self._endpoint_wait_seconds()
+        endpoint_gap, observed_endpoint_task = await self._endpoint_wait_seconds(
+            timeout_seconds=min(self._ENDPOINT_INLINE_WAIT_SECONDS, quiet_gap)
+        )
         if endpoint_gap is not None:
             quiet_gap = max(quiet_gap, endpoint_gap)
         if burst_continuation:
@@ -1224,7 +1243,32 @@ class QQC2CHost:
                 now = self._ingress_now()
                 latest = self._last_content_received_at or received_at
                 if self._endpoint_task is not observed_endpoint_task:
-                    endpoint_gap, observed_endpoint_task = await self._endpoint_wait_seconds()
+                    remaining_gap = max(
+                        0.0,
+                        quiet_gap - max(0.0, (now - latest).total_seconds()),
+                    )
+                    endpoint_gap, observed_endpoint_task = await self._endpoint_wait_seconds(
+                        timeout_seconds=min(
+                            self._ENDPOINT_INLINE_WAIT_SECONDS,
+                            remaining_gap,
+                        )
+                    )
+                    if endpoint_gap is not None:
+                        quiet_gap = max(
+                            self._quiet_gap_seconds(
+                                self._last_content_text,
+                                burst=(latest > received_at),
+                            ),
+                            endpoint_gap,
+                        )
+                elif (
+                    endpoint_gap is None
+                    and observed_endpoint_task is not None
+                    and observed_endpoint_task.done()
+                ):
+                    endpoint_gap, observed_endpoint_task = await self._endpoint_wait_seconds(
+                        timeout_seconds=0.0
+                    )
                     if endpoint_gap is not None:
                         quiet_gap = max(
                             self._quiet_gap_seconds(
@@ -2284,6 +2328,7 @@ class QQC2CHost:
         initiative_due_reader = getattr(self._host, "social_initiative_next_due", None)
         private_impression_due_reader = getattr(self._host, "private_impression_next_due", None)
         life_due_reader = getattr(self._host, "life_ecology_next_due", None)
+        memory_due_reader = getattr(self._host, "memory_consolidation_next_due", None)
         due_projection = (
             await due_projection_reader() if callable(due_projection_reader) else None
         )
@@ -2292,6 +2337,7 @@ class QQC2CHost:
         dues = collect_clock_wake_dues(
             due_projection,
             computed={
+                "memory.candidate_consolidation": (await memory_due_reader() if callable(memory_due_reader) else None),
                 "social.initiative.cadence": (
                     await initiative_due_reader() if callable(initiative_due_reader) else None
                 ),
@@ -2688,7 +2734,11 @@ class QQC2CHost:
     def dashboard_character_interior_health(self) -> dict[str, object]:
         """Read process-local CharacterInterior composition state."""
 
-        return self._host.dashboard_character_interior_health()
+        value = self._host.dashboard_character_interior_health()
+        observer = getattr(self._semantic_chat, "text_shadow_observer", None)
+        if observer is not None:
+            value = {**value, "ordinary_text_review": observer.health_snapshot()}
+        return value
 
     def dashboard_expression_episode_health(self) -> dict[str, object]:
         """Read process-local expression diagnostics."""
@@ -3147,6 +3197,11 @@ def build_qq_c2c_host(
 
     if not recipient_id:
         raise ValueError("QQ C2C v2 requires one configured private recipient")
+    from .prehistory_deployment import configured_prehistory
+    reviewed_prehistory = configured_prehistory(
+        path=settings.world_v2_prehistory_package_path, supplied=reviewed_prehistory,
+        world_id=qq_c2c_world_id(settings.primary_user_id), actor_ref="agent:companion",
+    )
     configured_review_version = configured_visible_review_version(settings)
     configured_whole_review = configured_review_version is not None
     if configured_whole_review:
@@ -3157,7 +3212,10 @@ def build_qq_c2c_host(
             raise ValueError("explicit wire versions conflict with configured visible expression profile")
         visible_source_review_required = True
         visible_author_tool_version = (
-            "slim" if visible_author_tool_version == "slim" else "3"
+            "slim" if visible_author_tool_version == "slim" or (
+                visible_author_tool_version == "1"
+                and settings.world_v2_visible_expression_profile == "grounded_review_v25"
+            ) else "3"
         )
         visible_source_review_version = configured_review_version
     auto_whole_reviewer = (
@@ -3295,6 +3353,7 @@ def build_qq_c2c_host(
             trace_environment="real_transport",
             expression_action_kinds=expression_capabilities.action_kinds,
             expression_capabilities=expression_capabilities,
+            memory_consolidation_enabled=True,
             life_ecology=LifeEcologyComposition.production_v1(),
             media_selection_acceptance=(
                 media_preview.acceptance if media_preview is not None else None

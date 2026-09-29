@@ -146,6 +146,12 @@ class RecallDocument(FrozenModel):
     accepted_fact: FactRecallItem | HistoricalFactRecallItem | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )
+    # Parse at the read seam: the full World projection types depend on
+    # Recall audit schemas, so importing them here would form a cycle.
+    settled_life_json: str | None = Field(
+        default=None, max_length=32_000, exclude_if=lambda value: value is None,
+    )
+    source_window_start: int | None = Field(default=None, ge=0, exclude_if=lambda value: value is None)
     speaker_ref: str | None = Field(
         default=None,
         min_length=1,
@@ -254,7 +260,33 @@ class RecallDocument(FrozenModel):
                 raise ValueError("historical recall changed source ownership, interval or authority")
         if self.accepted_fact is not None:
             self._require_accepted_fact_closure()
+        if (
+            self.source_window_start is not None
+            and self.settled_life_json is None
+            and self.prehistory is None
+        ):
+            raise ValueError("recall window requires its exact retained source")
+        if self.prehistory is not None and self.source_window_start is not None:
+            if (
+                len(self.text) > 480
+                or not self.source_item_ref.endswith(
+                    f":window:{self.source_window_start}"
+                )
+                or self.source_slice != "active_memory_candidates"
+                or len(bindings) != 2
+            ):
+                raise ValueError("prehistory window identity or length is invalid")
+        if self.settled_life_json is not None:
+            from .recalled_life_source import validate_recalled_life
+            validate_recalled_life(self)
         return self
+
+    @property
+    def settled_life(self):
+        if self.settled_life_json is None:
+            return None
+        from .world_life_context import WorldLifeContextItem
+        return WorldLifeContextItem.model_validate_json(self.settled_life_json)
 
     def _require_accepted_fact_closure(self) -> None:
         """Bind the optional exact Fact reading without promoting its Observation."""
@@ -408,6 +440,40 @@ class RecallResult(FrozenModel):
     hits: tuple[RecallHit, ...]
 
 
+class RecallSearchDiagnostic(FrozenModel):
+    """Ephemeral stage trace for offline recall qualification.
+
+    This is deliberately absent from durable recall receipts. It separates
+    corpus presence, eligibility, match admission, initial ranking, and final
+    selection without changing the production result or its authority.
+    """
+
+    corpus_document_ids: tuple[str, ...]
+    eligible_document_ids: tuple[str, ...]
+    matched_candidate_ids: tuple[str, ...]
+    ranked_candidate_ids: tuple[str, ...]
+    selected_document_ids: tuple[str, ...] = Field(max_length=12)
+    ranked_scores_bp: tuple[int, ...]
+
+    @model_validator(mode="after")
+    def stages_are_ordered_subsets(self) -> Self:
+        if (
+            len(set(self.corpus_document_ids)) != len(self.corpus_document_ids)
+            or len(set(self.eligible_document_ids)) != len(self.eligible_document_ids)
+            or len(set(self.matched_candidate_ids)) != len(self.matched_candidate_ids)
+            or len(set(self.ranked_candidate_ids)) != len(self.ranked_candidate_ids)
+            or len(set(self.selected_document_ids)) != len(self.selected_document_ids)
+            or not set(self.eligible_document_ids) <= set(self.corpus_document_ids)
+            or not set(self.matched_candidate_ids) <= set(self.eligible_document_ids)
+            or set(self.ranked_candidate_ids) != set(self.matched_candidate_ids)
+            or not set(self.selected_document_ids) <= set(self.ranked_candidate_ids)
+            or len(self.ranked_scores_bp) != len(self.ranked_candidate_ids)
+            or any(not 0 <= score <= 10_000 for score in self.ranked_scores_bp)
+        ):
+            raise ValueError("recall diagnostic stages are inconsistent")
+        return self
+
+
 class RecallRebuildReport(FrozenModel):
     mode: Literal["noop", "cursor_only", "documents_changed"]
     document_count: int = Field(ge=0)
@@ -506,6 +572,7 @@ class _RecallIndexCore:
         query: RecallQuery,
         cursor: RecallCursor,
         rows: tuple[tuple[RecallDocument, tuple[float, ...]], ...],
+        diagnostics: list[RecallSearchDiagnostic] | None = None,
     ) -> RecallResult:
         if query.cursor != cursor:
             raise ValueError("recall query cursor does not match the sidecar cursor")
@@ -526,6 +593,7 @@ class _RecallIndexCore:
             for document, _ in eligible_rows
         ))
         ranked: list[tuple[int, str, RecallHit]] = []
+        matched_candidate_ids: list[str] = []
         for (document, vector), lexical in zip(eligible_rows, lexical_scores, strict=True):
             dense = max(0, min(10_000, round(_cosine(query_vector, vector) * 10_000)))
             structured = _structured_score(query.link_refs, document.link_refs)
@@ -580,7 +648,10 @@ class _RecallIndexCore:
                 accessibility_offset_bp=accessibility,
             )
             ranked.append((score, document.document_id, hit))
+            matched_candidate_ids.append(document.document_id)
         ranked.sort(key=lambda item: (-item[0], item[1]))
+        ranked_candidate_ids = tuple(document_id for _, document_id, _ in ranked)
+        ranked_scores_bp = tuple(score for score, _, _ in ranked)
         selected: list[RecallHit] = []
 
         def add_if_within_budget(hit: RecallHit) -> bool:
@@ -621,6 +692,15 @@ class _RecallIndexCore:
         seen_slices: set[str] = set()
         seen_subjects: set[str] = set()
         remaining = list(ranked)
+        # A matched attempt's newer settled result can disambiguate progress.
+        # Join only exact owned Plan links among already eligible/matched rows;
+        # no prose-based relation, changed time filter, or larger output budget.
+        families = {}
+        expanded_families = set()
+        if self._index_version.partition("+embedding:")[0] == "world-v2-recall-index.hybrid.11":
+            from .life_recall_windows import attempt_family
+            families = {hit.document.document_id: attempt_family(hit.document)
+                        for _, _, hit in ranked}
 
         def novelty(hit: RecallHit) -> tuple[int, int]:
             document = hit.document
@@ -641,6 +721,23 @@ class _RecallIndexCore:
                 remaining.sort(key=lambda item: (
                     -novelty(item[2])[0], -novelty(item[2])[1], -item[0], item[1],
                 ))
+                for anchor in selected:
+                    family = families.get(anchor.document.document_id)
+                    if family is None or family in expanded_families:
+                        continue
+                    expanded_families.add(family)
+                    related = [item for item in remaining
+                               if families.get(item[1]) == family
+                               and item[2].document.occurred_from > anchor.document.occurred_from
+                               and item[2].document.source_item_ref.endswith(":authorized_attempt_result")]
+                    if not related:
+                        continue
+                    latest = max(related, key=lambda item: (
+                        item[2].document.occurred_from, item[0], item[1],
+                    ))
+                    remaining.remove(latest)
+                    remaining.insert(0, latest)
+                    break
             _, _, hit = remaining.pop(0)
             if not add_if_within_budget(hit):
                 continue
@@ -652,6 +749,15 @@ class _RecallIndexCore:
                 covered_spans.append((start, end))
                 covered_terms.update(terms)
         hits = tuple(selected)
+        if diagnostics is not None:
+            diagnostics.append(RecallSearchDiagnostic(
+                corpus_document_ids=tuple(document.document_id for document, _ in rows),
+                eligible_document_ids=tuple(document.document_id for document, _ in eligible_rows),
+                matched_candidate_ids=tuple(matched_candidate_ids),
+                ranked_candidate_ids=ranked_candidate_ids,
+                selected_document_ids=tuple(hit.document.document_id for hit in hits),
+                ranked_scores_bp=ranked_scores_bp,
+            ))
         query_hash = recall_query_hash(
             index_version=self._index_version,
             query=query,
@@ -745,6 +851,21 @@ class RecallIndexSnapshot:
             cursor=self._cursor,
             rows=self._rows,
         )
+
+    def search_with_diagnostics(
+        self, query: RecallQuery,
+    ) -> tuple[RecallResult, RecallSearchDiagnostic]:
+        """Run the exact search with an in-memory, non-replayable stage trace."""
+        diagnostic: list[RecallSearchDiagnostic] = []
+        result = self._core._search(
+            query=query,
+            cursor=self._cursor,
+            rows=self._rows,
+            diagnostics=diagnostic,
+        )
+        if len(diagnostic) != 1:
+            raise RuntimeError("recall diagnostic capture did not produce one stage trace")
+        return result, diagnostic[0]
 
 
 class InMemoryRecallIndex(_RecallIndexCore):
@@ -1282,6 +1403,7 @@ __all__ = [
     "RecallIndexSnapshot",
     "RecallQuery",
     "RecallResult",
+    "RecallSearchDiagnostic",
     "SQLiteRecallIndex",
     "recall_query_hash",
     "recall_result_hash",

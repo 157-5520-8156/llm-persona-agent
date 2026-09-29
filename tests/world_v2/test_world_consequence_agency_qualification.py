@@ -91,6 +91,7 @@ class _QualificationHTTP(_ResponseHTTP):
             "result_kind": "decision",
             "appraisal_draft": {
                 "appraise": False,
+                "affect": "no_change",
                 "brief_rationale": "这次询问不需要新的评价。",
                 "behavior_tendency": "choose_own_response",
                 "stance": "present",
@@ -98,6 +99,7 @@ class _QualificationHTTP(_ResponseHTTP):
                 "confidence": 6000,
             },
             "expression_draft": {
+                "confidence": 6000,
                 "private_turn_state": {
                     "contract": "private-turn-state.1",
                     "inner_state_summary": "我想接住这次询问。",
@@ -256,7 +258,7 @@ async def test_unplanned_environment_gets_its_own_role_reading_in_chat_and_recal
         assert [
             request["tools"][0]["function"]["name"]
             for request in provider.chat_requests[earlier_chat_calls:]
-        ] == ["character_inbound_initial_v1", "character_inbound_compact_gate_v2"]
+        ] == ["character_inbound_initial_v1"]
         actual = json.loads(provider.chat_requests[-1]["messages"][-1]["content"])
         entries = unpack_shared_strings(
             actual["inner_life_snapshot"]["materials"]

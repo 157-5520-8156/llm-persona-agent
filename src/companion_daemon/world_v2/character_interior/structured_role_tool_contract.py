@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping as ABCMapping
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from functools import lru_cache
 from hashlib import sha256
 import json
@@ -25,9 +25,13 @@ _CONTRACT_VERSION = "1"
 _MEDIA_SELECTION_TOOL_NAME = "character_role_media_selection_v1"
 _QQ_ATTACHMENT_PERCEPTION_TOOL_NAME = "character_role_qq_attachment_perception_v1"
 _PROACTIVE_TOOL_NAME = "character_role_proactive_contact_v1"
+_PROACTIVE_COMPACT_TOOL_NAME = "character_role_proactive_contact_v2"
 _WORLD_STIMULUS_TOOL_NAME = "character_role_world_stimulus_appraisal_v1"
 _WORLD_STIMULUS_STRICT_TOOL_NAME = "character_role_world_stimulus_appraisal_v2"
 _WORLD_STIMULUS_STRICT_V3_TOOL_NAME = "character_role_world_stimulus_appraisal_v3"
+_WORLD_STIMULUS_STRICT_V4_TOOL_NAME = "character_role_world_stimulus_appraisal_v4"
+_WORLD_STIMULUS_STRICT_V5_TOOL_NAME = "character_role_world_stimulus_appraisal_v5"
+_WORLD_STIMULUS_STRICT_V6_TOOL_NAME = "character_role_world_stimulus_appraisal_v6"
 _PRIVATE_IMPRESSION_TOOL_NAME = "character_role_private_impression_reflection_v1"
 _OUTCOME_SELECTION_TOOL_NAME = "character_role_outcome_selection_v1"
 _ACTIVITY_LIFECYCLE_TOOL_NAME = "character_role_activity_lifecycle_choice_v1"
@@ -36,7 +40,7 @@ _EXPRESSION_RECONSIDERATION_TOOL_NAME = "character_role_expression_reconsiderati
 _FACT_MEMORY_RETENTION_TOOL_NAME = "character_role_fact_memory_retention_v1"
 _EXPERIENCE_MEMORY_RETENTION_TOOL_NAME = "character_role_experience_memory_retention_v1"
 _MEMORY_WITHDRAWAL_REVIEW_TOOL_NAME = "character_role_memory_withdrawal_review_v1"
-StructuredRoleToolSchemaDialect = Literal["standard", "deepseek-strict", "deepseek-strict-v3"]
+StructuredRoleToolSchemaDialect = Literal["standard", "deepseek-strict", "deepseek-strict-v3", "deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6", "deepseek-strict-compact"]
 
 
 _ROLE_RESULT_FEATURE_KEYS = ("status", "summary")
@@ -557,6 +561,27 @@ class StructuredRoleToolContract:
     identity: StructuredRoleToolContractIdentity
     result_wrapper_key: str | None = None
 
+    def with_reference_bindings(self, bindings):
+        if bindings is None:
+            return self
+        from ..reference_wire import reference_bindings_hash, reference_schema
+
+        tools = deepcopy(self.provider_tools)
+        for tool in tools:
+            tool["function"]["parameters"] = reference_schema(tool["function"]["parameters"], bindings)
+        schema_hash = "sha256:" + sha256(_canonical_json(tools[0]["function"]["parameters"]).encode()).hexdigest()
+        reference_version = "3" if bindings["contract"] == "opaque-reference-bindings.2" else "2"
+        identity = replace(
+            self.identity, version=self.identity.version + "+references." + reference_version,
+            schema_sha256=schema_hash,
+            contract_sha256="sha256:" + sha256(_canonical_json({
+                "original": self.identity.request_identity_material(),
+                "schema_sha256": schema_hash,
+                "reference_bindings_sha256": reference_bindings_hash(bindings),
+            }).encode()).hexdigest(),
+        )
+        return replace(self, provider_tools=tools, identity=identity)
+
     def unwrap(self, raw: object) -> object:
         """Remove only the declared provider transport wrapper.
 
@@ -574,6 +599,9 @@ class StructuredRoleToolContract:
             raise ValueError("structured role tool result must be JSON text")
         if self.identity.tool_name in {
             _WORLD_STIMULUS_STRICT_TOOL_NAME, _WORLD_STIMULUS_STRICT_V3_TOOL_NAME,
+            _WORLD_STIMULUS_STRICT_V4_TOOL_NAME,
+            _WORLD_STIMULUS_STRICT_V5_TOOL_NAME,
+            _WORLD_STIMULUS_STRICT_V6_TOOL_NAME,
         }:
             # This new strict carrier never repairs or salvages provider JSON.
             decoded = json.loads(raw)
@@ -610,6 +638,8 @@ def _compile_generic_decision_contract(
     source_refs: tuple[str, ...],
     recall_allowed: bool,
     description: str,
+    bind_sources_in_host: bool = False,
+    expanded_attention: bool = False,
 ) -> StructuredRoleToolContract:
     """Build the shared role-result transport envelope for choice purposes.
 
@@ -625,9 +655,9 @@ def _compile_generic_decision_contract(
     ):
         raise ValueError(f"{purpose} source refs are malformed")
 
-    from .structured_role import _WireRoleResult
+    from .structured_role import _WireRoleResult, _ExpandedAttentionWireRoleResult
 
-    role_schema = _provider_schema(_WireRoleResult)
+    role_schema = _provider_schema(_ExpandedAttentionWireRoleResult if expanded_attention else _WireRoleResult)
     role_properties = _required_object_properties(role_schema)
     decision_schema = role_properties.get("decision")
     if not isinstance(decision_schema, dict):
@@ -664,6 +694,12 @@ def _compile_generic_decision_contract(
         }
     decision_properties["payload"] = deepcopy(payload_schema)
     decision_object["required"] = ["source_refs", "payload"]
+    if bind_sources_in_host:
+        # A purpose may declare these references a fixed capability binding,
+        # rather than a model selection. The identity digest below still pins
+        # the complete list, including order, to this exact request.
+        decision_properties.pop("source_refs")
+        decision_object["required"] = ["payload"]
 
     common = {
         key: deepcopy(role_properties[key])
@@ -1173,6 +1209,10 @@ class StructuredRoleToolContracts:
         # creating an import cycle at module initialization.
         from .structured_role import _WireRoleResult
 
+        compact = schema_dialect == "deepseek-strict-compact"
+        tool_name = _PROACTIVE_COMPACT_TOOL_NAME if compact else _PROACTIVE_TOOL_NAME
+        version = "2" if compact else _CONTRACT_VERSION
+
         expression_capabilities = json.loads(expression_capabilities_json)
         if not isinstance(expression_capabilities, dict):
             raise ValueError("proactive expression capabilities must be one object")
@@ -1265,7 +1305,7 @@ class StructuredRoleToolContracts:
         if schema_dialect == "standard":
             parameters: dict[str, object] = {"anyOf": branches}
             result_wrapper_key = None
-        elif schema_dialect == "deepseek-strict":
+        elif schema_dialect in {"deepseek-strict", "deepseek-strict-compact"}:
             # The canonical role wire uses ``list[dict[str, Any]]`` for the
             # generic proposal carrier, but proactive_contact forbids that
             # carrier semantically and requires ``proposals=[]``. DeepSeek
@@ -1294,10 +1334,14 @@ class StructuredRoleToolContracts:
             if not isinstance(strict_parameters, dict):
                 raise ValueError("DeepSeek proactive tool parameters must be an object")
             parameters = strict_parameters
+            if compact:
+                from .local_schema_references import factor_local_schema_references
+
+                parameters = factor_local_schema_references(parameters)
         else:
             raise ValueError("unsupported proactive tool schema dialect")
         function = {
-            "name": _PROACTIVE_TOOL_NAME,
+            "name": tool_name,
             "description": (
                 "Return the complete source-bound proactive_contact role result. "
                 "For timing_choice=later, expires_after_seconds MUST be greater "
@@ -1319,7 +1363,7 @@ class StructuredRoleToolContracts:
             ),
             "parameters": parameters,
         }
-        if schema_dialect == "deepseek-strict":
+        if schema_dialect in {"deepseek-strict", "deepseek-strict-compact"}:
             function["strict"] = True
         provider_tools = ({"type": "function", "function": function},)
         schema_digest = "sha256:" + sha256(_canonical_json(parameters).encode("utf-8")).hexdigest()
@@ -1332,8 +1376,8 @@ class StructuredRoleToolContracts:
                 _canonical_json(
                     {
                         "purpose": "proactive_contact",
-                        "tool_name": _PROACTIVE_TOOL_NAME,
-                        "version": _CONTRACT_VERSION,
+                        "tool_name": tool_name,
+                        "version": version,
                         "schema_sha256": schema_digest,
                         "capabilities_sha256": capabilities_digest,
                         "recall_allowed": recall_allowed,
@@ -1346,8 +1390,8 @@ class StructuredRoleToolContracts:
         identity = StructuredRoleToolContractIdentity(
             contract_id="character-role-forced-tool",
             purpose="proactive_contact",
-            tool_name=_PROACTIVE_TOOL_NAME,
-            version=_CONTRACT_VERSION,
+            tool_name=tool_name,
+            version=version,
             schema_sha256=schema_digest,
             capabilities_sha256=capabilities_digest,
             contract_sha256=contract_digest,
@@ -1358,7 +1402,7 @@ class StructuredRoleToolContracts:
             provider_tools=provider_tools,
             provider_tool_choice={
                 "type": "function",
-                "function": {"name": _PROACTIVE_TOOL_NAME},
+                "function": {"name": tool_name},
             },
             identity=identity,
             result_wrapper_key=result_wrapper_key,
@@ -1375,12 +1419,14 @@ class StructuredRoleToolContracts:
         # These imports are intentionally local: structured_role imports this
         # compiler during module initialization, while the canonical payload
         # model lives in structured_role itself.
-        from .structured_role import _WorldStimulusAppraisalResult, _WireRoleResult
+        from .structured_role import _WorldStimulusAppraisalResult, _WireRoleResult, _ExpandedAttentionWireRoleResult
 
         capability_payload = json.loads(capability_payload_json)
         if not isinstance(capability_payload, dict):
             raise ValueError("world stimulus capability must be one object")
-        role_schema = _provider_schema(_WireRoleResult)
+        role_schema = _provider_schema(
+            _ExpandedAttentionWireRoleResult if schema_dialect in {"deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6"} else _WireRoleResult
+        )
         role_properties = _required_object_properties(role_schema)
         common = {
             key: deepcopy(role_properties[key])
@@ -1391,6 +1437,11 @@ class StructuredRoleToolContracts:
         }
         proposal_schema = _provider_schema(_WorldStimulusAppraisalResult)
         proposal_properties = _required_object_properties(proposal_schema)
+        if schema_dialect != "deepseek-strict-v6":
+            # Historical tools still require their original explanation fields.
+            proposal_properties.pop("reflection_depth", None)
+            for field in ("behavior_tendency", "stance", "display_strategy"):
+                proposal_properties[field] = _non_null_schema(proposal_properties[field], field_name=field)
         if source_tokens is not None and "experience_transitions" in capability_payload:
             from .experience_transition_tool_schema import specialize_experience_transition_schema
 
@@ -1398,6 +1449,7 @@ class StructuredRoleToolContracts:
                 proposal_properties["experience_transition"],
                 capability_payload=capability_payload["experience_transitions"],
                 source_tokens=source_tokens,
+                native_branches=schema_dialect in {"deepseek-strict-v5", "deepseek-strict-v6"},
             )
         intent_capability = capability_payload.get("world_life_intent")
         if isinstance(intent_capability, dict):
@@ -1519,13 +1571,13 @@ class StructuredRoleToolContracts:
         tool_name = _WORLD_STIMULUS_TOOL_NAME
         version = _CONTRACT_VERSION
         result_wrapper_key = None
-        if schema_dialect in {"deepseek-strict", "deepseek-strict-v3"}:
+        if schema_dialect in {"deepseek-strict", "deepseek-strict-v3", "deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6"}:
             # The recall branch permits no proposals. DeepSeek has no maxItems;
             # the canonical validator continues to enforce the empty array.
             if recall_allowed:
                 branches[-1]["properties"]["proposals"]["items"] = {"type": "string"}
             result_wrapper_key = "result"
-            if schema_dialect == "deepseek-strict-v3":
+            if schema_dialect in {"deepseek-strict-v3", "deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6"}:
                 parameters = _world_stimulus_strict_v3_schema(parameters)
             parameters = deepseek_strict_tool_schema({
                 "type": "object",
@@ -1538,6 +1590,14 @@ class StructuredRoleToolContracts:
             if schema_dialect == "deepseek-strict-v3":
                 tool_name = _WORLD_STIMULUS_STRICT_V3_TOOL_NAME
                 version = "3"
+            elif schema_dialect in {"deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6"}:
+                from .local_schema_references import factor_local_schema_references
+
+                parameters = factor_local_schema_references(parameters)
+                tool_name = _WORLD_STIMULUS_STRICT_V5_TOOL_NAME if schema_dialect == "deepseek-strict-v5" else _WORLD_STIMULUS_STRICT_V4_TOOL_NAME
+                version = "5" if schema_dialect == "deepseek-strict-v5" else "4"
+                if schema_dialect == "deepseek-strict-v6":
+                    tool_name, version = _WORLD_STIMULUS_STRICT_V6_TOOL_NAME, "6"
         elif schema_dialect != "standard":
             raise ValueError("unsupported world stimulus tool schema dialect")
         function = {
@@ -1555,7 +1615,7 @@ class StructuredRoleToolContracts:
             ),
             "parameters": parameters,
         }
-        if schema_dialect in {"deepseek-strict", "deepseek-strict-v3"}:
+        if schema_dialect in {"deepseek-strict", "deepseek-strict-v3", "deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6"}:
             function["strict"] = True
         provider_tools = ({"type": "function", "function": function},)
         schema_digest = "sha256:" + sha256(_canonical_json(parameters).encode("utf-8")).hexdigest()
@@ -1931,9 +1991,23 @@ class StructuredRoleToolContracts:
                 {"properties": {"decision": {"enum": ["self_directed_intent"]}}, "required": ["life_intent"],
                  "not": {"properties": {"life_intent": {"type": "null"}}}},
             ]
+            reconsider = capability_payload["contract"].endswith(".5")
+            if reconsider:
+                from ..day_open_life_intent_contract import DayOpenReconsiderChoice
+
+                # Full branches survive native strict projection; partial
+                # anyOf/not clauses would lose the incompatible-field rules.
+                intent = _non_null_schema(schema["properties"]["life_intent"], field_name="life_intent")
+                schema = {"anyOf": [
+                    {"type": "object", "properties": {"decision": {"type": "string", "enum": ["no_op"]}},
+                     "required": ["decision"], "additionalProperties": False},
+                    {"type": "object", "properties": {"decision": {"type": "string", "enum": ["self_directed_intent"]}, "life_intent": intent},
+                     "required": ["decision", "life_intent"], "additionalProperties": False},
+                    _provider_schema(DayOpenReconsiderChoice),
+                ]}
             return _compile_generic_decision_contract(
                 purpose="activity_lifecycle_choice",
-                tool_name="character_role_activity_lifecycle_choice_v2",
+                tool_name="character_role_activity_lifecycle_choice_v3" if reconsider else "character_role_activity_lifecycle_choice_v2",
                 payload_schema=schema,
                 capability_identity=capability_payload,
                 source_refs=tuple(json.loads(source_refs_json)),
@@ -1943,7 +2017,10 @@ class StructuredRoleToolContracts:
                 else "Consider this daily opportunity with the pinned context. Freely choose one ") +
                 "self_directed private future intention or no_op. The intention requests a Plan; "
                 "it does not start or complete it, move anyone, control another person, or author "
-                "a World result. No action or intention is required. Return the same source-bound "
+                "a World result. No action or intention is required. " +
+                ("You may instead choose reconsider with reconsider_after_seconds (60..86400) "
+                 "to ask yourself again later; that schedules thought only. " if reconsider else "") +
+                "Return the same source-bound "
                 "activity decision envelope; arbitrary proposals are unavailable.",
             )
         offered_tokens = capability_payload.get("offered_tokens")

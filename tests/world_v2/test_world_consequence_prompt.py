@@ -98,3 +98,109 @@ def test_current_prompt_example_uses_only_offered_refs_and_teaches_windows():
     assert "location_capability_coordinates" in system
     assert '"dynamic_life_direction"' in system
 
+
+def test_existing_pressure_does_not_turn_an_ordinary_opening_into_a_disturbance():
+    authority, context = _inputs()
+    context.update(occasion_mode="ordinary", pressure_surfaces=[{"summary": "ongoing repairs"}])
+    messages = compile_world_consequence_messages(
+        user_context=context, authority=authority, execution_materials=(),
+    )
+    assert "This is a disturbance occasion" not in messages[0]["content"]
+    assert json.loads(messages[1]["content"])["pressure_surfaces"] == context["pressure_surfaces"]
+    context["occasion_mode"] = "disturbance"
+    assert "This is a disturbance occasion" in compile_world_consequence_messages(
+        user_context=context, authority=authority, execution_materials=(),
+    )[0]["content"]
+
+
+def test_independent_scene_view_excludes_chat_agenda_without_changing_original_history():
+    from companion_daemon.world_v2.world_environment_attention import independent_scene_context
+    context = {"slices": {"current_situation": {"plans": ["personal task"]},
+                          "relevant_facts": {"private_user_report": "test"},
+                          "world_life": {"items": [{"source_ref": "original-world", "value": "unchanged"}]}}}
+    before = deepcopy(context)
+    visible = independent_scene_context(context)
+    assert set(visible["slices"]) == {"world_life"}
+    assert visible["slices"]["world_life"] == context["slices"]["world_life"]
+    assert context == before
+
+
+def test_completed_activity_prompt_stabilizes_only_the_contract_prefix():
+    authority, context = _inputs()
+    context["capability_manifest"]["completed_activity_consequence"] = {
+        "contract": "completed-activity-consequence.1"
+    }
+    context.update(
+        {
+            "authored_subject": {"owner_actor_ref": authority.actor_ref},
+            "claim_classification_contract": {"contract": "claims.1"},
+            "world_author_wire": {"contract": "world-author.1"},
+            "recent_life_texture": {"evidence": ["a completed day"]},
+        }
+    )
+
+    messages = compile_world_consequence_messages(
+        user_context=context, authority=authority, execution_materials=(),
+    )
+    rendered = json.loads(messages[1]["content"])
+
+    assert list(rendered)[:4] == [
+        "output_contract",
+        "claim_classification_contract",
+        "authored_subject",
+        "world_author_wire",
+    ]
+    assert rendered["recent_life_texture"] == {"evidence": ["a completed day"]}
+    assert rendered["pinned_world_context"] == context["pinned_world_context"]
+    assert rendered["execution_authority"] == authority.model_dump(mode="json")
+    assert rendered["execution_materials"] == []
+
+
+def test_active_attempt_prompt_retains_its_original_dynamic_first_order():
+    authority, context = _inputs()
+    context["capability_manifest"]["active_attempt_consequence"] = {
+        "contract": "active-attempt-consequence.1"
+    }
+
+    messages = compile_world_consequence_messages(
+        user_context=context, authority=authority, execution_materials=(),
+    )
+
+    assert list(json.loads(messages[1]["content"]))[0] == "capability_manifest"
+
+
+def test_recent_history_index_keeps_outcomes_separate_from_identity_and_current_state():
+    authority, context = _inputs()
+    consequence = {
+        "contract": "world-consequence.2",
+        "environment": {"epistemic_scope": "settled_world_environment", "text": "公共设施开放时间变更。"},
+        "authorized_attempt_result": {"text": "只整理完一半。", "execution_binding": {"source_event_ref": "event:started"}},
+    }
+    history = {"source_ref": "occurrence:one", "lane": "world_life", "value": {
+        "settled_at": "2026-09-26T18:00:00Z", "privacy_class": "private", "location_ref": None,
+        "content": {"content_ref": "content:one", "truncated": False, "world_consequence": consequence,
+                    "descriptor_payload_hash": "a" * 64, "character_response": {"text": "她觉得有些麻烦", "epistemic_scope": "private_response"}},
+    }}
+    legacy = {"source_ref": "experience:legacy", "lane": "recent_experiences", "value": {"summary": "原始记录"}}
+    context["recent_life_texture"] = {"contract": "recent-life-texture.1", "items": [
+        {"source_ref": "biography:one", "lane": "world_life", "value": {"context_kind": "biographical_context", "age": 21}},
+        history, legacy,
+    ]}
+    context["pinned_world_context"] = {"original_rows": deepcopy(context["recent_life_texture"]["items"])}
+    before = deepcopy(context)
+    rendered = json.loads(compile_world_consequence_messages(
+        user_context=context, authority=authority, execution_materials=(),
+    )[1]["content"])
+    assert context == before
+    assert rendered["pinned_world_context"] == before["pinned_world_context"]
+    texture = rendered["recent_life_texture"]
+    assert texture["contract"] == "recent-life-texture.2"
+    assert len(texture["items"]) == 2
+    row = texture["items"][0]
+    assert row["world_consequence"] == consequence
+    assert row["settled_at"] == history["value"]["settled_at"]
+    assert row["privacy_class"] == "private"
+    assert row["location_ref"] is None
+    assert row["truncated"] is False
+    assert row["character_response"] == history["value"]["content"]["character_response"]
+    assert texture["items"][1] == legacy

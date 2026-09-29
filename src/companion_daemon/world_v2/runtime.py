@@ -286,6 +286,7 @@ class WorldRuntime:
         affect_acceptance_actor: str | None = None,
         social_action_worker: SocialActionWorker | None = None,
         memory_withdrawal_review: MemoryWithdrawalReviewRuntime | None = None,
+        memory_consolidation=None,
         perception_owner: str | None = None,
         perception_trigger_runtime: PerceptionTriggerRuntime | None = None,
         latency_recorder: ProductionLatencyRecorder | None = None,
@@ -444,6 +445,9 @@ class WorldRuntime:
         ):
             raise ValueError("memory withdrawal review must own this exact ledger")
         self._memory_withdrawal_review = memory_withdrawal_review
+        if memory_consolidation is not None and memory_consolidation.ledger is not self._ledger:
+            raise ValueError("memory consolidation must own this exact ledger")
+        self._memory_consolidation = memory_consolidation
         if (perception_owner is None) != (perception_trigger_runtime is None):
             raise ValueError("perception owner and trigger runtime must be configured together")
         if (
@@ -663,6 +667,9 @@ class WorldRuntime:
             return _BackgroundWorkerIsolated(exc)
         self._clear_background_worker_failure(name)
         return result
+
+    async def memory_consolidation_next_due(self):
+        return await self._memory_consolidation.next_due() if self._memory_consolidation is not None else None
 
     async def drain_background_once(self):
         """Run background workers until one makes progress.
@@ -906,6 +913,10 @@ class WorldRuntime:
                     and memory_review.status != "idle"
                 ):
                     return memory_review
+            if self._memory_consolidation is not None:
+                periodic = await invoke("memory_consolidation", self._memory_consolidation.drain_one)
+                if periodic is not None and periodic.status not in {"idle", "owned_elsewhere"}:
+                    return periodic
             # A delayed social effect is useful, but it must not starve the
             # same observation's appraisal, fact, relationship or affect
             # consumers. Immediate and silent decisions are already final in

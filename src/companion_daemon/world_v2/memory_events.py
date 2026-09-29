@@ -23,7 +23,7 @@ from .proposal_audit_schemas import ModelResultRecordedPayload
 
 
 MemoryOperation = Literal[
-    "open", "accept", "reject", "revise", "reinforce", "forget"
+    "open", "accept", "reject", "revise", "reinforce", "forget", "review"
 ]
 
 
@@ -280,6 +280,7 @@ MEMORY_CANDIDATE_PAYLOAD_MODELS = {
     "MemoryCandidateAccepted": MemoryCandidateChangedPayload,
     "MemoryCandidateRejected": MemoryCandidateChangedPayload,
     "MemoryCandidateRevised": MemoryCandidateChangedPayload,
+    "MemoryCandidateReviewed": MemoryCandidateChangedPayload,
     "MemoryCandidateReinforced": MemoryCandidateChangedPayload,
     "MemoryCandidateForgotten": MemoryCandidateChangedPayload,
 }

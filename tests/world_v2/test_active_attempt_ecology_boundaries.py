@@ -75,7 +75,7 @@ async def test_new_transition_uses_one_focused_attempt_and_preserves_failure_bac
     assert not development.calls and len(development.focused) == 1
     assert result.status == "deferred" and result.activity_followup_status == "transitioned"
     assert result.technical_failure_code == "life_development.world_author_unavailable"
-    assert trigger_store.completed[0][2] == "technical_failure.life_development.world_author_unavailable"
+    assert trigger_store.completed[0][2] == "technical_failure.consequence.life_development.world_author_unavailable"
 
 
 def test_consumed_and_unreadable_active_heads_do_not_starve_another_current_plan(monkeypatch):

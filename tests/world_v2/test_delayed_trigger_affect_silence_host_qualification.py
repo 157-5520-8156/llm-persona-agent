@@ -96,6 +96,7 @@ class _QualifiedRoleModel:
         self.inbound_affect = inbound_affect
         self.silence_choice = silence_choice
         self.silence_calls = 0
+        self.silence_observations = []
 
     async def complete(
         self, messages: list[dict[str, str]], *, temperature: float = 0.8
@@ -112,6 +113,7 @@ class _QualifiedRoleModel:
         payload = manifest.get("payload") if isinstance(manifest, dict) else None
         if isinstance(payload, dict) and payload.get("process_kind") == "silence_appraisal":
             self.silence_calls += 1
+            self.silence_observations.append(payload.get("silence_observation"))
             if self.silence_choice == "technical_failure" and self.silence_calls == 1:
                 raise ConnectionError("scripted provider unavailable")
             source = payload["source_event"]["event_id"]
@@ -475,6 +477,11 @@ async def _qualify_silence_aftermath(
         ]
         assert len(processes) == 1 and processes[0].state == "terminal"
         assert role.silence_calls == 1
+        gap = role.silence_observations[0]
+        assert gap["status"] == "available"
+        assert gap["counterpart_message_since_anchor"] is False
+        assert gap["unanswered_expression_groups"] == 1
+        assert gap["seconds_since_last_counterpart_message"] >= gap["seconds_since_anchor"]
         if role_choice == "no_change":
             assert len(decided.projection.appraisals) == appraisal_before
             assert len(decided.projection.affect_episodes) == affect_before
@@ -549,7 +556,11 @@ async def _qualify_silence_technical_failure(tmp_path: Path) -> dict[str, object
         for item in failed.projection.proposal_audits
     )
     assert processes[0].claim_lease is not None
-    retry_at = processes[0].claim_lease.expires_at + timedelta(microseconds=1)
+    from companion_daemon.world_v2.contextual_life_retry import CONTEXTUAL_LIFE_RETRY_DELAYS_SECONDS
+    retry_at = max(
+        processes[0].claim_lease.expires_at,
+        failed.projection.logical_time + timedelta(seconds=CONTEXTUAL_LIFE_RETRY_DELAYS_SECONDS[0]),
+    ) + timedelta(microseconds=1)
     failed_cursor = failed.cursor
     failed_hash = failed.projection.semantic_hash
 

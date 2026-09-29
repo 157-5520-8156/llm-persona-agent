@@ -405,12 +405,16 @@ def _request_material(request: httpx.Request) -> dict[str, object]:
             "verification": "unverified",
             "reason": "unsupported_request_body",
         }
+    from ..llm import captured_reference_request_identity
+
+    local_identity = captured_reference_request_identity()
     return {
         "model_facing": True,
         "verification": "supplied_to_client_transport",
         "model_content_json": raw,
         "content_hash": hashlib.sha256(body).hexdigest(),
         "body_size_bytes": len(body),
+        **({"local_reference_identity": local_identity} if local_identity is not None else {}),
     }
 
 

@@ -14,6 +14,8 @@ import hmac
 import secrets
 import time
 
+from .dashboard_explorer_ui import EXPLORER_CSS, EXPLORER_HTML, EXPLORER_JS
+
 
 DASHBOARD_SESSION_COOKIE = "girl_agent_v2_dashboard_session"
 DASHBOARD_SESSION_TTL_SECONDS = 8 * 60 * 60
@@ -101,7 +103,7 @@ body.recording .operator-only{display:none!important}body.recording .bar{padding
 <p id="captureNotice" class="capture-notice" role="status" hidden></p>
 <div id="recordingTools" class="recording-tools" hidden><label for="recordingFocus">聚焦区域</label><select id="recordingFocus"><option value="all">完整视图</option><option value="now">这一刻</option><option value="life">生活进展</option><option value="memory">记忆</option><option value="emotion">情绪</option><option value="relationships">关系</option><option value="pending">未完成事项</option></select><span>仅改变显示；同步状态始终保留 · Esc 退出</span></div>
 <main class="wrap"><section class="panel now-panel" data-focus-area="now"><div><p class="hero-label">THE PRESENT</p><h2>这一刻</h2><p class="hero-note">生活有自己的时间。<br>这里是已经记录下来的状态。</p><p id="worldClock" class="world-clock"></p></div><div id="nowStory" class="now-story"><p class="section-note">正在读取生活状态…</p></div></section><div id="sectionGrid" class="section-grid"></div><footer class="footer"><span>只展示经过授权的摘要，私密反思不在此呈现。</span><span class="operator-only">本机 owner 视图</span></footer></main>
-<script src="/world-v2/dashboard/app.js?v=world-v2-dashboard-home.1-ui6" defer></script></body></html>"""
+<script src="/world-v2/dashboard/app.js?v=world-v2-dashboard-home.1-ui7" defer></script></body></html>"""
 
 DASHBOARD_APP_JS = """'use strict';
 const DashboardHomeClient=(()=>{
@@ -116,14 +118,22 @@ const DashboardHomeClient=(()=>{
     if(!record(payload.cursor)||!record(payload.sections)||!record(payload.sections.room))throw new Error('dashboard room section unavailable');
     return payload;
   }
-  async function capture(fetchSnapshot,etag=null){
+  async function capture(fetchSnapshot,etag=null,{timeoutMs=10000}={}){
     const headers={Accept:'application/json'};
     if(etag)headers['If-None-Match']=etag;
-    const response=await fetchSnapshot(DATA_URL,{credentials:'same-origin',headers});
-    if(response.status===304)return{kind:'not_modified',etag,snapshot:null};
-    if(!response.ok)throw new Error('dashboard snapshot unavailable ('+response.status+')');
-    const snapshot=validateSnapshot(await response.json());
-    return{kind:'snapshot',etag:response.headers.get('etag'),snapshot};
+    const controller=new AbortController();
+    let timer;
+    const deadline=new Promise((_,reject)=>{timer=setTimeout(()=>{
+      controller.abort();reject(new Error('dashboard snapshot timed out'));
+    },timeoutMs);});
+    const load=async()=>{
+      const response=await fetchSnapshot(DATA_URL,{credentials:'same-origin',headers,signal:controller.signal});
+      if(response.status===304)return{kind:'not_modified',etag,snapshot:null};
+      if(!response.ok)throw new Error('dashboard snapshot unavailable ('+response.status+')');
+      const snapshot=validateSnapshot(await response.json());
+      return{kind:'snapshot',etag:response.headers.get('etag'),snapshot};
+    };
+    try{return await Promise.race([load(),deadline]);}finally{clearTimeout(timer);}
   }
   function snapshotFromCapture(result,previousSnapshot=null){
     if(result&&result.kind==='snapshot')return validateSnapshot(result.snapshot);
@@ -372,7 +382,7 @@ const DashboardHomeClient=(()=>{
       return {
         sectionId:group.sectionId,label:group.label,
         state:record(section)&&STATE_LABELS[section.state]?section.state:'unavailable',
-        items:visibleHighlights(snapshot,group.sectionId,group.kinds),
+        items:visibleHighlights(snapshot,group.sectionId,group.kinds).filter(item=>!(['response_expectation','revisit_intention'].includes(item.kind)&&['fulfilled','superseded','expired'].includes(item.statusCode))),
       };
     });
   }
@@ -456,7 +466,12 @@ if(typeof document!=='undefined'){
   let recording=false;
   let focusArea='all';
   let previousScroll=0;
-  const focusAreas=['all','now','life','memory','emotion','relationships','pending'];
+  const focusAreas=['all','now','mechanism','evidence','life','memory','emotion','relationships','pending'];
+  let displayPaused=false;
+  let resumePending=false;
+  const explorer=DashboardExplorer.mount(DashboardHomeClient,{
+    onShowEvidence(){if(recording){focusArea='evidence';applyPresentation();}},
+  });
   const element=(tag,className,text)=>{
     const node=document.createElement(tag);
     if(className)node.className=className;
@@ -487,6 +502,9 @@ if(typeof document!=='undefined'){
     for(const panel of document.querySelectorAll('[data-focus-area]')){
       panel.hidden=recording&&focusArea!=='all'&&panel.dataset.focusArea!==focusArea;
     }
+    const domains=byId('domainDetails');
+    if(recording&&['life','memory','emotion','relationships','pending'].includes(focusArea))domains.open=true;
+    domains.hidden=recording&&['now','mechanism','evidence'].includes(focusArea);
   }
   function toggleRecording(){
     if(!recording)previousScroll=window.scrollY||0;
@@ -496,6 +514,16 @@ if(typeof document!=='undefined'){
     window.scrollTo(0,recording?0:previousScroll);
   }
   byId('recordingToggle').addEventListener('click',toggleRecording);
+  byId('pauseDisplay').addEventListener('click',()=>{
+    displayPaused=!displayPaused;
+    byId('pauseDisplay').textContent=displayPaused?'恢复同步':'暂停画面';
+    byId('pauseDisplay').setAttribute('aria-pressed',String(displayPaused));
+    byId('pauseLabel').hidden=!displayPaused;
+    if(!displayPaused){
+      if(loading)resumePending=true;
+      else loadDashboardHome();
+    }
+  });
   byId('recordingFocus').addEventListener('change',event=>{
     focusArea=focusAreas.includes(event.target.value)?event.target.value:'all';
     applyPresentation();
@@ -528,6 +556,7 @@ if(typeof document!=='undefined'){
         if(typeof metric.count!=='number'||typeof metric.label!=='string')continue;
         const tile=element('div','metric');
         tile.append(element('span','',metric.label),element('strong','',metric.count));
+        if(typeof metric.count_note==='string')tile.append(element('small','',metric.count_note));
         tiles.appendChild(tile);
       }
       return tiles;
@@ -667,6 +696,9 @@ if(typeof document!=='undefined'){
           if(!isRecord(notice))continue;
           body.appendChild(element('p','section-note',String(notice.signal_label||notice.label||'提示')+' · '+String(notice.reason_label||'暂时不可用')));
         }
+        for(const label of [data.expression_episode?.mode_label,data.semantic_recall?.semantic_embedding_label]){
+          if(typeof label==='string')body.appendChild(element('p','section-note',label));
+        }
         for(const [key,value] of Object.entries(data)){
           const label=DashboardHomeClient.dataFieldLabel(key);
           if(label&&typeof value==='number')body.appendChild(element('p','section-note',label+' · '+value));
@@ -687,6 +719,7 @@ if(typeof document!=='undefined'){
   function renderSnapshot(snapshot){
     renderClocks(snapshot);
     renderNowStory(snapshot);
+    explorer.update(snapshot);
     sectionGrid.replaceChildren();
     renderLife(snapshot);
     renderDomain(snapshot,{
@@ -710,10 +743,12 @@ if(typeof document!=='undefined'){
     setCaptureState('ready');
   }
   async function loadDashboardHome(){
-    if(loading)return;
+    if(loading||displayPaused)return;
     loading=true;
     try{
       const result=await DashboardHomeClient.capture(window.fetch.bind(window),snapshotEtag);
+      // A response already in flight must not replace a deliberately frozen view.
+      if(displayPaused)return;
       const snapshot=DashboardHomeClient.snapshotFromCapture(result,lastSnapshot);
       if(result.kind==='not_modified'){
         setCaptureState('ready');
@@ -723,19 +758,37 @@ if(typeof document!=='undefined'){
       lastSnapshot=snapshot;
       renderSnapshot(snapshot);
     }catch(error){
+      if(displayPaused)return;
       // The payload and upstream error never become visible page content.
       setCaptureState(lastSnapshot?'stale':'unavailable');
       if(!lastSnapshot){
+        explorer.update({sections:{}});
         renderNowStory({sections:{}});
         sectionGrid.replaceChildren();
         empty(sectionGrid,'尚未取得可验证的生活快照。');
       }
-    }finally{loading=false;}
+    }finally{loading=false;if(resumePending){resumePending=false;loadDashboardHome();}}
   }
+  explorer.update({sections:{}});
   loadDashboardHome();
   setInterval(loadDashboardHome,15000);
 }
 """
+
+# Keep the explorer's presentation and pure view model separate from the
+# authenticated shell. Both ship as Python package code, with no asset-loader
+# or build-time dependency and no new browser data route.
+DASHBOARD_HTML = (
+    DASHBOARD_HTML.replace("</style>", EXPLORER_CSS + "</style>")
+    .replace('<div id="sectionGrid" class="section-grid"></div>', EXPLORER_HTML + '<details id="domainDetails" class="domain-details"><summary>按领域查看摘要与运维详情</summary><div id="sectionGrid" class="section-grid"></div></details>')
+    .replace('<option value="now">这一刻</option>', '<option value="now">这一刻</option><option value="mechanism">运行机制</option><option value="evidence">记录浏览</option>')
+    .replace('<span class="readonly">只读 · 不改变她的生活</span>', '<div class="view-tools"><span id="pauseLabel" class="pause-label" hidden>画面已暂停 · 不暂停角色进程</span><button id="pauseDisplay" type="button" class="button" aria-pressed="false">暂停画面</button><span class="readonly">只读 · 不改变她的生活</span></div>')
+    .replace('world-v2-dashboard-home.1-ui7', 'world-v2-dashboard-home.1-ui7')
+)
+DASHBOARD_APP_JS = DASHBOARD_APP_JS.replace(
+    "if(typeof module!=='undefined'&&module.exports)",
+    EXPLORER_JS + "\nif(typeof module!=='undefined'&&module.exports)",
+)
 
 
 __all__ = [

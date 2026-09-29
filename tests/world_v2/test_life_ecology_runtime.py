@@ -1497,3 +1497,82 @@ async def test_life_ecology_activates_a_due_planned_occurrence() -> None:
     assert ledger.lookup_event_commit(
         "event:life-ecology:activate:life-development:due-plan"
     ) is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("ready", ["has_due_work", "has_stimulus"])
+async def test_due_authored_npc_work_precedes_another_ambient_occurrence(ready) -> None:
+    event = _event("clock-npc-due-before-new-atmosphere")
+    development = _LifeDevelopment("occurrence_committed")
+    npc = _LifeDevelopment("occurrence_committed", **{ready: True})
+    runtime = LifeEcologyRuntime(
+        ledger=_Ledger(event), trigger_store=_TriggerStore(), media_followup=_Media(),
+        life_development_followup=development, npc_initiative_followup=npc,
+        availability=LifeEcologyAvailability(state="installed_and_active"),
+    )
+    result = await runtime.advance_once(
+        wake_event_ref=event.event_id, trace_id="trace:due-npc", correlation_id="due-npc",
+    )
+    assert development.calls == []
+    assert len(npc.calls) == 1
+    assert result.npc_initiative_followup_status == "occurrence_committed"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("attempt", ["completed_activity", "active_attempt"])
+async def test_due_npc_does_not_replace_an_exact_protagonist_attempt_result(attempt) -> None:
+    event = _event("clock-attempt-before-npc-" + attempt)
+    development = _LifeDevelopment("occurrence_committed")
+    setattr(development, "pending_" + attempt + "_ref", lambda **kwargs: "event:bound-attempt")
+    setattr(development, "advance_" + attempt + "_once", development.advance_once)
+    npc = _LifeDevelopment("occurrence_committed", has_due_work=True)
+    runtime = LifeEcologyRuntime(
+        ledger=_Ledger(event), trigger_store=_TriggerStore(), media_followup=_Media(),
+        life_development_followup=development, npc_initiative_followup=npc,
+        availability=LifeEcologyAvailability(state="installed_and_active"),
+    )
+    result = await runtime.advance_once(
+        wake_event_ref=event.event_id, trace_id="trace:bound-attempt", correlation_id="bound-attempt",
+    )
+    assert len(development.calls) == 1
+    assert npc.calls == []
+    assert result.life_development_followup_status == "occurrence_committed"
+
+
+@pytest.mark.asyncio
+async def test_failed_old_consequence_yields_one_due_slot_without_losing_retry():
+    event = _event("fair-consequence")
+    ledger, triggers = _Ledger(event), _TriggerStore(claims=["owned", "owned"])
+
+    class Development(_LifeDevelopment):
+        old_pending = True
+        limits = []
+        result_calls = 0
+
+        def pending_completed_activity_ref(self, *, after_world_revision=None):
+            self.limits.append(after_world_revision)
+            return "event:old-completion" if self.old_pending and after_world_revision is None else None
+
+        async def advance_completed_activity_once(self, **kwargs):
+            self.result_calls += 1
+            return SimpleNamespace(status="technical_failure", reason_code="life_development.source_review_failed")
+
+    development = Development("no_op")
+    def schedule(outcome):
+        ledger._projection.life_ecology_schedule = LifeEcologyScheduleProjection(
+            last_trigger_id="previous", last_wake_event_ref="old-wake", last_outcome_ref="life-ecology:" + outcome,
+            last_completed_at=NOW - timedelta(hours=1), next_consideration_at=NOW,
+            consecutive_failures=1, last_failure_code="source_review_failed",
+        )
+    runtime = LifeEcologyRuntime(ledger=ledger, trigger_store=triggers, media_followup=_Media(),
+                                life_development_followup=development,
+                                availability=LifeEcologyAvailability(state="installed_and_active"))
+    schedule("technical_failure.consequence.life_development.source_review_failed")
+    await runtime.advance_once(wake_event_ref=event.event_id, trace_id="fair", correlation_id="fair")
+    assert development.result_calls == 0 and len(development.calls) == 1
+    assert development.limits == [7]  # Only genuinely new causal results may preempt.
+    schedule("life_development_no_op")
+    await runtime.advance_once(wake_event_ref=event.event_id, trace_id="retry", correlation_id="retry")
+    assert development.result_calls == 1 and len(development.calls) == 1
+    assert triggers.completed[-1][2] == "technical_failure.consequence.life_development.source_review_failed"
+    assert development.old_pending  # No fake settlement, no deletion of failed work.

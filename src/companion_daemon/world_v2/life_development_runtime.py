@@ -102,6 +102,7 @@ from .life_development_source_closure import (
     life_development_source_closure_correction_message,
     life_development_source_closure_messages,
     novel_origin_review_tool_contract,
+    source_closure_review_tool_contract,
     parse_life_development_novel_origin_review,
     parse_life_development_source_closure_review,
     resolve_cited_pinned_material,
@@ -5428,6 +5429,10 @@ class LifeDevelopmentRuntime:
                         completion_reviewer,
                         review_messages,
                         temperature=0.0,
+                        **(source_closure_review_tool_contract()
+                           if getattr(completion_reviewer, "supports_strict_tool_choice", False) is True
+                           and any(outcome.world_consequence is not None for outcome in draft.outcomes)
+                           else {}),
                     )
             except Exception as exc:
                 if not _is_expected_model_transport_failure(exc):
@@ -6351,7 +6356,12 @@ class LifeDevelopmentRuntime:
                 owner_actor_ref=self._owner,
             )
         )
-        profile = background_context_profile_for_purpose(model_purpose)
+        profile = background_context_profile_for_purpose(
+            "world_consequence_draft"
+            if manifest.outcome_contract == "world-consequence.2"
+            and model_purpose == "life_development_draft"
+            else model_purpose
+        )
         pinned_context = slice_background_capsule_context(context, profile)
         pressure_surfaces = (
             compile_pressure_surfaces(
@@ -7811,7 +7821,7 @@ def _world_consequence_structure_correction_messages(
     original_user = json.loads(original_messages[1]["content"])
     wire = original_user.get("world_author_wire", {})
     include_raw = (
-        wire.get("contract") == "world-consequence-author-tool.3"
+        wire.get("contract") in {"world-consequence-author-tool.3", "world-consequence-author-tool.4"}
         or original_user.get("world_author_json_transport") == "json_object"
     )
     messages = list(original_messages)

@@ -22,11 +22,21 @@ from .visible_source_runtime import canonical, digest, INDEPENDENT_EVIDENCE_CONT
 
 async def review_grounded_candidate(
     *, request, output, proposal, source_table, aliases, author_request_json,
-    reviewer, recall_audits=(), usage_purpose="source_review",
+    reviewer, recall_audits=(), usage_purpose="source_review", review_version="24",
 ):
     if not isinstance(reviewer, GroundedVisibleReviewer):
         raise ValidationTechnicalFailure("source_review_exception", failure_detail="grounded reviewer is not configured")
-    prepared = prepare_grounded_review(candidate=proposal, source_table=source_table, source_ref_aliases=aliases)
+    from .visible_review_protocols import GROUNDED_REVIEW_PROTOCOLS
+
+    protocol = GROUNDED_REVIEW_PROTOCOLS.get(review_version)
+    if protocol is None:
+        raise ValidationTechnicalFailure("source_review_exception", failure_detail="grounded review version is unsupported")
+    prepared = prepare_grounded_review(
+        candidate=proposal, source_table=source_table, source_ref_aliases=aliases,
+        protocol=protocol,
+        material_presentation="subjective-proof-elision.1" if review_version == "25" else None,
+        ordered_native=review_version == "25", faithful_proposition="whole_assertion.2" if review_version == "25" else False, reference_wire=review_version == "25",
+    )
     model = reviewer.source_model
     author = VisibleReviewAuthorBinding(
         model_call_id=output.winning_model_call_id, request_hash=output.winning_request_hash,
@@ -44,6 +54,8 @@ async def review_grounded_candidate(
     }))
     raw = None
     audit = None
+    prior_audits = []
+    current_call_id = call_id
     stage = "provider"
 
     def failure(code, detail, rejected=None):
@@ -51,12 +63,14 @@ async def review_grounded_candidate(
             code, model_call_id=author.model_call_id, request_hash=author.request_hash,
             attempted_model_id=output.model_id, attempted_model_version=output.model_version,
             usage=output.usage,
-            provider_subcall_audits=(*output.provider_subcall_audits, *((audit,) if audit else ())),
+            provider_subcall_audits=(*output.provider_subcall_audits, *prior_audits, *((audit,) if audit else ())),
             failure_detail=detail, rejected_expression=rejected,
         )
 
     async def review_once(emission_id):
-        nonlocal raw, audit, stage
+        nonlocal raw, audit, stage, current_call_id
+        stage = "provider"
+        current_call_id = emission_id
         with (
             model_call_scope(usage_purpose),
             model_request_emission_scope(provider_call_id=emission_id, entry_marker=None, completion_marker=None),
@@ -95,11 +109,16 @@ async def review_grounded_candidate(
         # timeout are never re-asked, and reentry cannot renew the phase.
         try:
             evidence = await run_validation_review_once(lambda: review_once(call_id), timeout_seconds=24.0)
-        except GroundedReviewWireFailure:
+        except GroundedReviewWireFailure as wire_failure:
             if audit is not None:
-                audit = audit.model_copy(
-                    update={"outcome": "exception", "failure_code": "source_review_exception"},
-                )
+                # This invocation returned bytes successfully; "winner" here
+                # is transport completion, not a passing semantic verdict.
+                prior_audits.append(audit)
+            # Bind the failed response and its precise format error into the
+            # retry request/receipt. Do not re-send identical failing input.
+            prepared = prepared.with_wire_feedback(raw=raw, reason=str(wire_failure))
+            audit = None
+            raw = None
             stage = "answer_retry"
             evidence = await run_validation_review_once(
                 lambda: review_once(retry_call_id), timeout_seconds=24.0,
@@ -108,7 +127,7 @@ async def review_grounded_candidate(
         if audit is None and not isinstance(exc, ModelUsageAdmissionError):
             timeout = isinstance(exc, (TimeoutError, asyncio.CancelledError))
             audit = ProviderSubcallAudit(
-                purpose="source_review", parent_model_call_id=author.model_call_id, model_call_id=call_id,
+                purpose="source_review", parent_model_call_id=author.model_call_id, model_call_id=current_call_id,
                 model_id=str(getattr(model, "model", type(model).__name__)),
                 model_version=str(getattr(model, "VERSION", type(model).__name__)),
                 request_hash=prepared.request_hash, response_hash=digest(raw) if raw is not None else None,
@@ -138,5 +157,5 @@ async def review_grounded_candidate(
         raise failure(code, f"visible_grounded_review.{stage}.{reason}") from exc
     return output.model_copy(update={
         "visible_source_review_json": evidence,
-        "provider_subcall_audits": (*output.provider_subcall_audits, audit),
+        "provider_subcall_audits": (*output.provider_subcall_audits, *prior_audits, audit),
     })

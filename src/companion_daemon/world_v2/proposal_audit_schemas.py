@@ -6,13 +6,14 @@ mutation or Action and intentionally have no dependency on Acceptance.
 
 from __future__ import annotations
 
+from .proposal_envelope import validate_proposal_envelope
+
 import hashlib
 import json
 from typing import Literal, Self
 
-from pydantic import Field, TypeAdapter, model_validator
+from pydantic import Field, model_validator
 
-from .proposal_envelope import ProposalInput
 from .recall_audit import (
     CharacterRecallRequest,
     PrefetchPresentationAudit,
@@ -42,7 +43,6 @@ _MAX_VISIBLE_REVIEW_FIELD_BYTES = 1_048_576
 # The outer canonical audit embeds the evidence string with JSON escaping, so
 # its carrier needs headroom beyond the field bound.
 _MAX_VISIBLE_REVIEW_AUDIT_BYTES = 2_000_000
-_PROPOSAL_ADAPTER = TypeAdapter(ProposalInput)
 
 
 class RecordedModelRoute(FrozenModel):
@@ -347,6 +347,27 @@ class RecordedRoleRejectionEvidence(FrozenModel):
     rejected_raw_excerpt: str = Field(min_length=1, max_length=800)
 
 
+class RecordedCausalOpportunityIdentity(FrozenModel):
+    """Minimal immutable source identity needed to recover a failed retry."""
+
+    world_id: str = Field(min_length=1, max_length=256)
+    actor_ref: str = Field(min_length=1, max_length=256)
+    purpose: str = Field(min_length=1, max_length=128)
+    source_refs: tuple[str, ...] = Field(min_length=1, max_length=64)
+    epoch: str = Field(min_length=1, max_length=256)
+    contract_version: str = Field(min_length=1, max_length=128)
+    policy_version: str = Field(min_length=1, max_length=128)
+    policy_ref: str = Field(min_length=1, max_length=256)
+
+    @model_validator(mode="after")
+    def source_refs_are_canonical(self) -> "RecordedCausalOpportunityIdentity":
+        if len(self.source_refs) != len(set(self.source_refs)):
+            raise ValueError("causal opportunity source refs must be unique")
+        if tuple(sorted(self.source_refs)) != self.source_refs:
+            raise ValueError("causal opportunity source refs must be canonicalized")
+        return self
+
+
 class RecordedModelResultAudit(FrozenModel):
     model_call_id: str = Field(min_length=1, max_length=256)
     parent_model_call_id: str | None = Field(
@@ -390,6 +411,10 @@ class RecordedModelResultAudit(FrozenModel):
         exclude_if=lambda value: value is None,
     )
     character_interior_lineage: RecordedCharacterInteriorTurnLineage | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+    causal_opportunity_identity: RecordedCausalOpportunityIdentity | None = Field(
         default=None,
         exclude_if=lambda value: value is None,
     )
@@ -1235,7 +1260,7 @@ class ProposalRecordedV2Payload(FrozenModel):
         if len(self.proposal_json.encode("utf-8")) > _MAX_PROPOSAL_BYTES:
             raise ValueError("proposal audit exceeds byte limit")
         try:
-            proposal = _PROPOSAL_ADAPTER.validate_json(self.proposal_json, strict=True)
+            proposal = validate_proposal_envelope(json.loads(self.proposal_json))
         except (ValueError, RecursionError) as exc:
             raise ValueError("proposal audit must contain a valid ProposalEnvelope") from exc
         canonical = canonical_json(proposal.model_dump(mode="json"))
@@ -1269,6 +1294,7 @@ class ProposalAuditProjection(ProposalRecordedV2Payload):
 __all__ = [
     "LifeDevelopmentRecallResultRecordedPayload",
     "ModelResultAuditProjection",
+    "RecordedCausalOpportunityIdentity",
     "RecordedCharacterInteriorTurnLineage",
     "RecordedPhysicalProviderInvocationAudit",
     "RecordedRoleRejectionEvidence",

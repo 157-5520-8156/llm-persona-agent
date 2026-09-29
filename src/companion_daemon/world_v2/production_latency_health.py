@@ -167,6 +167,8 @@ def _stream_pipeline_summary(
             samples, segment="ingress_to_first_source_closure_completed"
         ),
         "qq_ack": _pipeline_stage_summary(samples, segment="ingress_to_visible"),
+        "action_dispatch": _pipeline_stage_summary(samples, segment="dispatch"),
+        "provider_receipt": _pipeline_stage_summary(samples, segment="receipt"),
     }
 
 

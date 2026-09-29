@@ -8,6 +8,8 @@ never discovers a second author or manufactures a character result.
 
 from __future__ import annotations
 
+from ..memory_consolidation_contract import validate_payload as _validate_periodic_memory
+
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -736,6 +738,15 @@ def _validate_day_open_payload(payload, offered_tokens) -> None:
     LifeIntentDraft.model_validate(payload["life_intent"])
 
 
+def _validate_day_open_reconsider_payload(payload, offered_tokens) -> None:
+    if payload.get("decision") == "reconsider":
+        from ..day_open_life_intent_contract import DayOpenReconsiderChoice
+
+        DayOpenReconsiderChoice.model_validate(payload)
+    else:
+        _validate_day_open_payload(payload, offered_tokens)
+
+
 def _validate_outcome_selection_payload(
     payload: Mapping[str, object],
     offered_tokens: frozenset[str],
@@ -993,9 +1004,11 @@ class _WorldStimulusAppraisalResult(BaseModel):
     proposal_type: Literal["world_stimulus_appraisal_result"]
     decision: Literal["no_change", "activate"]
     brief_rationale: str = Field(min_length=1, max_length=240)
-    behavior_tendency: str = Field(min_length=1, max_length=128)
-    stance: str = Field(min_length=1, max_length=128)
-    display_strategy: str = Field(min_length=1, max_length=128)
+    behavior_tendency: str | None = Field(min_length=1, max_length=128)
+    stance: str | None = Field(min_length=1, max_length=128)
+    display_strategy: str | None = Field(min_length=1, max_length=128)
+    reflection_depth: Literal["brief", "elaborated"] | None = Field(
+        default=None, exclude_if=lambda value: value is None)
     confidence: int = Field(ge=0, le=10_000)
     meaning_candidates: list[_WorldStimulusMeaningCandidate] | None = Field(
         default=None,
@@ -1007,6 +1020,14 @@ class _WorldStimulusAppraisalResult(BaseModel):
     ) = None
     severity: int | None = Field(default=None, ge=0, le=10_000)
     expiry: datetime | None = None
+
+    @model_validator(mode="after")
+    def brief_owns_absent_explanations(self):
+        if self.reflection_depth != "brief" and any(
+            value is None for value in (self.behavior_tendency, self.stance, self.display_strategy)
+        ):
+            raise ValueError("only an explicitly brief reaction can omit explanations")
+        return self
 
     @model_validator(mode="before")
     @classmethod
@@ -1206,6 +1227,13 @@ _BUILTIN_CONTRACTS = (
         validator=_validate_memory_retention_payload,
     ),
     PurposeDecisionContract(
+        purpose="memory_consolidation",
+        payload_contract="character-interior-memory-consolidation.1",
+        capability_kind="memory_consolidation",
+        offered_token_fields=("offered_tokens",),
+        decision_required=True, proposals_allowed=False, validator=_validate_periodic_memory,
+    ),
+    PurposeDecisionContract(
         purpose="memory_withdrawal_review",
         payload_contract="character-interior-memory-withdrawal-review.1",
         capability_kind="memory_withdrawal_review",
@@ -1259,6 +1287,19 @@ class _WireRoleResult(BaseModel):
         if self.status == "recall_request" and self.proposals:
             raise ValueError("recall_request cannot contain proposals")
         return self
+
+
+class _ExpandedAttentionWireRoleResult(_WireRoleResult):
+    """New background carrier matches the canonical private-self capacity.
+
+    Historical carriers and the separately constrained visible carrier keep
+    their exact eight-source schema. Every selected source still needs authority.
+    """
+
+    attended_source_refs: list[str] = Field(
+        default_factory=list, max_length=32,
+        description="Up to 32 distinct offered sources actually attended to; do not copy the entire catalogue.",
+    )
 
 
 class _ExternalAttentionSelection(BaseModel):
@@ -1375,7 +1416,7 @@ class StructuredCharacterRoleFaculty:
     """The single injected character author behind ``CharacterInterior``."""
 
     name = "structured-character-role"
-    VERSION = "structured-character-role.1"
+    VERSION = "structured-character-role.2"
     requires_author_lineage = True
 
     @property
@@ -1386,6 +1427,8 @@ class StructuredCharacterRoleFaculty:
             **self._semantic_author_identity,
             "name": self.name,
             "version": self.VERSION,
+            **({"configured_disposition_hash": self._living_frame_hash}
+               if self._living_frame_hash is not None else {}),
         }
 
     def __init__(
@@ -1397,6 +1440,8 @@ class StructuredCharacterRoleFaculty:
         temperature: float = 0.8,
         purpose_contracts: Sequence[PurposeDecisionContract] = (),
         life_source_reviewer=None,
+        reference_wire: bool = False,
+        character_disposition: Mapping[str, object] | None = None,
     ) -> None:
         if not callable(getattr(model, "complete", None)):
             raise TypeError("structured character role needs one completion model")
@@ -1412,6 +1457,11 @@ class StructuredCharacterRoleFaculty:
                 raise ValueError(f"duplicate purpose decision contract: {item.purpose}")
             contracts[item.purpose] = item
         self._model = model
+        from .living_frame import living_frame_identity
+
+        self._living_frame_json = _canonical(dict(character_disposition)) if character_disposition is not None else None
+        self._living_frame_hash = living_frame_identity(json.loads(self._living_frame_json)) if self._living_frame_json is not None else None
+        self._reference_wire = reference_wire
         self._life_source_reviewer = life_source_reviewer
         self.requires_life_source_review = life_source_reviewer is not None
         self._model_id = model_id
@@ -1443,14 +1493,16 @@ class StructuredCharacterRoleFaculty:
 
     async def _complete(self, request: _InteriorRoleRequest) -> Mapping[str, object]:
         contract = self._resolve_contract(request)
-        messages = self._messages(request, contract=contract)
-        tool_contract = self._tool_contract(request)
+        messages, tool_contract, reference_bindings = self._prepare_request(request, contract=contract)
         transport = self._single_tool_transport(tool_contract=tool_contract)
         request_hash = self._provider_request_hash(
             messages=messages,
             tool_contract=tool_contract,
+            reference_bindings=reference_bindings,
         )
-        identity_extras = self._provider_identity_extras(tool_contract=tool_contract)
+        identity_extras = self._provider_identity_extras(
+            tool_contract=tool_contract, reference_bindings=reference_bindings,
+        )
         life_source_view = None
         if request.purpose == "world_stimulus_appraisal" and request.snapshot.life_source_origin is not None:
             from .life_source_view import prepare_life_source_view
@@ -1507,6 +1559,7 @@ class StructuredCharacterRoleFaculty:
                 request=request,
                 contract=contract,
                 response_hash_source=provider_raw,
+                reference_dictionary=reference_bindings,
             )
         except StructuredRoleResultError as exc:
             rejected = (
@@ -1566,11 +1619,11 @@ class StructuredCharacterRoleFaculty:
         if request.correction_ordinal == 1:
             initial = original_role_request(request)
             initial_contract = self._resolve_contract(initial)
-            initial_messages = self._messages(initial, contract=initial_contract)
-            initial_tool_contract = self._tool_contract(initial)
+            initial_messages, initial_tool_contract, initial_bindings = self._prepare_request(initial, contract=initial_contract)
             initial_hash = self._provider_request_hash(
                 messages=initial_messages,
                 tool_contract=initial_tool_contract,
+                reference_bindings=initial_bindings,
             )
             parent_model_call_id = self._model_call_id(
                 request=initial,
@@ -1651,6 +1704,7 @@ class StructuredCharacterRoleFaculty:
             "fact_memory_retention",
             "experience_memory_retention",
             "memory_withdrawal_review",
+            "memory_consolidation",
         }:
             return None
         if not bool(getattr(self._model, "supports_required_tool_choice", False)):
@@ -1683,7 +1737,7 @@ class StructuredCharacterRoleFaculty:
                     capability_payload=manifest.payload,
                     recall_allowed=not request.recall_completed,
                     schema_dialect=(
-                        "deepseek-strict"
+                        ("deepseek-strict-compact" if self._reference_wire else "deepseek-strict")
                         if bool(getattr(self._model, "supports_strict_tool_choice", False))
                         else "standard"
                     ),
@@ -1693,11 +1747,11 @@ class StructuredCharacterRoleFaculty:
                     capability_payload=manifest.payload,
                     recall_allowed=not request.recall_completed,
                     schema_dialect=(
-                        "deepseek-strict-v3"
+                        "deepseek-strict-v6"
                         if bool(getattr(self._model, "supports_strict_tool_choice", False))
                         else "standard"
                     ),
-                    source_tokens=tuple(
+                    source_tokens=() if self._reference_wire else tuple(
                         (item.token, item.source_ref)
                         for item in _citeable_catalog_for_request(request).items
                     ),
@@ -1735,6 +1789,10 @@ class StructuredCharacterRoleFaculty:
                     source_refs=manifest.source_refs,
                     recall_allowed=not request.recall_completed,
                 )
+            if request.purpose == "memory_consolidation":
+                from ..memory_consolidation_contract import tool_contract
+                return tool_contract(capability_payload=manifest.payload, source_refs=manifest.source_refs,
+                                     recall_allowed=not request.recall_completed)
             if request.purpose == "memory_withdrawal_review":
                 return compiler.memory_withdrawal_review(
                     capability_payload=manifest.payload,
@@ -1770,18 +1828,21 @@ class StructuredCharacterRoleFaculty:
         self,
         *,
         tool_contract: StructuredRoleToolContract | None,
+        reference_bindings: dict | None = None,
     ) -> dict[str, object] | None:
         if tool_contract is None:
-            return None
+            return {"reference_bindings": reference_bindings} if reference_bindings is not None else None
         transport = self._single_tool_transport(tool_contract=tool_contract)
         assert transport is not None
-        return {"tool_contract_identity": dict(transport.identity)}
+        return {"tool_contract_identity": dict(transport.identity),
+                **({"reference_bindings": reference_bindings} if reference_bindings is not None else {})}
 
     def _provider_request_hash(
         self,
         *,
         messages: list[dict[str, str]],
         tool_contract: StructuredRoleToolContract | None,
+        reference_bindings: dict | None = None,
     ) -> str:
         transport = self._single_tool_transport(tool_contract=tool_contract)
         digest = provider_invocation_request_hash(
@@ -1789,11 +1850,27 @@ class StructuredCharacterRoleFaculty:
             temperature=self._temperature,
             tools=(list(tool_contract.provider_tools) if tool_contract is not None else None),
             tool_choice=(transport.tool_choice if transport is not None else None),
-            identity_extras=self._provider_identity_extras(tool_contract=tool_contract),
+            identity_extras=self._provider_identity_extras(tool_contract=tool_contract, reference_bindings=reference_bindings),
         )
         return "sha256:" + digest
 
-    def _messages(
+    def _prepare_request(self, request, *, contract):
+        from ..reference_wire import prepare_reference_view
+
+        messages = self._base_messages(request, contract=contract)
+        tool = self._tool_contract(request)
+        bindings = None
+        if self._reference_wire:
+            view, bindings = prepare_reference_view(json.loads(messages[1]["content"]))
+            messages = [messages[0], {**messages[1], "content": ordered_json_dumps(view)}, *messages[2:]]
+            if tool is not None:
+                tool = tool.with_reference_bindings(bindings)
+        return messages, tool, bindings
+
+    def _messages(self, request, *, contract):
+        return self._prepare_request(request, contract=contract)[0]
+
+    def _base_messages(
         self,
         request: _InteriorRoleRequest,
         *,
@@ -1803,9 +1880,13 @@ class StructuredCharacterRoleFaculty:
         if rejected is not None:
             rejected = rejected.verify_request(request)
             original = original_role_request(request)
+            original_messages, original_tool, original_bindings = self._prepare_request(
+                original, contract=self._resolve_contract(original),
+            )
             original_hash = self._provider_request_hash(
-                messages=self._messages(original, contract=self._resolve_contract(original)),
-                tool_contract=self._tool_contract(original),
+                messages=original_messages,
+                tool_contract=original_tool,
+                reference_bindings=original_bindings,
             )
             if (
                 rejected.model_id != self._model_id
@@ -1815,9 +1896,12 @@ class StructuredCharacterRoleFaculty:
             ):
                 raise ValueError("rejected Life result differs from its original author invocation")
         allowed_statuses = sorted(self._allowed_statuses(request, contract=contract))
+        from .continuity_view import CHOICE_PURPOSES, continuity_profile
+
+        current_choice = self._living_frame_json is not None and request.purpose in CHOICE_PURPOSES
         full_snapshot = (
             request.snapshot.model_view(include_lifecycle_states=True)
-            if request.purpose == "world_stimulus_appraisal" and self.requires_life_source_review
+            if current_choice or (request.purpose == "world_stimulus_appraisal" and self.requires_life_source_review)
             else request.snapshot.model_view()
         )
         if request.purpose in REGISTERED_BACKGROUND_PURPOSES:
@@ -1826,6 +1910,8 @@ class StructuredCharacterRoleFaculty:
                 from .life_source_review import MINTED_CONTRACT as LIFE_REVIEW_CONTRACT
                 from .life_source_state_readings import life_source_profile
                 background_profile = life_source_profile(LIFE_REVIEW_CONTRACT)
+            if current_choice:
+                background_profile = continuity_profile(background_profile, lifecycle_states=True)
             snapshot = slice_background_inner_life_snapshot(full_snapshot, background_profile)
         else:
             background_profile = None
@@ -1916,6 +2002,19 @@ class StructuredCharacterRoleFaculty:
                 ),
             },
         }
+        if request.purpose == "memory_consolidation" and request.capability_manifest is not None:
+            from ..memory_consolidation_contract import HOST_SOURCE_BINDING
+            if request.capability_manifest.payload.get("source_binding") == HOST_SOURCE_BINDING:
+                wire = user_payload["wire_contract"]
+                wire["decision_shape"] = {"payload": "one_json_object"}
+                wire["placement_rules"]["generic_decision"] = (
+                    "For this memory review, decision contains only payload. The host binds "
+                    "the complete ordered capability sources; do not repeat source_refs. "
+                    "Choose each offered memory's disposition and next_review_hours yourself. "
+                    "attended_source_refs remains your optional selection of at most 32 "
+                    "citeable sources, not a copy of the complete capability binding."
+                )
+                wire["shape_example"]["generic_decision"]["decision"].pop("source_refs")
         if request.purpose == "world_stimulus_appraisal" and self.requires_life_source_review:
             user_payload["current_authorship_authority"] = {
                 "presentation_contract": AUTHOR_PRESENTATION_CONTRACT,
@@ -1926,6 +2025,24 @@ class StructuredCharacterRoleFaculty:
             }
         if request.purpose != "private_impression_reflection":
             user_payload["citeable_sources"] = _citeable_prompt_for_request(request)
+            if request.purpose == "world_stimulus_appraisal":
+                user_payload["reflection_scope"] = {
+                    "contract": "role-owned-reflection-depth.1",
+                    "instruction": "感受可以只是一句，也可以没有变化；不必为每件小事解释意义。"
+                    "由你决定是否值得深入想。brief允许行为倾向、态度和表达策略写null，"
+                    "表示这次没有形成这些说明，不是系统代你选择行为。复杂或牵动你的事情"
+                    "可以选elaborated，写真实的多重理解；不要为了填字段展开长篇分析。"
+                    "当前感受不需要先有同样感受的历史记录；不知道对方原因不妨碍你有自己的感受，"
+                    "但不能把猜测当成对方已经做过或想过的事实。",
+                }
+                purpose_view = user_payload["purpose_contract"]
+                purpose_view.pop("proposal_example_activate", None)
+                purpose_view.pop("proposal_example_no_change", None)
+                schema = purpose_view.get("proposal_schema", {})
+                schema["reflection_depth"] = "brief|elaborated; how much you choose to articulate, not event importance"
+                for field in ("behavior_tendency", "stance", "display_strategy"):
+                    schema[field] = "your own optional explanation; null is allowed for brief"
+
         if request.purpose == "proactive_contact":
             user_payload["purpose_instruction"] = (
                 "对 proactive_contact：私人状态只写在外层 summary 和 attended_source_refs；"
@@ -1960,6 +2077,15 @@ class StructuredCharacterRoleFaculty:
             user_payload["background_context_profile"] = profile_audit_record(
                 background_profile
             )
+        if self._living_frame_json is not None:
+            from .living_frame import LIVING_CHOICE_SCOPE, LIVING_PURPOSES
+            from .lived_evidence_scope import LIVED_EVIDENCE_SCOPE
+
+            # Characterization is outside the source inventory, not evidence.
+            user_payload["configured_character_disposition"] = json.loads(self._living_frame_json)
+            user_payload["lived_evidence_scope"] = LIVED_EVIDENCE_SCOPE
+            if request.purpose in LIVING_PURPOSES:
+                user_payload["living_choice_scope"] = LIVING_CHOICE_SCOPE
         if request.correction_ordinal == 1:
             code = request.correction_failure_code or "role_result_schema_invalid"
             user_payload["correction"] = {
@@ -2002,6 +2128,12 @@ class StructuredCharacterRoleFaculty:
                     "author audit fields; the trusted boundary adds those after the provider call."
                     " 来源只写 citeable_sources 里的 id 或原样抄 ref，不要手写拼接。"
                     + (
+                        " 对这次私人反应，只写你实际形成的内容。可以没有变化，也可以只是一句感受；"
+                        "不要求内心独白。没有形成行为倾向或表达策略时可选brief并把对应说明写null，"
+                        "无需为了字段重复解释。只有你确实有多层理解时才展开。"
+                        if request.purpose == "world_stimulus_appraisal" else ""
+                    )
+                    + (
                         " 对 proactive_contact：私人状态只写在外层 summary / attended_source_refs；"
                         "payload 里禁止 private_turn_state（这和 inbound 相反）。"
                         "没有世界事实时 world_claims 写 []。对话 beat 不是 current_world。"
@@ -2029,6 +2161,7 @@ class StructuredCharacterRoleFaculty:
         request: _InteriorRoleRequest,
         contract: PurposeDecisionContract,
         response_hash_source: object | None = None,
+        reference_dictionary: dict | None = None,
     ) -> tuple[_WireRoleResult, str]:
         if not isinstance(raw, str):
             raise StructuredRoleResultError(
@@ -2057,13 +2190,33 @@ class StructuredCharacterRoleFaculty:
                 detail=_FAILURE_DETAILS["role_result_not_object"],
                 response_hash=response_hash,
             )
+        if reference_dictionary is not None:
+            from ..reference_wire import expand_reference_values
+
+            try:
+                decoded = expand_reference_values(decoded, reference_dictionary)
+            except ValueError as exc:
+                raise StructuredRoleResultError(
+                    "role_result_schema_invalid", detail=str(exc), response_hash=response_hash,
+                ) from exc
         decoded = self._normalize_provider_wire_shape(
             decoded,
             request=request,
             contract=contract,
         )
         try:
-            result = _WireRoleResult.model_validate(decoded)
+            from ..memory_consolidation_contract import HOST_SOURCE_BINDING
+            memory_host_bound = (
+                request.purpose == "memory_consolidation"
+                and request.capability_manifest is not None
+                and request.capability_manifest.payload.get("source_binding") == HOST_SOURCE_BINDING
+            )
+            wire_model = (
+                _ExpandedAttentionWireRoleResult
+                if (self._reference_wire and request.purpose == "world_stimulus_appraisal") or memory_host_bound
+                else _WireRoleResult
+            )
+            result = wire_model.model_validate(decoded)
         except ValidationError as exc:
             raise StructuredRoleResultError(
                 "role_result_schema_invalid",
@@ -2124,7 +2277,7 @@ class StructuredCharacterRoleFaculty:
             manifest = request.capability_manifest
             if (
                 manifest is not None
-                and (request.purpose in {"fact_memory_retention", "experience_memory_retention", "memory_withdrawal_review"}
+                and (request.purpose in {"fact_memory_retention", "experience_memory_retention", "memory_withdrawal_review", "memory_consolidation"}
                      or (request.purpose == "activity_lifecycle_choice"
                          and manifest.payload.get("self_directed_intent") is not None))
                 and tuple(result.decision.source_refs) != manifest.source_refs
@@ -2164,6 +2317,17 @@ class StructuredCharacterRoleFaculty:
         """
 
         normalized = dict(decoded)
+        if contract.purpose == "memory_consolidation" and request.capability_manifest is not None:
+            from ..memory_consolidation_contract import HOST_SOURCE_BINDING
+            manifest = request.capability_manifest
+            decision = normalized.get("decision")
+            if (manifest.payload.get("source_binding") == HOST_SOURCE_BINDING
+                    and normalized.get("status") == "decision"
+                    and isinstance(decision, dict) and set(decision) == {"payload"}):
+                # The v2 wire omits only a fixed request binding. Never fill a
+                # missing choice, alter an explicit source list, or infer the
+                # role's attention from these host-owned references.
+                normalized["decision"] = {**decision, "source_refs": list(manifest.source_refs)}
         if contract.purpose == "world_stimulus_appraisal":
             catalog = _citeable_catalog_for_request(request)
             proposals = normalized.get("proposals")
@@ -2182,6 +2346,17 @@ class StructuredCharacterRoleFaculty:
                                     for ref in transition["source_refs"]
                                 ],
                             }}
+                        # These exact catalog aliases are advertised alongside
+                        # attended refs. Decode identity slots only, never prose.
+                        for field in ("life_responses", "life_intent"):
+                            original = proposal.get(field)
+                            items = original if isinstance(original, list) else [original]
+                            bound = [{**item, "source_event_ref": catalog.token_to_ref.get(
+                                item["source_event_ref"], item["source_event_ref"])}
+                                if isinstance(item, dict) and isinstance(item.get("source_event_ref"), str)
+                                else item for item in items]
+                            if original is not None:
+                                proposal = {**proposal, field: bound if isinstance(original, list) else bound[0]}
                     restored.append(proposal)
                 normalized["proposals"] = restored
         if contract.purpose != "private_impression_reflection":
@@ -2668,9 +2843,12 @@ class StructuredCharacterRoleFaculty:
                 ) from exc
             return replace(
                 contract,
-                payload_contract="character-interior-activity-lifecycle-choice.2",
+                payload_contract=("character-interior-activity-lifecycle-choice.3"
+                                  if manifest.payload["contract"].endswith(".5") else
+                                  "character-interior-activity-lifecycle-choice.2"),
                 offered_token_fields=(),
-                validator=_validate_day_open_payload,
+                validator=(_validate_day_open_reconsider_payload
+                           if manifest.payload["contract"].endswith(".5") else _validate_day_open_payload),
             )
         return contract
 
@@ -3562,14 +3740,25 @@ class StructuredCharacterRoleFaculty:
                 "noticed": "optional turn-local subjective attention; audit only, no World fact or completed Action",
                 "user_channel_completion": "const none, required when noticed is present",
             }
-            if contract.payload_contract == "character-interior-activity-lifecycle-choice.2":
+            if contract.payload_contract in {"character-interior-activity-lifecycle-choice.2", "character-interior-activity-lifecycle-choice.3"}:
                 view["payload_schema"] = {
                     "decision": "self_directed_intent|no_op",
                     "life_intent": "only with self_directed_intent: execution_scope=self_directed, "
                     "your own intention, start_after_seconds, duration_seconds and importance_bp. "
+                    "start_after_seconds is 0..86400 from the current Clock, so choosing "
+                    "a later activity does not require being ready to start now; duration_seconds "
+                    "is 60..21600. This opening offers a future intention independent of "
+                    "the last conversation or activity. "
                     "This is a future private Plan, not execution, place control, other people's "
                     "participation or a World result. no_op has no other fields and is a valid choice",
                 }
+                if contract.payload_contract.endswith(".3"):
+                    view["payload_schema"]["decision"] = "self_directed_intent|no_op|reconsider"
+                    view["payload_schema"]["reconsider_after_seconds"] = (
+                        "reconsider only: your chosen integer 60..86400 seconds until another "
+                        "planning opportunity. No life_intent in this branch. It creates no "
+                        "activity or message; you choose again using the then-current context"
+                    )
         if contract.purpose == "outcome_selection":
             view["payload_schema"] = {
                 "selected_token": "exactly one offered outcome token",

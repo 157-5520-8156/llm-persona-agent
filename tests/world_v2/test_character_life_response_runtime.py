@@ -758,6 +758,50 @@ async def test_later_settlement_does_not_expand_original_response_obligation(tmp
 
 
 @pytest.mark.asyncio
+async def test_delayed_event_at_pin_does_not_replace_the_world_selection_clock(tmp_path):
+    from datetime import timedelta
+
+    from companion_daemon.world_v2.character_life_response_runtime import CharacterLifeResponseRuntime
+    from companion_daemon.world_v2.schemas import BudgetAccount, WorldEvent
+
+    path = tmp_path / "delayed-selection-clock.sqlite"
+    ledger, _ = await _seed(path)
+    _advance_clock(ledger, 60, "selection-clock")
+    selected_at = ledger.project().logical_time
+    stale_at = selected_at - timedelta(hours=1)
+    # Transport/accounting can append an earlier observed timestamp without
+    # rewinding the world's ClockAdvanced state.
+    commit(ledger, [WorldEvent.from_payload(
+        schema_version="world-v2.1", world_id=WORLD_ID,
+        event_id="budget:delayed-selection", event_type="BudgetAccountConfigured",
+        logical_time=stale_at, created_at=selected_at, actor="system:fixture",
+        source="fixture", trace_id="trace:delayed-selection",
+        causation_id="cause:delayed-selection", correlation_id="delayed-selection",
+        idempotency_key="budget:delayed-selection",
+        payload={"account": BudgetAccount(
+            account_id="account:delayed-selection", category="audit",
+            window_id="day:delayed-selection", limit=100,
+        ).model_dump(mode="json")},
+    )])
+    proposal, cursor = _audit_response(ledger, text="雨停了，我松了一口气。")
+    _advance_clock(ledger, 60, "later-than-selection")
+    runtime = CharacterLifeResponseRuntime(ledger=ledger, owner_actor_ref=ACTOR)
+    receipts = runtime.accept(world_id=WORLD_ID, audit_cursor=cursor, proposal_id=proposal.proposal_id)
+    event = ledger.lookup_event_commit(receipts[0].event_ids[0])[0]
+    assert event.payload()["origin"]["selected_at"] == selected_at.isoformat().replace("+00:00", "Z")
+    models = ledger.project().model_result_audits
+    ledger.close()
+    restarted = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
+    try:
+        recovered = CharacterLifeResponseRuntime(ledger=restarted, owner_actor_ref=ACTOR)
+        assert recovered.accept(world_id=WORLD_ID, audit_cursor=cursor, proposal_id=proposal.proposal_id) == receipts
+        assert restarted.project().model_result_audits == models
+        assert restarted.lookup_event_commit(event.event_id)[0] == event
+    finally:
+        restarted.close()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("version", ["world-v2-proposals.4", "world-v2-proposals.5"])
 async def test_plan_consumer_cannot_bypass_required_response_in_same_audit(tmp_path, version):
     from companion_daemon.world_v2.world_life_intent_runtime import WorldLifeIntentRuntime

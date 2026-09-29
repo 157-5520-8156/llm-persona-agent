@@ -98,6 +98,40 @@ async def test_each_failed_attempt_uses_existing_life_backoff_and_cap_after_reop
 
 
 @pytest.mark.asyncio
+async def test_failed_retry_uses_persisted_opportunity_lineage_without_historical_replay(
+    tmp_path, monkeypatch,
+):
+    ledger, runtime = _open(
+        tmp_path / "lineage-retry.sqlite",
+        _RoleModel(failure=ConnectionError("provider unavailable")),
+        seed=True,
+    )
+    assert (await runtime.drain_one()).work_status == "technical_failure"
+    projection = ledger.project()
+    audit = next(
+        item for item in projection.model_result_audits
+        if item.attempt_id in {
+            attempt
+            for process in projection.trigger_processes
+            if process.process_kind == "npc_world_appraisal"
+            for attempt in process.attempt_ids
+        }
+    )
+    identity = runtime._retry_opportunity_identity(audit)
+    assert identity is not None
+
+    def historical_projection_is_forbidden(*_args, **_kwargs):
+        raise AssertionError("retry reconstruction must not replay a historical cursor")
+
+    monkeypatch.setattr(ledger, "project_at", historical_projection_is_forbidden)
+    failed = runtime._technical_retry_schedule._failure(audit, projection)
+    assert failed.opportunity_ref == identity.opportunity_ref
+    assert failed.attempt_id == audit.attempt_id
+    assert failed.failed_at == ledger.lookup_event_commit(audit.event_ref)[0].logical_time
+    ledger.close()
+
+
+@pytest.mark.asyncio
 async def test_due_selection_skips_failed_opportunity_but_new_source_group_inherits_no_failure(
     tmp_path, monkeypatch,
 ):

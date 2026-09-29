@@ -1,7 +1,343 @@
+Prehistory coverage and conversational evaluation (2026-09-29):
+`docs/audits/prehistory-grounding-repair-2026-09-29.md`. User explicitly accepts ordinary
+Chinese concise negation (no pet record -> "never had a cat"), approximation and ellipsis;
+evaluate concrete invented episodes/people/results, not missing verbatim proof.
+Production now prehistory-grounding-20260929-f9448e6aba77, PID21178. Added optional
+WORLD_V2_PREHISTORY_PACKAGE_PATH; strict reviewed-hash/World/actor import, no auto retention.
+Creation brief now includes committed BiographicalTimelineConfigured: enrollment2024,
+not the older test archive's2023. New12 fictional pre-start records independently reviewed
+by real V4.1, then ALL12 voluntarily retained via12 real production setup calls. One archive,
+12 imports/decisions verified in live DB. Setup used actual NapCat composition without
+starting ASGI/scheduler or sending messages. Startup import is idempotent; recovery idle.
+191 scoped tests pass in isolated test env; clone cold replay hash matches,0 findings.
+Health/dashboard/OpenAPI200 after activation. Backups in output/private-audits/grounding-repair-20260929/activation-backup;
+permanent reviewed package under ~/Library/Application Support/Girl-Agent/prehistory/.
+Policy file now contains a QUOTED path; Python tools should use dotenv_values, not naive split.
+Current v25 prompt.4-slim and shadow grading ordinary-chinese-material-factuality.2 reflect
+user semantics; no blocking text review restored, no Fact/Experience permission relaxation.
+Known-source graduation/roommate answers can use new records, but uncovered birthday still
+fabricates and old fabricated birthday is repeated from dialogue. NOT solved, no5% claim.
+Contrastive examples and an extra visible-history index did not prove useful; NOT deployed.
+Do not call this lower hallucination rate: it improves coverage and fixes deployment wiring.
+
+Background recovery repair (2026-09-29): `docs/audits/background-recovery-2026-09-29.md`.
+Memory review v2 pins fixed source refs in the host; role owns every retention/time
+choice and attention (new protocol capacity32, original v1 unchanged). Fix same-owner
+lease reclaim at exact expiry; previous <= caused retry without advancing backoff.
+Expired/superseded/contradicted accepted Appraisal closes only its unapplied old Affect
+in both recovery selection and compiler; missing sources remain errors, accepted Affect
+is unchanged.250 scoped tests pass. Production clone baseline0/8 after2 calls; initial
+candidate22 reviews/3 calls; final candidate8 reviews/1 call/3.78s. Cold full replay
+matches,0 findings. Six experimental calls total estimatedCNY0.1334,0 unknown bills.
+Production switched to background-repair-20260929-c82c19a83a58 (PID57754 at launch),
+old package/launcher and SQLite backup retained under output/private-audits/background-repair-20260929/.
+Initial activation exposed recovery scanning that replayed each historical relationship/
+experience prefix on the main thread. Fixed selection to use verified current projection
+and accepted descendants, retaining full pin/compiler/acceptance for actual processing;
+SQLite scan now runs off-loop. Final280 checks and final-package cold replay pass (hash matches,0 findings); production-copy scan4.17s under
+profiler, no historical replay, no pending jobs. Final package is
+background-recovery-scan-20260929-278eb4f8f242, PID68071. Dashboard/health/OpenAPI200;
+three short health snapshots running, scheduler passes2->3,0 fresh technical failures.
+These idle live passes do not replace the real-model clone proof. One legacy retry-identity
+warning remains diagnostic; historical errors were not erased.
+Research only for chat fabrication: `docs/audits/role-grounding-industry-2026-09-29.md`.
+Rechecked Sufficient Context, Contextual Retrieval, LongMemEval, RAFT and earlier51-call
+project experiments. Prefer prehistory coverage and old-self-report contamination diagnosis;
+no new synchronous reviewer, no new hallucination-rate or overall-release claim.
+
+Local context optimization (2026-09-29): `docs/audits/shared-context-resolution-2026-09-29.md`.
+Chat and CharacterInterior now share one exact-query LedgerProjectionContextResolver
+through ContextCapsuleCompiler.with_policy; independent budgets/handle issuers retained.
+Same-head validation remains before cache hits; serialized resolution coalesces concurrent
+refresh/prefetch. No prompt/model/budget/authority/event changes.127 scoped tests pass.
+Three production-snapshot local pairs retain identical compiler hashes, ~1.02-1.43s
+becomes0.53-0.58s. Real V4.1+BGE-M3 clone A/B: baseline first capture5.695/4.994s,
+candidate4.648/4.375s; total5.958/5.434 ->4.927/4.829s. One author call each; four
+captures succeed. Small sample, no real QQ transport timing or p95 qualification.
+Candidate cold replay hash matches,0 findings. Production launcher now selects
+context-local-20260929-ea46f245ca79, prior package retained; activation backup under
+output/private-audits/context-local-20260929/activation-backup. PID78567 verified: health/dashboard/OpenAPI and authenticated owner dashboard/snapshot
+return200; health running/ok at check.450ms recall join misses still occur; earlier
+background appraisal failures have not been addressed by this change.
+
+Production text mode activated (2026-09-29): `docs/audits/epoch-replay-and-text-cutover-2026-09-29.md`.
+Fixed true replay cause: Aug20 changed epoch.1 Fact assertion binding to genesis
+without a format bump; live preserved archive observed_message bindings.19 Facts
+differed only in binding/fingerprint. Exact committed Fact before-images recover
+historical representation from original genesis; new snapshots use epoch.2.
+No event rewriting or hash bypass.24374-event production copy replay matches ALL
+projection fields;151 scoped tests pass. Frozen-package2-turn production-copy
+capture succeeds (7.05/6.41s full turns); subsequent cold replay passes,0 findings.
+Production8787 now loads sampled-text-20260929-55677eea857f, PID97271 at check.
+Launcher in ~/Library/Application Support/Girl-Agent/run-production-napcat.sh loads
+production-text-policy.env: v25 fallback, sampled ordinary text, episode off,
+V4.1 deepseek-flash, sample every10. Existing .env untouched. Stop-time consistent
+DB backup at seq24385 in output/private-audits/replay-compat-20260929/cutover-backup.
+First package619f lacked pixel-home static assets; superseded by complete55677.
+Dashboard/OpenAPI200, health responds; scheduler running. Still DEGRADED from
+background world_stimulus_appraisal refs>8 and legacy retry identity issues.
+No real QQ test messages sent. Do not claim all mechanisms healthy, <5s or <5%.
+Normal rollback is sampled->blocking in the new mode file, keeping new code/data;
+never overwrite newer messages with the old DB backup automatically.
+
+Ordinary text observation mode (2026-09-29): `docs/audits/sampled-chat-review-2026-09-29.md`, ADR0020.
+User explicitly accepts ordinary paraphrase/approximation and authorizes testing then
+switching ordinary chat to one author plus nonblocking sampled observation.
+Implemented opt-in WORLD_V2_ORDINARY_TEXT_REVIEW_MODE=sampled with v25 fallback,
+explicit not_semantically_reviewed provenance, typed text/Appraisal/Affect eligibility,
+unchanged Fact/Experience/Memory/media gates and old receipt replay. SQLite sidecar
+observes only after ACK/delivery, ~1/10, max12 calls/UTCday; clean ContextVar task,
+no rewrite/World effects, observable failures/severities. Default remains blocking.
+109 scoped tests pass.12 real V4.1 captures10 delivered,2 invalid source/structure.
+Paired6: direct6/6 p50=4.10s/CNY0.1172/6calls; blocking4/6 p50=6.76s/CNY0.3863/17calls.
+Both modes fabricated graduation scenes. Actual shadow detects major; not5% proof.
+Standalone observer2calls~CNY0.14838; installed observer1call0.0019 (cache-dependent).
+New isolated direct receipt cold replay passes. PRODUCTION NOT SWITCHED:8787 PID6452
+loads frozen c9429779 release, not workspace. Read-only production backup (qq-c2c:geoff,
+seq24374) loads snapshot but full replay fails at seq22158 InteractionFactDecisionRecorded,
+Sep25 event229564... with exact Fact source context hash mismatch. Do not bypass or edit
+history; root cause still open. Production-copy direct capture1call=8.43s (model2.33s).
+Candidate activation env is in output/private-audits/sampled-chat-20260929/, not applied.
+Next required deployment work: repair/qualify historical replay, then real-production-copy
+startup/latency and activation of a new package. Current process/env left unchanged.
+
+Contextual life recall (2026-09-28): `docs/audits/contextual-recall-2026-09-28.md`.
+Removed life-corpus newest256 truncation; exact overlapping480-char windows retain
+late result text. Existing SQLite incremental vector reuse retained. New hybrid.11
+can prioritize a newer result linked to an already selected owned Plan among
+eligible matched rows, under unchanged6000B reading/12000B result limits.
+Activity-name enrichment regressed and is NOT in production; experiment only.
+Local BGE-M3 targeted30-case development set: baseline0, windows20, name-context15,
+final exact-chain29/30. NOT a production/hallucination rate or held-out score.
+219 scoped tests pass; old .10 and new .11 runtime cold replay/receipts verify.
+One real full-chain turn:7.82s/CNY0.0489,2calls; still says half for some, review
+leaks it.2 author-only pairs improve useful answers;8 earlier diagnostic replies
+lost to accounting script error excluded from quality, included in spend.14 total
+V4.1 calls~CNY0.0611. No5%/5s/daily-cost or release claim. No production restart/QQ.
+Historical Fact transition reader still independently capped256; current search
+is linear, tested420docs. Do not describe this as unlimited historical retrieval.
+
+Action-result chain repair (2026-09-28): `docs/audits/action-result-chain-2026-09-28.md`.
+Correction: absent from author/table did NOT mean absent from ledger. Same smoke
+snapshot has3 settled photo results; display1440-char budget excluded14/18 life
+bodies and was incorrectly reused for Recall candidates. Separate local corpus
+reads from display; preserve privacy/pin/hash checks and foreground limits.
+Recall also lacked the settled-life -> visible review bridge. New hybrid.10
+reading carries bounded exact World material, expands authenticated aliases,
+and uses actual LifeContentRecorded authority. Old .9 reading remains unchanged.
+Final 215+23 distinct scoped tests pass; final2 real V4.1+BGE-M3 one-turn capture delivers via
+one author+one review,6.38s/CNY0.0371.14 total diagnostic calls/CNY0.3301.
+Final2 cold replay matches, zero findings, new review receipt verifies. Earlier
+in-turn experimental .10 carrier shapes are NOT release/replay qualification.
+Main progress grounded, but 'not finished writing' still exceeds 'a few notes'.
+No5%/5s/daily-cost claim, no production restart, no QQ. Global256-doc recall cap
+and excerpt bounds remain separate long-history limitations.
+
+Sufficient-context diagnosis (2026-09-28): `docs/audits/sufficient-context-experiments-2026-09-28.md`.
+51 isolated V4.1 calls, estimated CNY0.47736192. Evidence-only input, speech-only,
+evidence-first and two-stage expression still fabricate; no production adoption.
+Three low-thinking probes: two exhausted4096 output tokens in reasoning (22.10/19.61s),
+one returned in7.59s. Not a general model impossibility result. Synthetic four-topic
+paired controls improve with sufficient facts; all four insufficient conditions
+make unsupported claims. Sufficient answers still show coverage/expansion/ID defects.
+Fixtures are synthetic diagnostic data, not real biography or release qualification.
+Next: qualify actual current-code action-result -> memory -> chat on a fresh isolated
+World; don't infer new-chain performance from result-empty legacy snapshots.
+No 5% claim, no gate removal, no production restart, no real QQ messages.
+
+V4.1-only input experiment (2026-09-28): `docs/audits/v41-input-experiments-2026-09-28.md`.
+User explicitly stopped Flash/Pro model comparisons; use official V4.1 API name
+`deepseek-flash` for further paid tests. Legacy v4-flash is an official alias,
+not evidence of a different current checkpoint. Aborted matrix is excluded.
+8 frozen first-author pairs +6 fresh runtime questions per input profile:
+bounded narrative saves input but both profiles delivered2/6; bounded is NOT a
+production setting. Experiment hook remains only in compare_chat_review_gate.
+Applied: canonical V4.1 model pricing admission; atomic-slim set ordering for
+Recall filters; grounded ordered wire.4 expands identifier slots only and removes
+only redundant plain IDs also carried by exact Fact-value selections. Old
+wire1/2/3 unchanged. Quotes/owner/scope/unknown refs remain validated. Two recorded
+Recall ordering errors recover offline; original schedule review now closes both
+Beats under wire4 with identical content/sources/instructions. Fresh V4.1 schedule
+probe delivers in7.29s with2 calls/0.0514CNY, no re-authoring.399+81 scoped tests
+pass; no overall hallucination/5s/daily-cost qualification, no production restart.
+
+Author input/Recall repair (2026-09-28): `docs/audits/author-input-repair-2026-09-28.md`.
+Per-record annotation experiment did not improve delivery and was removed.
+Current v25 slim prompt.3 replaces redundant/obsolete field explanations;
+actual initial system text15875->9957 chars including complete Recall shape.
+Fixed a separate bridge bug: authored CharacterRecallRequest filters were lost
+between inbound author/Faculty/Core and coordinator. Optional recall_parameters
+now carries validated kind/history/time/link/lexical/limit, with query matching;
+absent legacy field keeps old query-only defaults.213 scoped regressions pass.
+12-case concise precursor still7/12 delivered; not reliability qualification.
+Recall-shape2-case probe did complete a real recall, cold replay matches; its
+trace exposed dropped filters. Latest filter-fixed single case did NOT choose
+recall and still fabricated graduation details accepted by reviewer. No claim
+of solved hallucination or5s target; no production restart or gate removal.
+
+Chat review gate comparison (2026-09-28): `docs/audits/chat-review-gate-comparison-2026-09-28.md`.
+12 real-provider independent cases, SAME candidate observed before and after
+blocking v25 review. Shadow is not unreviewed Action/delivery or persistence.
+Candidate-ready p50 3.49s; reviewed capture9/12, delivered p50 7.49s. First
+review pass5/12. Independent supplied-source inspection found6 cases with
+unsupported experience/subject confusion,1 minor time error,5 without clear
+unsupported experience. Review itself also overrejects and leaks paraphrases.
+CNY0.8458 total/37 calls;0.2594 before first candidates; no daily-cost estimate.
+No production toggle change. Current evidence does NOT qualify full gate removal.
+
+Integrated repair (2026-09-28): `docs/audits/integrated-repair-2026-09-28.md`.
+Exact accepted Thread descriptions now reach dashboard; current WorldStimulus v6
+permits model-owned brief reaction without three mandatory prose explanations.
+Life .20/.21 bind transport receipts and reply-gap readings; brief negative Affect
+can settle, but natural long-term behavior remains unqualified. Exact-input caches
+and audit reducer avoid repeated local work; v25 uses bound short references and
+versioned subjective proof elision. Local profiled replay 10.418s -> 3.090s is NOT
+real chat latency. Latest real 4-turn v25 capture: 4/4 eventual, 3/4 immediate,
+first visible5.985/11.482/6.030s, CNY0.872/25calls; no daily-cost qualification.
+398 focused regressions pass; broad isolated scan stopped at3159 passes, not a
+full-suite pass. One compact run was a configuration mistake and is excluded. Source
+fabrication and false rejection persist. No production restart or real QQ sends.
+
+Silence/negative-affect audit (2026-09-28): `docs/audits/silence-negative-affect-2026-09-28.md`.
+Production has20 silence appraisals but no anger/hurt/resentment components;
+old calls emphasize delivery and~61m latest wait despite38.7h since inbound and
+5 expression groups. New pinned silence chronology preserves that cumulative
+history without counting Beats/receipt updates as contacts; trigger framing
+now names the reply gap rather than a new receipt. Real candidate probes show
+loneliness instead of no_change, not anger or qualified behavioral improvement.
+No production deployment; source review, persistence and later behavior remain
+to qualify together. No deterministic emotion or contact policy added.
+
+Dashboard coverage audit (2026-09-28): `docs/audits/dashboard-runtime-coverage-2026-09-28.md`.
+Production-copy pin23979 has54 plans,70 World events,69 Experiences,110 memories;
+several independent state domains really have0 records. Delivered expression
+text and exact Experience environment reads are now connected; expectation
+cards reflect assessment/expiry. Add scoped process counts, zero explanations,
+and bounded browser fetch.91 focused checks pass. Authenticated8792 preview
+is explicitly a frozen production-copy snapshot, NOT live production.8787
+still runs September26 code and repeatedly times out; native sampling shows a
+busy Python/Pydantic worker but no confirmed function-level root cause.
+
+Release repair update (2026-09-28): see `docs/audits/release-repair-2026-09-28.md`.
+Ordered v25 review wire, bounded format repair, lossless large-evidence storage,
+slim auto author, pinned Appraisal retention and Life .19 narrow state readers
+are installed in code. Periodic model-owned memory retention review now has a
+real due/lease/CAS/recovery path; it is not semantic memory compression. World
+v5 can declare objective results for an exactly authorized started attempt.
+375 focused checks pass; cold replay matches. Latest 30-minute isolated probe
+still delivered only1/2, first visible16.98s, known CNY1.0268. Cost, latency,
+first-draft fabrication and natural diversity remain unqualified. Additional
+active-attempt fixture mismatches were traced to incomplete reply transport and
+changed retry-slot expectations. No production restart or deployment.
+
 # Girl-Agent Domain Glossary
 
 For current release qualification read `docs/audits/release-status-2026-09-13-current.md`.
 Current status: manual_only / qualification_incomplete (2026-09-21).
+
+Accelerated release check (2026-09-28): `docs/audits/release-accelerated-2026-09-28.md`.
+Current repaired code with reference wire, configured BGE-M3 and grounded_review_v25
+ran one complete virtual24h in16.6 wall minutes, with97 clock advances,10 World
+settlements,11 accepted memories and8 reflection openings. No skipped new Plan
+windows; cold replay and40 focused regressions pass. This candidate FAILED:
+4/4 user turns had no capture delivery; v25 overlapping/duplicate review segments
+and subsequent retries persist. Known estimate CNY5.0653 plus3 unknown bills;
+inbound review is49.7% of known cost. Life still repeats maintenance/obstacles;
+one private response asserts a visit/photo handling absent from its bound result.
+Periodic memory consolidation remains explicitly dormant. Planned days2/3 stopped
+after this failed gate; no long-memory/personality qualification. This is NOT the
+running compact profile, and production was not changed or restarted.
+
+Continuity/read-path repair (2026-09-27): `docs/audits/continuity-repair-2026-09-27.md`.
+Memory retrieval items now carry original update/review times, and capsule ranking
+reads their top-level strength. Eight historical items previously all scored0;
+now the existing age/importance/relevance formula receives its intended inputs.
+Private choice views retain owned paused/abandoned states and explicit recall
+results, including wrapper source refs. Continuation shows the prior accepted
+intention as history, never an obligation or completed act. No memory is erased
+or automatically devalued based on a lifecycle event. Current World.2 general
+review uses native strict schema with bounded reason; two recorded bad-shape
+requests now return valid unsupported verdicts. A controlled mundane candidate
+passed real reviews and World settlement.227 regressions and cold replays pass;
+long-term behavioral qualification remains open. No production restart.
+
+Product correction and living-frame repair (2026-09-27): see
+`docs/audits/lived-texture-2026-09-27.md`. Diversity means avoiding a life entirely
+dominated by persona hobbies and productivity-style plans; venue/topic counts
+are not acceptance. Private role composition now receives the same configured
+personality/values as chat, without repeatedly injecting biography/habit/examples.
+The immutable frame hash participates in new turn identity; it grants no facts.
+Living choices explain permission/privacy fields without requiring meaningful
+outputs or finishing old work. No topic bans, forced leisure, memory deletion,
+extra model step, or temperature change. Same-history final samples:2 casual
+choices and1 photo continuation vs3 photo continuations before. Real controlled
+chain accepted ordinary intentions across restart; not proof of completed acts.
+Long-term richness remains unqualified, and old-history chat still repeated an
+old concern. Production was not restarted.
+
+Cost qualification update (2026-09-27): see `docs/audits/cost-150-2026-09-27.md`.
+Isolated fixed24h +6 chats: known CNY1.328, weekday equivalent1.555419,
+1 unknown bill; immediate capture delivery5/6, eventual6/6. Not qualified at
+CNY1.5/day with unchanged quality. Short-reference wire remains opt-in; no
+production restart. Core regression438 passed and latest cold replay matched.
+
+Life diversity repair (2026-09-27): `docs/audits/life-diversity-fix-2026-09-27.md`.
+Current continuation also recognizes exactly bound abandoned activities, without
+relabeling them completed. Activity catalog9 prevents expired paused attempts from
+resuming under an old window; legacy8 semantics remain frozen. Ordinary World
+requests sample an authorized available environment, without choosing character
+actions. Failed old consequence retries now yield one due slot to other life work.
+192 related checks pass. Candidate-level real A/B escaped the maintenance theme,
+and final4h produced3 actual settlements and role-authored new plans; abandoned
+activity continuation reached the real model and next plan. All4 checkpoints cold
+replay consistently. Overall richness is NOT passed: photo/book intentions still
+recur and source-review failures still block many results. Validation cost~CNY3.43
+for181 calls, not daily-cost qualification. No production restart/deployment.
+
+Richness verification (2026-09-27): `docs/audits/life-richness-validation-2026-09-27.md`.
+Frozen candidate + configured BGE-M3 ran a complete24h with6 ordinary chats.
+Not qualified:17/18 new settlements concern the same facilities-notice theme;
+2 new plans remain closeout/old-concern work;2 NPC decisions are no_op;4 proactive
+expressions repeat asking whether the user rested. All6 chats eventually captured.
+Known estimate CNY3.5654 plus1 unknown bill. Five of6 retained inbound audits use
+local recall fallback; do not claim all turns used BGE. No skipped new plan windows;
+cold replay matches. This is behavioral evidence, beyond earlier mechanism tests.
+
+Life reconsideration (2026-09-27): `docs/audits/life-reconsideration-2026-09-27.md`.
+Current day-open capability5 / choice3 supports role-selected later consideration,
+with durable original-choice binding, cross-day restart and fresh-context choice.
+V2 advisory routines are separate from legacy hobby schedules. NPC requests now
+expose source IDs, owner/time state, now/later fields and privacy floors before
+commit. 324 related tests passed; bounded real-provider probes used CNY0.10839764
+(29 calls, no unknown bills). Recorded-failure replay plus real correction reached
+NPC settlement. Fresh NPC no_op remains valid; week-long richness is unqualified.
+
+Life richness audit (2026-09-27): see `docs/audits/life-richness-2026-09-27.md`.
+Current World Consequence context now excludes protagonist private affect,
+relationship, threads and subjective experience slices; character cognition retains
+them. Causally ready NPC work/stimuli precede discretionary ambient generation;
+exact protagonist attempt outcomes keep priority. Accelerated probes now honor
+production due boundaries and owner kinds. Earlier fixed-clock samples skipped a
+whole planned activity window; their low cost is not full-life qualification.
+Real diagnostic runs still repeated photos/maintenance. Richness remains unqualified.
+
+Grounding continuation (2026-09-26): BGE-M3 remains the configured semantic
+retriever; no E5 experiment or live provider call was made. The completed-attempt
+end-to-end fixture now also verifies that the exact `authorized_attempt_result`
+reaches grounded visible review with its source binding; its `no_op` control
+creates no occurrence result or Experience to cite. Recall gained an
+ephemeral stage diagnostic (corpus, eligibility, matched candidate, initial
+rank, final selection); offline controls distinguish absent facts, ineligible
+status, retrieval misses, top-k exclusion, and context transport without changing
+thresholds or durable receipt contracts. Grounded review v25 is opt-in and
+preserves the v24 compiler: it requires a lossless ordered partition of every
+Beat and does not permit an activity lifecycle field to support a companion
+action. A paired regression reproduces the known v24 lifecycle false acceptance
+and verifies v25 rejects that same source use. Current local settings remain
+`compact` + `stream`, so v25 is not active in the running profile. The reviewer's
+semantic classification still needs controlled provider qualification; no live
+accuracy claim is made. The focused suites passed 364 tests across four runs,
+with Ruff and `git diff --check` clean; the suites overlap with existing coverage.
 
 Chat is now actually usable; invitation release is not qualified. At8cce5843 a real
 reviewer answer that repeated a JSON member inside one fact object was proved to be the

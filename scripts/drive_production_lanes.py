@@ -537,6 +537,7 @@ class DriveSession:
     delivery: CaptureDelivery
     host: object
     clock: datetime
+    journey_clock: object | None = None
     images_generated: int = 0
     notes: list[str] = field(default_factory=list)
 
@@ -552,6 +553,8 @@ class DriveSession:
         if target <= current:
             return {"status": "already_at_or_past", "logical_time": current.isoformat()}
         tick_id = f"drive:{reason}:{target.isoformat()}"
+        if self.journey_clock is not None:
+            self.journey_clock.advance(target)
         status = await self.host.tick(
             tick_id=tick_id,
             logical_time_from=current,
@@ -562,6 +565,45 @@ class DriveSession:
         )
         self.clock = target
         return {"status": status, "logical_time": target.isoformat(), "tick_id": tick_id}
+
+    async def advance_with_runtime_dues(
+        self, target: datetime, *, reason: str, before_step=None, max_steps: int = 512,
+        run_life_at_target: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Honor production Clock boundaries instead of skipping planned life.
+
+        Re-read after each tick/drain: a character may create another due time.
+        The bound fails the experiment explicitly; it is not a frequency cap.
+        """
+        from companion_daemon.world_v2.declared_due import select_clock_wake
+        from companion_daemon.world_v2.delayed_trigger_owner_registry import life_ecology_clock_wake_kinds
+        from companion_daemon.world_v2.longitudinal_model_input_capture import model_input_capture_scope
+
+        steps = []
+        life_kinds = life_ecology_clock_wake_kinds()
+        for index in range(max_steps):
+            current = await self.logical_time()
+            if current >= target:
+                return steps
+            snapshot = await self.host.scheduler_wake_snapshot()
+            selected = select_clock_wake(after=current, through=target, dues=snapshot.dues)
+            next_at = selected.due_at if selected is not None else target
+            run_life = (selected is None and run_life_at_target) or any(
+                due.kind in life_kinds and due.due_at <= next_at
+                and (due.wake_policy == "wall_catchup" or due.due_at > current)
+                for due in snapshot.dues
+            )
+            if before_step is not None:
+                before_step(next_at)
+            with model_input_capture_scope(step_id=f"{reason}-due-{index}", virtual_at=next_at):
+                tick = await self.tick_to(next_at, reason=f"{reason}-due-{index}", run_life=run_life)
+                drains = await self.drain_loop(rounds=6, background=8)
+            steps.append({"tick": tick, "drains": drains,
+                          "due_kind": selected.kind if selected is not None else None,
+                          "run_life_ecology": run_life})
+        if await self.logical_time() >= target:
+            return steps
+        raise RuntimeError("runtime-due advance did not finish within the diagnostic step bound")
 
     async def drain(self, *, actions: int = 8, background: int = 16) -> dict[str, Any]:
         result = await self.host.drain(
@@ -583,10 +625,18 @@ class DriveSession:
                 break
         return seen
 
-    async def inbound(self, text: str, *, observed_at: datetime | None = None) -> dict[str, Any]:
+    async def inbound(
+        self,
+        text: str,
+        *,
+        observed_at: datetime | None = None,
+        background_units: int = 8,
+    ) -> dict[str, Any]:
         when = observed_at or (self.clock + timedelta(seconds=2))
         if when <= self.clock:
             when = self.clock + timedelta(seconds=2)
+        if self.journey_clock is not None:
+            self.journey_clock.advance(when)
         message_id = f"drive-{time.time_ns()}"
         before = len(self.delivery.sent)
         result = await self.host.inbound_text(
@@ -596,7 +646,7 @@ class DriveSession:
             observed_at=when,
         )
         self.clock = when
-        await self.drain(actions=8, background=8)
+        await self.drain(actions=8, background=background_units)
         return {
             "status": getattr(result, "status", None),
             "action_id": getattr(result, "action_id", None),
@@ -633,6 +683,10 @@ async def open_session(
     output_dir: Path,
     inbound_payload: dict[str, object] | None = None,
     enable_media: bool = True,
+    visible_source_review_version: str | None = None,
+    primary_user_id: str | None = None,
+    journey_clock=None,
+    use_configured_recall_embedding: bool = False,
 ) -> DriveSession:
     from companion_daemon.config import Settings
     from companion_daemon.llm import DeepSeekChatModel
@@ -642,20 +696,33 @@ async def open_session(
 
     if _is_production_path(database):
         raise SystemExit(f"refusing to open production ledger for write: {database}")
+    if visible_source_review_version not in {None, "24", "25"}:
+        raise ValueError("isolated drive review version must be 24, 25, or None")
     sidecar = output_dir / f"{database.stem}.sidecars"
     sidecar.mkdir(parents=True, exist_ok=True)
+    profile_settings: dict[str, object] = {}
+    if visible_source_review_version is not None:
+        profile_settings.update(
+            WORLD_V2_VISIBLE_EXPRESSION_PROFILE=f"grounded_review_v{visible_source_review_version}",
+            WORLD_V2_EXPRESSION_EPISODE_MODE="off",
+            WORLD_V2_VISIBLE_SOURCE_REVIEW_MODEL="deepseek-flash",
+        )
     settings = Settings(
         database_path=database,
+        **({"PRIMARY_USER_ID": primary_user_id} if primary_user_id is not None else {}),
         world_v2_external_perception_mode="off",
         world_v2_external_perception_sidecar_path=sidecar / "perception.sqlite",
         attachment_cache_path=sidecar / "attachments",
         world_v2_text_endpoint_enabled=False,
+        **profile_settings,
     )
     recipient_id = _recipient_id(settings)
     delivery = CaptureDelivery()
     overlay = None
+    usage_store = None
     if inbound_payload is not None:
         usage_store = WorldV2UsageStore(path=str(database))
+    if inbound_payload is not None:
         inner = DeepSeekChatModel(
             api_key=settings.deepseek_api_key,
             base_url=settings.deepseek_base_url,
@@ -674,15 +741,40 @@ async def open_session(
         if bundle is not None:
             media_preview = bundle.deployment
             media_transport = bundle.transport
+    clock_options = {}
+    if journey_clock is not None:
+        from companion_daemon.world_v2.interactive_turn_budget import InteractiveTurnBudgetPolicy
+
+        clock_options = dict(
+            ingress_now=journey_clock.presentation_now,
+            ingress_sleep=journey_clock.presentation_sleep,
+            action_due_now=journey_clock.now,
+            action_due_sleep=journey_clock.timer_sleep,
+            interactive_turn_budget_policy=InteractiveTurnBudgetPolicy(
+                total_seconds=settings.world_v2_interactive_turn_budget_seconds,
+                hedge_after_seconds=settings.world_v2_interactive_hedge_after_seconds,
+                wall_clock=journey_clock.presentation_now,
+            ),
+        )
     host = build_qq_c2c_host(
         settings=settings,
         recipient_id=recipient_id,
         bootstrap_at=datetime.now(UTC),
         delivery=delivery,
         model=overlay,
+        **(
+            {
+                "visible_source_review_required": True,
+                "visible_author_tool_version": "slim",
+                "visible_source_review_version": visible_source_review_version,
+            }
+            if visible_source_review_version is not None
+            else {}
+        ),
         media_preview=media_preview,
         media_transport=media_transport,
-        use_configured_recall_embedding=False,
+        use_configured_recall_embedding=use_configured_recall_embedding,
+        **clock_options,
     )
     session = DriveSession(
         database=database,
@@ -690,6 +782,7 @@ async def open_session(
         delivery=delivery,
         host=host,
         clock=datetime.now(UTC),
+        journey_clock=journey_clock,
     )
     await session.logical_time()
     return session
@@ -1049,7 +1142,6 @@ async def _drive_media_from_open_candidate(
 def _best_existing_life_clone(output_dir: Path) -> Path | None:
     ranked: list[tuple[int, Path]] = []
     for path in sorted(output_dir.glob("life-attempt-*.sqlite")):
-        seq = current_seq(path)
         events = new_events(path, 3908)
         score = 0
         if _has_event(events, "ActivityStarted"):
@@ -1531,7 +1623,6 @@ async def drive_waiting(*, source: Path, output_dir: Path) -> dict[str, Any]:
     )
     try:
         inbound = await session.inbound("那件事你回头说完")
-        after = new_events(clone, started_seq)
         now = await session.logical_time()
         tick = await session.tick_to(now + timedelta(seconds=150), reason="waiting-due")
         await session.drain_loop(rounds=10, background=16)

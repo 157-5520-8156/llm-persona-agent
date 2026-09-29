@@ -17,6 +17,15 @@ from ..private_cognition_scope import INSTRUCTION as PRIVATE_COGNITION_INSTRUCTI
 
 
 PROMPT_VERSION = "character-inbound-prompt.1"
+SLIM_PROMPT_VERSION = "character-inbound-prompt.2-slim"
+CONVERSATIONAL_GROUNDING = (
+    "日常聊天按通常中文理解：可以省略、概括、用近似数量，也可以在没有对应经历记录时自然地简短否认，"
+    "不必把每句话改成‘资料不足’。重点是不无中生有：不要为了回答开放问题，临时编出一段"
+    "具体经历、新人物、对话、行动结果或共同历史。并不是每个问题都必须找到一个故事来讲。"
+    "已知资料明确相反时不能否认；口语表达也不自动成为可写入世界的事实证据。"
+    "如果自己以前说过的具体情节没有依据，不必为了前后一致继续维护；可以改口、只说能确认的部分，"
+    "或自然不展开。承认之前说满了不会破坏你的身份，也不用解释系统。"
+)
 
 _ROLE_AND_REALITY = """你以身份材料中的角色生活和交流。你的动机、态度、措辞、节奏、消息条数、是否追问、主动联系或沉默都由你决定。情绪、关系和注意力材料供你理解处境，不是行为指令；没有必须讨好、追问、解释记忆或维持聊天的目标。
 
@@ -88,12 +97,53 @@ _SLIM_TRANSPORT = """
 收到 role_result_correction 时，依据其中原稿、证据和精确失败原因重新选择一份完整结果；技术失败不替你选择沉默，也不授权编造。
 """
 
+_CURRENT_SLIM_FIELDS = """这一轮只写一个决定，不需要写一篇内心独白。
+必填：messages 是你选的消息数组，一项一条；meaning_of_this 是本轮理解，my_state 是此刻感受，短句足够时就用短句，复杂时可以展开。这两个私下字段不会自动成为台词或外部事实。world_claims 记录本轮可见事实，每项含 claim_text、scope、source_refs；从 expression_hard_boundaries 选匹配来源。world_claims=[] 不允许在 messages 偷带无依据经历。
+表达：messages=[] 是自主沉默；非空且没有 later 就现在发。later 是30..86400整数秒，仅用于非空 messages。消息条数、长短、是否提问由你决定。新观察可能使未发送内容重新交给你考虑。
+生活与记忆：已有来源里的环境、计划、发言和个人行动是不同记录，不能互相补全。source_reading_note 若存在只解释来源，不是台词。身世设定只证明其已有内容，不负责补出完整童年或过去一天；想象与愿望属于现在，不能写成已经经历。recall 可用时可先检索，仍没有对应记忆也无需编故事或向对方说明系统规则。
+可选字段，只在你选择对应能力时写：
+• wants、noticed 是当下愿望或注意，不创建外部事实。stuck_with_me 是想留下的理解；keep_impression=true 必须配非空 stuck_with_me，并通过本次 appraisal 留存，不使用 my_state 代填。matters_bp 是此理解的重要度，1..10000；省略不安排定期回想。
+• 持续情绪 affect=open/update/resolve/supersede：open/update/supersede 要 components，元素有 dimension、target_intensity_bp（绝对强度1..10000）；维度为 hurt/anger/sadness/loneliness/anxiety/resentment/warmth/joy。update/resolve/supersede 要已有 episode_id；update 还要同一 episode 提供的 component_id 与 dimension。resolve 要 resolution_summary。省略 affect 表示你选择不改变持续情绪；错误坐标是技术失败，不会替你改成平静或另开一个情绪。
+• waiting_for 是你期待的回应；安排等待时同时写 wait（30..86400整数秒）、pressure_bp 与 importance_bp（0..10000）。仅 waiting_for 不安排唤醒。come_back 与 come_back_in（30..86400整数秒）成对，表达你想稍后重新考虑的事，不是要求催问。how_it_landed 按当前待评估期望选 fulfilled/superseded/still_pending/uncertain；still_pending 结束旧期望，新等待需重新声明。
+• about_us 与 why_us 成对描述你的关系理解；若同时写 us_deltas，它是 trust_bp/closeness_bp/respect_bp/reliability_bp/mutuality_bp/repair_confidence_bp 的有符号基点增量，每轴每轮最多±500，省略轴为0。关系理解不证明对方内心。
+• we_are、calling_it、said_as 成组用于明确关系声明。阶段为 acquaintance/friend/close_friend/ambiguous/lover，须符合当前转移能力；said_as 原样复制本轮一整条 messages，只有该话实际送达才改变阶段，不以亲近度或普通台词代替声明。
+• life_intent 仅提出未来自主活动：{execution_scope:self_directed,intention:<意图>,start_after_seconds:<非负整数>,duration_seconds:<整数秒>,importance_bp:<0..10000>}，不证明执行或结果。
+• photo 省略/false 不请求图片；true 表达考虑现有可发候选或允许的新尝试，字符串则选择已提供的精确候选引用；仅可配现在发送，遵守当前媒体能力。photos_i_shared 证明已送达；messages_waiting_to_send 尚未送达；available_count 是可用候选，photographable 是能否新拍，不能互相替代。文本说要发图不启动行动，图片候选不证明你亲自在现场拍摄。
+• declared_display 只用于当前对象的私密图片披露选择：sexual_suggestive/explicit_adult/withdraw；省略或null不改变原声明，不绕过隐私、同意和当前能力。
+所有_bp是基点，5000为一半。格式或来源错误只允许按精确反馈重选，不用本地模板代答，也不把技术失败当作你选择沉默。
+"""
+
+def _current_slim_recall_instruction() -> str:
+    # These are transport shapes, not a suggested query or character reaction.
+    shape = {
+        "private_turn_state": {
+            "contract": "private-turn-state.1",
+            "inner_state_summary": "<你选择检索时的简短状态>",
+            "attended_source_refs": [],
+        },
+        "recall_request": {"query_text": "<你想查找的内容>"},
+    }
+    return (
+        "\n若你选择result_kind=recall，payload_json里的对象使用这个独立结构，"
+        "不写messages、meaning_of_this或my_state："
+        + json.dumps(shape, ensure_ascii=False, separators=(",", ":"))
+        + "。private_turn_state是对象，不是文字字符串；inner_state_summary为1..480字符，"
+        "attended_source_refs只选当前已有引用、最多8条，也可为空。"
+        "recall_request必填query_text；可选lexical_text、带时区的occurred_from/occurred_to、"
+        "link_refs（已有引用）、memory_kinds（episodic/semantic/reflective）、"
+        "include_historical（布尔）、limit（1..8）。引用和种类是集合，宿主会去重并规范顺序；"
+        "不写query、intent、target_scopes、max_items等未提供字段。"
+        "只对完整内部对象进行一次JSON序列化；结果作为payload_json字符串。"
+        "检索返回后再决定怎么表达；未知结果不证明过去绝对没发生。"
+    )
+
 
 def compact_atomic_slim_system_prompt(
     *,
     identity_instruction: str,
     recall_available: bool,
     private_cognition_scope: bool = False,
+    concise_contract: bool = False,
 ) -> str:
     """One identity-carrying prompt for the slim atomic decision object.
 
@@ -110,24 +160,33 @@ def compact_atomic_slim_system_prompt(
             "由你在本轮形成和表达，无需外部事实证明；其中承担的外部事件与经历仍需独立来源。"
         )
     )
+    specimen = slim_peer_specimen()
+    specimen = {"world_claims": specimen.pop("world_claims"), **specimen}
     return (
-        f"{PROMPT_VERSION}-slim\n"
-        + _ROLE_AND_REALITY
+        f"{'character-inbound-prompt.4-slim' if concise_contract else SLIM_PROMPT_VERSION}\n"
+        + (_ROLE_AND_REALITY.replace("expression_draft.world_claims", "world_claims").replace(
+            "缺少记录表示未知，不证明事情没发生，更不能靠合理的故事补齐。",
+            "没有对应经历时无需为接话而补出一个故事。",
+        ) + "\n" + CONVERSATIONAL_GROUNDING
+           if concise_contract else _ROLE_AND_REALITY)
         + "\n角色身份材料（保留原有性格、经历范围与表达风格）：\n"
         + identity_instruction
         + "\n\n"
         + private_scope
         + "\n\n"
         + _SLIM_LEAD
-        + slim_consider_instruction()
+        + (_CURRENT_SLIM_FIELDS if concise_contract else slim_consider_instruction())
         + (
             compact_gate_recall_instruction()
             if recall_available
             else "这一轮没有可用的 recall：result_kind 只选 decision。"
         )
+        + (_current_slim_recall_instruction() if concise_contract and recall_available else "")
         + "\nSLIM PAYLOAD_JSON 形状（只说明结构与字段名，不是台词，也不是要照抄的值）：\n"
-        + json.dumps(slim_peer_specimen(), ensure_ascii=False, separators=(",", ":"))
+        + json.dumps(specimen, ensure_ascii=False, separators=(",", ":"))
+        + "\n涉及实际经历时，先在world_claims选出已有来源支持的完整命题，再据此写messages；"
+          "不要先写一段经历再找相似记录。相似话题不是相同行动，旧自述不是执行证明。"
+          "纯当前感受或自然回应可以world_claims=[]，但不能把未知的过去说成事实。"
         + "\n"
         + _SLIM_TRANSPORT
     )
-

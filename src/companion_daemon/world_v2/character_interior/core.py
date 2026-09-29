@@ -31,7 +31,7 @@ from ..occasion import (
     mint_occasion,
     occasion_is_expired,
 )
-from ..recall_audit import PrefetchPresentationAudit, RecallAuditTrace
+from ..recall_audit import CharacterRecallRequest, PrefetchPresentationAudit, RecallAuditTrace
 from ..schema_core import canonicalize_json_value
 from ..schemas import ProjectionCursor
 from .contracts import (
@@ -1982,6 +1982,7 @@ class CharacterInterior:
         request: _InteriorRoleRequest,
         query: str,
         snapshot: InnerLifeSnapshot,
+        recall_parameters: CharacterRecallRequest | None = None,
     ) -> InnerLifeSnapshot:
         if self._recall is None:
             raise _InteriorTechnicalError("recall_unavailable", snapshot=snapshot)
@@ -1992,6 +1993,7 @@ class CharacterInterior:
             cursor=snapshot.cursor,
             trigger_ref=request.trigger_ref,
             query=query,
+            recall_parameters=recall_parameters,
             subject_source_refs=request.subject_source_refs,
             snapshot=snapshot,
         )
@@ -2664,6 +2666,7 @@ class CharacterInterior:
             snapshot = await self._recall_once(
                 request=request,
                 query=result.recall_query or "",
+                recall_parameters=result.recall_parameters,
                 snapshot=initial_snapshot,
             )
             entry.snapshot = snapshot

@@ -566,6 +566,18 @@ def expand_atomic_slim_payload(
     if kind == "recall":
         if set(payload) != {"private_turn_state", "recall_request"}:
             raise ValueError("atomic slim recall carrier requires the exact Recall envelope")
+        # These filters denote sets. Preserve the selected members while
+        # removing irrelevant provider ordering before canonical validation.
+        # Original returned bytes remain bound in the invocation audit; legacy
+        # non-slim parsing and persisted trace schemas stay strict.
+        request = payload.get("recall_request")
+        if isinstance(request, dict):
+            request = dict(request)
+            for field in ("memory_kinds", "link_refs"):
+                values = request.get(field)
+                if isinstance(values, list) and all(isinstance(v, str) for v in values):
+                    request[field] = sorted(set(values))
+            payload = {**payload, "recall_request": request}
         return {"result_kind": "recall", **payload}
     compiled = compile_slim_consider_payload(payload)
     if compiled is None:

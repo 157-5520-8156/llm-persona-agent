@@ -5,12 +5,13 @@ Reviewer verdicts here are scripted transport responses, not semantic qualificat
 from copy import deepcopy
 import json
 import sqlite3
+import httpx
 
 import pytest
 
 from companion_daemon.world_v2.character_interior.core import _restore_prepared_turn, _InteriorTechnicalError
 from companion_daemon.world_v2.character_interior.life_source_origin import canonical
-from companion_daemon.world_v2.character_interior.life_source_review import LifeSourceReviewer
+from companion_daemon.world_v2.character_interior.life_source_review import LifeSourceReviewer, MINTED_CONTRACT
 from companion_daemon.world_v2.character_interior.turn_store import open_sqlite_character_interior_turn_store
 from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
 from test_world_stimulus_life_response import _ResponseHTTP, _build, _model, _settled
@@ -80,7 +81,12 @@ class ReviewHTTP:
         if self.fault == 'authorship_with_rejected_past':
             target = next(f for f in fields if f['path'].endswith('/response_text'))
             target['created_current_states'] = [{'source_span': next(f['text'] for f in packet['text_fields'] if f['path'] == target['path']), 'state_description': 'Fixture current state with rejected embedded past.', 'subject_ref': packet['current_authorship_authority']['actor_ref'], 'time_relation': 'current'}]
-        return _http_result(body, {'fields': fields, 'coverage': 'uncertain' if self.fault == 'incomplete_candidate' else 'complete'})
+        response = _http_result(body, {'fields': fields, 'coverage': 'uncertain' if self.fault == 'incomplete_candidate' else 'complete'})
+        if self.fault == 'first_bad_json' and len(self.requests) == 1:
+            payload = response.json()
+            payload['choices'][0]['message']['tool_calls'][0]['function']['arguments'] = '{'
+            return httpx.Response(200, json=payload)
+        return response
 
 
 class CorrectingAuthor(_ResponseHTTP):
@@ -168,7 +174,7 @@ async def test_environment_support_uses_closed_permission_tokens_and_survives_re
     assert set(support['permission_id']['enum']) == {p['permission_id'] for p in packet['permission_choices']}
     assert all(p['subject_ref'] is None and p['selection'] == 'direct_field' for p in packet['permission_choices'])
     result, snapshot, _, _ = _restore_prepared_turn(canonical(checkpoints[0]), purpose='world_stimulus_appraisal')
-    assert result.life_source_review.contract == 'life-source-review.13'
+    assert result.life_source_review.contract == MINTED_CONTRACT
     authority = packet['current_authorship_authority']
     assert authority['actor_ref'] == snapshot.actor_ref
     assert authority['logical_time'] == snapshot.logical_time.isoformat()
@@ -221,9 +227,28 @@ async def test_fact_permission_choice_still_requires_exact_accepted_value(tmp_pa
 async def test_incomplete_review_never_becomes_author_correction_or_a_life_write(tmp_path, monkeypatch, fault):
     author = _ResponseHTTP(text=FEELING)
     responses, checkpoints, _, reviews = await run_gate(tmp_path, monkeypatch, author=author,
-        verdicts=['uncertain' if fault == 'uncertain' else 'accepted'], fault=fault)
+        verdicts=['uncertain' if fault == 'uncertain' else 'accepted'] * 2, fault=fault)
     assert responses == checkpoints == []
-    assert len(author.stimulus_requests) == len(reviews.requests) == 1
+    assert len(author.stimulus_requests) == 1
+    assert len(reviews.requests) == (1 if fault in {'timeout', 'uncertain', 'incomplete_decomposition', 'incomplete_candidate'} else 2)
+
+
+@pytest.mark.asyncio
+async def test_wire_repair_uses_same_candidate_and_bound_error_without_reauthoring(tmp_path, monkeypatch):
+    author = _ResponseHTTP(text=FEELING)
+    responses, checkpoints, _, reviews = await run_gate(tmp_path, monkeypatch, author=author,
+        verdicts=['accepted', 'accepted'], fault='first_bad_json')
+    assert responses == [FEELING]
+    assert len(author.stimulus_requests) == 1 and len(reviews.requests) == 2
+    feedback = json.loads(reviews.requests[1]['messages'][-1]['content'])
+    assert feedback['invalid_response'] == '{' and 'JSONDecodeError' in feedback['format_error']
+    result, snapshot, _, _ = _restore_prepared_turn(canonical(checkpoints[0]), purpose='world_stimulus_appraisal')
+    result.life_source_review.verify(result=result, snapshot=snapshot)
+    pin = json.loads(result.life_source_review.prepared_json)
+    pin['wire_feedback']['invalid_response'] = result.life_source_review.response_json
+    changed = result.life_source_review.model_copy(update={'prepared_json': canonical(pin)})
+    with pytest.raises(ValueError, match='usable verdict'):
+        changed.verify(result=result, snapshot=snapshot)
 
 
 @pytest.mark.asyncio

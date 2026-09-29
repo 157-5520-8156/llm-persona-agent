@@ -38,9 +38,10 @@ def isolated_usage(monkeypatch):
 
 
 class GroundedHTTP:
-    def __init__(self, *, reply=REPORT_REPLY, fault=None):
+    def __init__(self, *, reply=REPORT_REPLY, fault=None, review_protocol="visible-grounded-review.1"):
         self.reply = reply
         self.fault = fault
+        self.review_protocol = review_protocol
         self.requests = []
         self.authors = 0
         self.reviews = []
@@ -59,7 +60,8 @@ class GroundedHTTP:
         self.requests.append(body)
         assert not body.get("stream")
         packet = json.loads(body["messages"][1]["content"])
-        if "tools" in body:
+        ordered = packet.get("wire_carrier") in {"grounded-review-ordered-wire.1", "grounded-review-ordered-wire.2", "grounded-review-ordered-wire.3", "grounded-review-ordered-wire.4"}
+        if "tools" in body and not ordered:
             assert body["tool_choice"]["function"]["name"].startswith("character_inbound_")
             self.authors += 1
             result = _decision()
@@ -74,9 +76,10 @@ class GroundedHTTP:
                 key: result[key] for key in ("result_kind", "appraisal_draft", "expression_draft")
             }})
 
-        assert "tool_choice" not in body
-        assert body["response_format"] == {"type": "json_object"}
-        assert packet["contract"] == "visible-grounded-review.1"
+        if not ordered:
+            assert "tool_choice" not in body
+            assert body["response_format"] == {"type": "json_object"}
+        assert packet["contract"] == self.review_protocol
         assert USER_TEXT in json.dumps(packet["dialogue_context"], ensure_ascii=False)
         self.reviews.append(packet)
         if self.fault == "timeout":
@@ -109,14 +112,28 @@ class GroundedHTTP:
                     "source_support": not reject,
                     "rationale": "缺少角色昨天经历的来源" if reject else "承接用户本轮报告",
                 }]
+                if self.review_protocol == "visible-grounded-review.2":
+                    facts[0]["segment_index"] = 0
             else:
-                non_record = [{"text": beat["text"], "rationale": "本轮即时回应，无既往经历断言"}]
+                non_record = [{
+                    "text": beat["text"], "rationale": "本轮即时回应，无既往经历断言",
+                    **({"segment_index": 0} if self.review_protocol == "visible-grounded-review.2" else {}),
+                }]
             decisions.append({
                 "beat_index": beat["beat_index"], "review_complete": True,
                 "facts": facts, "non_record_expressions": non_record, "unresolved_details": [],
             })
+        if ordered:
+            for decision in decisions:
+                segments = []
+                for key, kind in (("facts", "fact"), ("non_record_expressions", "non_record")):
+                    for part in decision.pop(key):
+                        part.pop("segment_index", None)
+                        segments.append({**part, "kind": kind})
+                decision["segments"] = segments
+            return _http_result(body, {"beat_decisions": decisions, **({"contract": packet["wire_carrier"]} if packet["wire_carrier"].endswith(".1") else {})})
         content = json.dumps({
-            "contract": "visible-grounded-review.1", "beat_decisions": decisions,
+            "contract": self.review_protocol, "beat_decisions": decisions,
         }, ensure_ascii=False)
         if self.fault == "unusable_answer" and len(self.reviews) == 1:
             # The first answer repeats one member. The response is then not one
@@ -134,7 +151,7 @@ class GroundedHTTP:
 
 
 @asynccontextmanager
-async def application(path, handler, *, budget_policy=None):
+async def application(path, handler, *, budget_policy=None, review_version="24"):
     usage = WorldV2UsageStore(path=str(path.with_name("usage.sqlite")))
     models = [DeepSeekChatModel(
         "offline-fixture", "https://fixture.invalid", "deepseek-v4-flash",
@@ -143,7 +160,7 @@ async def application(path, handler, *, budget_policy=None):
     author = _InboundCharacterAuthor(
         flash_model=models[0], whole_candidate_mode=True, atomic_tool_envelope_version="3",
         visible_source_review_model=GroundedVisibleReviewer(source_model=models[1]),
-        visible_source_review_version="24",
+        visible_source_review_version=review_version,
     )
     transport = _DeliveredTransport()
     config = replace(_config(), visible_source_review_required=True)
@@ -162,15 +179,19 @@ async def application(path, handler, *, budget_policy=None):
         await asyncio.gather(*(model.aclose() for model in models))
 
 
-def bound_receipt(app):
+def bound_receipt(app, *, review_version="24"):
     evidence = app.export_replay_evidence()
     (proposal,) = [audit for audit in evidence.projection.proposal_audits
                    if audit.proposal_kind == "decision"]
     (winner,) = [audit for audit in _audits(app) if audit.visible_source_review_json]
     stored = read_review_evidence(winner.visible_source_review_json)
     receipt = stored["receipt"]
-    assert json.loads(stored["requirement_json"])["review_protocol"] == "visible-grounded-review.1"
-    assert receipt["contract"] == "visible-source-review-receipt.24"
+    expected_protocol = {
+        "24": "visible-grounded-review.1",
+        "25": "visible-grounded-review.2",
+    }[review_version]
+    assert json.loads(stored["requirement_json"])["review_protocol"] == expected_protocol
+    assert receipt["contract"] == f"visible-source-review-receipt.{review_version}"
     assert receipt["review"]["parent_model_call_id"] == winner.model_call_id
     assert receipt["review"]["model_call_id"] != winner.model_call_id
     assert verify_recorded_candidate(
@@ -178,6 +199,28 @@ def bound_receipt(app):
     ) == receipt["receipt_hash"]
     assert evidence.projection.semantic_hash == evidence.replay.semantic_hash
     return evidence, proposal, receipt
+
+
+@pytest.mark.asyncio
+async def test_v25_grounded_profile_round_trips_through_runtime_and_replay(tmp_path):
+    handler = GroundedHTTP(review_protocol="visible-grounded-review.2")
+    path = tmp_path / "grounded-v25.sqlite"
+    inbound = replace(_inbound(), text=USER_TEXT)
+    async with application(path, handler, review_version="25") as (app, transport):
+        outcome = await app.respond(inbound)
+        assert handler.callback_errors == []
+        assert outcome.status == "action_authorized", (outcome, _audits(app))
+        assert handler.authors == 1 and len(handler.reviews) == 1
+        assert (await app.drain_actions_once()).status == "settled"
+        assert transport.bodies == [REPORT_REPLY]
+        receipt = bound_receipt(app, review_version="25")[2]
+
+    cold = GroundedHTTP(review_protocol="visible-grounded-review.2")
+    async with application(path, cold, review_version="25") as (app, transport):
+        assert (await app.respond(inbound)).status == "action_authorized"
+        assert (await app.drain_actions_once()).status == "idle"
+        assert cold.requests == [] and transport.bodies == []
+        assert bound_receipt(app, review_version="25")[2]["receipt_hash"] == receipt["receipt_hash"]
 
 
 @pytest.mark.asyncio
@@ -357,3 +400,28 @@ async def test_grounded_review_uses_its_fixed_phase_after_author_deadline(tmp_pa
             assert outcome.status != "action_authorized"
             assert not app.export_replay_evidence().projection.actions
             assert transport.bodies == []
+
+
+@pytest.mark.asyncio
+async def test_wrong_tool_identity_is_corrected_once_by_same_role(tmp_path):
+    class WrongToolOnce(GroundedHTTP):
+        async def respond(self, request):
+            response = await super().respond(request)
+            body = json.loads(request.content)
+            if self.authors == 1 and not self.reviews:
+                data = response.json()
+                data["choices"][0]["message"]["tool_calls"][0]["function"]["name"] = "wrong_function"
+                return httpx.Response(200, json=data)
+            return response
+
+    handler = WrongToolOnce(review_protocol="visible-grounded-review.2")
+    async with application(tmp_path / "wrong-name.sqlite", handler, review_version="25") as (app, transport):
+        outcome = await app.respond(replace(_inbound(), text=USER_TEXT))
+        assert handler.callback_errors == []
+        assert outcome.status == "action_authorized", (outcome, _audits(app))
+        assert handler.authors == 2 and len(handler.reviews) == 1
+        assert "wrong_function" not in str(handler.requests[1]["tool_choice"])
+        assert (await app.drain_actions_once()).status == "settled"
+        assert transport.bodies == [REPORT_REPLY]
+        evidence = app.export_replay_evidence()
+        assert evidence.projection.semantic_hash == evidence.replay.semantic_hash

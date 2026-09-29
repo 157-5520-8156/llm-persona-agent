@@ -167,7 +167,9 @@ def test_active_history_uses_exact_source_and_occurrence_dates_after_cold_replay
         assert excerpt.prehistory.actor_ref == ACTOR
         assert excerpt.prehistory.time_precision == "month"
         document, = _corpus(ledger, result)
-        assert document.text == excerpt.text
+        assert document.text == row.record.statement
+        assert document.source_window_start == 0
+        assert len(excerpt.text) == 12, "the role-facing excerpt remains independently bounded"
         assert document.epistemic_scope == "character_prehistory"
         assert document.occurred_from == row.record.occurred_from < row.accepted_at
         assert document.occurred_to == row.record.occurred_until

@@ -471,8 +471,8 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
                 visible_reviewer = provider("visible_source_review", thinking=options.visible_source_review_thinking,
                                             model_override=options.visible_source_review_model or settings.deepseek_model, max_thinking_tokens=8192,
                                             reasoning_effort_override=options.visible_source_review_effort)
-                from companion_daemon.world_v2.visible_review_protocols import GROUNDED_REVIEW_VERSION, REVIEW_PROTOCOLS
-                if options.visible_source_review_version == GROUNDED_REVIEW_VERSION:
+                from companion_daemon.world_v2.visible_review_protocols import GROUNDED_REVIEW_VERSIONS, REVIEW_PROTOCOLS
+                if options.visible_source_review_version in GROUNDED_REVIEW_VERSIONS:
                     from companion_daemon.world_v2.visible_independent_review_configuration import GroundedVisibleReviewer
                     visible_reviewer = GroundedVisibleReviewer(source_model=visible_reviewer)
                 elif options.visible_source_review_version in REVIEW_PROTOCOLS:
@@ -551,9 +551,9 @@ async def run(options: argparse.Namespace, *, next_command=None) -> dict:
                 **({"scope_permission_context": True} if options.visible_source_review_scope_context else {}),
                 **({"scope_subjective_history": True} if options.visible_source_review_scope_history else {}),
                 **({"source_response_mode": "json_object"}
-                   if options.visible_source_review_json or options.visible_source_review_version == "24" else {}),
+                   if options.visible_source_review_json or options.visible_source_review_version in {"24", "25"} else {}),
                 **({"topology": "single_contextual_reviewer"}
-                   if options.visible_source_review_version == "24" else {}),
+                   if options.visible_source_review_version in {"24", "25"} else {}),
                 **({"source_reasoning_effort": options.visible_source_review_effort} if options.visible_source_review_effort else {}),
                 "qualification": "requires_evaluation_of_actual_records",
             }} if required_review else {}),

@@ -9,6 +9,8 @@ explicitly.
 
 from __future__ import annotations
 
+from .proposal_envelope import validate_proposal_envelope
+
 import hashlib
 import json
 from datetime import datetime
@@ -18,13 +20,12 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    TypeAdapter,
     ValidationError,
     field_validator,
     model_validator,
 )
 
-from .proposal_envelope import ActionLayer, ProposalInput, ProposalKind
+from .proposal_envelope import ActionLayer, ProposalKind
 
 
 ACCEPTANCE_MANIFEST_VERSION = "acceptance-manifest.2"
@@ -168,7 +169,6 @@ class AcceptanceActionAuthorityV2(_FrozenModel):
         return self
 
 
-_PROPOSAL_ADAPTER = TypeAdapter(ProposalInput)
 
 
 def derive_acceptance_manifest_proposal_v2(
@@ -179,7 +179,7 @@ def derive_acceptance_manifest_proposal_v2(
 ) -> AcceptanceManifestProposalV2:
     """Re-derive the complete inert authority summary from canonical Proposal bytes."""
 
-    proposal = _PROPOSAL_ADAPTER.validate_json(proposal_json, strict=True)
+    proposal = validate_proposal_envelope(json.loads(proposal_json))
     changes = tuple(
         AcceptanceChangeAuthorityV2(
             change_id=change.change_id,

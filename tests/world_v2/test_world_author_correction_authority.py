@@ -132,6 +132,7 @@ def _assert_authority_locator(messages, correction):
     (True, "world-consequence-author-tool.1"),
     (True, "world-consequence-author-tool.2"),
     (True, "world-consequence-author-tool.3"),
+    (True, "world-consequence-author-tool.4"),
     (True, "json_object"),
 ])
 async def test_structure_correction_preserves_authority_and_cold_request_bytes(
@@ -165,7 +166,7 @@ async def test_structure_correction_preserves_authority_and_cold_request_bytes(
         assert len(wire.requests) == 2
         first, second = [item["messages"] for item in wire.requests]
         correction = json.loads(second[-1]["content"])
-        if tool_id in {"world-consequence-author-tool.3", "json_object"}:
+        if tool_id in {"world-consequence-author-tool.3", "world-consequence-author-tool.4", "json_object"}:
             assert second[:-2] == first
             assert second[-2] == {"role": "assistant", "content": "{"}
             assert correction["rejected_draft"] == {
@@ -244,6 +245,15 @@ async def test_structure_correction_preserves_authority_and_cold_request_bytes(
 async def test_structure_correction_shows_invalid_field_values_as_untrusted_raw_data(
     tmp_path, monkeypatch,
 ):
+    # The historical v3 provider admitted these tag strings; v4 now carries
+    # their canonical namespace in its native schema. Keep this recovery case
+    # pinned to the original wire rather than weakening the provider fixture.
+    monkeypatch.setattr(
+        "companion_daemon.world_v2.life_development_runtime.world_consequence_author_tool_contract",
+        lambda *, provider: world_consequence_author_tool_contract(
+            provider=provider, contract_id="world-consequence-author-tool.3",
+        ),
+    )
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
     path = tmp_path / "field-correction.sqlite"
     ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)

@@ -2230,32 +2230,16 @@ async def test_reply_only_releases_reviewable_head_from_one_physical_character_c
     assert '"waiting_for":null' in compact_system
     assert '"later":null' in compact_system
     assert '"wait":null' not in compact_system
-    assert "messages、meaning_of_this、my_state、later、waiting_for 同级" in compact_system
     assert "空数组就是这一轮不回" in compact_system
-    assert "一句短话就够" in compact_system
     assert "full_turn 写在 private_turn_state" in compact_system
     assert "收件人由宿主绑定" in compact_system
-    assert "waiting_for 和 wait" not in compact_system
     assert "come_back 和 come_back_in" in compact_system
-    assert "一字不差抄进 said_as" in compact_system
-    assert "请写 wait" not in compact_system
-    assert "记得写" not in compact_system
     assert '"wait":30' not in compact_system
-    assert "RELATIONSHIP DECLARATION USAGE EXAMPLE JSON" in compact_system
-    usage_pos = compact_system.index("RELATIONSHIP DECLARATION USAGE EXAMPLE JSON")
-    slim_peer_pos = compact_system.index("REPLY_ONLY SLIM PAYLOAD_JSON SPECIMEN JSON")
-    canonical_pos = compact_system.index("REPLY_ONLY PAYLOAD_JSON CANONICAL SPECIMEN JSON")
-    assert usage_pos < slim_peer_pos < canonical_pos
-    assert "WAITING_FOR USAGE EXAMPLE JSON" in compact_system
-    assert "LATER USAGE EXAMPLE JSON" in compact_system
-    assert "PHOTO USAGE EXAMPLE JSON" in compact_system
-    assert "MATTERS_BP USAGE EXAMPLE JSON" in compact_system
-    assert "省略是常态" not in compact_system
-    assert '"we_are":"friend"' in compact_system
-    assert '"calling_it":"朋友"' in compact_system
-    assert '"said_as":"嗯，那我也认了——我们现在算朋友。"' in compact_system
-    assert "示例里的判断、语气和原话都不是推荐话术" in compact_system
-    assert "关系 stage 不会改变" in compact_system
+    assert "RELATIONSHIP DECLARATION USAGE EXAMPLE JSON" not in compact_system
+    assert "WAITING_FOR USAGE EXAMPLE JSON" not in compact_system
+    assert "LATER USAGE EXAMPLE JSON" not in compact_system
+    assert "PHOTO USAGE EXAMPLE JSON" not in compact_system
+    assert len(compact_system) <= 15_000
     assert "only when the external effect you choose actually requires" in compact_system
     assert "never classifies by topic, length or keywords" in compact_system
     assert "never chooses the branch" in compact_system
@@ -2272,8 +2256,9 @@ async def test_reply_only_releases_reviewable_head_from_one_physical_character_c
     assert "Neither instruction metadata block is part of payload_json" in compact_system
     assert "never a default the host substitutes for you" in compact_system
     assert "full_turn_json" not in compact_system
-    assert "语气、态度、记忆的不确定感和愿望由你写" in compact_system
-    assert "不会自动变成已发生的事实或持续状态" in compact_system
+    assert "动机、感受、语气" in compact_system
+    assert "空 world_claims 不是无事实证明" in compact_system
+    assert "不能变成你的经历或客观事实" in compact_system
     assert (
         "Recall is unavailable on this call; use result_kind=decision."
         not in provider.messages[0][0]["content"]
@@ -2473,6 +2458,8 @@ async def test_compact_recall_reuses_gate_without_reopening_recall_after_transfe
         await author.propose_stream_head(request)
 
     assert caught.value.query == "此前的相关记忆"
+    assert caught.value.recall_parameters.memory_kinds == ("episodic",)
+    assert caught.value.recall_parameters.limit == 4
     assert caught.value.usage is not None
     assert provider.tool_names == ["character_inbound_compact_gate_v2"]
     assert len(author._compact_gate_audits) == 1  # noqa: SLF001
@@ -5556,11 +5543,22 @@ async def test_nonmetered_recall_followup_keeps_local_contract_identity_off_prov
 async def test_scheduled_prefetch_enters_canonical_selective_memory_and_final_audit(
     tmp_path,
 ) -> None:
+    class MatchEmbedding:
+        # This test qualifies transport/audit of an eligible hit, not whether
+        # the offline n-gram embedding understands the fixture's English
+        # appraisal label from a Chinese apology.
+        version = "fixture-prefetch-transport.1"
+        dimensions = 2
+
+        def embed(self, texts):
+            return tuple((1.0, 0.0) for _ in texts)
+
     provider = _PrivateTurnStateCombinedProvider()
     cognition = InboundCharacterAuthor(flash_model=provider)
     interior = compose_fixture_character_interior(inbound_author=cognition)
     app = build_sqlite_world_v2_test_application(
         path=tmp_path / "character-interior-prefetch.sqlite",
+        semantic_recall_embedding=MatchEmbedding(),
         config=_config(),
         identities=_Identities(),
         router=_Router(),
@@ -5602,7 +5600,11 @@ async def test_scheduled_prefetch_enters_canonical_selective_memory_and_final_au
     second_call = json.loads(provider.calls[1][-1]["content"])
     snapshot = second_call["inner_life_snapshot"]
     assert "automatic_prefetch" in snapshot["faculties"]["selective_memory"]["material_keys"]
-    candidates = snapshot["materials"]["automatic_prefetch"]["items"]
+    materials = snapshot["materials"]
+    if materials.get("contract") == "shared-string-view.1":
+        from companion_daemon.world_v2.shared_string_view import unpack_shared_strings
+        materials = unpack_shared_strings(materials)
+    candidates = materials["automatic_prefetch"]["items"]
     assert candidates
     assert all(item["source_ref"] in snapshot["source_refs"] for item in candidates)
     audits = tuple(

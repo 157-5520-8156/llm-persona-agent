@@ -267,19 +267,21 @@ mechanisms:
 
   - mechanism_id: memory.candidate_consolidation
     purpose: Due MemoryCandidate review and consolidation
-    release_status: dormant
+    release_status: limited
     upstream_authority: [MemoryCandidate accepted with review_due_at]
     due_identity: {coordinates: [world_id, actor_ref, candidate_id, revision], logical_deadline: review_due_at, merge_dedup_key: memory_candidate_revision}
-    controlled_injection: {public_seams: [], upstream_material: [immutable historical MemoryCandidate only]}
-    expected_path: [schema and cold-replay compatibility only]
-    legal_terminals: [retain, withdraw, revise, role no-change, superseded, technical failure/retry]
+    controlled_injection: {public_seams: [QQC2CHost.tick, QQC2CHost.drain], upstream_material: [immutable historical MemoryCandidate only]}
+    expected_path: [clock due, CharacterInterior review batch, exact candidate CAS, review or forget, receipt and replay]
+    legal_terminals: [retain, forget, superseded, technical failure/retry]
     visible_effect: none
     observability: [health, causal lineage, ModelResult, usage/cost, latency, ledger refs]
     fault_matrix: [provider timeout/invalid, CAS conflict, restart, lease expiry, late result, withdrawal/permission change, bad-trigger starvation]
-    vertical_lanes: []
+    vertical_lanes: [memory_consolidation_review]
     closure_mechanisms: [source-bound-fact-experience-memory-core]
-    projection_due_fields: []
-    activation_note: Dormant because review_due_at has no production scheduler consumer or consolidation role contract; withdrawal review is a different mechanism.
+    projection_due_fields: [MemoryCandidateValues.review_due_at]
+    retry_policy: {policy_id: technical-retry-10-30-120.1, seconds: [600, 1800, 7200]}
+    model_contract: {purpose: memory_consolidation, contract_identity: character-interior-memory-consolidation.1}
+    activation_note: Periodic retention review and deliberate forgetting are installed; semantic summary compression is not claimed. Default first review is one day after acceptance; the role selects the next review interval.
 
   - mechanism_id: action.authorized_due
     purpose: Exact dispatch of an authorized Action when not_before becomes due

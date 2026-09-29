@@ -102,6 +102,7 @@ _EVENT_OPERATION = {
     "MemoryCandidateAccepted": "accept",
     "MemoryCandidateRejected": "reject",
     "MemoryCandidateRevised": "revise",
+    "MemoryCandidateReviewed": "review",
     "MemoryCandidateReinforced": "reinforce",
     "MemoryCandidateForgotten": "forget",
 }
@@ -280,6 +281,14 @@ def _validate_transition(
         _require_same_cue(before, after, allow_status=True, allow_strength_zero=True)
         if after.reviewed_at != logical_time or not payload.rejection_reason:
             raise ValueError("memory rejection requires explicit review reason")
+    elif operation == "review":
+        if before.status != "active" or after.status != "active":
+            raise ValueError("memory review requires an active candidate")
+        expected = before.model_copy(update={"reviewed_at": logical_time, "review_due_at": after.review_due_at})
+        if after != expected or after.review_due_at is None or after.review_due_at <= logical_time:
+            raise ValueError("memory review may only record its time and next future review")
+        if payload.character_interior_model_result is None:
+            raise ValueError("memory review requires an audited character decision")
     elif operation == "revise":
         expected_kind = (
             {"pending_edit"}

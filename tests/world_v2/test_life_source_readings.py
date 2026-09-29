@@ -23,7 +23,10 @@ async def test_actual_environment_can_support_rain_but_not_a_personal_walk(tmp_p
     reading = data['readings'][0]
     assert reading['value'] == '一阵短雨已经停了。'
     assert reading['pointer'].endswith('/environment/text')
-    assert reading['shown_scopes'] == ['recent_self_experiences', 'week_diary']
+    # Current compact views may present one copy; duplicated diary display
+    # never grants a second source or wider permission.
+    assert 'recent_self_experiences' in reading['shown_scopes']
+    assert set(reading['shown_scopes']) <= {'recent_self_experiences', 'week_diary'}
     assert ['environment', 'general'] in reading['permissions']
     assert all(role != 'companion' for _, role in reading['permissions'])
     assert prepared.require_reading(reading_id=reading['reading_id'], claim_scope='environment', subject_role='general', view=view, snapshot=snapshot) == reading

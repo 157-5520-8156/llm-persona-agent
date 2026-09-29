@@ -3000,6 +3000,15 @@ class ContextCapsuleCompiler:
         self._compile_cache_hits = 0
         self._compile_cache_misses = 0
 
+    def with_policy(self, policy: ContextCapsuleBudgetPolicy) -> ContextCapsuleCompiler:
+        """Share exact source resolution, with independent presentation budgets.
+
+        The resolver owns its collaborators, scope and cursor validation. Only
+        the untrimmed resolved request is shared; compiled bytes and prepared
+        handle issuers remain local to each compiler.
+        """
+        return ContextCapsuleCompiler(resolver=self._resolver, policy=policy)
+
     def performance_counters(self) -> ContextCompilerPerformanceCounters:
         return ContextCompilerPerformanceCounters(
             compile_calls=self._compile_calls,

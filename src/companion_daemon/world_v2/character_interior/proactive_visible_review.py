@@ -183,9 +183,10 @@ class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
             or payload["actor_ref"] != request.snapshot.actor_ref
         ):
             raise RuntimeError("required proactive capability changed deployment subject")
-        tool = self._tool_contract(request)
-        messages = self._messages(request, contract=self._resolve_contract(request))
-        request_hash = self._provider_request_hash(messages=messages, tool_contract=tool)
+        messages, tool, reference_bindings = self._prepare_request(request, contract=self._resolve_contract(request))
+        request_hash = self._provider_request_hash(
+            messages=messages, tool_contract=tool, reference_bindings=reference_bindings,
+        )
         model_call_id = self._model_call_id(request=request, request_hash=request_hash)
         invocation = _Invocation(owner_task=asyncio.current_task())
         token = _INVOCATION.set(invocation)
@@ -303,7 +304,7 @@ class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
         try:
             body = prepare_proactive_visible_source_author_request(
                 **parameters,
-                identity_extras=self._provider_identity_extras(tool_contract=tool),
+                identity_extras=self._provider_identity_extras(tool_contract=tool, reference_bindings=reference_bindings),
                 expected_request_hash=author.request_hash.removeprefix("sha256:"),
             )
             draft = proactive_draft_from_role_result(

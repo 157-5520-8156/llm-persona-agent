@@ -42,6 +42,7 @@ test('dashboard capture uses the authenticated same-origin home snapshot with ET
     {
       credentials: 'same-origin',
       headers: { Accept: 'application/json', 'If-None-Match': '"snapshot-1"' },
+      signal: requests[0][1].signal,
     },
   ]]);
   assert.equal(result.kind, 'snapshot');
@@ -276,6 +277,7 @@ class Element {
     this.value='all';
     this.className='';
     this.ownText='';
+    this.style={};
     this.classList={toggle:(name,on)=>{
       const values=new Set(this.className.split(' ').filter(Boolean));
       on?values.add(name):values.delete(name);
@@ -294,7 +296,11 @@ class Element {
 }
 function browserWith(responses) {
   const ids=Object.fromEntries(['sectionGrid','captureState','captureNotice','recordingToggle',
-    'recordingTools','recordingFocus','headerClock','worldClock','nowStory'].map(id=>[id,new Element()]));
+    'recordingTools','recordingFocus','headerClock','worldClock','nowStory',
+    'mechanismMap','mechanismDetail','evidenceNode','evidenceKind','evidenceTime','evidenceSearch',
+    'evidenceCount','evidenceRecords','evidencePage','previousEvidence','nextEvidence','resetEvidence',
+    'evidenceCoverage','runtimeRibbon','domainDetails','pauseDisplay','pauseLabel'].map(id=>[id,new Element()]));
+  ids.evidenceSearch.value='';
   const now=new Element('section');
   now.dataset.focusArea='now';
   now.append(ids.nowStory);
@@ -302,6 +308,8 @@ function browserWith(responses) {
   body.append(now,...Object.entries(ids).filter(([id])=>id!=='nowStory').map(([,value])=>value));
   const descendants=node=>[node,...node.children.flatMap(descendants)];
   const document={body,events:{},createElement:tag=>new Element(tag),getElementById:id=>ids[id],
+    createElementNS:(_namespace,tag)=>new Element(tag),
+    createTextNode:text=>{const node=new Element('#text');node.textContent=text;return node;},
     querySelectorAll:selector=>{
       assert.equal(selector,'[data-focus-area]');
       return descendants(body).filter(node=>node.dataset.focusArea);
@@ -316,7 +324,7 @@ function browserWith(responses) {
     return response;
   }};
   vm.runInNewContext(fs.readFileSync(process.env.DASHBOARD_APP_JS_PATH,'utf8'),{
-    window,document,Intl,Date,console,setInterval(callback,delay){assert.equal(delay,15000);poll=callback;},
+    window,document,Intl,Date,console,AbortController,setTimeout,clearTimeout,setInterval(callback,delay){assert.equal(delay,15000);poll=callback;},
   });
   return {ids,body,document,window,requests,poll:()=>poll(),flush:()=>new Promise(resolve=>setImmediate(resolve))};
 }
@@ -386,5 +394,126 @@ test('a first failed capture renders unavailable without invented zero metrics o
   assert.equal(browser.ids.captureNotice.hidden,false);
   assert.match(browser.ids.nowStory.textContent,/暂时不可用/);
   assert.match(browser.ids.sectionGrid.textContent,/尚未取得/);
-  assert.doesNotMatch(browser.body.textContent,/SECRET|private.example|计数|正常/);
+  assert.doesNotMatch(browser.body.textContent,/SECRET|private.example|正常/);
+});
+
+test('explorer filters only visible summaries, preserves provenance/status, and respects snapshot time', () => {
+  const payload=snapshot({state:'unavailable'});
+  payload.sections.overview_life={state:'ready',data:{highlights:[
+    {kind:'plan',title:'出门散步',status_code:'planned',status_label:'计划中',occurred_at:'2026-08-12T18:00:00+08:00'},
+    {kind:'experience',title:'昨天的散步',occurred_at:'2026-08-10T18:00:00+08:00'},
+    {kind:'plan',title:'未来记录',occurred_at:'2026-08-13T18:00:00+08:00'},
+    {kind:'plan',title:'没有时间的记录'},
+    {kind:'plan',title:'WITHHELD',privacy_class:'withhold'},
+  ]}};
+  payload.sections.facts_memory_inner={state:'unavailable',data:{highlights:[{kind:'fact',title:'UNAVAILABLE_CONTENT'}]}};
+  payload.sections.relationship_lifecycle={state:'ready',data:{highlights:[{kind:'private_impression',title:'PRIVATE_REFLECTION'}]}};
+  const original=JSON.stringify(payload),explorer=client.explorer;
+  const items=explorer.records(payload,client);
+  assert.equal(items.length,4);
+  assert.doesNotMatch(JSON.stringify(items),/WITHHELD|UNAVAILABLE_CONTENT|PRIVATE_REFLECTION/);
+  const matches=explorer.filterRecords(items,{node:'life',hours:'24',query:'散步'},payload.logical_time);
+  assert.equal(matches.length,1);
+  assert.equal(matches[0].statusCode,'planned');
+  assert.equal(matches[0].sectionId,'overview_life');
+  assert.equal(explorer.filterRecords(items,{hours:'undated'},payload.logical_time).length,1);
+  assert.equal(explorer.filterRecords(items,{hours:'24'},null).length,0);
+  assert.equal(explorer.filterRecords(items,{node:'memory'},payload.logical_time).length,0);
+  assert.equal(explorer.nodeState(payload,explorer.nodes.find(n=>n.id==='memory')),'unavailable');
+  assert.equal(explorer.nodeState(payload,explorer.nodes.find(n=>n.id==='world')),'degraded');
+  assert.equal(JSON.stringify(payload),original);
+});
+
+test('pause freezes only the displayed snapshot and resume refetches without world writes', async () => {
+  const payload=snapshot({state:'unavailable'});
+  const browser=browserWith([responseFor(payload),{ok:false,status:304}]);
+  await browser.flush();
+  browser.ids.pauseDisplay.fire('click');
+  await browser.poll();
+  assert.equal(browser.requests.length,1);
+  assert.equal(browser.ids.pauseLabel.hidden,false);
+  browser.ids.pauseDisplay.fire('click');
+  await browser.flush();
+  assert.equal(browser.requests.length,2);
+  assert.equal(browser.ids.pauseLabel.hidden,true);
+  assert.ok(browser.requests.every(([url,options])=>url==='/world-v2/dashboard/home'&&!options.method));
+});
+
+test('explorer search and SVG keyboard selection remain read-only across refreshes', async () => {
+  const payload=snapshot({state:'unavailable'});
+  payload.sections.overview_life={state:'ready',data:{highlights:[{kind:'plan',title:'散步',status_label:'计划中'}]}};
+  const browser=browserWith([responseFor(payload),responseFor(payload)]);
+  await browser.flush();
+  const svg=browser.ids.mechanismMap.children[0];
+  const memory=svg.children.find(n=>n.attributes['data-node']==='memory');
+  let prevented=false;
+  memory.fire('keydown',{key:'Enter',preventDefault(){prevented=true;}});
+  assert.equal(prevented,true);
+  assert.equal(memory.attributes['aria-pressed'],'true');
+  assert.match(browser.ids.mechanismDetail.textContent,/事实与记忆/);
+  browser.ids.evidenceSearch.value='不匹配';browser.ids.evidenceSearch.fire('input');
+  assert.match(browser.ids.evidenceRecords.textContent,/没有匹配/);
+  await browser.poll();
+  assert.equal(memory.attributes['aria-pressed'],'true');
+  assert.equal(browser.ids.evidenceSearch.value,'不匹配');
+  browser.ids.resetEvidence.fire('click');
+  assert.match(browser.ids.evidenceRecords.textContent,/散步/);
+});
+
+test('failure and rejected-change summaries retain safe labels without leaking raw diagnostics', () => {
+  const payload=snapshot({state:'unavailable'});
+  payload.sections.operations={state:'ready',data:{notices:[{
+    label:'发送失败',reason_label:'通道暂不可用',occurred_at:'2026-08-12T20:00:00+08:00',
+    raw_error:'SECRET_DIAGNOSTIC',reason_code:'INTERNAL_REASON',
+  }]}};
+  payload.sections.relationship_lifecycle={state:'ready',data:{typed_change_terminals:[{
+    target_stage_label:'朋友',status:'rejected',status_label:'被拒绝',occurred_at:'2026-08-12T20:00:00+08:00',
+    commitment_code:'PRIVATE_CODE',cursor:{world_revision:99},
+  }]}};
+  const items=client.explorer.records(payload,client);
+  assert.equal(items.length,2);
+  assert.match(JSON.stringify(items),/发送失败|通道暂不可用/);
+  assert.match(items.find(i=>i.kind==='relationship_terminal').detail,/未生效/);
+  assert.doesNotMatch(JSON.stringify(items),/SECRET_DIAGNOSTIC|PRIVATE_CODE|INTERNAL_REASON|world_revision/);
+});
+
+test('open record survives snapshot updates and an in-flight fetch cannot replace a paused display', async () => {
+  const payload=snapshot({state:'unavailable'});
+  payload.sections.overview_life={state:'ready',data:{highlights:[{kind:'plan',title:'散步',status_label:'计划中'}]}};
+  let finish;
+  const delayed=new Promise(resolve=>{finish=resolve;});
+  const browser=browserWith([responseFor(payload),responseFor(payload),delayed]);
+  await browser.flush();
+  const row=browser.ids.evidenceRecords.children[0];row.open=true;row.fire('toggle');
+  await browser.poll();
+  assert.equal(browser.ids.evidenceRecords.children[0].open,true);
+  const inFlight=browser.poll();browser.ids.pauseDisplay.fire('click');
+  const newer=JSON.parse(JSON.stringify(payload));newer.sections.overview_life.data.highlights[0].title='新计划';
+  finish(responseFor(newer));await inFlight;
+  assert.match(browser.ids.evidenceRecords.textContent,/散步/);
+  assert.doesNotMatch(browser.ids.evidenceRecords.textContent,/新计划/);
+});
+
+test('stalled snapshot fetch aborts and does not invent an empty snapshot', async () => {
+  let signal;
+  await assert.rejects(client.capture((_url,options)=>{
+    signal=options.signal;return new Promise(()=>{});
+  },null,{timeoutMs:1}),/timed out/);
+  assert.equal(signal.aborted,true);
+});
+
+test('record body distinguishes withheld or unread fields from structured records', () => {
+  assert.match(client.explorer.recordBody({detail:'',values:[{label:'正文状态',text:'尚未送达'}]}),/尚未送达/);
+  assert.match(client.explorer.recordBody({detail:'',values:[{label:'终态',text:'是'}]}),/结构化字段/);
+  assert.equal(client.explorer.recordBody({detail:'已读取的正文',values:[]}), '已读取的正文');
+});
+
+test('fulfilled and expired expectations stay in history but leave unfinished items', () => {
+  const payload={sections:{operations:{state:'ready',data:{highlights:[
+    {kind:'response_expectation',kind_label:'回应期待',title:'旧等待',status_code:'expired'},
+    {kind:'response_expectation',kind_label:'回应期待',title:'已收到',status_code:'fulfilled'},
+    {kind:'response_expectation',kind_label:'回应期待',title:'仍待评估',status_code:'open'},
+  ]}}}};
+  assert.deepEqual(client.pendingView(payload)[1].items.map(item=>item.title),['仍待评估']);
+  assert.equal(client.visibleHighlights(payload,'operations',['response_expectation']).length,3);
 });

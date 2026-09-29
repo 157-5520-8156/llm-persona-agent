@@ -278,6 +278,20 @@ def test_health_exposes_stream_ttft_frame_validation_and_qq_ack_as_distinct_stag
                 duration_ms=2_150.0,
                 environment="real_transport",
             ),
+            ProductionLatencySample(
+                trace_id="trace:stream-stages",
+                startup="hot",
+                segment="dispatch",
+                duration_ms=80.0,
+                environment="real_transport",
+            ),
+            ProductionLatencySample(
+                trace_id="trace:stream-stages",
+                startup="hot",
+                segment="receipt",
+                duration_ms=600.0,
+                environment="real_transport",
+            ),
         )
     )
 
@@ -321,6 +335,22 @@ def test_health_exposes_stream_ttft_frame_validation_and_qq_ack_as_distinct_stag
             "sample_ms_p50": 2_150.0,
             "sample_ms_p95": 2_150.0,
             "sample_ms_max": 2_150.0,
+        },
+        "action_dispatch": {
+            "status": "observed",
+            "segment": "dispatch",
+            "sample_count": 1,
+            "sample_ms_p50": 80.0,
+            "sample_ms_p95": 80.0,
+            "sample_ms_max": 80.0,
+        },
+        "provider_receipt": {
+            "status": "observed",
+            "segment": "receipt",
+            "sample_count": 1,
+            "sample_ms_p50": 600.0,
+            "sample_ms_p95": 600.0,
+            "sample_ms_max": 600.0,
         },
     }
 

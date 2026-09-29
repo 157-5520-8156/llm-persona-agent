@@ -670,6 +670,27 @@ def novel_origin_review_tool_contract(
     Provider usage/capture retains the actual tool-bearing HTTP request too.
     Historical message compilation and parsing remain unchanged.
     """
+    return _review_tool_contract(
+        _novel_review_model(draft), "life_novel_origin_review_v1",
+        "Return one complete source-origin review using the supplied evidence.",
+    )
+
+
+def source_closure_review_tool_contract() -> dict[str, object]:
+    contract = _review_tool_contract(
+        LifeDevelopmentSourceClosureReview, "life_source_closure_review_v1",
+        "Judge the supplied evidence. Return the complete review envelope. "
+        "Keep reason under 600 characters; put findings in the exact coordinate arrays. "
+        "Do not repeat the source texts or full candidate in reason.",
+    )
+    # DeepSeek's strict subset drops maxLength but supports pattern. Mirror
+    # the existing canonical bound at the provider too; keep local validation.
+    maximum = LifeDevelopmentSourceClosureReview.model_json_schema()["properties"]["reason"]["maxLength"]
+    contract["tools"][0]["function"]["parameters"]["properties"]["review"]["properties"]["reason"]["pattern"] = rf"^[\s\S]{{1,{maximum}}}$"
+    return contract
+
+
+def _review_tool_contract(review_model, name: str, description: str) -> dict[str, object]:
     from .character_interior.structured_role_tool_contract import _provider_schema
     from .character_interior.inbound_tool_contract import deepseek_strict_tool_schema
 
@@ -685,16 +706,15 @@ def novel_origin_review_tool_contract(
 
     # Canonical default-empty finding arrays must remain arrays, not the
     # nullable placeholders used by optional role-result union branches.
-    review_schema = require_fields(_provider_schema(_novel_review_model(draft)))
+    review_schema = require_fields(_provider_schema(review_model))
     parameters = deepseek_strict_tool_schema({
         "type": "object", "properties": {"review": review_schema},
         "required": ["review"], "additionalProperties": False,
     })
-    name = "life_novel_origin_review_v1"
     return {
         "tools": [{"type": "function", "function": {
             "name": name, "strict": True,
-            "description": "Return one complete source-origin review using the supplied evidence.",
+            "description": description,
             "parameters": parameters,
         }}],
         "tool_choice": {"type": "function", "function": {"name": name}},
@@ -945,6 +965,21 @@ def _completed_lifecycle_guidance(*, manifest, execution_authority) -> str:
         "It proves no concrete intended action happened or succeeded, no location presence, "
         "embedded history, emotion or completed Experience. Continue to review every such "
         "additional claim against its own authority, including new candidate consequence prose."
+    )
+
+
+def _generated_attempt_claim_guidance(draft) -> str:
+    if not any(c.subject_scope == "authorized_attempt_result" for c in draft.claim_declarations):
+        return ""
+    return (
+        " This draft uses the bounded authorized_attempt_result declaration: it is a NEW candidate "
+        "objective result of an already-authorized attempt, not a claim the result was true before "
+        "this proposal. Verify the exact offered execution_binding, original intention and elapsed "
+        "interval. Within that scope a concrete success, failure or partial result may be generated "
+        "and become true only on settlement; do not require pre-existing evidence of that new result. "
+        "This authority belongs only to the matching authorized_attempt_result.text field, never "
+        "the premise or unrelated environment prose. Still reject added actions outside the original "
+        "attempt, invented earlier history, feelings, decisions or user-channel delivery."
     )
 
 
@@ -1951,6 +1986,14 @@ def life_development_source_closure_messages(
         "the supplied output contract, with the complete verdict inside its required "
         "review envelope."
     )
+    if current:
+        system += (
+            " Keep reason under 600 characters. Use the structured claim/path arrays for findings; "
+            "do not restate sources or every field in reason. A cited source set may jointly "
+            "support a claim: an individually redundant reference does not negate support "
+            "from the other exact sources. Conflicts, invalid sources and temporal mismatches "
+            "still require rejection; do not treat them as redundant evidence."
+        )
     if cited_pinned_materials:
         system += (
             "\ncited_pinned_materials contains the exact pinned Context or manifest "
@@ -1961,6 +2004,7 @@ def life_development_source_closure_messages(
             "affordances of its listed locations; it never proves the protagonist's "
             "presence, a completed action, or any fact absent from its recorded fields."
         )
+    system += _generated_attempt_claim_guidance(draft)
     reviewed_surface = _general_reviewed_surface(draft)
     pinned_source_evidence = {
         "contract": "life-development-source-evidence.1",
@@ -2193,7 +2237,7 @@ def life_development_novel_origin_messages(
         "Inspect these embedded prerequisites before deciding that an entire "
         "outcome is branch-internal. "
         + (
-            _world_consequence_actor_boundary()
+            (_world_consequence_actor_boundary() + _generated_attempt_claim_guidance(draft))
             if current
             else "Objective candidate actions, NPC conversation, "
             "photography and world consequences remain unsettled candidates; that "
@@ -2373,7 +2417,7 @@ def life_development_novel_origin_correction_message(
                     (
                         "Return one complete replacement review for the identical draft "
                         "and pinned authority, using only exact coordinates from this catalog. "
-                        + _world_consequence_actor_boundary()
+                        + _world_consequence_actor_boundary() + _generated_attempt_claim_guidance(draft)
                         + "Preserve all other focused truth-origin boundaries: premise, claims, "
                         "NPCs, places, objective transitions, dynamic life directions and "
                         "completed user-channel acts. Do not judge or rewrite the story."

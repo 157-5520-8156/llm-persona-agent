@@ -26,6 +26,7 @@ from .media_planning_worker import MediaPlanningWorker
 from .npc_ecology import NpcEcology
 from .open_world_event_runtime import OpenWorldEventRuntime
 from .reflection_scheduler import ReflectionScheduler
+from .memory_consolidation_runtime import MemoryConsolidationRuntime
 from .runtime import WorldRuntime
 from .silence_appraisal_trigger import SilenceAppraisalTriggerOpener
 from .situation_compiler import SituationCompiler
@@ -55,6 +56,7 @@ from .schemas import (
     AffectComponentProjection,
     AppraisalProjection,
     ClaimLease,
+    MemoryCandidateValues,
     CommitmentValues,
     ExpressionPlanManifestBeatRef,
     LifeEcologyScheduleProjection,
@@ -114,6 +116,7 @@ INSTALLED_PROJECTION_DUE_FIELDS = frozenset(
         _field(Action, "not_before"),
         _field(Action, "expires_at"),
         _field(ClaimLease, "expires_at"),
+        _field(MemoryCandidateValues, "review_due_at"),
         _field(ProactiveOpportunity, "scheduled_for"),
         _field(ProactiveTechnicalRetryState, "next_retry_at"),
         _field(ChatLifeIntentFailure, "next_retry_at"),
@@ -255,6 +258,11 @@ DELAYED_TRIGGER_OWNERS: tuple[DelayedTriggerOwner, ...] = (
     ),
     DelayedTriggerOwner(
         mechanism_id="memory.candidate_consolidation",
+        runtime_owner=MemoryConsolidationRuntime.drain_one,
+        projection_due_fields=(_field(MemoryCandidateValues, "review_due_at"),),
+        public_seams=_CLOCK_SEAMS,
+        model_contract=_installed_contract("memory_consolidation"),
+        retry_policy=_TECHNICAL_RETRY,
     ),
     DelayedTriggerOwner(
         mechanism_id="action.authorized_due",

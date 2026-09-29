@@ -1930,6 +1930,22 @@ class ContinuationProposal(ProposalEnvelope):
         return self
 
 
+class InteriorDecisionProposal(DecisionProposal):
+    """Explicit private explanation absence; historical Decision wire stays frozen."""
+    interior_reflection_depth: Literal["brief", "elaborated"]
+    behavior_tendency: BoundedLabel | None
+    stance: BoundedLabel | None
+    display_strategy: BoundedLabel | None
+
+    @model_validator(mode="after")
+    def absent_interior_explanation_is_not_a_visible_behavior_choice(self) -> Self:
+        if any(value is None for value in (self.behavior_tendency, self.stance, self.display_strategy)):
+            if (self.interior_reflection_depth != "brief" or self.action_intents
+                    or self.timing_choice != "silent"):
+                raise ValueError("omitted explanations require a brief internal-only decision")
+        return self
+
+
 class MinimalProposal(ProposalEnvelope):
     proposal_kind: Literal["minimal"] = "minimal"
     private_turn_state: PrivateTurnState | None = Field(
@@ -2012,6 +2028,8 @@ def validate_proposal_envelope(value: Any) -> ProposalInput:
         )
     except (TypeError, ValueError, RecursionError) as exc:
         raise ValueError("proposal envelope must be JSON-compatible") from exc
+    if isinstance(value, dict) and value.get("proposal_kind") == "decision" and "interior_reflection_depth" in value:
+        return InteriorDecisionProposal.model_validate_json(wire_json, strict=True)
     return _PROPOSAL_INPUT_ADAPTER.validate_json(wire_json, strict=True)
 
 
@@ -2021,6 +2039,7 @@ __all__ = [
     "CHANGE_TRANSITION_REGISTRY",
     "ContinuationProposal",
     "DecisionProposal",
+    "InteriorDecisionProposal",
     "EventShareBeatClaimBinding",
     "EventShareClaimBinding",
     "EventSharePlanClaimBindingV2",

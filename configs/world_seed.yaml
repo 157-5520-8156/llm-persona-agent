@@ -1445,6 +1445,21 @@ location_travel_minutes:
   上海->华东师范大学: 45
   华东师范大学->嘉兴书店: 120
   上海->嘉兴书店: 105
+# V2 advisory rhythm only. Actual Plans, actions and results remain authored
+# and settled by their normal owners. Hobbies stay in character identity;
+# they are not repeated as compulsory daily/weekly appointments. The legacy
+# executable daily_schedule and weekly_themes below remain unchanged.
+character_routine_background:
+  daily_schedule:
+    - {slot: night_rest, title: 夜间休息, starts_hour: 0, ends_hour: 8, kind: rest, location: 华东师范大学宿舍}
+    - {slot: morning_life, title: 起床、早餐和日常琐事, starts_hour: 8, ends_hour: 9}
+    - {slot: daytime_study, title: 课程或个人学习, starts_hour: 9, ends_hour: 12}
+    - {slot: midday_break, title: 午饭与休息, starts_hour: 12, ends_hour: 14, kind: rest}
+    - {slot: afternoon_flex, title: 课程、待办或自选安排, starts_hour: 14, ends_hour: 18}
+    - {slot: evening_life, title: 晚饭、整理住处或处理生活事务, starts_hour: 18, ends_hour: 20}
+    - {slot: personal_time, title: 个人时间，按当天情况自行安排, starts_hour: 20, ends_hour: 23}
+    - {slot: wind_down, title: 睡前收拾与休息, starts_hour: 23, ends_hour: 24, kind: rest}
+  weekly_themes: []
 daily_schedule:
   - slot: night_sleep
     title: 夜间睡眠

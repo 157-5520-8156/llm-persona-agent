@@ -632,9 +632,14 @@ class _CoordinatorRecallPort:
                     request=request,
                     trace_field="prefetch_trace_json",
                 )
+        parameters = getattr(request, "recall_parameters", None)
+        if parameters is not None:
+            parameters = CharacterRecallRequest.model_validate(parameters)
+            if parameters.query_text != request.query:
+                raise ValueError("Recall parameters differ from the role-owned query")
         trace = await asyncio.to_thread(
             self.coordinator.recall,
-            request=CharacterRecallRequest(
+            request=parameters if parameters is not None else CharacterRecallRequest(
                 query_text=request.query,
                 memory_kinds=(),
                 limit=6,
@@ -1074,7 +1079,10 @@ def compose_production_character_interior(
     use_schema_references: bool = False,
     evidence_first_schema: bool = False,
     visible_source_review_version: str = "1",
+    ordinary_text_review_mode: str = "blocking",
+    text_shadow_observer=None,
     life_source_reviewer=None,
+    reference_wire: bool = False,
     turn_store: _CharacterInteriorTurnStore | None = None,
     turn_owner_id: str = "character-interior:production",
     **_unused: object,
@@ -1096,6 +1104,8 @@ def compose_production_character_interior(
         use_schema_references=use_schema_references,
         evidence_first_schema=evidence_first_schema,
         visible_source_review_version=visible_source_review_version,
+        ordinary_text_review_mode=ordinary_text_review_mode,
+        text_shadow_observer=text_shadow_observer,
         flash_model=flash_model,
         thinking_model=thinking_model,
         source_closure_model=source_closure_model,
@@ -1115,11 +1125,16 @@ def compose_production_character_interior(
     inbound_turn = InboundTurnFaculty(
         author=author,
     )
+    from .living_frame import configured_living_frame
+
+    character_disposition = configured_living_frame(identity_frame)
     if whole_candidate_mode:
         from .proactive_visible_review import ReviewedProactiveStructuredRoleFaculty
 
         role = ReviewedProactiveStructuredRoleFaculty(
             model=flash_model, model_id=flash_model_id,
+            character_disposition=character_disposition,
+            reference_wire=reference_wire,
             life_source_reviewer=life_source_reviewer,
             reviewer=visible_source_review_model,
             visible_source_review_version=visible_source_review_version,
@@ -1127,7 +1142,9 @@ def compose_production_character_interior(
         )
     else:
         role = StructuredCharacterRoleFaculty(model=flash_model, model_id=flash_model_id,
-                                             life_source_reviewer=life_source_reviewer)
+                                             character_disposition=character_disposition,
+                                             life_source_reviewer=life_source_reviewer,
+                                             reference_wire=reference_wire)
     interior = CharacterInterior(
         projection=_DeferredProjection(),
         role=role,

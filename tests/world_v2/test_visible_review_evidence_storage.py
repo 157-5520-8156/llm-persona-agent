@@ -28,6 +28,14 @@ def test_large_utf8_evidence_restores_exact_original_bytes():
     assert storage.read_review_evidence(small) == json.loads(small)
 
 
+@pytest.mark.parametrize('protocol', ['visible-grounded-review.1', 'visible-grounded-review.2'])
+def test_grounded_review_retains_large_subjective_history_without_losing_receipt(protocol):
+    raw = raw_evidence().replace('visible-independent-review.5', protocol)
+    stored = storage.store_review_evidence(raw)
+    assert len(stored.encode()) < storage.MAX_STORED_BYTES
+    assert storage._canonical(storage.read_review_evidence(stored)) == raw
+
+
 @pytest.mark.parametrize('fault', ['digest', 'size', 'oversize', 'bool_size', 'base64', 'truncated', 'trailing_stream', 'extra_field', 'expansion'])
 def test_corrupt_or_unbounded_storage_cannot_be_decoded(fault):
     value = json.loads(storage.store_review_evidence(raw_evidence()))

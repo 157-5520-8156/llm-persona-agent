@@ -26,6 +26,7 @@ from companion_daemon.world_v2.character_interior.inbound_author import (
     _role_failure_payload_kwargs,
     _role_readable_expression_violation,
     _role_result_correction_instruction,
+    _compact_gate_character_decision_brief,
     materialize_expression_draft,
 )
 from companion_daemon.world_v2.world_turn_runtime import InboundTurn
@@ -232,6 +233,22 @@ def test_reselection_instruction_carries_the_chinese_detail(detail) -> None:
     assert f"具体原因：{detail} " in filled
     assert "结构校验" not in filled
     assert "投递形状不合法" not in filled
+
+
+def test_compact_character_brief_and_wait_correction_keep_wait_role_owned_and_typed() -> None:
+    brief = _compact_gate_character_decision_brief()
+    correction = _role_result_correction_instruction(
+        {
+            "failure_code": "role_result_schema_invalid",
+            "failure_detail": "wait 必须是 30 到 86400 的整数秒；当前值读不成秒数。",
+        }
+    )
+
+    assert "wait 必须是 30 到 86400 的整数秒" in brief
+    assert "例如 3600" in brief
+    assert "wait 请写成 30 到 86400 的整数秒" in correction
+    assert "若不选择定时等待，两项都省略" in correction
+    assert "校验失败不替你决定要不要说话" in correction
 
 
 def test_role_failure_kwargs_never_leave_detail_empty() -> None:

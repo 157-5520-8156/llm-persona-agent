@@ -17,6 +17,12 @@ from .activity_continuation_source import ActivityCompletionSource
 DAY_OPEN_LIFE_INTENT_REGISTRY_VERSION = "world-v2-proposals.6"
 DAY_OPEN_LIFE_INTENT_POLICY_REF = "policy:day-open-life-intent.1"
 DAY_OPEN_CHOICE_CONTRACT = "character-interior-activity-lifecycle-choice.2"
+RECONSIDER_CHOICE_CONTRACT = "character-interior-activity-lifecycle-choice.3"
+
+
+class DayOpenReconsiderChoice(FrozenModel):
+    decision: Literal["reconsider"]
+    reconsider_after_seconds: int = Field(ge=60, le=86_400, strict=True)
 
 
 def canonical_json(value: object) -> str:
@@ -28,16 +34,19 @@ def digest(value: object) -> str:
 
 
 def day_open_opportunity_ref(*, world_id: str, actor_ref: str, day_key: str,
-                             first_clock_ref: str, completion_source=None) -> str:
+                             first_clock_ref: str, completion_source=None, reconsideration_ref=None) -> str:
+    if reconsideration_ref is not None:
+        return "life-reconsideration:" + digest([world_id, actor_ref, reconsideration_ref])
     if completion_source is not None:
         return "activity-continuation:" + digest([world_id, actor_ref, completion_source.event_ref])
     return "day-open:" + digest([world_id, actor_ref, day_key, first_clock_ref])
 
 
 class DayOpenLifeIntentCapability(FrozenModel):
-    contract: Literal["day-open-life-intent-capability.1", "day-open-life-intent-capability.2"]
+    contract: Literal["day-open-life-intent-capability.1", "day-open-life-intent-capability.2", "day-open-life-intent-capability.3"]
     execution_scope: Literal["self_directed"]
-    opportunity_ref: str = Field(pattern=r"^(day-open|activity-continuation):[0-9a-f]{64}$")
+    opportunity_ref: str = Field(pattern=r"^(day-open|activity-continuation|life-reconsideration):[0-9a-f]{64}$")
+    reconsideration_ref: str | None = Field(default=None, pattern=r"^reconsider:[0-9a-f]{64}$", exclude_if=lambda v: v is None)
     completion_source: ActivityCompletionSource | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )
@@ -53,7 +62,15 @@ class DayOpenLifeIntentCapability(FrozenModel):
 
     @model_validator(mode="after")
     def clock_sequence_is_possible(self):
-        if (self.contract == "day-open-life-intent-capability.2") != (self.completion_source is not None):
+        expected_prefix = ("life-reconsideration:" if self.reconsideration_ref else
+                           "activity-continuation:" if self.completion_source else "day-open:")
+        if not self.opportunity_ref.startswith(expected_prefix):
+            raise ValueError("opportunity kind disagrees with its timing source")
+        if self.contract != "day-open-life-intent-capability.3" and (
+            self.reconsideration_ref is not None
+            or (self.completion_source is not None and self.completion_source.terminal_kind != "completed")
+            or (self.contract == "day-open-life-intent-capability.2") != (self.completion_source is not None)
+        ):
             raise ValueError("continuation capability requires its exact completed activity")
         ZoneInfo(self.timezone_name)
         datetime.strptime(self.day_key, "%Y-%m-%d")
@@ -72,7 +89,7 @@ class DayOpenLifeIntentCapability(FrozenModel):
 
 
 class DayOpenActivityCapability(FrozenModel):
-    contract: Literal["character-interior-activity-lifecycle-capability.3", "character-interior-activity-lifecycle-capability.4"]
+    contract: Literal["character-interior-activity-lifecycle-capability.3", "character-interior-activity-lifecycle-capability.4", "character-interior-activity-lifecycle-capability.5"]
     catalog_version: str = Field(min_length=1, max_length=128)
     catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     offered_tokens: tuple[str, ...] = Field(max_length=0)
@@ -81,6 +98,12 @@ class DayOpenActivityCapability(FrozenModel):
 
     @model_validator(mode="after")
     def continuation_version_is_explicit(self):
+        if self.contract.endswith(".5"):
+            if self.self_directed_intent.contract != "day-open-life-intent-capability.3":
+                raise ValueError("reconsideration requires the current intent capability")
+            return self
+        if self.self_directed_intent.contract == "day-open-life-intent-capability.3":
+            raise ValueError("legacy activity capability cannot offer reconsideration")
         if (self.contract.endswith(".4")) != (self.self_directed_intent.completion_source is not None):
             raise ValueError("activity capability version disagrees with continuation source")
         return self
@@ -101,7 +124,8 @@ class DayOpenEvaluatedCursor(FrozenModel):
 
 
 class DayOpenLifeIntentOrigin(FrozenModel):
-    contract: Literal["day-open-life-intent-origin.1", "day-open-life-intent-origin.2"] = "day-open-life-intent-origin.1"
+    contract: Literal["day-open-life-intent-origin.1", "day-open-life-intent-origin.2", "day-open-life-intent-origin.3"] = "day-open-life-intent-origin.1"
+    reconsideration_ref: str | None = Field(default=None, pattern=r"^reconsider:[0-9a-f]{64}$", exclude_if=lambda v: v is None)
     completion_source: ActivityCompletionSource | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )
@@ -137,6 +161,12 @@ class DayOpenLifeIntentOrigin(FrozenModel):
 
     @model_validator(mode="after")
     def continuation_version_is_explicit(self):
+        if self.contract.endswith(".3"):
+            return self
+        if self.completion_source and self.completion_source.terminal_kind != "completed":
+            raise ValueError("legacy origin requires a completed activity")
+        if self.reconsideration_ref is not None:
+            raise ValueError("legacy origin cannot carry reconsideration")
         if self.contract.endswith(".2") != (self.completion_source is not None):
             raise ValueError("activity origin version disagrees with continuation source")
         return self

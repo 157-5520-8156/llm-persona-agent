@@ -580,6 +580,7 @@ class TriggerProcess(FrozenModel):
         "life_ecology",
         "social_action_deliberation",
         "memory_candidate_review",
+        "memory_consolidation_review",
         "proactive_action_deliberation",
         "afterthought_author",
         "expression_episode",
@@ -632,6 +633,7 @@ class TriggerProcess(FrozenModel):
                 "life_ecology",
                 "social_action_deliberation",
                 "memory_candidate_review",
+        "memory_consolidation_review",
                 "proactive_action_deliberation",
                 "afterthought_author",
                 "expression_episode",
@@ -5298,7 +5300,7 @@ class MemoryCandidateTransitionProjection(FrozenModel):
     transition_id: str = Field(min_length=1)
     candidate_id: str = Field(min_length=1)
     entity_revision: int = Field(ge=1)
-    operation: Literal["open", "accept", "reject", "revise", "reinforce", "forget"]
+    operation: Literal["open", "accept", "reject", "revise", "reinforce", "forget", "review"]
     values_before: MemoryCandidateValues | None
     values_after: MemoryCandidateValues
     change_id: str = Field(min_length=1)
@@ -5344,6 +5346,7 @@ class MemoryCandidateProposedMutation(FrozenModel):
         "MemoryCandidateAccepted",
         "MemoryCandidateRejected",
         "MemoryCandidateRevised",
+        "MemoryCandidateReviewed",
         "MemoryCandidateReinforced",
         "MemoryCandidateForgotten",
     ]
@@ -5365,7 +5368,7 @@ class MemoryCandidateProposalProjection(FrozenModel):
     proposal_kind: Literal["memory_candidate_transition"] = "memory_candidate_transition"
     proposal_encoding: Literal["typed-authority-v1"]
     authority_contract_ref: Literal["proposal-contract:memory-candidate.1"]
-    transition_kind: Literal["open", "accept", "reject", "revise", "reinforce", "forget"]
+    transition_kind: Literal["open", "accept", "reject", "revise", "reinforce", "forget", "review"]
     change_id: str = Field(min_length=1)
     transition_id: str = Field(min_length=1)
     evaluated_world_revision: int = Field(ge=0)
@@ -5382,6 +5385,7 @@ class MemoryCandidateProposalProjection(FrozenModel):
             "accept": "MemoryCandidateAccepted",
             "reject": "MemoryCandidateRejected",
             "revise": "MemoryCandidateRevised",
+            "review": "MemoryCandidateReviewed",
             "reinforce": "MemoryCandidateReinforced",
             "forget": "MemoryCandidateForgotten",
         }[self.transition_kind]

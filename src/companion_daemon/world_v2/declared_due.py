@@ -28,6 +28,7 @@ COMPUTED_CLOCK_WAKE_KINDS = frozenset(
     {
         "social.initiative.cadence",
         "private_impression.interval",
+        "memory.candidate_consolidation",
         "life.ecology",
     }
 )
@@ -45,6 +46,7 @@ NON_WAKING_PROJECTION_DUE_FIELDS = frozenset(
 # Fields whose wake path is a registered computed peek, not a projection read.
 _FIELD_COMPUTED_COVER: Mapping[str, str] = {
     "ProactiveOpportunity.scheduled_for": "social.initiative.cadence",
+    "MemoryCandidateValues.review_due_at": "memory.candidate_consolidation",
 }
 
 # Existing tick-reason strings that tests and ops already depend on.

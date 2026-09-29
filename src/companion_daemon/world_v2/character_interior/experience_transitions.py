@@ -994,10 +994,11 @@ def _projection_cursor(projection: object) -> ProjectionCursor:
 
 
 class ExperienceTransitionSettlementResult(FrozenModel):
-    status: Literal["no_change", "accepted"]
+    status: Literal["no_change", "accepted", "expired"]
     source_proposal_id: str
     typed_proposal_id: str | None = None
     mutation_event_ref: str | None = None
+    outcome_code: Literal["thread_intent_expired"] | None = None
     replayed: bool = False
 
 
@@ -1093,7 +1094,30 @@ class ExperienceTransitionSettlement:
         del audit, proposal
         if change is None:
             return False
-        return not self._accepted_change(self._ledger.project(), change=change)
+        projection = self._ledger.project()
+        if self._thread_intent_expired(projection=projection, change=change):
+            return False
+        return not self._accepted_change(projection, change=change)
+
+    def is_pending_in_projection(self, *, projection, audit, source_event) -> bool:
+        """Select recovery work without replaying its historical projection.
+
+        Selection grants no execution permission; _process still pins and
+        authenticates the original proposal before any mutation.
+        """
+        if audit not in projection.proposal_audits:
+            raise ValueError("experience recovery audit is not in the projection")
+        if audit.trigger_ref != source_event.event_id:
+            return False
+        proposal = validate_proposal_envelope(json.loads(audit.proposal_json))
+        if not isinstance(proposal, DecisionProposal):
+            return False
+        changes = [c for c in proposal.proposed_changes if c.kind in _LIVE_EXPERIENCE_KINDS
+                   and c.policy_refs == (EXPERIENCE_SETTLEMENT_POLICY_REF,)]
+        if len(changes) > 1:
+            return True  # The full processing path diagnoses malformed audits.
+        return any(not self._thread_intent_expired(projection=projection, change=c)
+                   and not self._accepted_change(projection, change=c) for c in changes)
 
     def _process(
         self,
@@ -1125,6 +1149,16 @@ class ExperienceTransitionSettlement:
                 mutation_event_ref=accepted[1],
                 replayed=True,
             )
+        if self._thread_intent_expired(projection=projected, change=change):
+            # The original role-authored time window is now closed. Treating
+            # that immutable choice as a compile error caused the same
+            # trigger to fail and retry forever. It is a completed, explicit
+            # no-op: do not invent a fresh due window or reopen the choice.
+            return ExperienceTransitionSettlementResult(
+                status="expired",
+                source_proposal_id=proposal_id,
+                outcome_code="thread_intent_expired",
+            )
 
         for _attempt in range(8):
             projected = self._ledger.project()
@@ -1136,6 +1170,12 @@ class ExperienceTransitionSettlement:
                     typed_proposal_id=accepted[0],
                     mutation_event_ref=accepted[1],
                     replayed=True,
+                )
+            if self._thread_intent_expired(projection=projected, change=change):
+                return ExperienceTransitionSettlementResult(
+                    status="expired",
+                    source_proposal_id=proposal_id,
+                    outcome_code="thread_intent_expired",
                 )
             compiled = self._compile(
                 projection=projected,
@@ -1204,6 +1244,24 @@ class ExperienceTransitionSettlement:
                 mutation_event_ref=compiled.mutation_event_id,
             )
         raise ConcurrencyConflict("experience settlement exhausted bounded CAS retries")
+
+    @staticmethod
+    def _thread_intent_expired(*, projection: object, change: TypedChange) -> bool:
+        """Whether an authored open/update Thread window has already closed."""
+
+        if change.kind != "thread_transition" or change.transition not in {"open", "update"}:
+            return False
+        try:
+            intent = ThreadPayload.model_validate_json(change.payload.canonical_json, strict=True)
+        except ValueError:
+            return False
+        logical_time = getattr(projection, "logical_time", None)
+        if logical_time is None:
+            return False
+        return any(
+            deadline is not None and deadline <= logical_time
+            for deadline in (intent.due, intent.expires_at)
+        )
 
     def _authored_change(
         self,
