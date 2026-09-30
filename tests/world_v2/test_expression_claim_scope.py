@@ -106,7 +106,7 @@ def test_valid_scope_and_exact_alias_produce_the_same_immutable_proposal(
 
 
 def test_one_story_claim_can_cite_a_bounded_source_closed_scene_chain():
-    refs = tuple(f"S{index}" for index in range(13))
+    refs = tuple(f"S{index}" for index in range(8))
     claim = expression.WorldClaimDraft(
         claim_text="她们后来把那次照片的事说开了一些。",
         scope="past_world",
@@ -118,7 +118,7 @@ def test_one_story_claim_can_cite_a_bounded_source_closed_scene_chain():
         expression.WorldClaimDraft(
             claim_text="超过有界场景链的来源数。",
             scope="past_world",
-            source_refs=tuple(f"S{index}" for index in range(17)),
+            source_refs=tuple(f"S{index}" for index in range(9)),
         )
 
 

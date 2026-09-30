@@ -59,14 +59,16 @@ v28 同回合还记录到一个被拒绝的提案候选引用了冻结 Capsule �
 
 自动 Recall 现在从当前 actor-scoped、active、privacy-readable 的 MemoryRetrieval 候选中，筛出与**当前原话**有词项重叠的前史，再按现有 Memory 读分选择一个结构化 link ref。该 ID 已是每条前史 RecallDocument 的 source link；命中后再沿档案中显式的 `related_record_refs` 扩展至同一 actor 且仍活跃、可读、通过隐私/时间过滤的独立记录。若存在这个单一故事锚点，本次有界检索专注于它，避免把一个优先锚点稀释进其他可选 link refs。这个处理只选择当前回合可检索的候选，不替角色判断是否回想、如何理解、说什么或是否联系；它不添加模型调用，也不改变记忆的接受或遗忘状态。
 
-回归测试覆盖：当前原话相关度最高的前史 ID优先于普通 link selectors；实际 LedgerProjectionContextResolver 排除他 actor、`withhold`和与当前原话无词项相关的材料；真实 RecallCoordinator 的本地预取能从不含故事关键词的问句经一个 cue-matched scene anchor 找回五段相连故事，且每段保留独立来源闭包。另有一个四条无关高分记忆挤占直接 top-k 的反例，验证显式来源锚点仍能保留故事闭包。受影响权限/冷回放/故事链测试通过；真实BGE克隆的最终代码复测仍未做同问题 A/B。
+回归测试覆盖：当前原话相关度最高的前史 ID优先于普通 link selectors；实际 LedgerProjectionContextResolver 排除他 actor、`withhold`和与当前原话无词项相关的材料；真实 RecallCoordinator 的本地预取能从不含故事关键词的问句经一个 cue-matched scene anchor 找回五段相连故事，且每段保留独立来源闭包。另有一个四条无关高分记忆挤占直接 top-k 的反例，验证显式来源锚点仍能保留故事闭包。此处记录编写时真实BGE克隆最终代码复测尚未完成；后续实测见文末。
 
-截至此处的 resolver 与 index 验证已由后续真实冷缓存角色试跑补充；该试跑仍是隔离副本单样本，不能代替生产冷启动、P95、真实QQ或严格有/无故事因果对照。
+截至此处的 resolver 与 index 验证已由后续真实冷缓存角色试跑补充；该试跑仍是隔离副本单样本，不能代替生产冷启动、P95、真实QQ或严格有/无故事因果对照。更晚的最终代码双轮样本见文末。
 
 
 ## 冻结机制基线更新（2026-09-30）
 
 完整120-case固定模型场景在新链接锚点下全部通过，冷回放通过，所有120个`output_hash`和可见行为断言与对照基线保持一致；变化仅在120个派生`replay_hash`，因此将机制版本从`.106`提升为`.107`，不放宽场景门槛。新manifest为`c49e8516d9f8e548196fb2d71edf934df891886b14b5f5379b2427b4d5fd8727`，详见[.107逐场景比较](scenario-baseline-107-2026-09-30.json)。这个离线机制证明不等于真实模型/QQ/成本或限量演示版发布资格。
+
+随后CI复现了旧工具字节回归：把 `WorldClaimDraft.source_refs` 上限从8改成16，让冻结的v1/v2 provider schema 每个契约多一个字节；新增 source-ref 提示也改变了旧 compiler prompt hash。8 个历史编译变体必须逐字保持。已恢复上限8（对本试验五段故事仍足够），撤掉这条全局 prompt 字句；两个字节冻结测试恢复通过。完整120-case场景又运行一次，全部通过；仅120个`replay_hash`变化，输出哈希与所有可见断言不变。版本提升到`.108`，manifest=`74c93b55aef7e0b8c12777d6867b0381af6da3da282eae16e7015b2219a0e6f9`；详见[.108逐场景比较](scenario-baseline-108-2026-09-30.json)。这避免为了历史记忆能力破坏已部署旧 wire。
 
 
 ## 冷缓存首轮真实角色试跑（v35 → v40）
@@ -82,4 +84,15 @@ v40 首轮返回 `action_authorized`，一个 DeepSeek V4.1 inbound请求、三�
 
 代码复核发现，候选选择误用了 `max(9_900, _rank(...))`：这是“已被注意”的 Context 项所用的 rank floor，会把相关度不同的前史拉成平手。现在只考虑存在正文且对当前原话 `memory_relevance_bp > 0` 的 actor-owned、active、privacy-readable 前史，并按现有 Memory 读分、词项相关度和稳定 ID 排序取一个。无匹配时不传故事锚点；角色仍自主决定是否用 Recall 内容。
 
-在 run-10 的完整隔离 World 克隆 v42 上，用当前代码执行真实 `LedgerProjectionContextResolver` 与 RecallCoordinator，但本地使用 FeatureHash 回退、没有调用 LLM 或 QQ。实际触发消息产生一个前史 link，返回五个关联故事记录，每条均保留两项来源绑定；当前 ledger semantic hash 与 sequence 前后不变。Context resolve约581毫秒，结果确认之前克隆中“候选已选、故事链未进入 top-k”的故障已由显式锚点保留修复。另一个合成反例放入四条分数更高、主题无关的直接候选，仍能返回完整五段故事。该证据证明完整世界的本地候选/闭包路径，不证明模型一定注意、理解或复述故事；它也不是最终代码下的 BGE 冷缓存或真实 provider A/B。
+在 run-10 的完整隔离 World 克隆 v42 上，用当前代码执行真实 `LedgerProjectionContextResolver` 与 RecallCoordinator，但本地使用 FeatureHash 回退、没有调用 LLM 或 QQ。实际触发消息产生一个前史 link，返回五个关联故事记录，每条均保留两项来源绑定；当前 ledger semantic hash 与 sequence 前后不变。Context resolve约581毫秒，结果确认之前克隆中“候选已选、故事链未进入 top-k”的故障已由显式锚点保留修复。另一个合成反例放入四条分数更高、主题无关的直接候选，仍能返回完整五段故事。该证据证明完整世界的本地候选/闭包路径，不证明模型一定注意、理解或复述故事；本节当时还不是最终代码下的 BGE 冷缓存或真实 provider A/B。
+
+
+## 最终代码双轮真实角色复测（2026-09-30）
+
+在 run-10 的完整 v42 SQLite 克隆上另建新副本，先清空 BGE-M3 向量缓存，再用最终提交 `6d0bf3b5` 的生产组装、DeepSeek `deepseek-flash` 和本地 BGE-M3 连续聊两轮。DeepSeek[官方现行 API 文档](https://api-docs.deepseek.com/updates/)将`deepseek-flash`标为 V4.1-Flash；QQ 始终由 CaptureDelivery 接收，未访问/写入生产库、未发真实 QQ。
+
+第一轮问：“要是嘉禾这次当面来跟我说照片的事，我该直接问她当时为什么没告诉我吗？”一次模型请求、HTTP 200，行动被授权并捕获三条文字；三条各有`ActionDispatchStarted → ActionProviderAccepted → ExecutionReceiptRecorded`本地 CaptureDelivery 链。可见措辞包括“你要真想问，就直接问，别绕”。完整入站约4.89秒、作者模型约4.33秒；输入正文 41,988 tokens（其中缓存命中3,200），输出328，Usage ledger记录CNY 0.0402，预算预留估算CNY 0.301854。模型输入确实包含`两个多月`、`大生意`、`六张`、`折盒子`、搬家问答等跨场景前史证据；角色建议直问而不绕圈，同时把朋友的可能动机标成推测。
+
+第二轮接着问：“那你帮我想想，怎么开口比较不伤人？”同一隔离World重新装配，角色仍返回一个完整 ActionAuthorized 与四条文字；四条也各有对应的本地派发、接受和回执链。她拒绝替用户逐字代写，理由是“你自己心里那点事……你到时候说出来也不是你自己的话”，随后建议问对方当时是否也有点乱。完整入站约4.73秒、作者模型约4.10秒；输入39,546、输出219，provider usage CNY 0.0333。该回合 BGE usage 聚合行无增长；这只证明这一条紧接着的追问没有新增已记账 embedding 用量，不足以证明其他查询都命中缓存。
+
+两轮 Usage ledger 合计CNY 0.0735；第一轮冷BGE-M3花费估算另为CNY 0.006629、46,037 tokens、四次embedding请求。两轮之间另做一个仅含27 tokens的本地缓存持久化探针，估算CNY 0.000004，缓存行从0增至1；这不是角色回合。第二轮没有新增已记账 BGE tokens。该短实验进程在回合后快速关闭；`RecallCoordinator.close` 只同步等待50ms，剩余 Recall worker 会在 daemon 线程中收尾，因此冷缓存行数不能用来判定长驻服务能否完成写回。直接 cache wrapper 的27-token探针确认了写入成功，但同 cue 的生产复用仍须长驻/重启实验。两轮后独立重新打开同一隔离账本，冷 replay 的 semantic hash 与当前 projection 相同（`ae94b50025f34a454b3217a78fe653bc78da8049cdaaffd31e206118dfc56b3d`），ReplayEvaluator findings为0。按两轮直接聊天费外推每月3,000轮约CNY 110.25，尚未计后台生活/其他任务。此两轮比之前 v40 多了最终相关性排序和索引 top-k 锚点保留，补上了最终代码下真实模型输入、角色连续回应、本地回执链和冷 replay 的证据，但不等于抽样来源审核通过、真实QQ回执、P95、24小时运行或月费资格。

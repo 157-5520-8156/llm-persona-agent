@@ -838,8 +838,7 @@ def expression_draft_shape_contract(*, include_world_claims: bool = True) -> str
         "generalizations use no world_claim item）。"
         "subjective_or_hypothetical is legacy replay input，不能出现在新写的草稿里；"
         "那是回放遗留输入，不是你可以新写的 scope。"
-        "每一条你写的 world_claim 都需要一个或多个匹配的钉住 source refs；"
-        "只列直接支持这条主张的最小来源集合，不要把整个可用来源目录复制进去。"
+        "每一条你写的 world_claim 都需要一个或多个匹配的钉住 source refs。"
     )
 
 

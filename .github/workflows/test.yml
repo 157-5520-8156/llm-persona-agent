@@ -16,10 +16,11 @@ jobs:
           ec50d9f28e33459272f644fd4900673509bd045f
           3fe665570554bd8e95acd1040822a2eb070e6dc0
           2fd930a66ba6b49e322997e30a65b8551ac9e0a2
-      - name: Install deployment shell used by launchd fixtures
+      - name: Install deployment tools used by launchd fixtures
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends --yes zsh
+          echo "$GITHUB_WORKSPACE/scripts/ci" >> "$GITHUB_PATH"
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true

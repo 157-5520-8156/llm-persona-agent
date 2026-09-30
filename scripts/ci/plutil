@@ -1,0 +1,33 @@
+#!/usr/bin/env python3
+"""Minimal Linux CI shim for the installer's ``plutil -lint`` preflight.
+
+The launchd integration tests supply fake ``launchctl`` and validate their
+temporary plist fixtures. Ubuntu has no macOS ``plutil`` binary; Python's
+standard plistlib validates the same XML/binary plist bytes without changing
+the production installer or pretending to load a launchd service.
+"""
+
+from __future__ import annotations
+
+import plistlib
+import sys
+from pathlib import Path
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 3 or argv[1] != "-lint":
+        print("CI plutil shim supports only: plutil -lint FILE", file=sys.stderr)
+        return 2
+    path = Path(argv[2])
+    try:
+        with path.open("rb") as source:
+            plistlib.load(source)
+    except (OSError, plistlib.InvalidFileException, ValueError) as exc:
+        print(f"{path}: {type(exc).__name__}", file=sys.stderr)
+        return 1
+    print(f"{path}: OK")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

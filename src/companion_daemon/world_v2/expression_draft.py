@@ -307,10 +307,7 @@ class WorldClaimDraft(FrozenModel):
         "stable_identity",
         "subjective_or_hypothetical",
     ]
-    # A single story-spanning claim can cite several independently imported
-    # scenes. Keep the exact-source closure bounded while allowing the role to
-    # cite the complete five-scene narrative context.
-    source_refs: tuple[str, ...] = Field(default=(), max_length=16)
+    source_refs: tuple[str, ...] = Field(default=(), max_length=8)
 
     @model_validator(mode="after")
     def source_shape_matches_scope(self) -> "WorldClaimDraft":

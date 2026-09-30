@@ -357,7 +357,7 @@ class ScenarioVerificationError(AssertionError):
 # with attended_source_refs). Complete fake suite hash:
 # 6ab348fe9ea2a49aead4807b0df79440ed426dc88bd0fc30e5e8f360f3bf5204
 # 9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.107"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.108"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -680,9 +680,13 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.107
 # outputs, actions, calls, predicates and cold replay checks unchanged;
 # request/source trace identities update all 120 replay hashes. See
 # docs/audits/scenario-baseline-107-2026-09-30.json.
-FROZEN_OFFLINE_SUITE_MANIFEST_HASH = (
-    "c49e8516d9f8e548196fb2d71edf934df891886b14b5f5379b2427b4d5fd8727"
-)
+# 2026-09-30: .108 restores the original v1/v2 world_claim source-ref limit
+# after the reviewed prehistory slice showed eight is already enough for its
+# bounded five-scene story. The strict v1/v2 request bytes therefore stay
+# frozen; changing their historical maximum changes only derived replay
+# identities in all 120 offline cases, not outputs or predicates. See
+# docs/audits/scenario-baseline-108-2026-09-30.json.
+FROZEN_OFFLINE_SUITE_MANIFEST_HASH = "74c93b55aef7e0b8c12777d6867b0381af6da3da282eae16e7015b2219a0e6f9"
 
 
 class _FixedScenarioRouter:
