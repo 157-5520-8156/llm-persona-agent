@@ -26,10 +26,12 @@ from test_world_stimulus_life_intent import _http_result
 class ObserverModel:
     def __init__(self, fail=False):
         self.calls = 0
+        self.requests = []
         self.fail = fail
 
     async def complete_json_with_usage(self, **kwargs):
         self.calls += 1
+        self.requests.append(kwargs)
         if self.fail:
             raise RuntimeError('observer unavailable')
         return json.dumps({'severity':'major','findings':[{'quote':'冰岛','reason':'没有此经历来源'}]}, ensure_ascii=False), {}
@@ -79,6 +81,10 @@ async def test_unreviewed_text_delivers_once_observer_is_non_authoritative_and_r
         assert sent.facts == before.facts and sent.experiences == before.experiences
         assert await observer.observe_once()
         assert observation_model.calls == 1
+        from companion_daemon.world_v2.shared_string_view import unpack_shared_strings
+        observed_packet = json.loads(observation_model.requests[0]['messages'][1]['content'])
+        assert observed_packet['sent_beats'] == ['我昨天在冰岛见到了一头北极熊。']
+        assert isinstance(unpack_shared_strings(observed_packet['pinned_sources']), list)
         assert not await observer.observe_once()
         after = app.export_replay_evidence().projection
         assert after.semantic_hash == sent.semantic_hash

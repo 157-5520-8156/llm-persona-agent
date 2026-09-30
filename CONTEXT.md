@@ -1,3 +1,21 @@
+Recall cost/performance optimization (2026-09-30): `docs/audits/recall-efficiency-and-hindsight-2026-09-30.md`.
+Current v25 slim prompt.6 losslessly tables all album candidates and orders plain
+materials BEFORE request-local ref numbering, preserving stable prefix bytes.
+Immutable prehistory hash LRU caches values only; every current authority/privacy
+check remains. Local71-memory identical-result pairs~.086->.070s (only~16ms).
+Two-turn matched baseline authorCNY.0293, warm candidate.0239; cold candidate.0461.
+Input~55.6k->53.9k across2 turns. First captures still~6-8s; NO overall speed,
+P95/<5s, hallucination-rate or daily/monthly-cost qualification. Backend sampled
+observer source input71,522->58,640tokens; positive none/negative major retained
+in2 diagnostic pairs, all source bytes recoverable. Frequencies/role choices unchanged.
+208/36/286 scoped checks pass (overlap), candidate and fresh-production-copy
+cold replay match,0findings. Activated frozen recall-efficiency-20260930-400e696ad5e0;
+launcher-only cutover with backup, no production historical/state rewrite.
+Hindsight official-source assessment in `docs/research/hindsight-memory-fit-2026-09-30.md`:
+not installed/tested as backend. Consider a read-only index mirror, never automatic
+whole-chat truth ingestion or a second reflect author in every chat. QQ timings
+remain unverified. Private evidence under output/private-audits/recall-performance-20260930/.
+
 Prehistory coverage and conversational evaluation (2026-09-29):
 `docs/audits/prehistory-grounding-repair-2026-09-29.md`. User explicitly accepts ordinary
 Chinese concise negation (no pet record -> "never had a cat"), approximation and ellipsis;

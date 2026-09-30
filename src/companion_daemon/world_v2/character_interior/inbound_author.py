@@ -64,6 +64,9 @@ from .inbound_appraisal_wire import (
 )
 from .inbound_tool_contract import InboundToolContract, InboundToolContracts
 from .inbound_prompt import compact_atomic_slim_system_prompt, compact_atomic_system_prompt
+from .inbound_context_presentation import (
+    cache_ordered_inbound_material, compact_inbound_media_rows,
+)
 from .single_tool_transport import resolve_single_tool_transport
 from .inbound_wire import (
     _ExpressionDraftWire,
@@ -4623,6 +4626,12 @@ class _InboundCharacterAuthor:
             material_view = snapshot_view.get("materials", {})
             if isinstance(material_view, dict) and material_view.get("contract") == "shared-string-view.1":
                 snapshot_view["materials"] = unpack_shared_strings(material_view)
+            if self._visible_source_review_version == "25":
+                # Order the plain materials before assigning request-local
+                # ordinals, so changing dialogue cannot renumber the stable
+                # evidence at the start of the provider's cacheable prefix.
+                displayed = cache_ordered_inbound_material(displayed)
+                displayed = compact_inbound_media_rows(displayed)
             displayed, reference_bindings = prepare_reference_view(displayed)
             messages[1] = {"role": "user", "content": json.dumps(displayed, ensure_ascii=False, separators=(",", ":"))}
         invocation_extras = {

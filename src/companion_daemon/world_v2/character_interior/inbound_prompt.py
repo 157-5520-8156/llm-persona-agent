@@ -168,7 +168,7 @@ def compact_atomic_slim_system_prompt(
     specimen = slim_peer_specimen()
     specimen = {"world_claims": specimen.pop("world_claims"), **specimen}
     return (
-        f"{'character-inbound-prompt.5-slim' if concise_contract else SLIM_PROMPT_VERSION}\n"
+        f"{'character-inbound-prompt.6-slim' if concise_contract else SLIM_PROMPT_VERSION}\n"
         + (_ROLE_AND_REALITY.replace("expression_draft.world_claims", "world_claims").replace(
             "缺少记录表示未知，不证明事情没发生，更不能靠合理的故事补齐。",
             "没有对应经历时无需为接话而补出一个故事。",
@@ -181,6 +181,10 @@ def compact_atomic_slim_system_prompt(
         + "\n\n"
         + _SLIM_LEAD
         + (_CURRENT_SLIM_FIELDS if concise_contract else slim_consider_instruction())
+        + ("\nmaterials中的literal-row-table.1是原信息的表格：每条stable_rows按columns对应字段，"
+           "absent_cell标记该字段原本不存在，null仍是null。所有候选和来源值均保留，"
+           "复制实际候选/来源格子的值，不复制列名或absent_cell。过期或不可用候选仍不可发送。\n"
+           if concise_contract else "")
         + (
             compact_gate_recall_instruction()
             if recall_available

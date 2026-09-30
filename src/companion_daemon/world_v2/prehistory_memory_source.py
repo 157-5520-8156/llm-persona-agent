@@ -6,6 +6,7 @@ retrieval compiler calls it only after candidate status/privacy selection.
 from __future__ import annotations
 
 from datetime import datetime
+from functools import lru_cache
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import Field, model_validator
@@ -13,6 +14,7 @@ from pydantic import Field, model_validator
 from .character_prehistory import (
     HistoricalEntity,
     PrehistoryArchiveProjection,
+    PrehistoryArchiveManifest,
     PrehistoryRecord,
     PrehistoryRecordImportedPayload,
     PrehistoryRecordProjection,
@@ -54,6 +56,31 @@ class PrehistoryMemoryReading(FrozenModel):
         return self
 
 
+@lru_cache(maxsize=1024)
+def _record_hash(record: PrehistoryRecord) -> str:
+    return digest(record)
+
+
+@lru_cache(maxsize=128)
+def _manifest_hash(manifest: PrehistoryArchiveManifest) -> str:
+    return digest(manifest)
+
+
+@lru_cache(maxsize=1024)
+def _record_payload_hash(row: PrehistoryRecordProjection) -> str:
+    return digest(PrehistoryRecordImportedPayload(
+        archive_id=row.archive_id, archive_manifest_hash=row.archive_manifest_hash,
+        record=row.record,
+    ))
+
+
+@lru_cache(maxsize=128)
+def _archive_payload_hash(archive: PrehistoryArchiveProjection) -> str:
+    return digest(archive.model_dump(mode="json", exclude={
+        "accepted_event_ref", "accepted_world_revision", "accepted_payload_hash", "accepted_at",
+    }))
+
+
 def prehistory_memory_binding(record: PrehistoryRecordProjection) -> MemorySourceBinding:
     from .schemas import MemorySourceBinding
 
@@ -62,7 +89,7 @@ def prehistory_memory_binding(record: PrehistoryRecordProjection) -> MemorySourc
         source_entity_revision=1, authority_event_ref=record.accepted_event_ref,
         authority_world_revision=record.accepted_world_revision,
         authority_payload_hash=record.accepted_payload_hash,
-        source_values_hash=digest(record.record),
+        source_values_hash=_record_hash(record.record),
     )
 
 
@@ -80,7 +107,7 @@ def resolve_prehistory_memory_source(
     archive = next((item for item in archives if item.manifest.archive_id == row.archive_id), None)
     if archive is None or (
         archive.manifest.actor_ref != row.actor_ref
-        or digest(archive.manifest) != row.archive_manifest_hash
+        or _manifest_hash(archive.manifest) != row.archive_manifest_hash
         or archive.world_started_at != row.world_started_at
         or row.record.occurred_until >= row.world_started_at
         or row.accepted_at < archive.accepted_at
@@ -88,13 +115,10 @@ def resolve_prehistory_memory_source(
                    for pin in archive.manifest.records)
     ):
         raise ValueError("prehistory memory source lost its reviewed archive")
-    record_payload = PrehistoryRecordImportedPayload(
-        archive_id=row.archive_id, archive_manifest_hash=row.archive_manifest_hash, record=row.record,
-    )
-    archive_payload = archive.model_dump(mode="json", exclude={
-        "accepted_event_ref", "accepted_world_revision", "accepted_payload_hash", "accepted_at",
-    })
-    if digest(record_payload) != row.accepted_payload_hash or digest(archive_payload) != archive.accepted_payload_hash:
+    # Cache only pure hashes of fully immutable values. Source presence, actor,
+    # privacy/candidate eligibility and the current committed event closure are
+    # still checked on every read; a prior successful read grants no authority.
+    if _record_payload_hash(row) != row.accepted_payload_hash or _archive_payload_hash(archive) != archive.accepted_payload_hash:
         raise ValueError("prehistory memory source body differs from its authority")
     for source, event_type in ((row, "CharacterPrehistoryRecordImported"),
                                (archive, "CharacterPrehistoryArchiveAccepted")):

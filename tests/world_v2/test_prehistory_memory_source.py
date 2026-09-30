@@ -340,3 +340,37 @@ def test_corpus_requires_both_proofs_and_rejects_owner_or_time_reinterpretation(
                 RecallDocument.model_validate(value)
     finally:
         ledger.close()
+
+
+def test_cached_body_hashes_do_not_cache_permission_or_event_presence(tmp_path, monkeypatch):
+    import companion_daemon.world_v2.prehistory_memory_source as source_module
+
+    ledger = started_ledger(tmp_path / 'hash-cache.sqlite')
+    try:
+        row = _install(ledger)
+        projection = ledger.project()
+        binding = prehistory_memory_binding(row)
+        kwargs = dict(records=projection.prehistory_records, archives=projection.prehistory_archives,
+                      committed_events=projection.committed_world_event_refs)
+        resolve_prehistory_memory_source(binding, **kwargs)
+        calls = []
+        original = source_module.digest
+
+        def observed(value):
+            calls.append(value)
+            return original(value)
+
+        monkeypatch.setattr(source_module, 'digest', observed)
+        assert resolve_prehistory_memory_source(binding, **kwargs)[0] == row
+        assert not calls
+        missing = tuple(e for e in projection.committed_world_event_refs
+                        if e.event_id != row.accepted_event_ref)
+        with pytest.raises(ValueError, match='event is unavailable'):
+            resolve_prehistory_memory_source(binding, **{**kwargs, 'committed_events': missing})
+        changed = row.model_copy(update={'record': row.record.model_copy(update={
+            'statement': row.record.statement + '未经认可的额外经历',
+        })})
+        with pytest.raises(ValueError, match='exact prehistory authority'):
+            resolve_prehistory_memory_source(binding, **{**kwargs, 'records': (changed,)})
+    finally:
+        ledger.close()

@@ -378,8 +378,10 @@ class CaptureDelivery:
 
     def __init__(self) -> None:
         self.sent: list[dict[str, object]] = []
+        self.text_capture_times: list[float] = []
 
     async def send_text(self, recipient_id: str, text: str) -> dict[str, object]:
+        self.text_capture_times.append(time.perf_counter())
         self.sent.append({"kind": "text", "recipient_id": recipient_id, "body": text})
         return {"status": "ok", "data": {"message_id": f"drive-text-{time.time_ns()}"}}
 
@@ -639,6 +641,8 @@ class DriveSession:
             self.journey_clock.advance(when)
         message_id = f"drive-{time.time_ns()}"
         before = len(self.delivery.sent)
+        text_before = len(self.delivery.text_capture_times)
+        started = time.perf_counter()
         result = await self.host.inbound_text(
             message_id=message_id,
             recipient_id=self.recipient_id,
@@ -646,13 +650,23 @@ class DriveSession:
             observed_at=when,
         )
         self.clock = when
+        inbound_complete = time.perf_counter()
         await self.drain(actions=8, background=background_units)
+        completed = time.perf_counter()
+        text_times = self.delivery.text_capture_times[text_before:]
         return {
             "status": getattr(result, "status", None),
             "action_id": getattr(result, "action_id", None),
             "visible": self.delivery.sent[before:],
             "observed_at": when.isoformat(),
             "message_id": message_id,
+            "timing": {
+                "first_text_capture_seconds": text_times[0] - started if text_times else None,
+                "last_text_capture_seconds": text_times[-1] - started if text_times else None,
+                "inbound_complete_seconds": inbound_complete - started,
+                "total_seconds": completed - started,
+                "capture_is_qq_delivery": False,
+            },
         }
 
     async def close(self) -> None:

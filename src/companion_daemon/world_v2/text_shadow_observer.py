@@ -12,6 +12,7 @@ import time
 from datetime import datetime, UTC
 
 from .ordinary_text_observation import EVIDENCE, canonical, eligible_text
+from .shared_string_view import pack_shared_strings
 
 _LOG = logging.getLogger(__name__)
 
@@ -132,6 +133,10 @@ class TextShadowObserver:
         table, _ = supplement_recalled_sources(table=requirement_table(evidence['requirement_json']),
             audits=tuple(RecallAuditTrace.model_validate_json(canonical(x)) for x in evidence['recall_audits']),
             author_request_json=evidence['author_request_json'])
+        # Intern repeated source bytes, never select sources or shorten prose.
+        # The saved evidence remains the original full table and author pin;
+        # the codec independently proves exact reconstruction on every call.
+        source_view = pack_shared_strings(table.as_dict()['source_materials'])
         schema = {'type':'object','properties':{
             'severity':{'type':'string','enum':['none','minor','major','uncertain']},
             'findings':{'type':'array','items':{'type':'object','properties':{
@@ -146,8 +151,9 @@ class TextShadowObserver:
                     '按通常中文理解合理省略、概括和简短否认；没有宠物记录时说“没养过猫”本身不算编造。'
                     '只在与明确已有事实矛盾，或无中生有具体人物、经历、行动结果时报告实质错误。'
                     '当前情绪、意愿和明确假设不是过去经历。计划不等于完成，环境不等于亲历，旧发言不等于事实。'
-                    'none表示未发现问题；minor表示不影响事情本质的小偏差；major表示捏造事件/人物/共同历史或实质矛盾；证据不足以判定时uncertain。仅输出评估，不写替代台词。'},
-                    {'role':'user','content':canonical({'sent_beats':beats,'pinned_sources':table.as_dict()['source_materials']})}],
+                    'none表示未发现问题；minor表示不影响事情本质的小偏差；major表示捏造事件/人物/共同历史或实质矛盾；证据不足以判定时uncertain。仅输出评估，不写替代台词。'
+                    'pinned_sources使用shared-string-view.1无损字典：value中的标记替换为strings里对应原文后，才是完整来源。没有省略来源。quote原样取自sent_beats，不复制字典标记。'},
+                    {'role':'user','content':canonical({'sent_beats':beats,'pinned_sources':source_view})}],
                 tools=[{'type':'function','function':{'name':'observe_sent_text','strict':True,'parameters':schema}}],
                 tool_choice={'type':'function','function':{'name':'observe_sent_text'}},temperature=0,
             ), timeout=30)
@@ -156,7 +162,8 @@ class TextShadowObserver:
             or not isinstance(value['findings'], list) or any(not isinstance(x, dict) or set(x) != {'quote','reason'}
             or any(not isinstance(v, str) for v in x.values()) for x in value['findings'])):
             raise ValueError('invalid observational verdict')
-        return {**value, 'evaluation_policy': 'ordinary-chinese-material-factuality.2'}
+        return {**value, 'evaluation_policy': 'ordinary-chinese-material-factuality.2',
+                'source_presentation': 'shared-string-view.1'}
 
     async def _run(self):
         while not self._closed:
