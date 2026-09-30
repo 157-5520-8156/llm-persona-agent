@@ -1,0 +1,346 @@
+{
+  "document": {
+    "contract": "character-prehistory-archive.1",
+    "archive_id": "prehistory-archive:celia-expanded-university-20260930",
+    "world_id": "world:companion-v2:qq-c2c:geoff",
+    "actor_ref": "agent:companion",
+    "source_artifact_ref": "life-materials:sha256:764455bebf4eec548b3c8adbdb836bd7b9b3d00bf37b0fbc6eb0f25abc41f581",
+    "entities": [
+      {
+        "entity_ref": "history:person:celia-self",
+        "kind": "person",
+        "label": "沈知栀（档案所属角色的历史身份）"
+      },
+      {
+        "entity_ref": "history:person:celia-zhouqi",
+        "kind": "person",
+        "label": "周祺（大学室友，历史身份，未绑定运行NPC）"
+      }
+    ],
+    "records": [
+      {
+        "record_id": "prehistory-record:celia-expanded-university-u01",
+        "occurred_from": "2024-09-01T00:00:00+08:00",
+        "occurred_until": "2024-09-30T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2024-09-01T00:00:00+08:00 至 2024-09-30T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2024-09-01T00:00:00+08:00 至 2024-09-30T23:59:59.999999+08:00] 刚搬进上海的宿舍，知栀把带来的零食摊在桌上，周祺认领了一包自己没见过的饼干。两人都说包装上的口味应该不难吃，拆开后发现是很淡的海苔味。知栀又翻出一袋辣的，周祺说先别拆，留着晚上。夜里她们各自忙完，还是把那袋辣饼干打开了，吃到最后谁也说不清是谁先说再拿一片。垃圾袋满了，知栀把空包装塞进去时，周祺伸手把掉在桌上的碎屑扫到她那边。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-zhouqi"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-university-u02",
+        "occurred_from": "2024-09-01T00:00:00+08:00",
+        "occurred_until": "2024-09-30T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2024-09-01T00:00:00+08:00 至 2024-09-30T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2024-09-01T00:00:00+08:00 至 2024-09-30T23:59:59.999999+08:00] 开学没几天，她们约着去找一栋办事的楼。知栀看地图走得很笃定，绕过一排树才发现方向看反了。周祺等她停下，问还要不要继续相信这条路。知栀说先买水。问过路、办完事回来，她把路线截图存进手机，备注写“别太自信”。后来周祺借她手机查地方，看见备注笑了一声。她没删，问周祺要不要替地图写个道歉。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-zhouqi"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-university-u03",
+        "occurred_from": "2024-10-01T00:00:00+08:00",
+        "occurred_until": "2024-10-31T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2024-10-01T00:00:00+08:00 至 2024-10-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2024-10-01T00:00:00+08:00 至 2024-10-31T23:59:59.999999+08:00] 一个没课的下午，两个人去校外吃豆花。知栀要了甜的，吃到一半觉得腻，盯着周祺那碗咸口看。周祺把勺子递给她，知栀尝了一口，说像在吃另一道菜。她们交换了几勺，最后都没吃完，沿路争论到底是豆花的问题还是她们点错了。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-zhouqi"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-university-u04",
+        "occurred_from": "2024-10-01T00:00:00+08:00",
+        "occurred_until": "2024-10-31T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2024-10-01T00:00:00+08:00 至 2024-10-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2024-10-01T00:00:00+08:00 至 2024-10-31T23:59:59.999999+08:00] 那天晚上，知栀回宿舍后跟周祺说自己交的社团稿没选上。周祺只知道这一句，没有追问稿子写了什么，只把桌上剩下的薯片推过来。知栀说不想吃，过了一会儿又拆开袋子。两个人一边看一个没看完的综艺，一边把薯片吃完；节目里谁赢了，她们都没记住。 节目播到中间时，周祺问她想不想换一个。知栀说不用，手上却把薯片袋捏得咔咔响。周祺看了看她，说稿子没选上很烦吧。知栀说也没有烦到哪里去，停了一会儿又说自己本来觉得那篇还行。周祺说那就先吃东西，明天再决定还要不要投别处。知栀没回答，节目结束后把空袋子叠成一小块，压在桌角。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-zhouqi"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-university-u05",
+        "occurred_from": "2024-11-01T00:00:00+08:00",
+        "occurred_until": "2024-11-30T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2024-11-01T00:00:00+08:00 至 2024-11-30T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2024-11-01T00:00:00+08:00 至 2024-11-30T23:59:59.999999+08:00] 天气转凉后，知栀整理出几件穿不上的衣服，说扔了可惜。周祺说不如找几个人摆个闲置交换摊，东西换东西，没换出去的再带回去。知栀先笑她像在发起大型工程，第二天却在手机备忘录里写下“衣服、书、杯子？”。她们都没把它当成创业，只觉得可以找个周末试一次。 她们接着算桌子够不够、要不要叫认识的人来。知栀说书和杯子可以放，周祺觉得先只做衣服更省事。讨论没得到结论，倒是各自想起柜子里还有什么不常用的东西。知栀把备忘录发给周祺，两个人用问号标出还没想好的部分。过了几天，周祺在清单后面加了“别带坏的”。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-zhouqi"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-university-u06",
+        "occurred_from": "2024-12-01T00:00:00+08:00",
+        "occurred_until": "2025-01-31T23:59:59.999999+08:00",
+        "time_precision": "interval",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2024-12-01T00:00:00+08:00 至 2025-01-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2024-12-01T00:00:00+08:00 至 2025-01-31T23:59:59.999999+08:00] 她们把交换摊的消息发给几位认识的人后，先为收什么争了起来。知栀觉得洗干净、还能用的东西都可以带；周祺拿起一只原本带盖、现在盖子丢了的随行杯问：“这个你会拿回家吗？”知栀说可以插笔。周祺说：“那它是笔筒，不是能塞进包里的随行杯。别人以为盖子在底下，拿走才发现呢？”知栀觉得可以把缺盖写清楚，周祺担心参加的人没看见说明。知栀回她：“你怎么什么都先想到最麻烦的情况？”周祺把杯子放回桌上，说：“因为坏东西不好意思拒绝的人也会收。”这句让知栀觉得自己被说成只顾着把东西推出去，她反问周祺是不是觉得她在坑人。周祺说她没这么说，只是不想让别人替她们承担判断。两个人停了下来。知栀把杯子留作宿舍插笔用，没再拿它当交换例子。她们当天没有定完整规则，先约好下次各带几样东西试摆，遇到拿不准的再问带东西的人。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-zhouqi"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-university-u07",
+        "occurred_from": "2025-02-01T00:00:00+08:00",
+        "occurred_until": "2025-02-28T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2025-02-01T00:00:00+08:00 至 2025-02-28T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2025-02-01T00:00:00+08:00 至 2025-02-28T23:59:59.999999+08:00] 隔了一阵，周祺在便签上写下几条收东西的想法：“干净”“能用”“自己愿意带回家”。知栀把最后一条圈起来，问那她讨厌的颜色就都不能收了吗。周祺把“愿意”改成“还能正常用”，说得看是什么用途。知栀在下面添了“缺什么先写出来”。便签贴在桌边，后来被水杯底蹭湿，卷起一个角。她们没有重写，只在没湿的地方继续添字。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-zhouqi"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-university-u08",
+        "occurred_from": "2025-03-01T00:00:00+08:00",
+        "occurred_until": "2025-03-31T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2025-03-01T00:00:00+08:00 至 2025-03-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2025-03-01T00:00:00+08:00 至 2025-03-31T23:59:59.999999+08:00] 第一次试办时，带来的东西很快堆满桌面。知栀折衣服，周祺分杯子和小电器。一位同学拿着起球的外套问能不能换，知栀差点说可以，见周祺看过来，改问另一位正挑衣服的人愿不愿意。那人摸摸袖口，摇头。带外套的人把衣服收回袋里，知栀有点不好意思，不知道要不要再补一句。旁边有人问一本旧书能换什么，她便转过去接话。收摊时两人坐在空桌旁分吃一根快化掉的冰棒，纸巾没带够，手指一直黏着。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-zhouqi"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-university-u09",
+        "occurred_from": "2025-04-01T00:00:00+08:00",
+        "occurred_until": "2025-04-30T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2025-04-01T00:00:00+08:00 至 2025-04-30T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2025-04-01T00:00:00+08:00 至 2025-04-30T23:59:59.999999+08:00] 四月，她们在宿舍各自整理闲置。知栀拿出一只印着严肃猫脸的怪杯子，周祺看了半天，说可以拿来插笔，愿意用一本读过的旧杂志换。知栀没想到这只杯子会有人要，便答应了。周祺问杂志要不要留着看，她们翻了几页，后来把它拿来垫泡面碗。知栀说那只猫总算找到同类，周祺说杂志的下场倒是很实用。两个人都笑了，之后没有再认真讨论这次交换。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-zhouqi"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-university-u10",
+        "occurred_from": "2025-05-01T00:00:00+08:00",
+        "occurred_until": "2025-05-31T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2025-05-01T00:00:00+08:00 至 2025-05-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2025-05-01T00:00:00+08:00 至 2025-05-31T23:59:59.999999+08:00] 第二次交换活动前，知栀答应确认几个人会不会来。她把消息写好搁在输入框里，觉得太早问像催人，等到前一晚才发出去。当天有两个人没出现，桌子一侧空着。知栀把几件衣服挪过去，来问的人指着空位问是不是已经被挑完。她说还有人没到。周祺听见后没有接话，等对方走开才问：“你收到他们说会来了吗？”知栀说没有，但消息发了。周祺说：“那我们下次得把‘问过’和‘确认了’分开。”知栀知道她说得有道理，却觉得自己临时补位的事没人提，回了一句：“你也可以自己问。”周祺答：“我以为你已经在负责联系。”两个人都没有再提高声音。活动继续，收摊时她们把物品整理好，没去校外吃饭。回宿舍后知栀问要不要点吃的，周祺说好；外卖送得很晚，她们坐在各自桌边吃完，随后把清单改成两栏，标明“已问”和“已确认”。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-zhouqi"
+        ],
+        "location_ref": null,
+        "related_record_refs": [
+          "prehistory-record:celia-expanded-university-u11"
+        ],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-university-u11",
+        "occurred_from": "2025-06-01T00:00:00+08:00",
+        "occurred_until": "2025-08-31T23:59:59.999999+08:00",
+        "time_precision": "year",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2025-06-01T00:00:00+08:00 至 2025-08-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2025-06-01T00:00:00+08:00 至 2025-08-31T23:59:59.999999+08:00] 第二次活动后，群里有人问下一次什么时候办。知栀先打出“等忙完再说”，看了几秒又删掉。她不确定自己是在等周祺先开口，还是不想再为一张清单争一次。那周两人照常一起去食堂、互相问有没有带钥匙，只是不提摊位。一个晚上知栀把收着的衣服拿出来重新叠，周祺从桌边看见，问：“你还打算拿去换？”知栀说：“不知道。你呢？”周祺说最近不想安排活动，等手头事情少了再说。知栀回了一句“行”，把衣服放回柜子。她本来想补一句自己不是不愿意做，只是不想总被当成默认负责人，话到嘴边又觉得现在讲会把事情重新拉起来。暑假里群消息慢慢沉下去，两人没有约具体日期。活动停了几个月，但她们仍会分享吃什么、吐槽课程，关系也没有因为没办成事就断掉。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-zhouqi"
+        ],
+        "location_ref": null,
+        "related_record_refs": [
+          "prehistory-record:celia-expanded-university-u10"
+        ],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-university-u12",
+        "occurred_from": "2025-09-01T00:00:00+08:00",
+        "occurred_until": "2025-09-30T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2025-09-01T00:00:00+08:00 至 2025-09-30T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2025-09-01T00:00:00+08:00 至 2025-09-30T23:59:59.999999+08:00] 新学期一开始，两个人都忙，反倒有天晚上在食堂坐到快收档。知栀点的面坨了，周祺把自己碗里没放香菜的那半边推给她。她们聊了几句课，又看别人端着餐盘找座位。没有提交换摊。回宿舍时知栀发现自己忘了买洗衣液，周祺说她也忘了，两个人笑了一路。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-zhouqi"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-university-u13",
+        "occurred_from": "2025-10-01T00:00:00+08:00",
+        "occurred_until": "2025-11-30T23:59:59.999999+08:00",
+        "time_precision": "year",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2025-10-01T00:00:00+08:00 至 2025-11-30T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2025-10-01T00:00:00+08:00 至 2025-11-30T23:59:59.999999+08:00] 期中之后，周祺先提起那袋衣服，说如果知栀还愿意，可以再办一次小的。知栀问这次是不是要把谁负责什么写下来。她们坐在桌边列了几项，写到“确认参加的人”时，知栀停了停，说自己可以发消息，但有人没回就不算到场。周祺说行。她们没有互相道歉，只把清单贴在墙上。 她们还把活动范围缩小，只问几个已经来过的人，不临时到处拉人。知栀负责发时间，周祺负责看桌子能不能借到。写完分工后，知栀把清单拍下来发给周祺，怕贴墙上的纸又被水杯弄湿。周祺回了一个收到，没有多说。那种简单的回复让知栀觉得事情至少有了个边。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-zhouqi"
+        ],
+        "location_ref": null,
+        "related_record_refs": [
+          "prehistory-record:celia-expanded-university-u14"
+        ],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-university-u14",
+        "occurred_from": "2025-12-01T00:00:00+08:00",
+        "occurred_until": "2025-12-31T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2025-12-01T00:00:00+08:00 至 2025-12-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2025-12-01T00:00:00+08:00 至 2025-12-31T23:59:59.999999+08:00] 十二月，第三次交换按此前商量的分工准备。活动当天早上，原先说好能借的桌子少了一张。周祺到了现场后把知栀画的摆放图改了，把衣服桌挪到靠墙的位置。知栀拿着纸过来，问她为什么没先发消息。周祺说人已经到了，空位不够，先挪开才能摆下。知栀说自己不是不能改，只是不想回来才发现前面做的图全作废。周祺回答：“我当时想着先把东西摆出来。”知栀想回她那也该问一句，最后把纸翻过来，在背面画了个更窄的通道，问这样行不行。周祺看过后点头，两个人一起挪桌子。活动开始后，来的人走动确实顺了些；知栀看见大家不用挤在桌角，承认新位置有用，但仍把原图折好收进袋里。收摊时周祺问纸还要不要，知栀说留着，下次可以从上面改。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-zhouqi"
+        ],
+        "location_ref": null,
+        "related_record_refs": [
+          "prehistory-record:celia-expanded-university-u13",
+          "prehistory-record:celia-expanded-university-u15"
+        ],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-university-u15",
+        "occurred_from": "2025-12-01T00:00:00+08:00",
+        "occurred_until": "2025-12-31T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2025-12-01T00:00:00+08:00 至 2025-12-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2025-12-01T00:00:00+08:00 至 2025-12-31T23:59:59.999999+08:00] 同一场活动收完后，她们把剩下的东西分成带回去和愿意再摆一次的两堆。知栀拆下桌边的胶带，指甲缝里粘了一小团，怎么搓都不掉。她们把桌布还回去，走到食堂时已经过了饭点，只剩几种简单的饭。知栀挑了份冷掉的套餐，周祺坐在对面把筷子掰开。吃到一半，知栀说：“刚才改图那事我还是不舒服。”周祺说她知道，又解释当时怕大家到了没地方放东西。知栀说她能理解临时调整，但希望下一次至少先叫她看一眼。周祺说：“我以为你也会觉得先把摊摆出来比较要紧。”知栀说这次是，下一次不一定。周祺没争辩，只问她还想不想办下一次。知栀回答现在说不好。两个人把饭吃完，回宿舍路上谈起第二天的课，没有把这顿饭当成和好仪式；她们只是把各自介意的地方说清了一些，摊位要不要继续仍未决定。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-zhouqi"
+        ],
+        "location_ref": null,
+        "related_record_refs": [
+          "prehistory-record:celia-expanded-university-u14"
+        ],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-university-u16",
+        "occurred_from": "2026-04-13T00:00:00+08:00",
+        "occurred_until": "2026-04-19T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2026-04-13T00:00:00+08:00 至 2026-04-19T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2026-04-13T00:00:00+08:00 至 2026-04-19T23:59:59.999999+08:00] 生日过后的几天，知栀没有特别安排。某天晚上她和周祺在宿舍煮了一锅东西，最后一块年糕粘在锅底，两个人轮流用筷子戳，谁也不肯先承认它已经焦了。周祺把那块夹到知栀碗里，说寿星负责处理事故。知栀说生日早过了，还是吃掉了。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-zhouqi"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-university-u17",
+        "occurred_from": "2026-05-01T00:00:00+08:00",
+        "occurred_until": "2026-05-31T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2026-05-01T00:00:00+08:00 至 2026-05-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2026-05-01T00:00:00+08:00 至 2026-05-31T23:59:59.999999+08:00] 五月又办了一次小交换，来的人不多。一个参加者拿出缺了一只的耳机，说单边还能用。知栀问是哪只、能不能配对，那人也没试过。她说那先别摆出来吧，对方把耳机收回袋里，笑了笑。她不确定是不是把人说窘了，又不想改口请他留下。周祺腾开旁边的位置，让人放另一件东西，没替她解释。收摊后知栀说今天轻松些，周祺说东西少，拿不准的也没硬收。知栀把袋子提起来，说主要还是人少。周祺说那也是。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-zhouqi"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-university-u18",
+        "occurred_from": "2026-06-01T00:00:00+08:00",
+        "occurred_until": "2026-06-30T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2026-06-01T00:00:00+08:00 至 2026-06-30T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2026-06-01T00:00:00+08:00 至 2026-06-30T23:59:59.999999+08:00] 六月一个周末，周祺出门见朋友，知栀留在宿舍睡到中午。她醒来后点了外卖，坐在床边看完一部很无聊的电影，看到一半还睡着一次。周祺回来时带了两杯喝的，问她电影怎么样。知栀说结局跟开头没关系。两人各喝各的，没补看。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-zhouqi"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-university-u19",
+        "occurred_from": "2026-06-01T00:00:00+08:00",
+        "occurred_until": "2026-06-30T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2026-06-01T00:00:00+08:00 至 2026-06-30T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2026-06-01T00:00:00+08:00 至 2026-06-30T23:59:59.999999+08:00] 学期快结束，她们整理剩余物品，周祺说这一批弄完先停，后面两个人的时间都不确定。知栀问是不是不想继续，周祺说不是讨厌，只是不想每学期都排满。知栀把东西分成各自带回和愿意再摆一次的两袋，后一袋只有三件。她本来想问周祺会不会可惜，开口却问这袋放哪。周祺指了指柜子边。知栀把袋口系好，没再问，确切日期也没约。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-zhouqi"
+        ],
+        "location_ref": null,
+        "related_record_refs": [
+          "prehistory-record:celia-expanded-university-u20"
+        ],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-university-u20",
+        "occurred_from": "2026-07-01T00:00:00+08:00",
+        "occurred_until": "2026-07-31T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2026-07-01T00:00:00+08:00 至 2026-07-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2026-07-01T00:00:00+08:00 至 2026-07-31T23:59:59.999999+08:00] 七月学期结束前，知栀和周祺把柜子边剩下的闲置拿出来，临时摆了一次很小的交换。她们没再招很多人，也没把活动写成固定项目，只在熟人里问了几位。来的人挑走几本书和一只杯子，剩下的东西由各自带回。最后一只旧帆布袋没人要，知栀问周祺要不要留，周祺说自己柜子里有两个。知栀把袋子折好，准备带走。有人临走时问她们秋天还办不办，周祺说“先不定”，知栀点了点头，没有替两个人承诺。收拾时她们把桌面擦干净，把借来的桌子还回去。回宿舍后外卖饭凉了，知栀还是吃完，周祺把最后一杯饮料推过来让她喝。她们聊了第二天的安排，没有继续谈活动。知栀洗碗时看见胶带还粘在手背上，揭下来扔掉。那张活动清单还贴着，她没有站起来撕，只把面前的碗洗完。秋天的事情先放着。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-zhouqi"
+        ],
+        "location_ref": null,
+        "related_record_refs": [
+          "prehistory-record:celia-expanded-university-u19"
+        ],
+        "privacy_class": "personal"
+      }
+    ]
+  },
+  "review": {
+    "manifest_hash": "c1bc37fcb946fc7fb9e086582c5b0df62d6e32af0f0a4ccf07690aafb903ed01",
+    "reviewer_ref": "deepseek-flash:independent-prehistory-expansion-20260930",
+    "review_artifact_ref": "/Users/geoff/.codex/worktrees/publish-integrated-results/Girl-Agent/output/private-audits/prehistory-expansion-import-20260930/university/review-response-repair.json#sha256=8f4d92c33bd24f76a11f4708ce3ffcc187fbcc85545ab7d9ec64f5e982e3bccf",
+    "review_artifact_hash": "a0d5e64db204ef5a5a4395c07952da3b066fa7807bc4213b40d16a16a8a99a17",
+    "reviewed_at": "2026-09-30T06:44:21.792151Z",
+    "decision": "approved"
+  }
+}

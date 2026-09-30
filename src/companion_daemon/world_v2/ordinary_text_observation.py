@@ -61,7 +61,16 @@ def verify_evidence(*, value, requirement, proposal, author_call, author_request
     from .visible_recall_sources import supplement_recalled_sources
 
     verify_visible_source_author_request(value['author_request_json'], expected_request_hash=author_request_hash)
-    table, used = supplement_recalled_sources(table=requirement_table(requirement), audits=tuple(recall_audits),
+    # Author presentation order may be prefetch -> pull, while the completed
+    # result gathers pull -> prefetch. Bind every carrier entry to an actual
+    # independently recorded audit before replaying its presentation order.
+    actual = {digest(a.model_dump(mode='json')): a for a in recall_audits}
+    presented = value.get('recall_audits', [])
+    keys = [digest(a) for a in presented]
+    if len(keys) != len(set(keys)) or any(key not in actual for key in keys):
+        raise ValueError('ordinary text evidence contains an unrecorded recall audit')
+    ordered = tuple(actual[key] for key in keys) + tuple(a for key, a in actual.items() if key not in keys)
+    table, used = supplement_recalled_sources(table=requirement_table(requirement), audits=ordered,
                                               author_request_json=value['author_request_json'])
     expected = prepare_evidence(requirement=requirement, author_request_json=value['author_request_json'],
         author_call=author_call, author_request_hash=author_request_hash, proposal=proposal, table=table, audits=used)

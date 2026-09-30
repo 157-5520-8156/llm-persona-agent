@@ -543,15 +543,8 @@ class LifeEcologyRuntime:
                     activity_followup_status=activity_status,
                     aftermath_followup_status=aftermath_status,
                 )
-        if (
-            self._life_development_followup is not None
-            and (completion_ref is not None or active_attempt_ref is not None or (
-                development_due and not (npc_has_due_work or npc_has_stimulus)
-                and activity_status != "transitioned"
-                and aftermath_status
-                not in {"occurrence_opened", "settled", "recovered_experience", "recovered_memory"}
-            ))
-        ):
+        async def advance_due_development():
+            nonlocal life_development_status, life_development_failure_code
             try:
                 if completion_ref is not None:
                     development_result = await self._life_development_followup.advance_completed_activity_once(
@@ -605,6 +598,21 @@ class LifeEcologyRuntime:
                     biographical_followup_status=biographical_status,
                 )
 
+            return None
+
+        if (
+            self._life_development_followup is not None
+            and (completion_ref is not None or active_attempt_ref is not None or (
+                development_due and not (npc_has_due_work or npc_has_stimulus)
+                and activity_status != "transitioned"
+                and aftermath_status
+                not in {"occurrence_opened", "settled", "recovered_experience", "recovered_memory"}
+            ))
+        ):
+            early = await advance_due_development()
+            if early is not None:
+                return early
+
         # Additive same-wake start chance.  Life Development commits new
         # plans after the first activity pass, so a window that opens on
         # this wake would otherwise miss every start opportunity (the next
@@ -615,30 +623,38 @@ class LifeEcologyRuntime:
         # one life_beat consider for the newly committed start set.  If the
         # first pass had no openings, day_open is still free and this pass
         # is the one consider for the new plan.
-        if self._activity_followup is not None and life_development_status == "plan_committed":
-            extra_pass = await self._run_activity_lifecycle_pass(
-                key=key,
-                trigger_id=claim.trigger_id,
-                wake_event_ref=wake_event_ref,
-                logical_time=logical_time,
-                trace_id=trace_id,
-                correlation_id=correlation_id,
-                renewed_plan_catalog=True,
-            )
-            if isinstance(extra_pass, LifeEcologyRunResult):
-                return extra_pass.model_copy(
-                    update={
-                        "aftermath_followup_status": aftermath_status,
-                        "biographical_followup_status": biographical_status,
-                        "life_development_followup_status": life_development_status,
-                    }
+        async def start_newly_committed_plan():
+            nonlocal activity_status, activity_quiet_model_result
+            if self._activity_followup is not None and life_development_status == "plan_committed":
+                extra_pass = await self._run_activity_lifecycle_pass(
+                    key=key,
+                    trigger_id=claim.trigger_id,
+                    wake_event_ref=wake_event_ref,
+                    logical_time=logical_time,
+                    trace_id=trace_id,
+                    correlation_id=correlation_id,
+                    renewed_plan_catalog=True,
                 )
-            extra_status, extra_quiet = extra_pass
-            activity_status = extra_status
-            if extra_status == "transitioned":
-                activity_quiet_model_result = None
-            elif extra_quiet is not None:
-                activity_quiet_model_result = extra_quiet
+                if isinstance(extra_pass, LifeEcologyRunResult):
+                    return extra_pass.model_copy(
+                        update={
+                            "aftermath_followup_status": aftermath_status,
+                            "biographical_followup_status": biographical_status,
+                            "life_development_followup_status": life_development_status,
+                        }
+                    )
+                extra_status, extra_quiet = extra_pass
+                activity_status = extra_status
+                if extra_status == "transitioned":
+                    activity_quiet_model_result = None
+                elif extra_quiet is not None:
+                    activity_quiet_model_result = extra_quiet
+
+            return None
+
+        early = await start_newly_committed_plan()
+        if early is not None:
+            return early
 
         npc_initiative_status: str | None = None
         # NPC Ecology is a quiet-wake lane: it runs when no occurrence-bearing
@@ -719,6 +735,24 @@ class LifeEcologyRuntime:
         # committed NPC-initiated occurrence is the main life family for this
         # wake.  Do not open a second occurrence for the same active plan;
         # the model-authored lane gets a later wake once that family is done.
+        # NPC readiness reserves ordering, not the whole opportunity. When
+        # it makes no effect, independent due World work may still be offered.
+        if (
+            self._life_development_followup is not None
+            and life_development_status is None
+            and development_due
+            and (npc_has_due_work or npc_has_stimulus)
+            and npc_initiative_status in {"no_op", "already_considered", "rejected", "not_due", "no_npcs", "state_advanced"}
+            and activity_status != "transitioned"
+            and aftermath_status not in {"occurrence_opened", "settled", "recovered_experience", "recovered_memory"}
+        ):
+            early = await advance_due_development()
+            if early is not None:
+                return early
+            early = await start_newly_committed_plan()
+            if early is not None:
+                return early
+
         if (
             self._life_development_followup is None
             and self._open_world_followup is not None

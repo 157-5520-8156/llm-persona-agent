@@ -64,6 +64,12 @@ BACKGROUND_LANE_PRIORITY = MappingProxyType(
         "world_stimulus_appraisal": 1,
         "life_development_draft": 1,
         "life_development_choice": 1,
+        # These are mandatory stages of the same Life write. Cutting closure
+        # after admitting the author strands a paid draft instead of saving
+        # optional work. They retain the parent's ceiling and all hard caps.
+        "life_development_source_closure_review": 1,
+        "life_development_novel_origin_review": 1,
+        "life_development_source_rewrite": 1,
         "outcome_selection": 1,
         "experience_memory_retention": 1,
         "fact_memory_retention": 1,
@@ -75,9 +81,6 @@ BACKGROUND_LANE_PRIORITY = MappingProxyType(
         # Her private thoughts.
         "private_impression_reflection": 3,
         # Guards and media: worth having, cut first.
-        "life_development_source_closure_review": 4,
-        "life_development_novel_origin_review": 4,
-        "life_development_source_rewrite": 4,
         "media_selection": 4,
     }
 )

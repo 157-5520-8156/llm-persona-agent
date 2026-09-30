@@ -454,6 +454,9 @@ class NpcEcology:
         an NPC-owned Plan whose committed opening time has arrived.
         """
 
+        available = self._available_actor_refs(projection)
+        if not available:
+            return False
         if self._pending_actor_event_ref(projection) is not None:
             return True
         if self._unresolved_active_plan(projection) is not None:
@@ -461,7 +464,7 @@ class NpcEcology:
         if any(
             plan.status == "active"
             and isinstance(plan.owner_actor_ref, str)
-            and plan.owner_actor_ref.startswith("npc:")
+            and plan.owner_actor_ref in available
             and any(
                 occurrence.trigger_ref == plan.plan_id and occurrence.status == "settled"
                 for occurrence in getattr(projection, "world_occurrences", ())
@@ -475,7 +478,7 @@ class NpcEcology:
         active_npc_refs = {
             f"npc:{item.npc_id}"
             for item in getattr(projection, "npcs", ())
-            if item.status == "active"
+            if item.status == "active" and f"npc:{item.npc_id}" in available
         }
         return any(
             item.status == "planned"
@@ -488,11 +491,14 @@ class NpcEcology:
     def has_stimulus(self, *, projection: object) -> bool:
         """Return whether a fresh NPC-visible settlement landed since last consider."""
 
+        available = self._available_actor_refs(projection)
+        if not available:
+            return False
         last_considered_at = max(
             (
                 item.subjective_state.evolved_at
                 for item in getattr(projection, "npcs", ())
-                if item.subjective_state is not None
+                if item.subjective_state is not None and f"npc:{item.npc_id}" in available
             ),
             default=None,
         )
@@ -501,6 +507,19 @@ class NpcEcology:
                 projection=projection,
                 after=last_considered_at,
             )
+        )
+
+    def _available_actor_refs(self, projection: object) -> frozenset[str]:
+        """Use the same source-closed identities as actual NPC deliberation.
+
+        An inherited registry row is not a usable actor capability. Missing
+        descriptors/promotion evidence must not reserve a Life wake that NPC
+        execution would reject before considering anything.
+        """
+        return frozenset(
+            item.npc_ref
+            for item in npc_identity_views(projection, content_store=self._store)
+            if item.lifecycle_state == "active"
         )
 
     async def advance(self, stimulus: NpcEcologyStimulus) -> NpcEcologyResult:
@@ -611,11 +630,13 @@ class NpcEcology:
         )
 
     def _pending_actor_event_ref(self, projection) -> str | None:
+        available = self._available_actor_refs(projection)
         candidates = sorted(
             (
                 item.subjective_state
                 for item in projection.npcs
                 if item.subjective_state is not None
+                and f"npc:{item.npc_id}" in available
                 and item.subjective_state.pending_actor_event_ref is not None
             ),
             key=lambda item: item.evolved_at,
@@ -625,6 +646,11 @@ class NpcEcology:
             assert actor_ref is not None
             identity = actor_ref.removeprefix("event:npc-ecology:actor:")
             if identity == actor_ref:
+                continue
+            # Epoch snapshots can retain an old intention's pointer without
+            # its actor decision. It supplies no current execution authority;
+            # preserve the row, but never select it for recovery.
+            if self._ledger.lookup_event_commit(actor_ref) is None:
                 continue
             if self._ledger.lookup_event_commit(f"event:npc-ecology:world:{identity}") is None:
                 return actor_ref

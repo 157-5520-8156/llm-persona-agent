@@ -588,7 +588,7 @@ def _restore_prepared_turn(
     try:
         payload = json.loads(raw)
         if (
-            payload.get("contract") == "character-interior-prepared-turn.2"
+            payload.get("contract") in {"character-interior-prepared-turn.2", "character-interior-prepared-turn.3"}
             and purpose != "inbound_turn"
         ):
             raise ValueError("new prepared contract is limited to inbound turns")
@@ -677,6 +677,7 @@ def _checkpoint_contract(raw: str) -> str:
     if contract not in {
         "character-interior-prepared-turn.1",
         "character-interior-prepared-turn.2",
+        "character-interior-prepared-turn.3",
         "character-interior-recall-checkpoint.1",
     }:
         raise _InteriorTechnicalError("invalid_durable_turn_checkpoint")
@@ -1572,6 +1573,7 @@ class CharacterInterior:
                         if _checkpoint_contract(checkpoint_raw) in {
                             "character-interior-prepared-turn.1",
                             "character-interior-prepared-turn.2",
+                            "character-interior-prepared-turn.3",
                         }:
                             result, snapshot, private_self_lineage, traces = _restore_prepared_turn(
                                 checkpoint_raw, purpose=stimulus.purpose
@@ -1678,7 +1680,8 @@ class CharacterInterior:
                     faculty=faculty,
                 )
                 transition = self._failed_transition(stimulus, turn_id=turn_id, error=exc)
-            except (ValidationError, TypeError, ValueError):
+            except (ValidationError, TypeError, ValueError) as exc:
+                logger.warning("interior experience validation failed type=%s detail=%s", type(exc).__name__, str(exc)[:300])
                 transition = self._failed_transition(
                     stimulus,
                     turn_id=turn_id,
@@ -1763,6 +1766,7 @@ class CharacterInterior:
                         if _checkpoint_contract(checkpoint_raw) in {
                             "character-interior-prepared-turn.1",
                             "character-interior-prepared-turn.2",
+                            "character-interior-prepared-turn.3",
                         }:
                             result, snapshot, private_self_lineage, traces = _restore_prepared_turn(
                                 checkpoint_raw, purpose=opportunity.purpose
@@ -1875,7 +1879,8 @@ class CharacterInterior:
                     faculty=faculty,
                 )
                 decision = self._failed_decision(opportunity, turn_id=turn_id, error=exc)
-            except (ValidationError, TypeError, ValueError):
+            except (ValidationError, TypeError, ValueError) as exc:
+                logger.warning("interior consider validation failed type=%s detail=%s", type(exc).__name__, str(exc)[:300])
                 decision = self._failed_decision(
                     opportunity,
                     turn_id=turn_id,
@@ -2814,8 +2819,10 @@ class CharacterInterior:
             )
             raise _InteriorTechnicalError("invalid_role_result", snapshot=snapshot) from exc
         if result.status not in allowed_statuses:
+            logger.warning("role result status invalid status=%s allowed=%s", result.status, sorted(allowed_statuses))
             raise _InteriorTechnicalError("invalid_role_result", snapshot=snapshot)
         if require_author_lineage and result.author_lineage is None:
+            logger.warning("role result lacks author lineage status=%s", result.status)
             raise _InteriorTechnicalError("invalid_role_result", snapshot=snapshot)
         if set(result.attended_source_refs) - set(snapshot.source_refs):
             import logging

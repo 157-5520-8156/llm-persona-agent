@@ -366,7 +366,7 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
                 )
             assert row["state"] == "checkpointed" and row["terminal_result_json"] is None
             prepared = json.loads(row["authored_state_json"])
-            assert prepared["contract"] == "character-interior-prepared-turn.2"
+            assert prepared["contract"] == "character-interior-prepared-turn.3"
             assert len(_terminals(path)) == len(prior_terminals)
             from companion_daemon.world_v2.character_interior.audit import (
                 recorded_character_interior_lineage,
@@ -421,7 +421,7 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
                 == "selective_recall"
             )
             assert prepared["contract"] == "character-interior-prepared-turn." + (
-                "2" if selective else "1"
+                "3" if selective else "1"
             )
             assert ("recall_initial_snapshot" in prepared) == selective
             assert decision["contract"] == "character-interior-inbound-turn-decision.2"
@@ -873,3 +873,14 @@ def test_new_prepared_carrier_is_bounded_without_changing_legacy_limit():
         _validated_initial_snapshot(payload, result=None, snapshot=None, private=None)
     payload["contract"] = LEGACY_PREPARED_CONTRACT
     assert _validated_initial_snapshot(payload, result=None, snapshot=None, private=None) is None
+
+
+def test_previous_prepared_record_keeps_its_original_size_boundary():
+    from companion_daemon.world_v2.character_interior.inbound_output_record import (
+        PREVIOUS_PREPARED_CONTRACT, MAX_PREVIOUS_PREPARED_BYTES,
+        _validated_initial_snapshot,
+    )
+    payload = {'contract': PREVIOUS_PREPARED_CONTRACT,
+               'oversized': '界' * (MAX_PREVIOUS_PREPARED_BYTES // 3)}
+    with pytest.raises(ValueError, match='inbound prepared turn exceeds its byte limit'):
+        _validated_initial_snapshot(payload, result=None, snapshot=None, private=None)

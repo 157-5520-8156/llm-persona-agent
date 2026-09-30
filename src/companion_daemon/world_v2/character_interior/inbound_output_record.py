@@ -34,11 +34,13 @@ from .turn_store import _CharacterInteriorTurnStore, _TurnCoordinationRequest
 
 DECISION_CONTRACT = "character-interior-inbound-turn-decision.2"
 LEGACY_DECISION_CONTRACT = "character-interior-inbound-turn-decision.1"
-PREPARED_CONTRACT = "character-interior-prepared-turn.2"
+PREPARED_CONTRACT = "character-interior-prepared-turn.3"
+PREVIOUS_PREPARED_CONTRACT = "character-interior-prepared-turn.2"
 LEGACY_PREPARED_CONTRACT = "character-interior-prepared-turn.1"
 # Only the new inbound selective-Recall carrier has this whole-record bound.
 # Legacy prepared bytes and limits are unchanged. Nothing is truncated.
-MAX_INBOUND_PREPARED_BYTES = 3 * MAX_MODEL_OUTPUT_BYTES
+MAX_PREVIOUS_PREPARED_BYTES = 3 * MAX_MODEL_OUTPUT_BYTES
+MAX_INBOUND_PREPARED_BYTES = MAX_COMPLETED_INBOUND_OUTPUT_BYTES
 
 
 def _validated_initial_snapshot(
@@ -54,9 +56,10 @@ def _validated_initial_snapshot(
         if "recall_initial_snapshot" in prepared:
             raise ValueError("legacy prepared turn cannot acquire an initial snapshot")
         return None
-    if contract != PREPARED_CONTRACT:
+    if contract not in {PREPARED_CONTRACT, PREVIOUS_PREPARED_CONTRACT}:
         raise ValueError("unsupported prepared turn contract")
-    if len(_canonical(prepared).encode("utf-8")) > MAX_INBOUND_PREPARED_BYTES:
+    limit = MAX_PREVIOUS_PREPARED_BYTES if contract == PREVIOUS_PREPARED_CONTRACT else MAX_INBOUND_PREPARED_BYTES
+    if len(_canonical(prepared).encode("utf-8")) > limit:
         raise ValueError("inbound prepared turn exceeds its byte limit")
     if (
         result.decision.get("contract") != DECISION_CONTRACT

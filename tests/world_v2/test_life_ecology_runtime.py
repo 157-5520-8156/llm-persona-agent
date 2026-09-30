@@ -1576,3 +1576,22 @@ async def test_failed_old_consequence_yields_one_due_slot_without_losing_retry()
     assert development.result_calls == 1 and len(development.calls) == 1
     assert triggers.completed[-1][2] == "technical_failure.consequence.life_development.source_review_failed"
     assert development.old_pending  # No fake settlement, no deletion of failed work.
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('status', ['no_op', 'already_considered', 'rejected', 'not_due', 'no_npcs', 'state_advanced'])
+async def test_ready_npc_without_effect_yields_to_due_world_work(status):
+    event = _event('npc-yields-' + status)
+    development = _LifeDevelopment('occurrence_committed')
+    npc = _LifeDevelopment(status, has_due_work=True)
+    runtime = LifeEcologyRuntime(
+        ledger=_Ledger(event), trigger_store=_TriggerStore(), media_followup=_Media(),
+        life_development_followup=development, npc_initiative_followup=npc,
+        availability=LifeEcologyAvailability(state='installed_and_active'),
+    )
+    result = await runtime.advance_once(
+        wake_event_ref=event.event_id, trace_id='trace:npc-yields', correlation_id='npc-yields',
+    )
+    assert len(npc.calls) == 1
+    assert len(development.calls) == 1
+    assert result.life_development_followup_status == 'occurrence_committed'

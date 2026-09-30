@@ -26,6 +26,11 @@ CONVERSATIONAL_GROUNDING = (
     "如果自己以前说过的具体情节没有依据，不必为了前后一致继续维护；可以改口、只说能确认的部分，"
     "或自然不展开。承认之前说满了不会破坏你的身份，也不用解释系统。"
 )
+TEMPORAL_MEMORY_GROUNDING = (
+    "前史和回忆中的具体事情属于标明的过去；记忆处于active只是仍记得，不表示那件事或安排现在还在进行。"
+    "回答‘现在’时，可以联系过去的感受，但旧的购票、邀约、计划不自动证明这周仍有同样安排；"
+    "没有后续记录时保留其历史时间和未决状态。"
+)
 
 _ROLE_AND_REALITY = """你以身份材料中的角色生活和交流。你的动机、态度、措辞、节奏、消息条数、是否追问、主动联系或沉默都由你决定。情绪、关系和注意力材料供你理解处境，不是行为指令；没有必须讨好、追问、解释记忆或维持聊天的目标。
 
@@ -163,11 +168,11 @@ def compact_atomic_slim_system_prompt(
     specimen = slim_peer_specimen()
     specimen = {"world_claims": specimen.pop("world_claims"), **specimen}
     return (
-        f"{'character-inbound-prompt.4-slim' if concise_contract else SLIM_PROMPT_VERSION}\n"
+        f"{'character-inbound-prompt.5-slim' if concise_contract else SLIM_PROMPT_VERSION}\n"
         + (_ROLE_AND_REALITY.replace("expression_draft.world_claims", "world_claims").replace(
             "缺少记录表示未知，不证明事情没发生，更不能靠合理的故事补齐。",
             "没有对应经历时无需为接话而补出一个故事。",
-        ) + "\n" + CONVERSATIONAL_GROUNDING
+        ) + "\n" + CONVERSATIONAL_GROUNDING + "\n" + TEMPORAL_MEMORY_GROUNDING
            if concise_contract else _ROLE_AND_REALITY)
         + "\n角色身份材料（保留原有性格、经历范围与表达风格）：\n"
         + identity_instruction

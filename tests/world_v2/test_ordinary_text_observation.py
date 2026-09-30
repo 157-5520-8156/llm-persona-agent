@@ -92,9 +92,9 @@ async def test_unreviewed_text_delivers_once_observer_is_non_authoritative_and_r
         assert verify_recorded_candidate(audit=candidate,model_result_audits=after.model_result_audits)
         proposal = validate_proposal_envelope(json.loads(candidate.proposal_json))
         assert eligible_text(proposal)
-        for field in ['candidate_hash','author_request_hash','source_table_hash']:
+        for field in ['candidate_hash','author_request_hash','source_table_hash','recall_audits']:
             bad = deepcopy(evidence)
-            bad[field] = 'f'*64
+            bad[field] = [{'fabricated_trace': True}] if field == 'recall_audits' else 'f'*64
             with pytest.raises(ValueError):
                 verify_evidence(raw=json.dumps(bad,ensure_ascii=False,sort_keys=True,separators=(',',':')),
                     proposal=proposal, requirement=evidence['requirement_json'],author_call=parent.model_call_id,

@@ -5009,11 +5009,17 @@ class _InboundCharacterAuthor:
                             "with exactly appraisal_draft and expression_draft; no further recall is "
                             "available. "
                         )
-                        + "Form expression_draft's final private_turn_state again from "
-                        "the augmented Context and include it in the complete final draft; the "
-                        "earlier state explained the recall choice but cannot justify the final "
-                        "expression after the fact. "
-                        "Copy source_refs only when a factual clause is supported.\n"
+                        + (
+                            "Write the complete slim decision with messages, meaning_of_this and my_state. "
+                            "Form my_state again from the augmented Context; do not write expression_draft "
+                            "or private_turn_state inside the slim payload. "
+                            if self._atomic_tool_envelope_version == "slim" else
+                            "Form expression_draft's final private_turn_state again from "
+                            "the augmented Context and include it in the complete final draft; the "
+                            "earlier state explained the recall choice but cannot justify the final "
+                            "expression after the fact. "
+                        )
+                        + "Copy source_refs only when a factual clause is supported.\n"
                         "For this augmented final Context, use this frozen source_ref_aliases "
                         "mapping (it extends and supersedes the earlier displayed mapping):\n"
                         + json.dumps(

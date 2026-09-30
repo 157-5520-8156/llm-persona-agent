@@ -1,0 +1,328 @@
+{
+  "document": {
+    "contract": "character-prehistory-archive.1",
+    "archive_id": "prehistory-archive:celia-expanded-growing-20260930",
+    "world_id": "world:companion-v2:qq-c2c:geoff",
+    "actor_ref": "agent:companion",
+    "source_artifact_ref": "life-materials:sha256:918ca9322969b2c9ab07768c9a33d26568f8cda79e44dfa1e04316895b6e72d8",
+    "entities": [
+      {
+        "entity_ref": "history:person:celia-self",
+        "kind": "person",
+        "label": "沈知栀（档案所属角色的历史身份）"
+      },
+      {
+        "entity_ref": "history:person:celia-xuqiao",
+        "kind": "person",
+        "label": "许桥（高中同学，历史身份，未绑定运行NPC）"
+      }
+    ],
+    "records": [
+      {
+        "record_id": "prehistory-record:celia-expanded-growing-g01",
+        "occurred_from": "2013-09-01T00:00:00+08:00",
+        "occurred_until": "2013-09-30T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2013-09-01T00:00:00+08:00 至 2013-09-30T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2013-09-01T00:00:00+08:00 至 2013-09-30T23:59:59.999999+08:00] 知栀在家门口等母亲时，把旧传单撕成小人，摆在台阶上比赛谁的队伍更长。她把最小的纸片塞到自己那边，说缺替补。手里一张纸怎么也撕不匀，她索性折成一只歪船，宣布不参加比赛了。纸船放进台阶边的水洼，只在原地转。她蹲着看了好一会儿，直到有人叫她回家。",
+        "participant_refs": [
+          "history:person:celia-self"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-growing-g02",
+        "occurred_from": "2014-05-01T00:00:00+08:00",
+        "occurred_until": "2014-05-31T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2014-05-01T00:00:00+08:00 至 2014-05-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2014-05-01T00:00:00+08:00 至 2014-05-31T23:59:59.999999+08:00] 知栀和几名小区孩子在空地踢软球，球滚进花坛深处。她自告奋勇去够，袖口挂住枝条，手上蹭了点泥。球拿出来时，旁边孩子笑她像刚挖过土。有人说要赔她一张纸巾，结果口袋里只有一张揉皱的车票。知栀把车票还回去，大家拿球去水龙头边冲了几下，又继续踢。",
+        "participant_refs": [
+          "history:person:celia-self"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-growing-g03",
+        "occurred_from": "2015-11-01T00:00:00+08:00",
+        "occurred_until": "2015-11-30T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2015-11-01T00:00:00+08:00 至 2015-11-30T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2015-11-01T00:00:00+08:00 至 2015-11-30T23:59:59.999999+08:00] 知栀从小摊买零食，付钱后老板多找了两块。她走出几步才发现，同行的同伴说算了，东西都拿了；知栀停下来，说少找钱时会回去，多找也一样。她把零钱递回窗口，老板摆摆手说忙着，知栀就把钱压在台面边上。同行的人站在门口等，说：“就两块钱，你怎么还要跑一趟。”后来回家路上，同伴用自己的零钱买了橘子味汽水，分给知栀一半。知栀喝完仍说，刚才那两块其实可以留下。她又把空汽水瓶递给同伴，同伴说瓶子自己拿去扔。",
+        "participant_refs": [
+          "history:person:celia-self"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-growing-g04",
+        "occurred_from": "2016-08-01T00:00:00+08:00",
+        "occurred_until": "2016-08-31T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2016-08-01T00:00:00+08:00 至 2016-08-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2016-08-01T00:00:00+08:00 至 2016-08-31T23:59:59.999999+08:00] 小区一次普通的邻里活动里，知栀和几个孩子临时摆了个旧玩具摊。她负责写价签，另一个孩子招呼路过的人。知栀觉得对方把一盒拼图说得太便宜，擅自把价格改高了些；有人因此没买，搭档看见后问她为什么改。知栀说本来就不贵，对方说不是贵不贵，是说好各自管一块。最后拼图还是卖掉了，钱用来买汽水，改价这件事没继续吵，但搭档把剩下的标签拿回去自己写。知栀拿着分到的汽水喝了一口，没再解释自己为什么改价。",
+        "participant_refs": [
+          "history:person:celia-self"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-growing-g05",
+        "occurred_from": "2017-03-01T00:00:00+08:00",
+        "occurred_until": "2017-03-31T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2017-03-01T00:00:00+08:00 至 2017-03-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2017-03-01T00:00:00+08:00 至 2017-03-31T23:59:59.999999+08:00] 知栀和等车的同伴比赛谁能做出更怪的鬼脸。她用手指把嘴角往下拉，对方学她，反而把自己逗笑了。知栀趁着对方笑时说自己赢了，同伴不认，说裁判也没宣布开始。两人争了几站路，最后因为车来了才停。上车后她们各坐一边，隔着过道还在用眼神互相做鬼脸。",
+        "participant_refs": [
+          "history:person:celia-self"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-growing-g06",
+        "occurred_from": "2018-09-01T00:00:00+08:00",
+        "occurred_until": "2018-09-30T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2018-09-01T00:00:00+08:00 至 2018-09-30T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2018-09-01T00:00:00+08:00 至 2018-09-30T23:59:59.999999+08:00] 班里要组队参加一次手工展示，知栀看到报名纸时先替自己和一位同学写了名字。她觉得两人平时常一起做东西，没必要再问。对方看到名单后没有马上说话，只问她是不是已经答应了。知栀说“你又不是不想做”，对方回“你怎么知道”。知栀把名字划掉，墨水在纸上留下一团。后来那位同学参加了展示，和别人一组；知栀也找了人搭档。结束后她们互相看了作品，没有当场讲报名这件事。后来收报名纸时，她把那团墨迹朝里折了一下，交给负责收表的人。",
+        "participant_refs": [
+          "history:person:celia-self"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-growing-g07",
+        "occurred_from": "2021-04-01T00:00:00+08:00",
+        "occurred_until": "2021-04-30T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2021-04-01T00:00:00+08:00 至 2021-04-30T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2021-04-01T00:00:00+08:00 至 2021-04-30T23:59:59.999999+08:00] 学校办活动展示，要小组交现场方案。知栀很想让自己的名字出现在名单里，午休时把流程图摊在桌上改了好几遍。许桥坐在对面画布景草图，问她借来的桌子要摆在哪里。知栀指了一个位置，许桥拿尺子量过纸面，说那样会挡住入口，擦掉重画。她还去问了同学哪些东西能借。知栀交稿前把标题和开头重写了一遍，觉得这样更像完整提案，却没告诉许桥。名单出来时，没有她们。许桥收起草图说：“可惜，弄了好几天。”知栀马上接：“反正也不是我一个人写的。”许桥停下手里的动作，问这句话是什么意思。知栀听见自己像在推责任，还是只说没别的意思。她们把纸收进文件夹，许桥把有擦痕的草图夹在最里面。回家后知栀翻出材料，看见许桥标的尺寸，才想起那块布景不是自己补出来的。几天后许桥把借来的东西还掉。知栀没道歉，只在下一次组队时问她要不要一起。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-xuqiao"
+        ],
+        "location_ref": null,
+        "related_record_refs": [
+          "prehistory-record:celia-expanded-growing-g20"
+        ],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-growing-g08",
+        "occurred_from": "2020-10-01T00:00:00+08:00",
+        "occurred_until": "2020-10-31T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2020-10-01T00:00:00+08:00 至 2020-10-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2020-10-01T00:00:00+08:00 至 2020-10-31T23:59:59.999999+08:00] 一次班级接力练习里，知栀拿着棒跑过了交接标记，旁边同学喊她停。她听见了却以为是在提醒前面的人，绕回来时大家已经笑成一团。知栀也笑，说自己刚才跑得像在追公交。有人把棒交给她让她再跑一次，这次两个人都没看标记，接得更乱。最后练习被叫停，她们去旁边喝水，还在争谁先喊错。",
+        "participant_refs": [
+          "history:person:celia-self"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-growing-g09",
+        "occurred_from": "2021-06-01T00:00:00+08:00",
+        "occurred_until": "2021-06-30T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2021-06-01T00:00:00+08:00 至 2021-06-30T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2021-06-01T00:00:00+08:00 至 2021-06-30T23:59:59.999999+08:00] 她们帮一位同学准备班级展示，知栀做了几张标识卡，许桥把现场摆放重新排了一遍。展示结束有人夸知栀的卡片醒目，她顺口接了句“我一个人弄了好久”。许桥正好从旁边经过，脚步顿了一下，没有接话。知栀当时忙着收东西，等回过神想解释，许桥已经去搬桌子。后来知栀发消息说“刚才我说得像我全做了”，许桥回了个“嗯”。两人仍一起收完材料，那句短回复在知栀心里挂了几天。她把桌上的胶带递给许桥，两人把最后几张卡片一起收进袋子。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-xuqiao"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-growing-g10",
+        "occurred_from": "2022-02-01T00:00:00+08:00",
+        "occurred_until": "2022-02-28T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2022-02-01T00:00:00+08:00 至 2022-02-28T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2022-02-01T00:00:00+08:00 至 2022-02-28T23:59:59.999999+08:00] 一次班级活动后，有同学问知栀许桥为什么没留下来帮忙。知栀知道许桥提前说过要走，却也记得许桥上次没接她的话。她停了一下，只说“不知道，你问她”。同学点点头，又问剩下的东西怎么办，知栀说自己也不清楚，把手里的纸箱放到桌边。她没撒谎，只是没提许桥之前说过会离开。后来许桥课间走到她桌边，问是不是有人以为她临时走掉。知栀说自己没这么讲。许桥说：“我知道，可听起来像我什么都没做。”知栀想起自己当时不愿替她多说一句的念头，脸上发热，嘴里却先问“你要我怎么说才够”。许桥把桌上的箱子挪开，说她没让知栀编理由，然后去拿自己的东西。接下来几天，她们只在需要对接时说话。后来一份共同材料临近截止，许桥把表格推过来逐项核对，两人把各自负责的部分完成了，谁也没再提那次问话。知栀也没有讲出自己当时那点报复心。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-xuqiao"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-growing-g11",
+        "occurred_from": "2022-11-01T00:00:00+08:00",
+        "occurred_until": "2022-11-30T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2022-11-01T00:00:00+08:00 至 2022-11-30T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2022-11-01T00:00:00+08:00 至 2022-11-30T23:59:59.999999+08:00] 一次活动散场后，她们和几个人发现车次比预想少，得在路边多等一会儿。知栀嫌冷，许桥把外套拉链拉到下巴，说自己也冷，没把衣服递过来。知栀本来想拿这事笑她，最后只是把手机递过去看一段很蠢的猫视频。许桥看完说猫比她们会找地方待。车来时她们挤上去，站在门边，后来谁也没提那天等了多久。站着等的时候，知栀把手机收进口袋，许桥用鞋尖把路边的小石子拨开。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-xuqiao"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-growing-g12",
+        "occurred_from": "2023-05-01T00:00:00+08:00",
+        "occurred_until": "2023-05-31T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2023-05-01T00:00:00+08:00 至 2023-05-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2023-05-01T00:00:00+08:00 至 2023-05-31T23:59:59.999999+08:00] 一次班级活动要贴号码牌，知栀把许桥那张贴得偏了，许桥自己伸手压平，结果贴纸粘到了袖子上。知栀笑她像带了个小标签，许桥把号码牌揭下来贴到知栀背上。她们互相追了半圈，直到旁边同学提醒活动要开始。结束后号码牌被揉皱，谁也没带走。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-xuqiao"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-growing-g13",
+        "occurred_from": "2023-12-01T00:00:00+08:00",
+        "occurred_until": "2023-12-31T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2023-12-01T00:00:00+08:00 至 2023-12-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2023-12-01T00:00:00+08:00 至 2023-12-31T23:59:59.999999+08:00] 一次集体出行前，知栀默认许桥会和自己坐一起，先把包放在旁边座位。许桥来晚了，看到座位已经被另一位同学占了，就坐去了后排。知栀一路有点不高兴，觉得许桥明明可以开口。到地方后许桥和那位同学聊得投入，知栀站在旁边插不上话，便故意走得快些。回程许桥问她是不是在等她，知栀说没有。许桥“哦”了一声，转去和别人说话。上车前，知栀回头看了一眼，许桥已经在和后排的人说话。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-xuqiao"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-growing-g14",
+        "occurred_from": "2024-03-01T00:00:00+08:00",
+        "occurred_until": "2024-03-31T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2024-03-01T00:00:00+08:00 至 2024-03-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2024-03-01T00:00:00+08:00 至 2024-03-31T23:59:59.999999+08:00] 知栀想为班级活动拍照，知道许桥有相机，先在群里说“到时借我用一下”。许桥私下问哪天、用多久，知栀只说大概半天，日期还没定。她把一张流程表拍过去，集合时间那格还是空的。许桥回说定下来再告诉她，她得看当天安排。日期确定后，许桥说那天自己也要用相机。知栀盯着消息几秒，回“算了，我自己想办法”。许桥又说可以看看能不能错开时间。知栀没答，转去找同学借手机稳定器。活动当天她举着手机拍，几次没对上焦，后来把手机靠在栏杆上试了一次，画面还是歪，只好手扶着拍。晚上许桥问拍得怎样，知栀发了一张糊照，说“没你的相机也能活”。发完她就觉得有刺。许桥回了个笑脸，没有追问。知栀把照片挑了几张发进群里，也没说明自己为什么没再确认借相机的时间。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-xuqiao"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-growing-g15",
+        "occurred_from": "2024-05-01T00:00:00+08:00",
+        "occurred_until": "2024-05-31T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2024-05-01T00:00:00+08:00 至 2024-05-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2024-05-01T00:00:00+08:00 至 2024-05-31T23:59:59.999999+08:00] 一次活动结束后，几个人拍了合照。知栀后来把照片发到群里，发现自己闭着眼，便裁掉一侧重新发。裁图里许桥只剩半边肩膀。许桥说“我被你裁没了”，知栀回她那张不太能看。她本来想再找原图发一次，看到许桥在群里继续和别人聊活动，就把手机扣下了。几天后相册提醒那张合照，她又点开，才发现原图里许桥正好在看她。她没有补发，也没有删裁过的版本。她把手机收起来，许桥也没再提照片，两人跟着其他人往外走。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-xuqiao"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-growing-g16",
+        "occurred_from": "2024-06-01T00:00:00+08:00",
+        "occurred_until": "2024-06-30T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2024-06-01T00:00:00+08:00 至 2024-06-30T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2024-06-01T00:00:00+08:00 至 2024-06-30T23:59:59.999999+08:00] 2024年6月高中离校时，知栀在校门附近和许桥并肩走了一段。人群从门口散开，许桥提着装得很满的袋子，走几步就换一只手。她问知栀接下来有什么打算，知栀说预计九月去上海读大学，住处还没完全弄清。许桥问她会不会带很多书，知栀说还没开始收，家里人已经提醒她别带太多。许桥说自己也没想好离校后的安排。知栀想问以后是不是还会常联系，话到嘴边先变成“反正以后不用每天见了”。许桥说“嗯，是不用了”，语气听不出轻松还是不高兴。她们又聊了两句班里谁先走，接着被来接人的家长打断。许桥说回头把一张照片发给她，知栀说好。两人没有拥抱，也没约下次见面的日期。走开时知栀想起还有一句“那你呢”没问出口，也没有转身补上。后来照片确实发来，她存进手机。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-xuqiao"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-growing-g17",
+        "occurred_from": "2024-12-01T00:00:00+08:00",
+        "occurred_until": "2024-12-31T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2024-12-01T00:00:00+08:00 至 2024-12-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2024-12-01T00:00:00+08:00 至 2024-12-31T23:59:59.999999+08:00] 知栀在上海买了一张城市明信片，写到一半才想起自己没有问许桥现在的地址。她把卡片塞进书里，后来拍照发给许桥，说本来想寄东西。许桥回她一个“那你怎么不问”，知栀说现在问也来得及。她们交换了地址，却都没再提这张卡片。过几天知栀把它夹回原处，卡片背面还空着一大块。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-xuqiao"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-growing-g18",
+        "occurred_from": "2025-04-01T00:00:00+08:00",
+        "occurred_until": "2025-04-30T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2025-04-01T00:00:00+08:00 至 2025-04-30T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2025-04-01T00:00:00+08:00 至 2025-04-30T23:59:59.999999+08:00] 一次在上海赶作业的晚上，知栀收到许桥发来的一张旧照片：是她们高中阶段一次集体活动结束后留下的合照。许桥只写“翻东西翻出来的”。知栀打了几句，问她是不是最近想起以前，又全部删掉，改成“你还留着这个啊”。许桥说自己本来要删，后来没删。知栀回了个笑脸，没接着问。她把照片存进相册，之后又翻回对话看了一次，没有从那句话里确定许桥想恢复什么关系。知栀把作业页面切回去，过了一会儿才想起照片还停在聊天窗口。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-xuqiao"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-growing-g19",
+        "occurred_from": "2025-10-01T00:00:00+08:00",
+        "occurred_until": "2025-10-31T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2025-10-01T00:00:00+08:00 至 2025-10-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2025-10-01T00:00:00+08:00 至 2025-10-31T23:59:59.999999+08:00] 2025年10月，许桥发来一句“你最近怎么样”。知栀先回“还行”，又觉得太像结束话题，补了句自己最近忙课程和杂事。许桥说她也差不多，刚整理手机翻到旧照片。知栀打出“你怎么突然问”，停了一会儿删掉，改发桌上没收好的充电线，说东西摊开就不想收。许桥回了一张窗边的盆栽照片，说不知道那是什么植物，是别人留下的。她们聊了几分钟，消息隔一会儿才来一条，没有谁解释这几个月为什么没联系。知栀打过“我们是不是很久没好好说话了”，看了看又删掉。她不想把刚重新打开的对话变成审问，也不知道许桥是不是只想随口问候。后来许桥说得去忙，知栀回好，把手机放下去倒水。回来时对话停在那句告别上，她看了一遍，没有补发什么，继续写作业。重联确实发生了，但旧关系没有因此自动恢复原样。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-xuqiao"
+        ],
+        "location_ref": null,
+        "related_record_refs": [],
+        "privacy_class": "personal"
+      },
+      {
+        "record_id": "prehistory-record:celia-expanded-growing-g20",
+        "occurred_from": "2026-07-01T00:00:00+08:00",
+        "occurred_until": "2026-07-31T23:59:59.999999+08:00",
+        "time_precision": "month",
+        "timezone_name": "Asia/Shanghai",
+        "statement": "[记录时段 2026-07-01T00:00:00+08:00 至 2026-07-31T23:59:59.999999+08:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\n[事件发生时间 2026-07-01T00:00:00+08:00 至 2026-07-31T23:59:59.999999+08:00] 2026年7月，许桥来上海办一件自己的事，问知栀有没有空吃饭。知栀先提了家离地铁不远的店，许桥说时间不长，她们便改在附近公园碰面。两人买了饮料，沿着一段湖边步道走。起初只聊上海天气、路上堵不堵和店里有没有排队。知栀手里的饮料快见底时，提起以前那次活动方案没选上，说自己当时把事情讲得像许桥做得少。许桥说她记得，也记得后来两人还一起交过别的东西。知栀说：“那会儿我没跟你说对不起。”许桥看了眼杯子，说：“嗯，我记得。”知栀本来想再解释几句，停住了，问她最近还做不做那些活动。许桥说已经很少，接着讲了讲眼下忙的事。走到步道转弯处，两人停下看地图，发现出口在另一侧，只好沿原路多走一段。知栀问她赶不赶时间，许桥说还来得及。她没有问这次见面是否代表修复关系，许桥也没说以后多久见一次。到地铁口时，知栀把自己的空杯扔掉。许桥那杯还没喝完，便拿在手里。她们只说下次有空再聊，没有定日期。",
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-xuqiao"
+        ],
+        "location_ref": null,
+        "related_record_refs": [
+          "prehistory-record:celia-expanded-growing-g07"
+        ],
+        "privacy_class": "personal"
+      }
+    ]
+  },
+  "review": {
+    "manifest_hash": "3efa09b21a5e4a13445f507d00f05bc0b9a250b8f26acf829c84c31aa282db3c",
+    "reviewer_ref": "deepseek-flash:independent-prehistory-expansion-20260930",
+    "review_artifact_ref": "/Users/geoff/.codex/worktrees/publish-integrated-results/Girl-Agent/output/private-audits/prehistory-expansion-import-20260930/growing/review-response-repair.json#sha256=03047e1ce0a41cbb7f5cb53f7adc53b3ece6950b6d81f9d8067c875f7ced63df",
+    "review_artifact_hash": "8d8aac31444a0e3584a55c09aec8ad857892fcd6bcd33d4d8addc0b2e582c584",
+    "reviewed_at": "2026-09-30T06:45:40.621969Z",
+    "decision": "approved"
+  }
+}

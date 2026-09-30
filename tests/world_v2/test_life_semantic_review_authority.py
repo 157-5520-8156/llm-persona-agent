@@ -304,7 +304,7 @@ async def test_general_review_actual_http_usage_wire_correction_and_cold_failure
         assert len(rows) == max(1, len(requests))
         assert all(row[0] == "life_development_source_closure_review" for row in rows)
         if wire == "budget_denied":
-            assert rows == [("life_development_source_closure_review", "budget_denied", 0, 0, "soft_daily_budget_reserved_for_higher_priority_lanes")]
+            assert rows == [("life_development_source_closure_review", "budget_denied", 0, 0, "background_daily_budget_exceeded")]
             assert result.reason_code == "life_development.source_closure_reviewer_unavailable"
         else:
             assert all(row[2:4] == (111, 37) for row in rows)

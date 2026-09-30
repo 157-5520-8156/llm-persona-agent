@@ -146,6 +146,22 @@ def test_a_high_priority_lane_may_use_the_whole_envelope(tmp_path) -> None:
     )
 
 
+def test_life_author_and_required_closure_share_the_same_ceiling(tmp_path) -> None:
+    store = _store(tmp_path, soft=10.0)
+    assert _deny_reason(store, 'fact_memory_retention', 6.0) is None
+    for purpose in (
+        'life_development_draft', 'life_development_source_closure_review',
+        'life_development_novel_origin_review', 'life_development_source_rewrite',
+    ):
+        assert _deny_reason(store, purpose, 0.5) is None
+    assert 'reserved_for_higher_priority_lanes' in (
+        _deny_reason(store, 'media_selection', 0.5) or ''
+    )
+    assert 'soft_daily_budget_exceeded' in (
+        _deny_reason(store, 'life_development_source_closure_review', 3.0) or ''
+    )
+
+
 def test_the_ceiling_itself_still_applies_to_every_lane(tmp_path) -> None:
     """Priority reorders the last of the envelope; it does not lift the ceiling."""
 

@@ -1,0 +1,18 @@
+{
+  "status": "structural_checks_passed_only",
+  "count": 60,
+  "depth_counts": {
+    "light": 18,
+    "medium": 24,
+    "deep": 18
+  },
+  "narrative_characters": 14315,
+  "memory_characters": 8894,
+  "bundle_sha256": "072ca010fc3a10b807635e0c9cff61092ea1435d7ae642d8589a6fa6cbf5de46",
+  "limitations": [
+    "No semantic approval",
+    "No production import",
+    "No role retention or recall test",
+    "Cross-story review remains a separate human/model task"
+  ]
+}

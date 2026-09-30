@@ -349,6 +349,11 @@ async def test_npc_advance_fails_closed_when_active_identity_content_is_missing(
     )
     runtime._store = InMemoryImmutableLifeContentStore()
 
+    # The scheduler must apply execution's identity boundary too. A registry
+    # row without its source cannot reserve priority over protagonist life.
+    assert not runtime.has_due_work(projection=ledger.project())
+    assert not runtime.has_stimulus(projection=ledger.project())
+
     result = await runtime.advance_once(
         wake_event_ref="clock-life", trace_id="trace", correlation_id="correlation"
     )
@@ -357,6 +362,33 @@ async def test_npc_advance_fails_closed_when_active_identity_content_is_missing(
     assert result.reason_code == "npc_ecology.actor_identity_unavailable"
     assert result.npc_ref == "npc:lin"
     assert actor.calls == []
+
+
+@pytest.mark.asyncio
+async def test_inherited_pending_actor_pointer_without_decision_is_not_ready() -> None:
+    ledger, _store, actor, _world, runtime = _runtime(
+        _actor("no_op"), {"decision": "no_op"}
+    )
+    await runtime.advance_once(
+        wake_event_ref="clock-life", trace_id="trace", correlation_id="correlation"
+    )
+    projection = ledger.project()
+    npc = next(x for x in projection.npcs if x.subjective_state is not None)
+    dangling = npc.subjective_state.model_copy(update={
+        "pending_actor_event_ref": "event:npc-ecology:actor:pre-epoch-missing",
+    })
+    inherited = projection.model_copy(update={
+        "npcs": tuple(
+            x.model_copy(update={"subjective_state": dangling}) if x.npc_id == npc.npc_id else x
+            for x in projection.npcs
+        ),
+    })
+
+    assert runtime._available_actor_refs(inherited)
+    assert runtime._pending_actor_event_ref(inherited) is None
+    assert not runtime.has_due_work(projection=inherited)
+    assert dangling.pending_actor_event_ref == "event:npc-ecology:actor:pre-epoch-missing"
+    assert len(actor.calls) == 1
 
 
 @pytest.mark.asyncio

@@ -2547,6 +2547,16 @@ def compile_slim_consider_payload(
     declared_display = _slim_declared_display(value.get("declared_display"))
     if declared_display is not None:
         private_turn_state["declared_display"] = declared_display
+    claims = value.get("world_claims")
+    if isinstance(claims, list):
+        claims = [
+            {**claim, "source_refs": list(dict.fromkeys(claim["source_refs"]))}
+            if isinstance(claim, dict)
+            and isinstance(claim.get("source_refs"), list)
+            and all(isinstance(ref, str) for ref in claim["source_refs"])
+            else claim
+            for claim in claims
+        ]
     expression: dict[str, object] = {
         "private_turn_state": private_turn_state,
         "timing_choice": timing,
@@ -2558,7 +2568,7 @@ def compile_slim_consider_payload(
         # Preserve explicit declarations for the ordinary source validator.
         # A compact carrier must not turn a sourced or invalid authored claim
         # into an apparently claim-free message. Absence keeps the old shape.
-        "world_claims": value.get("world_claims") if value.get("world_claims") is not None else [],
+        "world_claims": claims if claims is not None else [],
         "media_request": media_request,
         "media_source_refs": media_source_refs,
     }

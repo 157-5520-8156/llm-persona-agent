@@ -402,10 +402,25 @@ async def test_current_v25_slim_prompt_is_bound_through_http_acceptance_and_repl
         body = json.loads(http.requests[0]['messages'][1]['content'])
         assert 'author_evidence_view' not in body
         assert ('context_window' in body) == (context_profile == 'bounded')
-        assert http.requests[0]['messages'][0]['content'].startswith('character-inbound-prompt.4-slim\n')
+        assert http.requests[0]['messages'][0]['content'].startswith('character-inbound-prompt.5-slim\n')
         winner = next(a for a in _audits(app) if a.visible_source_review_json)
         stored = read_review_evidence(winner.visible_source_review_json)
         carrier = json.loads(stored['author_request_json'])
         assert carrier['messages'] == http.requests[0]['messages']
         proposal = next(p for p in evidence.projection.proposal_audits if p.proposal_kind=='decision')
         assert verify_recorded_candidate(audit=proposal, model_result_audits=evidence.projection.model_result_audits)
+
+
+def test_slim_claim_reference_sets_preserve_words_and_unknown_refs():
+    from companion_daemon.world_v2.present_prompt import compile_slim_consider_payload
+
+    value = _slim()
+    value['world_claims'] = [{
+        'claim_text': '那次生日歌唱乱了', 'scope': 'past_world',
+        'source_refs': ['history:one', 'history:one', 'unknown:still-invalid'],
+    }]
+    result = compile_slim_consider_payload(value)
+    claim = result['expression_draft']['world_claims'][0]
+    assert claim['source_refs'] == ['history:one', 'unknown:still-invalid']
+    assert claim['claim_text'] == '那次生日歌唱乱了'
+    assert value['world_claims'][0]['source_refs'] == ['history:one', 'history:one', 'unknown:still-invalid']
