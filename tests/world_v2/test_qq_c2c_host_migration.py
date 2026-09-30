@@ -4442,6 +4442,16 @@ async def test_restart_continues_exact_durable_reply_proposal_without_regenerati
                 max_action_units=8,
                 max_background_units=0,
             )
+            # The boundary pass may settle the due ExpressionEpisode and
+            # enqueue its Action after the pump snapshot was taken. A normal
+            # scheduler tick drains that newly authorized Action next; allow
+            # that durable handoff instead of making this test depend on
+            # same-tick producer/consumer ordering.
+            await restarted.scheduler_once(
+                observed_at=NOW + timedelta(seconds=62),
+                max_action_units=8,
+                max_background_units=0,
+            )
         projection = await restarted._host.action_due_projection()  # noqa: SLF001
     finally:
         await restarted.aclose()
