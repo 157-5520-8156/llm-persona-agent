@@ -102,6 +102,7 @@ from .world_stimulus import (
     _WorldStimulusInteriorAuthorityHandler,
     _WorldStimulusRelationshipSignalSettlement,
 )
+from ..memory_understanding import MemoryUnderstandingReader
 
 
 class _DeferredProjection:
@@ -136,6 +137,7 @@ class _LedgerCapsuleInteriorProjection:
     ledger: LedgerPort
     capsules: ContextCapsuleCompiler
     companion_actor_ref: str
+    memory_understanding_reader: object | None = None
 
     async def project(
         self,
@@ -220,6 +222,12 @@ class _LedgerCapsuleInteriorProjection:
             ),
         )
         context = install_relationship_authored_residues(context, projection)
+        if self.memory_understanding_reader is not None:
+            from ..memory_understanding import install_understanding_context
+            understanding_view = await asyncio.to_thread(self.memory_understanding_reader.read, projection)
+            offered=(set(item["source_ref"] for item in subject.capability_manifest.payload.get("standing_understandings", []))
+                     if subject.purpose == "memory_consolidation" and subject.capability_manifest is not None else None)
+            context = install_understanding_context(context, understanding_view, offered_refs=offered)
         interaction_act_join = await InteractionActContextBuilder(
             ledger=self.ledger
         ).build(
@@ -880,6 +888,10 @@ def _bind_production_character_interior(
             ledger=ledger,
             capsules=proactive_capsules,
             companion_actor_ref=companion_actor_ref,
+            memory_understanding_reader=(
+                MemoryUnderstandingReader(ledger=ledger, content_store=life_content_store, actor_ref=companion_actor_ref)
+                if life_content_store is not None else None
+            ),
         )
     )
     interior._install_recall_port(  # noqa: SLF001 - same deep Module package

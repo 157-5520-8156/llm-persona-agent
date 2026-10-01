@@ -1,3 +1,20 @@
+Incremental standing understandings (2026-10-01): `docs/audits/incremental-memory-understanding-2026-10-01.md`, ADR0021.
+Existing memory_consolidation now offers role-owned retain/revise/merge/release/[]
+alongside retention, exact quotes, related old evidence and existing models in one
+background call. Four-hour new-source opportunity, bounded source-lane batches;
+BGE ranks related standing models without semantic merge rules. Completed typed
+retention effects + exact successful deliberation receipt/audit qualify derived
+private views, NOT World Fact/Action authority. Cold read, transitive source
+withdrawal/privacy checks, historical recall and private_self/selective_memory wired.
+New wire selects sources once in quotes, permits same-source multiple excerpts,
+and restores exact m/k/u attention aliases. Explicit eight-source background pin
+does not reuse ordinary six-item chat truncation. Legacy choice-only jobs preserved.
+434 scoped checks pass. Real isolated four batches:11 versions/8 active/3 history,
+three role-chosen revisions; on/off diagnostic both decided, not causal qualification.
+12 real API calls incl failures~CNY.183 estimated. View cold53ms/warm29ms;
+realBGE related selection1.62s occurs in background. No extra chat model call,
+no production cutover/QQ/full-release qualification; original compression authority unchanged.
+
 Private memory feedback repair (2026-10-01): `docs/audits/private-memory-feedback-2026-10-01.md`.
 Historical PrivateImpression stays indexed but requires explicit historical recall;
 ordinary active/released eligibility unchanged. Durable impressions retain their

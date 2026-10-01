@@ -48,7 +48,7 @@ class Reviewer:
             "contract": "character-interior-purpose-decision.1", "purpose": opportunity.purpose,
             "source_refs": list(opportunity.source_refs), "capability_ref": manifest.capability_ref,
             "capability_payload_hash": manifest.payload_hash,
-            "payload": {"contract": CONTRACT, "choices": [
+            "payload": {"contract": CONTRACT, "understandings": [], "choices": [
                 {"candidate_token": token, "disposition": self.disposition, "next_review_hours": 72}
                 for token in manifest.payload["offered_tokens"]]},
         }, identity=f"memory-periodic:{self.calls}")

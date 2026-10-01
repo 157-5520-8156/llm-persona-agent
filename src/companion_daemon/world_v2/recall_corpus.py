@@ -20,6 +20,7 @@ from .context_capsule import FactRecallItem, HistoricalFactRecallItem
 from .fact_reducers import INSTALLED_FACT_PREDICATE_GUIDE
 from .life_content import RecentExperienceContextItem
 from .memory_retrieval import MemoryRetrievalItem
+from .memory_understanding import UnderstandingVersion
 from .prehistory_memory_source import PrehistoryMemoryReading
 from .recall_index import (
     RecallCursor,
@@ -76,6 +77,8 @@ class RecallCorpusSources(FrozenModel):
     # Exact interpretation basis for durable impressions, independent of the
     # recent appraisal search window. These do not create extra search rows.
     reflection_appraisals: tuple[AppraisalProjection, ...] = ()
+    memory_understandings: tuple[UnderstandingVersion, ...] = ()
+    historical_memory_understandings: tuple[UnderstandingVersion, ...] = ()
     private_impressions: tuple[PrivateImpressionProjection, ...] = ()
     npc_identities: tuple[NpcIdentityRecallItem, ...] = ()
     authority_bindings: tuple[RecallSourceBinding, ...] = ()
@@ -121,6 +124,9 @@ def required_recall_authority_refs(sources: RecallCorpusSources) -> frozenset[st
         if item.origin is not None:
             refs.add(item.origin.accepted_event_ref)
     refs.update(item.origin.accepted_event_ref for item in sources.reflection_appraisals)
+    for item in (*sources.memory_understandings, *sources.historical_memory_understandings):
+        refs.add(item.receipt_ref)
+        refs.update(b.authority_event_ref for c in item.sources for b in c.values.source_bindings)
     for item in sources.npc_identities:
         refs.update(binding.ref for binding in item.bindings)
     return frozenset(ref for ref in refs if ref)
@@ -173,7 +179,7 @@ def _subjects(*values: str) -> tuple[str, ...]:
 class RecallCorpusCompiler:
     """Deep compiler for a source-closed hybrid recall corpus."""
 
-    VERSION = "world-v2-recall-corpus.10"
+    VERSION = "world-v2-recall-corpus.12"
 
     def compile(
         self,
@@ -853,6 +859,25 @@ class RecallCorpusCompiler:
                 )
             )
 
+        for item in (*sources.memory_understandings, *sources.historical_memory_understandings):
+            if item.actor_ref != actor_ref:
+                continue
+            refs = {item.receipt_ref, *(b.authority_event_ref for c in item.sources for b in c.values.source_bindings)}
+            bindings = self._bindings_for_refs(refs, authority)
+            if bindings is None or len(bindings) > 16:
+                continue
+            documents.append(self._document(
+                memory_kind="reflective", source_item_ref=item.version_ref, source_slice="private_impressions",
+                bindings=bindings, text=item.summary, retrieval_text=item.facet + "\n" + item.summary,
+                actor_ref=actor_ref, subject_refs=(actor_ref,),
+                link_refs=(*tuple(c.candidate_id for c in item.sources),
+                           "understanding-history:" + item.version_ref,
+                           *("understanding-history:" + ref for ref in item.predecessor_refs)),
+                occurred_from=item.selected_at, status=item.read_status,
+                valid_from=item.selected_at, privacy_class="private", authority="defeasible_interpretation",
+                interpretation_scope=("current_revisable_understanding" if item.read_status == "active"
+                                      else "remembered_understanding_not_current_belief"),
+            ))
         ordered = tuple(sorted(documents, key=lambda item: item.document_id))
         if len({item.document_id for item in ordered}) != len(ordered):
             raise ValueError("recall corpus contains duplicate document identities")

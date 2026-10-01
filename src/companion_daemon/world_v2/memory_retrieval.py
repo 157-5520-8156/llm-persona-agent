@@ -58,6 +58,10 @@ class MemorySourceExcerpt(FrozenModel):
     excerpt_payload_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     text: str | None = Field(default=None, min_length=1, exclude_if=lambda value: value is None)
     truncated: bool
+    # Preserve attribution when a quoted assertion says "I". New consumers
+    # must not learn a counterpart's biography as the companion's own life.
+    subject_ref: str | None = Field(default=None, exclude_if=lambda v: v is None)
+    speaker_ref: str | None = Field(default=None, exclude_if=lambda v: v is None)
     prehistory: PrehistoryMemoryReading | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )
@@ -615,6 +619,8 @@ class MemoryRetrievalCompiler:
             excerpt_payload_hash=hashlib.sha256(source_text.encode("utf-8")).hexdigest(),
             text=text,
             truncated=text != source_text,
+            subject_ref=transition.values_after.subject_ref,
+            speaker_ref=observation.actor,
         )
 
     def _fact_locator(

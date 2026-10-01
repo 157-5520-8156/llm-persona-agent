@@ -408,6 +408,21 @@ def _private_impression_provider_payload(
     return projected
 
 
+def _memory_consolidation_provider_payload(payload):
+    """Remove host proof bytes, preserving source prose, ownership and status."""
+    proof_fields = {"authority_event_ref", "authority_world_revision", "authority_payload_hash",
+                    "source_values_hash", "excerpt_ref", "excerpt_payload_hash", "source_bindings",
+                    "consumed_source_authority_ids", "summary_payload_hash", "semantic_fingerprint",
+                    "origin", "matrix_digest", "matrix_version"}
+    def view(value):
+        if isinstance(value, list):
+            return [view(item) for item in value]
+        if isinstance(value, dict):
+            return {key:view(item) for key,item in value.items() if key not in proof_fields}
+        return value
+    return view({key:value for key,value in payload.items() if key != "attention_token_map"})
+
+
 class StructuredRoleResultError(_RoleResultContractError):
     """A model-authored result that violates the structural role contract."""
 
@@ -2367,6 +2382,12 @@ class StructuredCharacterRoleFaculty:
             from ..memory_consolidation_contract import HOST_SOURCE_BINDING
             manifest = request.capability_manifest
             decision = normalized.get("decision")
+            attention = normalized.get("attended_source_refs")
+            token_map = manifest.payload.get("attention_token_map", {})
+            if isinstance(attention, list) and isinstance(token_map, dict) and all(isinstance(ref,str) for ref in attention):
+                # Restore only explicit request-issued aliases. Collapsing
+                # two aliases for the same authority is identity canonicalization.
+                normalized["attended_source_refs"] = list(dict.fromkeys(token_map.get(ref,ref) for ref in attention))
             if (manifest.payload.get("source_binding") == HOST_SOURCE_BINDING
                     and normalized.get("status") == "decision"
                     and isinstance(decision, dict) and set(decision) == {"payload"}):
@@ -2933,6 +2954,19 @@ class StructuredCharacterRoleFaculty:
                             "world_claim_source_lanes", _PROACTIVE_SOURCE_LANES_ABSENT,
                         ),
                     )
+                elif request.purpose == "memory_consolidation" and request.capability_manifest is not None:
+                    cap = request.capability_manifest.payload
+                    from ..memory_consolidation_contract import UNDERSTANDING_CONTRACT
+                    if cap.get("understanding_contract") == UNDERSTANDING_CONTRACT:
+                        if not isinstance(payload.get("understandings"), list):
+                            raise ValueError("understandings must explicitly be updates or []")
+                        _validate_periodic_memory(payload, offered,
+                            source_tokens=set(cap["understanding_source_tokens"]),
+                            predecessor_tokens=set(cap["understanding_tokens"]),
+                            readings={**{m["token"]: m["reading"] for m in cap["memories"]},
+                                      **{m["token"]: m["reading"] for m in cap["related_memories"]}})
+                    else:
+                        contract.validator(payload, offered)
                 else:
                     contract.validator(payload, offered)
             except StructuredRoleResultError:
@@ -3413,6 +3447,8 @@ class StructuredCharacterRoleFaculty:
         payload = dict(manifest.payload)
         if manifest.capability_kind == "private_impression_reflection":
             payload = _private_impression_provider_payload(payload)
+        elif manifest.capability_kind == "memory_consolidation":
+            payload = _memory_consolidation_provider_payload(payload)
         return {
             "availability": "available",
             "capability_ref": manifest.capability_ref,

@@ -1572,6 +1572,10 @@ def compile_inner_life_snapshot(
         # Do not merge archived readings into the living lane: its emptiness
         # and active-only semantics are authoritative current state.
         materials["remembered_understandings"] = remembered_understandings
+    standing_understandings = [entry for item in _slice_items(slices, "memory_understandings")
+                              if (entry := _state_entry(item))]
+    if standing_understandings:
+        materials["memory_understandings"] = standing_understandings
 
     compiled_dialogue = [
         _media_delivery_dialogue_source(entry)
@@ -1663,13 +1667,14 @@ def compile_inner_life_snapshot(
         materials["week_diary"] = week_diary
 
     facet_keys = {
-        "private_self": ("stable_self", "biographical_context", "week_diary", "situation", "private_impressions", "remembered_understandings", "recent_self_experiences"),
+        "private_self": ("stable_self", "biographical_context", "week_diary", "situation", "private_impressions", "remembered_understandings", "memory_understandings", "recent_self_experiences"),
         "selective_memory": (
             "folded_dialogue",
             "recent_dialogue",
             "relevant_facts",
             "remembered_material",
             "remembered_understandings",
+            "memory_understandings",
             "photos_i_shared",
             "messages_waiting_to_send",
             "moments_i_can_share",

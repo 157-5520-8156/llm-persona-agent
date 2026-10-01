@@ -4230,6 +4230,7 @@ def build_sqlite_world_v2_turn_application(
             memory_consolidation=(MemoryConsolidationRuntime(
                 ledger=ledger, character_interior=character_interior, actor_ref=config.companion_actor_ref,
                 owner_id=config.memory_review_worker_owner, content_store=life_content_store,
+                understanding_embedding=cached_semantic_embedding,
             ) if config.character_memory_enabled and config.memory_consolidation_enabled else None),
             memory_withdrawal_review=(
                 MemoryWithdrawalReviewRuntime(

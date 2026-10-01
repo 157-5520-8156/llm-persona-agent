@@ -205,6 +205,7 @@ _CHARACTER_CONTINUITY_MATERIALS = (
     "remembered_material",
     "recalled_emotional_associations",
     "private_impressions",
+    "memory_understandings",
     "relevant_facts",
     "appraisals",
     "affect",
@@ -226,6 +227,7 @@ _CHARACTER_CONTINUITY_LIMITS = {
     "remembered_material": 4,
     "appraisals": 4,
     "private_impressions": 8,
+    "memory_understandings": 6,
     "relevant_facts": 8,
 }
 
@@ -291,6 +293,15 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
         snapshot_material_limits=_CHARACTER_CONTINUITY_LIMITS,
     ),
     BackgroundContextProfile(
+        profile_id="memory_consolidation",
+        omit_inventory_proofs=True,
+        purposes=frozenset({"memory_consolidation"}),
+        # Exact source memories and standing models are already in the pinned
+        # capability. Do not pay for a duplicate memory/album/world archive.
+        snapshot_material_keys=("stable_self", "situation", "relationship", "appraisals", "affect"),
+        snapshot_material_limits={"appraisals":4, "affect":4},
+    ),
+    BackgroundContextProfile(
         profile_id="memory_retention",
         omit_inventory_proofs=True,
         purposes=frozenset(
@@ -298,7 +309,6 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
                 "fact_memory_retention",
                 "experience_memory_retention",
                 "memory_withdrawal_review",
-                "memory_consolidation",
             }
         ),
         snapshot_material_keys=(
@@ -309,6 +319,7 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
             "relationship",
             "relevant_facts",
             "remembered_material",
+            "memory_understandings",
             "recent_self_experiences",
         ),
         snapshot_material_limits={
@@ -338,6 +349,7 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
             "relevant_facts",
             "recent_dialogue",
             "private_impressions",
+            "memory_understandings",
             "moments_i_can_share",
             "photos_i_shared",
             "interaction_acts",

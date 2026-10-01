@@ -854,8 +854,11 @@ class _RecallIndexCore:
         neighbors: dict[str, set[str]] = {}
         for key, document in documents.items():
             for ref in document.link_refs:
-                predecessor = ref.removeprefix("private-impression:")
-                if (not ref.startswith("private-impression:") or predecessor == key
+                prefix = next((p for p in ("private-impression:", "understanding-history:") if ref.startswith(p)), None)
+                if prefix is None:
+                    continue
+                predecessor = ref.removeprefix(prefix)
+                if (predecessor == key
                         or predecessor not in documents):
                     continue
                 neighbors.setdefault(key, set()).add(predecessor)

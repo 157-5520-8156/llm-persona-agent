@@ -85,6 +85,7 @@ from .context_resolver import (
 )
 from .ledger import LedgerPort
 from .memory_retrieval import MemoryRetrievalCompiler, MemoryRetrievalItem
+from .memory_understanding import MemoryUnderstandingReader
 from .later_expression_freshness import queued_later_facts
 from .life_content import LifeContentCompiler, collect_user_channel_limited_content_refs, RecentExperienceContextItem
 from .private_impression_events import collect_user_channel_limited_impression_ids
@@ -1585,6 +1586,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         self._conversation_continuity = ConversationContinuityCompiler()
         self._life_content = LifeContentCompiler(store=life_content_store)
         self._life_content_store = life_content_store
+        self._understanding_readers = {}
         self._reviewed_npc_identity_summaries = reviewed_npc_identity_summaries or {}
         self._world_life = WorldLifeContextCompiler(
             life_content=self._life_content,
@@ -2470,6 +2472,10 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                     viewer_privacy_ceiling="private", projection=projection,
                     actor_ref=query.actor_ref,
                 )
+                understanding_view = (self._understanding_readers.setdefault(
+                    query.actor_ref, MemoryUnderstandingReader(
+                        ledger=self._ledger, content_store=self._life_content_store, actor_ref=query.actor_ref)
+                ).read(projection) if self._life_content_store is not None else None)
                 recall_sources = RecallCorpusSources(
                     recent_dialogue=recall_dialogue,
                     relevant_facts=recalled_facts,
@@ -2486,6 +2492,10 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                     affect_openings=tuple(recall_affect_openings),
                     appraisals=recall_appraisals,
                     reflection_appraisals=reflection_appraisals,
+                    memory_understandings=understanding_view.active if understanding_view else (),
+                    historical_memory_understandings=tuple(
+                        v for v in understanding_view.recallable if v.read_status != "active"
+                    ) if understanding_view else (),
                     private_impressions=recall_impressions,
                     npc_identities=npc_identities,
                 )
@@ -2511,6 +2521,10 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                             for binding in identity.bindings
                             if binding.source_kind == "immutable_payload"
                         ),
+                        *(RecallSourceBinding(source_kind="immutable_payload", authority_type="TriggerProcessCompleted",
+                            ref=item.receipt_ref, source_world_revision=item.receipt_world_revision,
+                            immutable_hash=item.receipt_hash) for item in (*recall_sources.memory_understandings,
+                                                                         *recall_sources.historical_memory_understandings)),
                     ),
                 )
                 self._recall.refresh(
