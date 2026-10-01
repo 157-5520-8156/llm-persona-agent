@@ -9,22 +9,23 @@ if TYPE_CHECKING:
     from .recall_index import RecallDocument
 
 
-RECALL_INDEX_POLICY_VERSION = "world-v2-recall-index.hybrid.12"
+RECALL_INDEX_POLICY_VERSION = "world-v2-recall-index.hybrid.13"
 _ATTRIBUTED_READING_POLICIES = frozenset({
     "world-v2-recall-index.hybrid.8", "world-v2-recall-index.hybrid.9",
     "world-v2-recall-index.hybrid.10", "world-v2-recall-index.hybrid.11",
-    "world-v2-recall-index.hybrid.12",
+    "world-v2-recall-index.hybrid.12", "world-v2-recall-index.hybrid.13",
 })
 _FACT_READING_POLICIES = frozenset({
     "world-v2-recall-index.hybrid.9", "world-v2-recall-index.hybrid.10",
     "world-v2-recall-index.hybrid.11", "world-v2-recall-index.hybrid.12",
+    "world-v2-recall-index.hybrid.13",
 })
 
 
 def supports_life_reading(index_version: str) -> bool:
     return index_version.partition("+embedding:")[0] in {
         "world-v2-recall-index.hybrid.10", "world-v2-recall-index.hybrid.11",
-        "world-v2-recall-index.hybrid.12",
+        "world-v2-recall-index.hybrid.12", "world-v2-recall-index.hybrid.13",
     }
 
 
@@ -83,6 +84,12 @@ def interior_recall_item(
         "occurred_from": document.occurred_from.isoformat(),
         "occurred_to": document.occurred_to.isoformat() if document.occurred_to else None,
         "privacy_class": document.privacy_class,
+        **({"status": document.status,
+            **({"interpretation_scope": document.interpretation_scope}
+               if document.interpretation_scope is not None else {})}
+           if document.authority == "defeasible_interpretation"
+           and index_version.partition("+embedding:")[0] == "world-v2-recall-index.hybrid.13"
+           else {}),
         **({"subject_refs": list(document.subject_refs)} if attributed else {}),
         **({"speaker_ref": document.speaker_ref}
            if attributed and document.speaker_ref is not None else {}),
@@ -92,6 +99,7 @@ def interior_recall_item(
         **({"source_window_start": document.source_window_start}
            if document.source_window_start is not None and index_version.partition("+embedding:")[0] in {
                "world-v2-recall-index.hybrid.11", "world-v2-recall-index.hybrid.12",
+               "world-v2-recall-index.hybrid.13",
            } else {}),
         **({"settled_life": {
             "settled_at": life.settled_at.isoformat(),

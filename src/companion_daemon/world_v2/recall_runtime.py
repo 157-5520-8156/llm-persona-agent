@@ -1811,8 +1811,13 @@ def augment_model_content_with_recall(
     if not isinstance(value, dict) or not isinstance(value.get("slices"), dict):
         raise ValueError("recall augmentation requires a model-facing Context object")
     slices = value["slices"]
+    from .recall_model_reading import interior_recall_item
     for hit in trace.hits:
         document = hit.document
+        reading = (
+            interior_recall_item(document, index_version=trace.index_version)
+            if document.authority == "defeasible_interpretation" else {}
+        )
         if not include_fact_readings and document.source_slice == "relevant_facts":
             # New Core Fact permissions use the exact accepted-value reader.
             # The generic excerpt path remains only for historical callers.
@@ -1868,6 +1873,8 @@ def augment_model_content_with_recall(
                         document.valid_to.isoformat() if document.valid_to is not None else None
                     ),
                     "status": document.status,
+                    **({"interpretation_scope": reading["interpretation_scope"]}
+                       if "interpretation_scope" in reading else {}),
                 },
                 # Full model_content_json remains the acceptance authority.
                 # These bindings are removed only from the compact provider

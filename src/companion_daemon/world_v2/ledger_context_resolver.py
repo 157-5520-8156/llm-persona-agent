@@ -2303,6 +2303,22 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             )
             if isinstance(normalized, AppraisalProjection)
         )
+        recall_impressions = tuple(
+            item for item in projection.private_impressions
+            if item.subject_ref in subject_refs and item.origin is not None
+            and item.impression_id not in user_channel_limited_impression_ids
+        )
+        impression_meaning_refs = {
+            ref for item in recall_impressions for ref in item.interpretation_refs
+        }
+        # Keeping the impression while dropping its old appraisal basis made
+        # it silently disappear after the 32-most-recent-appraisals window.
+        # Supply that exact basis without indexing every old appraisal again.
+        reflection_appraisals = tuple(
+            item for item in projection.appraisals if item.subject_ref in subject_refs
+            and any(f"appraisal:{item.appraisal_id}:{h.hypothesis_id}" in impression_meaning_refs
+                    for h in item.hypotheses)
+        )
         recall_affect_openings = []
         for episode in sorted(
             projection.affect_episodes,
@@ -2469,14 +2485,8 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                     active_memory_candidates=recall_memories.items,
                     affect_openings=tuple(recall_affect_openings),
                     appraisals=recall_appraisals,
-                    private_impressions=tuple(
-                        item
-                        for item in projection.private_impressions
-                        if item.status in {"active", "released"}
-                        and item.subject_ref in subject_refs
-                        and item.origin is not None
-                        and item.impression_id not in user_channel_limited_impression_ids
-                    ),
+                    reflection_appraisals=reflection_appraisals,
+                    private_impressions=recall_impressions,
                     npc_identities=npc_identities,
                 )
                 required_authority_refs = required_recall_authority_refs(recall_sources)

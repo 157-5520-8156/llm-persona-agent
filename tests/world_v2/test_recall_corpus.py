@@ -705,6 +705,7 @@ def test_private_reflection_is_resolved_from_appraisal_and_never_fact_authority(
     )
 
     assert reflection.memory_kind == "reflective"
+    assert reflection.occurred_from == _sources().private_impressions[0].last_supported
     assert reflection.authority == "defeasible_interpretation"
     assert reflection.text == "我觉得他的关心是认真的，但这仍只是我现在的理解。"
     assert reflection.source_refs == (
@@ -714,7 +715,36 @@ def test_private_reflection_is_resolved_from_appraisal_and_never_fact_authority(
     )
 
 
-def test_superseded_private_impression_is_not_production_recall_history() -> None:
+def test_old_impression_keeps_exact_basis_without_indexing_old_appraisals() -> None:
+    sources = _sources()
+    basis = sources.appraisals
+    sources = sources.model_copy(update={"appraisals": (), "reflection_appraisals": basis})
+    documents = RecallCorpusCompiler().compile(cursor=CURSOR, actor_ref="agent:companion",
+        subject_refs=("agent:companion", "user:primary"), sources=sources)
+    assert any(d.source_item_ref == "impression:care" for d in documents)
+    assert all(d.source_item_ref != basis[0].appraisal_id for d in documents)
+    # The archive is not a bypass when the actual interpretation/source is lost.
+    missing = sources.model_copy(update={"reflection_appraisals": ()})
+    documents = RecallCorpusCompiler().compile(cursor=CURSOR, actor_ref="agent:companion",
+        subject_refs=("agent:companion", "user:primary"), sources=missing)
+    assert all(d.source_item_ref != "impression:care" for d in documents)
+
+
+def test_consolidated_wording_is_dated_when_authored_not_when_concern_started() -> None:
+    sources = _sources()
+    concern = sources.private_impressions[0].model_copy(update={
+        "first_seen": NOW - timedelta(days=90), "last_supported": NOW - timedelta(days=1),
+    })
+    docs = RecallCorpusCompiler().compile(cursor=CURSOR, actor_ref="agent:companion",
+        subject_refs=("agent:companion", "user:primary"),
+        sources=sources.model_copy(update={"private_impressions": (concern,)}))
+    reading = next(d for d in docs if d.source_item_ref == concern.impression_id)
+    assert reading.occurred_from == concern.last_supported
+    assert reading.valid_from == concern.last_supported
+    assert concern.first_seen != reading.occurred_from
+
+
+def test_replaced_understanding_is_recallable_history_with_its_successor() -> None:
     sources = _sources()
     previous = sources.private_impressions[0].model_copy(
         update={
@@ -727,7 +757,8 @@ def test_superseded_private_impression_is_not_production_recall_history() -> Non
     successor = sources.private_impressions[0].model_copy(
         update={
             "impression_id": "impression:current",
-            "reflection_summary": "现在的理解：他其实愿意认真听我说话。",
+                "reflection_summary": "现在的理解：他其实愿意认真听我说话。",
+                "source_refs": (*previous.source_refs, previous.origin.accepted_event_ref),
             "first_seen": NOW,
             "last_supported": NOW,
             "origin": sources.private_impressions[0].origin.model_copy(
@@ -792,16 +823,47 @@ def test_superseded_private_impression_is_not_production_recall_history() -> Non
             trigger_ref="trigger:private-impression-recall",
         )
     )
+    live = verify_trusted_recall_trace(coordinator.recall(
+        request=CharacterRecallRequest(query_text=previous.reflection_summary,
+            memory_kinds=("reflective",), include_historical=False, limit=6),
+        accessibility_seed="draw:private-impression:live", expected_cursor=CURSOR,
+        trigger_ref="trigger:private-impression-recall",
+    ))
     coordinator.close()
 
-    assert all(
-        hit.document.source_item_ref != previous.impression_id
-        for hit in historical.hits
-    )
+    assert any(hit.document.source_item_ref == previous.impression_id for hit in historical.hits)
+    assert any(hit.document.source_item_ref == successor.impression_id for hit in historical.hits)
+    assert all(hit.document.source_item_ref != previous.impression_id for hit in live.hits)
     assert any(
         hit.document.source_item_ref == successor.impression_id
         for hit in current.hits
     )
+    from companion_daemon.world_v2.recall_model_reading import interior_recall_item
+    old = next(hit.document for hit in historical.hits
+               if hit.document.source_item_ref == previous.impression_id)
+    reading = interior_recall_item(old, index_version=historical.index_version)
+    assert reading["status"] == "superseded"
+    assert reading["interpretation_scope"] == "remembered_understanding_not_current_belief"
+    assert reading["epistemic_scope"] == "private_interpretation"
+    # Immutable old receipts retain their previous reading bytes on replay.
+    assert "status" not in interior_recall_item(old, index_version="world-v2-recall-index.hybrid.12")
+
+    # Retrieval must survive the live-lane preference and retain actual prose.
+    context = json.loads(augment_model_content_with_recall(json.dumps({
+        "world_id": "world:test", "actor_ref": "agent:companion",
+        "logical_time": NOW.isoformat(),
+        "world_revision": CURSOR.world_revision,
+        "deliberation_revision": CURSOR.deliberation_revision,
+        "ledger_sequence": CURSOR.ledger_sequence,
+        "slices": {"living_impressions": {"availability": "available", "items": []}},
+    }), historical))
+    snapshot = compile_inner_life_snapshot(context)
+    remembered = snapshot.materials["remembered_understandings"]
+    assert any(row["text"] == previous.reflection_summary and row["status"] == "superseded"
+               for row in remembered)
+    assert any(row.get("interpretation_scope") == "remembered_understanding_not_current_belief"
+               for row in remembered)
+    assert "private_impressions" not in snapshot.materials
 
 
 def test_released_private_impression_stays_in_default_recall() -> None:

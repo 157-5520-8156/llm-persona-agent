@@ -1,3 +1,18 @@
+Private memory feedback repair (2026-10-01): `docs/audits/private-memory-feedback-2026-10-01.md`.
+Historical PrivateImpression stays indexed but requires explicit historical recall;
+ordinary active/released eligibility unchanged. Durable impressions retain their
+exact appraisal basis beyond the recent32 window without indexing every old appraisal.
+hybrid.13 distinguishes current understanding from remembered belief/feeling;
+old receipt reading shapes preserved. Remembered prose reaches private_self and
+selective_memory, separately from living active impressions. Version time uses
+last_supported, not inherited first_seen. Role keeps retain/change/no_change authority.
+Frozen production-copy diagnostic: readable impression documents1->51, realBGE
+date-bounded probes0/3->3/3. Initial unbounded probes missed exact versions;
+missing oldEpoch basis remains suppressed, repetitive versions still need ranking work.
+401 scoped checks passed; full suite interrupted at2294, not a full release pass.
+No production cutover/QQ; no new per-chat model call. Compression/cross-period
+source-bound reflective synthesis and decision-causality tests remain incomplete.
+
 Hindsight actual comparison (2026-10-01): `docs/audits/hindsight-head-to-head-2026-10-01.md`.
 No production switch/optimization during selection. Frozen71 accessible histories,
 40 questions; same realBGE-M3+V4.1, candidatev0.10.2. Native English-style BM25

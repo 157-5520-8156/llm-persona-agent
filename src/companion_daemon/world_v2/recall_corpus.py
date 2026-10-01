@@ -73,6 +73,9 @@ class RecallCorpusSources(FrozenModel):
     active_memory_candidates: tuple[MemoryRetrievalItem, ...] = ()
     affect_openings: tuple[AffectOpeningRecallItem, ...] = ()
     appraisals: tuple[AppraisalProjection, ...] = ()
+    # Exact interpretation basis for durable impressions, independent of the
+    # recent appraisal search window. These do not create extra search rows.
+    reflection_appraisals: tuple[AppraisalProjection, ...] = ()
     private_impressions: tuple[PrivateImpressionProjection, ...] = ()
     npc_identities: tuple[NpcIdentityRecallItem, ...] = ()
     authority_bindings: tuple[RecallSourceBinding, ...] = ()
@@ -111,16 +114,13 @@ def required_recall_authority_refs(sources: RecallCorpusSources) -> frozenset[st
         refs.add(item.origin.accepted_event_ref)
         refs.update(ref.ref_id for ref in item.evidence_refs)
     for item in sources.private_impressions:
-        # A superseded private impression remains immutable World history, but
-        # it is no longer part of the character's current private
-        # understanding.  Released impressions stay recallable: putting one
-        # down is not amnesia.  Superseded/expired/contradicted readings stay
-        # out of the live recall set so a replaced hypothesis is not revived.
-        if item.status not in {"active", "released"}:
-            continue
+        # Historical understanding is retained in the disposable index.
+        # RecallQuery.include_historical, not corpus construction, controls
+        # access to replaced readings; the ordinary live set stays unchanged.
         refs.update(item.source_refs)
         if item.origin is not None:
             refs.add(item.origin.accepted_event_ref)
+    refs.update(item.origin.accepted_event_ref for item in sources.reflection_appraisals)
     for item in sources.npc_identities:
         refs.update(binding.ref for binding in item.bindings)
     return frozenset(ref for ref in refs if ref)
@@ -173,7 +173,7 @@ def _subjects(*values: str) -> tuple[str, ...]:
 class RecallCorpusCompiler:
     """Deep compiler for a source-closed hybrid recall corpus."""
 
-    VERSION = "world-v2-recall-corpus.9"
+    VERSION = "world-v2-recall-corpus.10"
 
     def compile(
         self,
@@ -518,6 +518,7 @@ class RecallCorpusCompiler:
                         privacy_class=item.content.privacy_class,
                         authority="defeasible_interpretation",
                         epistemic_scope="private_interpretation",
+                        interpretation_scope="remembered_feeling_not_current_mood",
                     ))
                 continue
             assert item.content.text is not None
@@ -677,7 +678,7 @@ class RecallCorpusCompiler:
             )
 
         meanings: dict[str, tuple[AppraisalProjection, AppraisalHypothesis]] = {}
-        for appraisal in sources.appraisals:
+        for appraisal in (*sources.appraisals, *sources.reflection_appraisals):
             for hypothesis in appraisal.hypotheses:
                 meanings[f"appraisal:{appraisal.appraisal_id}:{hypothesis.hypothesis_id}"] = (
                     appraisal,
@@ -738,6 +739,7 @@ class RecallCorpusCompiler:
                     status="historical",
                     privacy_class="withhold",
                     authority="defeasible_interpretation",
+                    interpretation_scope="remembered_feeling_not_current_mood",
                 )
             )
 
@@ -790,9 +792,11 @@ class RecallCorpusCompiler:
                 )
             )
 
+        impression_ids_by_event = {
+            item.origin.accepted_event_ref: item.impression_id
+            for item in sources.private_impressions if item.origin is not None
+        }
         for item in sources.private_impressions:
-            if item.status not in {"active", "released"}:
-                continue
             resolved = tuple(meanings[ref] for ref in item.interpretation_refs if ref in meanings)
             if len(resolved) != len(item.interpretation_refs):
                 continue
@@ -825,13 +829,27 @@ class RecallCorpusCompiler:
                     text=text,
                     actor_ref=actor_ref,
                     subject_refs=_subjects(item.subject_ref),
-                    link_refs=(*item.interpretation_refs, item.expiry_condition),
-                    occurred_from=item.first_seen,
+                    # Selected impression-source associations are not proof
+                    # of replacement. Shared subjects/appraisals alone do not
+                    # link unrelated understandings.
+                    link_refs=(
+                        *item.interpretation_refs, item.expiry_condition,
+                        f"private-impression:{item.impression_id}",
+                        *(f"private-impression:{impression_ids_by_event[ref]}"
+                          for ref in item.source_refs if ref in impression_ids_by_event),
+                    ),
+                    # An inherited first_seen dates the underlying concern;
+                    # last_supported dates this particular authored wording.
+                    occurred_from=item.last_supported,
                     occurred_to=item.last_supported,
-                    valid_from=item.first_seen,
+                    valid_from=item.last_supported,
                     status=item.status,
                     privacy_class="withhold",
                     authority="defeasible_interpretation",
+                    interpretation_scope=(
+                        "current_revisable_understanding" if item.status == "active"
+                        else "remembered_understanding_not_current_belief"
+                    ),
                 )
             )
 
@@ -902,6 +920,7 @@ class RecallCorpusCompiler:
         privacy_class: str,
         authority: str = "world_fact",
         epistemic_scope: str | None = None,
+        interpretation_scope: str | None = None,
         speaker_ref: str | None = None,
         prehistory: PrehistoryMemoryReading | None = None,
         accepted_fact: FactRecallItem | HistoricalFactRecallItem | None = None,
@@ -946,6 +965,7 @@ class RecallCorpusCompiler:
                 )
             ),
             speaker_ref=speaker_ref,
+            interpretation_scope=interpretation_scope,
             prehistory=prehistory,
             accepted_fact=accepted_fact,
             settled_life_json=settled_life.model_dump_json() if settled_life is not None else None,

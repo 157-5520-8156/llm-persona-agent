@@ -3552,7 +3552,10 @@ class StructuredCharacterRoleFaculty:
             if replacement_available:
                 decision_meanings.update(
                     {
-                        "consolidate": "把已有印象收成一条，仍然搁在心里。",
+                        "consolidate": (
+                            "只把同一件事或同一种理解的已有印象收拢；"
+                            "不同的人、事情和感受可以分别留下，不必合成一条总心得。"
+                        ),
                         "supersede": (
                             "用一条新的印象替代旧的；旧的不再作为未了结的心事。"
                         ),

@@ -533,6 +533,7 @@ def _recalled_entry(
         "valid_from",
         "valid_to",
         "status",
+        "interpretation_scope",
     )
     return {
         **{key: value[key] for key in fields if value.get(key) is not None},
@@ -1563,6 +1564,14 @@ def compile_inner_life_snapshot(
     )))][:PRESENT_IMPRESSION_ITEM_LIMIT]
     if impressions:
         materials["private_impressions"] = impressions
+    remembered_understandings = [
+        entry for item in _slice_items(slices, "private_impressions")
+        if (entry := _recalled_entry(item, kinds=frozenset({"reflective"})))
+    ][:PRESENT_IMPRESSION_ITEM_LIMIT]
+    if remembered_understandings:
+        # Do not merge archived readings into the living lane: its emptiness
+        # and active-only semantics are authoritative current state.
+        materials["remembered_understandings"] = remembered_understandings
 
     compiled_dialogue = [
         _media_delivery_dialogue_source(entry)
@@ -1654,12 +1663,13 @@ def compile_inner_life_snapshot(
         materials["week_diary"] = week_diary
 
     facet_keys = {
-        "private_self": ("stable_self", "biographical_context", "week_diary", "situation", "private_impressions", "recent_self_experiences"),
+        "private_self": ("stable_self", "biographical_context", "week_diary", "situation", "private_impressions", "remembered_understandings", "recent_self_experiences"),
         "selective_memory": (
             "folded_dialogue",
             "recent_dialogue",
             "relevant_facts",
             "remembered_material",
+            "remembered_understandings",
             "photos_i_shared",
             "messages_waiting_to_send",
             "moments_i_can_share",

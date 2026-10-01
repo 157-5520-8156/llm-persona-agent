@@ -1388,7 +1388,10 @@ def _private_impression_capability(
             "retain": "记下一条新的、仍可改的私人印象。",
             **(
                 {
-                    "consolidate": "把已有印象收成一条，仍然搁在心里。",
+                    "consolidate": (
+                        "只把同一件事或同一种理解的已有印象收拢；"
+                        "不同的人、事情和感受可以分别留下，不必合成一条总心得。"
+                    ),
                     "supersede": "用一条新的印象替代旧的；旧的不再作为未了结的心事。",
                     "release": (
                         "这件事我已经说过或做过，可以搁下了。"
@@ -1399,6 +1402,12 @@ def _private_impression_capability(
                 else {}
             ),
         },
+        "reflection_guidance": (
+            "感受是你的理解，不是新增的外部经历；写下它与哪些证据有关。"
+            "不需要每件小事都形成长期心得，短感受和 no_change 都正常。"
+            "已有理解没有实质变化时可以不更新，不必反复换句话抄写；"
+            "新的证据也可以让你犹豫、改观或搁下旧理解，由你决定。"
+        ),
     }
     payload_json = json.dumps(
         payload,

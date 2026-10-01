@@ -149,6 +149,11 @@ class RecallDocument(FrozenModel):
         default=None,
         exclude_if=lambda value: value is None,
     )
+    interpretation_scope: Literal[
+        "current_revisable_understanding",
+        "remembered_understanding_not_current_belief",
+        "remembered_feeling_not_current_mood",
+    ] | None = Field(default=None, exclude_if=lambda value: value is None)
     prehistory: PrehistoryMemoryReading | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )
@@ -246,6 +251,14 @@ class RecallDocument(FrozenModel):
             and self.epistemic_scope not in {None, "private_interpretation"}
         ):
             raise ValueError("recall authority and epistemic scope disagree")
+        if self.interpretation_scope is not None and self.authority != "defeasible_interpretation":
+            raise ValueError("interpretation lifecycle cannot confer factual authority")
+        if (self.interpretation_scope == "current_revisable_understanding"
+                and self.status != "active"):
+            raise ValueError("archived understanding cannot be marked current")
+        if (self.interpretation_scope == "remembered_understanding_not_current_belief"
+                and self.status == "active"):
+            raise ValueError("active understanding cannot be marked archived")
         if (self.epistemic_scope == "character_prehistory") != (self.prehistory is not None):
             raise ValueError("historical recall requires its separate prehistory scope")
         if self.prehistory is not None:
@@ -723,6 +736,7 @@ class _RecallIndexCore:
         if self._index_version.partition("+embedding:")[0] in {
             "world-v2-recall-index.hybrid.11",
             "world-v2-recall-index.hybrid.12",
+            "world-v2-recall-index.hybrid.13",
         }:
             from .life_recall_windows import attempt_family
             families = {hit.document.document_id: attempt_family(hit.document)
@@ -775,6 +789,11 @@ class _RecallIndexCore:
                 covered_spans.append((start, end))
                 covered_terms.update(terms)
         hits = tuple(selected)
+        if (query.include_historical
+                and self._index_version.partition("+embedding:")[0] == "world-v2-recall-index.hybrid.13"):
+            hits = self._add_linked_impression_context(
+                hits=hits, eligible_rows=eligible_rows, query=query,
+            )
         if hits and any(hit.document.prehistory is not None for hit in hits):
             hits = self._add_linked_prehistory_context(
                 hits=hits,
@@ -811,6 +830,82 @@ class _RecallIndexCore:
             query=query,
             hits=hits,
         )
+
+    @staticmethod
+    def _add_linked_impression_context(
+        *,
+        hits: tuple[RecallHit, ...],
+        eligible_rows: tuple[tuple[RecallDocument, tuple[float, ...]], ...],
+        query: RecallQuery,
+    ) -> tuple[RecallHit, ...]:
+        """Pair a remembered belief with its source-linked later understanding.
+
+        This is read-only association over accepted impression-source evidence. It
+        does not reactivate an impression or infer a personality from prose.
+        Every endpoint already passed actor, privacy, time and status filters.
+        """
+        if not hits or query.limit < 2:
+            return hits
+        documents = {
+            document.source_item_ref: document for document, _ in eligible_rows
+            if document.source_slice == "private_impressions"
+            and document.authority == "defeasible_interpretation"
+        }
+        neighbors: dict[str, set[str]] = {}
+        for key, document in documents.items():
+            for ref in document.link_refs:
+                predecessor = ref.removeprefix("private-impression:")
+                if (not ref.startswith("private-impression:") or predecessor == key
+                        or predecessor not in documents):
+                    continue
+                neighbors.setdefault(key, set()).add(predecessor)
+                neighbors.setdefault(predecessor, set()).add(key)
+        anchor = next((hit for hit in hits
+                       if hit.document.source_item_ref in neighbors), None)
+        if anchor is None:
+            return hits
+        visited = {anchor.document.source_item_ref}
+        frontier = list(visited)
+        while frontier:
+            key = frontier.pop()
+            for neighbor in sorted(neighbors.get(key, ())):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    frontier.append(neighbor)
+        # World revision gives the actual acceptance order. first_seen is
+        # deliberately inherited across consolidate, so it is not that clock.
+        endpoints = sorted((documents[key] for key in visited), key=lambda d: (
+            d.status in {"active", "released"}, d.source_world_revision, d.document_id,
+        ), reverse=True)
+        expanded: list[RecallHit] = []
+        seen: set[str] = set()
+
+        def add(hit: RecallHit) -> None:
+            if hit.document.document_id in seen or len(expanded) >= min(query.limit, 6):
+                return
+            proposed = (*expanded, hit)
+            reading_size = len(_canonical_json({"items": [
+                interior_recall_item(item.document, index_version=RECALL_INDEX_POLICY_VERSION)
+                for item in proposed
+            ]}).encode("utf-8"))
+            result_size = len(_canonical_json([
+                item.model_dump(mode="json") for item in proposed
+            ]).encode("utf-8"))
+            if reading_size > RECALL_MODEL_READING_MAX_BYTES or result_size > RECALL_RESULT_MAX_BYTES:
+                return
+            expanded.append(hit)
+            seen.add(hit.document.document_id)
+
+        add(anchor)
+        for document in endpoints[:1]:
+            add(RecallHit(
+                document=document, match_channels=("structured",), score_bp=0,
+                lexical_score_bp=0, dense_score_bp=0, temporal_score_bp=0,
+                structured_score_bp=10_000, accessibility_offset_bp=0,
+            ))
+        for hit in hits:
+            add(hit)
+        return tuple(expanded) if expanded else hits
 
     @staticmethod
     def _add_linked_prehistory_context(
