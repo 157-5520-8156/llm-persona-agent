@@ -1025,6 +1025,13 @@ class SQLiteWorldLedger:
                     world_id,
                     ledger_sequence
                 );
+            CREATE INDEX IF NOT EXISTS world_v2_events_receipt_action_lookup
+                ON world_v2_events (
+                    world_id,
+                    json_extract(json_extract(event_json, '$.payload_json'), '$.receipt.action_id'),
+                    ledger_sequence
+                )
+                WHERE json_extract(event_json, '$.event_type') = 'ExecutionReceiptRecorded';
             CREATE INDEX IF NOT EXISTS world_v2_events_fact_history_lookup
                 ON world_v2_events (
                     world_id,
@@ -5536,6 +5543,43 @@ class SQLiteWorldLedger:
             if event is None:
                 raise LedgerIntegrityError("event is absent from its owning commit")
             return event, result
+
+    def execution_receipt_events_for_actions(
+        self, *, action_ids: frozenset[str], cursor: ProjectionCursor,
+    ) -> tuple[WorldEvent, ...]:
+        """Select recent-dialogue receipt candidates before proving their bytes.
+
+        The JSON predicate is a read optimization, not authority. Every match
+        still passes the ordinary immutable owning-commit verification and
+        complete cursor check. No time window or receipt state is discarded.
+        """
+        if not action_ids:
+            return ()
+        if len(action_ids) > 512:
+            raise ValueError("receipt action candidate budget exceeded")
+        ids=tuple(sorted(action_ids))
+        slots=",".join("?" for _ in ids)
+        with self._thread_lock:
+            self._refresh_verified_external_history_locked()
+            rows=tuple(self._connection.execute(
+                f"""SELECT event_id FROM world_v2_events INDEXED BY world_v2_events_receipt_action_lookup
+                    WHERE world_id = ? AND ledger_sequence <= ?
+                      AND json_extract(event_json, '$.event_type') = 'ExecutionReceiptRecorded'
+                      AND json_extract(json_extract(event_json, '$.payload_json'), '$.receipt.action_id') IN ({slots})
+                    ORDER BY ledger_sequence""",  # noqa: S608 - generated placeholders only
+                (self._world_id,cursor.ledger_sequence,*ids),
+            ))
+            events=[]
+            for row in rows:
+                located=self.lookup_event_commit(str(row["event_id"]))
+                if located is None:
+                    raise LedgerIntegrityError("selected receipt lost its owning commit")
+                event,commit=located
+                if any(getattr(commit,key)>getattr(cursor,key) for key in
+                       ("world_revision","deliberation_revision","ledger_sequence")):
+                    raise LedgerIntegrityError("selected receipt exceeds its pinned cursor")
+                events.append(event)
+            return tuple(events)
 
     def recent_events_by_type(
         self,

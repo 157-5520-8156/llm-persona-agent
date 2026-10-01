@@ -1,3 +1,13 @@
+Chat read-work acceleration (2026-10-01): `docs/audits/chat-read-work-acceleration-2026-10-01.md`.
+Pure immutable parsing LRUs + action-addressed receipt query/partial expression
+index preserve live source/actor/privacy/commit checks. Four alternating frozen
+model_content_json views are byte-identical: original .879/.803s, candidate
+.673/.704s (~.15s saved locally, not end-to-end18%).415 scoped checks pass.
+Final unprofiled capture-only first replies6.34/9.28/5.81s; birthday had a
+role-chosen Recall/extra author call. No stable<5s/P95/QQ qualification or cutover.
+Do not compare cProfile vs plain times as a speed percentage; sources/frequency
+unchanged. Remaining prep/prefetch/author/acceptance critical path needs measurement.
+
 Incremental standing understandings (2026-10-01): `docs/audits/incremental-memory-understanding-2026-10-01.md`, ADR0021.
 Existing memory_consolidation now offers role-owned retain/revise/merge/release/[]
 alongside retention, exact quotes, related old evidence and existing models in one

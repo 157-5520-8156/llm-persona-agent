@@ -6,6 +6,7 @@ external assertions inside it receive no World authority.
 """
 
 from __future__ import annotations
+from functools import lru_cache
 
 import json
 from typing import Literal
@@ -54,6 +55,7 @@ def derive_character_life_experience_summary(
     )
 
 
+@lru_cache(maxsize=128)
 def validate_character_life_experience_summary(
     text: str,
     binding: ExperienceWorldLifeResponseBinding,

@@ -6,6 +6,7 @@ settled source and original selection time.
 """
 
 from dataclasses import dataclass
+from functools import lru_cache
 import json
 
 from .proposal_audit_schemas import RecordedModelResultAudit
@@ -14,6 +15,16 @@ from .world_life_intent_contract import (
     world_life_intent_capability,
     world_life_intent_source_authority,
 )
+
+
+@lru_cache(maxsize=128)
+def _parsed_proposal(text):
+    return validate_proposal_envelope(json.loads(text))
+
+
+@lru_cache(maxsize=128)
+def _parsed_model_audit(text):
+    return RecordedModelResultAudit.model_validate_json(text)
 
 
 def world_life_response_source_refs(
@@ -91,7 +102,7 @@ def read_world_stimulus_choice_authority(
     audit = next((x for x in state.proposal_audits if x.proposal_id == proposal_id), None)
     if audit is None:
         raise error_type("proposal_missing")
-    proposal = validate_proposal_envelope(json.loads(audit.proposal_json))
+    proposal = _parsed_proposal(audit.proposal_json)
     if (
         not isinstance(proposal, DecisionProposal)
         or proposal.proposal_hash != audit.proposal_hash
@@ -122,7 +133,7 @@ def read_world_stimulus_choice_authority(
         )
     ):
         raise error_type("model_binding_invalid")
-    recorded = RecordedModelResultAudit.model_validate_json(model.audit_json)
+    recorded = _parsed_model_audit(model.audit_json)
     lineage = recorded.character_interior_lineage
     if lineage is None or any(
         (

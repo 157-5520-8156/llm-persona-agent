@@ -7,6 +7,7 @@ null. Text clipping is a presentation budget, never a new semantic judgement.
 """
 
 from __future__ import annotations
+from functools import lru_cache
 
 import json
 from typing import Literal
@@ -169,6 +170,7 @@ def selected_world_consequence(
     return parse_world_consequence_content(stored.text)
 
 
+@lru_cache(maxsize=128)
 def parse_world_consequence_content(text: str) -> WorldConsequenceV2:
     consequence = WorldConsequenceV2.model_validate_json(text)
     canonical = json.dumps(

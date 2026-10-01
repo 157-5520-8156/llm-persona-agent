@@ -21,6 +21,7 @@ from .schemas import (
     ExecutionReceipt,
     LedgerProjection,
     Observation,
+    ProjectionCursor,
 )
 
 
@@ -363,11 +364,24 @@ class RecentDialogueCompiler:
         first_visible_receipts: dict[
             str, tuple[CommittedWorldEventRef, ExecutionReceipt]
         ] = {}
+        selected_reader=getattr(self._ledger,"execution_receipt_events_for_actions",None)
+        selected=(selected_reader(action_ids=frozenset(candidate_action_ids), cursor=ProjectionCursor(
+            world_revision=projection.world_revision,deliberation_revision=projection.deliberation_revision,
+            ledger_sequence=projection.ledger_sequence)) if callable(selected_reader) else None)
+        selected_by_ref={event.event_id:event for event in selected} if selected is not None else None
         for ref in projection.committed_world_event_refs:
             if ref.event_type != "ExecutionReceiptRecorded":
                 continue
-            located = self._ledger.lookup_event_commit(ref.event_id)
-            raw = located[0].payload().get("receipt") if located is not None else None
+            if selected_by_ref is not None:
+                event=selected_by_ref.get(ref.event_id)
+                if event is None:
+                    continue
+                if event.payload_hash != ref.payload_hash:
+                    raise ValueError("selected dialogue receipt differs from its pinned authority")
+            else:
+                located=self._ledger.lookup_event_commit(ref.event_id)
+                event=located[0] if located is not None else None
+            raw = event.payload().get("receipt") if event is not None else None
             try:
                 # Ledger JSON necessarily represents tuples and datetimes as
                 # arrays and strings.  Parse that JSON representation before
