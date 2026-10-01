@@ -1,3 +1,20 @@
+Hindsight actual comparison (2026-10-01): `docs/audits/hindsight-head-to-head-2026-10-01.md`.
+No production switch/optimization during selection. Frozen71 accessible histories,
+40 questions; same realBGE-M3+V4.1, candidatev0.10.2. Native English-style BM25
+returned0 Chinese candidates; installed officialPG18 pg_search/chinese_compatible
+in isolated new schema, copied semantic rows unchanged, completed consolidation.
+Current source recall93.52%/p50.038s; Hfast80.32%/.194s; Hfull95.83%/16.765s.
+Multi-stage source recall current77.78%, Hfull91.67%. Same-reader sufficient
+answers37/40,34/40,40/40 after ordinary-Chinese manual review; not production
+hallucination rates. Q14 has valid alternative event; Q30 Hfast adds a true but
+not currently supplied detail. Simple fusion did not beat native. Current backend
+selected for near-term release; Hfull useful offline reference for ranking and
+long-story coverage, not yet an integrated winning hybrid. No unsupportedMPS.
+Source actor/bank isolation and temporary-source removal checks passed. Actual
+API use metered; setup~CNY1.21,120reads~.62,80judges~.94,0unknown (estimated).
+Production67412338 remains unchanged; firstQQ<5s/monthly costs not qualified.
+Private artifacts and dependency/source hashes in output/private-audits/hindsight-comparison-20261001/.
+
 Recall cost/performance optimization (2026-09-30): `docs/audits/recall-efficiency-and-hindsight-2026-09-30.md`.
 Current v25 slim prompt.6 losslessly tables all album candidates and orders plain
 materials BEFORE request-local ref numbering, preserving stable prefix bytes.
