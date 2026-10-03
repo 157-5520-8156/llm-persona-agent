@@ -889,6 +889,8 @@ def build_semantic_chat_composition(
         raise ValueError("semantic chat composition requires a model id prefix")
     if type(visible_source_review_version) is not str or visible_source_review_version not in SUPPORTED_REVIEW_VERSIONS:
         raise ValueError("unsupported visible source review version")
+    if settings.world_v2_native_slim_core and visible_author_tool_version != "slim":
+        raise ValueError("native slim core requires the explicit slim author transport")
     from .visible_independent_review_configuration import (
         GroundedVisibleReviewer, IndependentVisibleReviewer,
         validate_independent_reviewer_configuration,
@@ -1201,6 +1203,7 @@ def build_semantic_chat_composition(
             whole_candidate_mode=visible_source_review_required,
             visible_source_review_model=source_closure_model if visible_source_review_required else None,
             atomic_tool_envelope_version=visible_author_tool_version,
+            native_slim_core=settings.world_v2_native_slim_core,
             use_schema_references=visible_author_schema_references,
             evidence_first_schema=visible_author_evidence_first_schema,
             visible_source_review_version=visible_source_review_version,

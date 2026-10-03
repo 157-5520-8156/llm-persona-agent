@@ -313,10 +313,24 @@ def expand_inbound_arguments(raw, dictionary):
         return value
 
     value = json.loads(raw, object_pairs_hook=unique)
+    outer_extras = isinstance(value, dict) and isinstance(value.get('extras_json'), str)
+    if outer_extras:
+        value['extras_json'] = json.loads(value['extras_json'], object_pairs_hook=unique)
     string_payload = isinstance(value, dict) and isinstance(value.get('payload_json'), str)
     if string_payload:
         value['payload_json'] = json.loads(value['payload_json'], object_pairs_hook=unique)
+    nested_payload = None
+    result = value.get('result') if isinstance(value, dict) else None
+    if isinstance(result, dict):
+        field = 'extras_json' if result.get('result_kind') == 'decision' else 'payload_json'
+        if isinstance(result.get(field), str):
+            result[field] = json.loads(result[field], object_pairs_hook=unique)
+            nested_payload = field
     value = expand_reference_values(value, dictionary)
     if string_payload:
         value['payload_json'] = _wire(value['payload_json'])
+    if nested_payload is not None:
+        value['result'][nested_payload] = _wire(value['result'][nested_payload])
+    if outer_extras:
+        value['extras_json'] = _wire(value['extras_json'])
     return _wire(value)

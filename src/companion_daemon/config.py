@@ -545,6 +545,10 @@ class Settings(BaseSettings):
         description="Explicit ordinary inbound text policy; sampled records provenance without a synchronous semantic verdict. Other actions retain review.",
     )
     world_v2_text_review_sample_every: int = Field(default=10, ge=1, le=1000, alias="WORLD_V2_TEXT_REVIEW_SAMPLE_EVERY")
+    world_v2_native_slim_core: bool = Field(
+        default=False, alias="WORLD_V2_NATIVE_SLIM_CORE",
+        description="Opt-in typed required semantic fields with compact optional capabilities; requires the slim author transport.",
+    )
     world_v2_visible_expression_profile: Literal["compact", "whole_v3_review_v6", "whole_v3_review_v7", "whole_v3_review_v8", "experimental_independent_v21", "experimental_independent_v22", "experimental_independent_v23", "grounded_review_v24", "grounded_review_v25"] = Field(
         default="compact",
         alias="WORLD_V2_VISIBLE_EXPRESSION_PROFILE",

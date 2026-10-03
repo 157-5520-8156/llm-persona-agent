@@ -2621,6 +2621,7 @@ class _InboundCharacterAuthor:
         whole_candidate_mode: bool = False,
         visible_source_review_model: object | None = None,
         atomic_tool_envelope_version: str = "1",
+        native_slim_core: bool = False,
         use_schema_references: bool = False,
         evidence_first_schema: bool = False,
         visible_source_review_version: str = "1",
@@ -2667,6 +2668,9 @@ class _InboundCharacterAuthor:
         self._evidence_first_schema = evidence_first_schema
         self._use_schema_references = use_schema_references
         self._atomic_tool_envelope_version = atomic_tool_envelope_version
+        if type(native_slim_core) is not bool or (native_slim_core and atomic_tool_envelope_version != "slim"):
+            raise ValueError("native slim core requires the explicit slim atomic transport")
+        self._native_slim_core = native_slim_core
         self._visible_source_review_model = visible_source_review_model
         self._visible_review_rejections = OrderedDict()
         if visible_source_review_model is not None and not whole_candidate_mode:
@@ -3456,7 +3460,7 @@ class _InboundCharacterAuthor:
 
         if not bool(getattr(provider, "supports_required_tool_choice", False)):
             return {}
-        contract = InboundToolContracts().contract_for(
+        contract = InboundToolContracts(native_slim_core=self._native_slim_core).contract_for(
             phase="final",
             transport="atomic",
             atomic_envelope_version=self._atomic_tool_envelope_version,
@@ -3488,6 +3492,15 @@ class _InboundCharacterAuthor:
             if messages is None:
                 raise ValueError("atomic v3 final transport requires its copied messages")
             _refresh_atomic_branch_instruction(messages, contract)
+        if contract.native_slim_core and messages is not None:
+            from .slim_native_core import prompt
+
+            messages[0]["content"] = prompt(messages[0]["content"])
+            initial_name = "character_inbound_initial_slim_core"
+            messages[0]["content"] = messages[0]["content"].replace(
+                "本轮唯一函数名称：" + initial_name + "。",
+                "本轮唯一函数名称：" + contract.identity.tool_name + "。",
+            )
         return {
             "tools": list(contract.provider_tools),
             "tool_choice": transport.tool_choice,
@@ -4468,7 +4481,7 @@ class _InboundCharacterAuthor:
                 schema_dialect="deepseek-strict",
             )
             if compact_gate
-            else InboundToolContracts().contract_for(
+            else InboundToolContracts(native_slim_core=self._native_slim_core).contract_for(
                 phase=("initial" if recall_context_available else "after_recall"),
                 transport=("stream" if transport_provider is not None else "atomic"),
                 atomic_envelope_version=self._atomic_tool_envelope_version,
@@ -4615,6 +4628,10 @@ class _InboundCharacterAuthor:
             messages[0]["content"] += (
                 "\n本轮唯一函数名称：" + cognition_tool_choice["function"]["name"]
                 + "。函数名按原样使用，不根据result_kind另造函数名。")
+        if cognition_contract.native_slim_core:
+            from .slim_native_core import prompt
+
+            messages[0]["content"] = prompt(messages[0]["content"])
         reference_bindings = None
         if (self._whole_candidate_mode and self._atomic_tool_envelope_version == "slim"
             and compact_atomic_prompt and use_forced_tool and transport_provider is None

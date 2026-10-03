@@ -1064,6 +1064,7 @@ class InboundToolContract:
     # Versioned atomic transports wrap the result. V2 retains the original
     # union inventory; V3 uses the selected branch's own schema inventory.
     wrapped_result_fields: tuple[str, ...] | None = None
+    native_slim_core: bool = False
 
     def required_null_padding_paths(self) -> dict[str, tuple[str, ...]]:
         """Read available v2 branch padding from the tool, without changing it."""
@@ -1125,6 +1126,10 @@ class InboundToolContract:
                 raise ValueError("forced transport must be one JSON object") from exc
             if not isinstance(value, dict):
                 raise ValueError("forced transport must be one JSON object")
+            if self.native_slim_core:
+                from .slim_native_core import decode
+
+                value = decode(value, recall_allowed=self.recall_allowed)
             inner = expand_atomic_slim_payload(value, recall_allowed=self.recall_allowed)
             inner.pop("result_kind")
             return json.dumps(inner, ensure_ascii=False, separators=(",", ":"))
@@ -1261,6 +1266,11 @@ class InboundGateToolContract:
 class InboundToolContracts:
     """Deep module: all inbound forced-tool schema/version knowledge in one seam."""
 
+    def __init__(self, *, native_slim_core=False):
+        if type(native_slim_core) is not bool:
+            raise TypeError("native slim core flag must be a boolean")
+        self._native_slim_core = native_slim_core
+
     def _atomic_slim_contract(
         self,
         *,
@@ -1292,11 +1302,22 @@ class InboundToolContracts:
             "required": ["result_kind", "payload_json"],
             "additionalProperties": False,
         }
+        if self._native_slim_core:
+            from .slim_native_core import parameters as native_parameters
+
+            parameters = native_parameters(recall_allowed=recall_allowed)
+            tool_name += "_core"
         function: dict[str, object] = {
             "name": tool_name,
             "description": _atomic_slim_tool_description(recall_allowed=recall_allowed),
             "parameters": parameters,
         }
+        if self._native_slim_core:
+            function["description"] = (
+                "Choose one character branch under result. Decision: author the four native core fields, "
+                "plus selected optional capabilities as extras_json ({} when none). Recall: use the existing "
+                "payload_json lookup envelope. Never put core fields inside extras_json. The host supplies no semantic choice."
+            )
         if schema_dialect == "deepseek-strict":
             function["strict"] = True
         provider_tools = ({"type": "function", "function": function},)
@@ -1342,6 +1363,7 @@ class InboundToolContracts:
             provider_tool_choice={"type": "function", "function": {"name": tool_name}},
             identity=identity,
             wrapped_result_fields=None,
+            native_slim_core=self._native_slim_core,
         )
 
     def compact_gate_for(

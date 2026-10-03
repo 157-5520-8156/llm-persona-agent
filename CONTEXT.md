@@ -1,3 +1,20 @@
+Native semantic core experiment (2026-10-03): `docs/audits/native-slim-core-2026-10-03.md`.
+Default-off WORLD_V2_NATIVE_SLIM_CORE wires slim atomic _core tools/prompt.7;
+four required semantic fields native, optional capabilities extras_json, authored
+Recall preserved, canonical drafts/authority unchanged. ~1.7k tool chars, NOT old27k.
+Exact explicit sibling rewrap/complete bare core optional omission are representation
+only; no missing feeling/reading filled. Nested extras/Recall refs now expand;
+conflicts/unknown refs reject. Old default carrier remains; no production switch.
+Real12 capture12,17 author calls/.3196+observer/.0574,p50~6.72s,not5s/first-pass
+qualification. Final4:7.61/6.07/7.43/7.02s,5authorcalls/.102+observer/.0576.
+Saved17 responses decode with final codec offline; NOT proof live calls all vanish.
+Remaining: claimed-source8 overflow/reselection, role-chosen Recall, factual quality;
+post-cloud first-send~1.5s and pre-cloud2-3s need diagnosis.342 scoped checks pass,
+HTTP/v25 acceptance/receipt/replay tests; private cold-replay evidence retained.
+Goal stays active. NEXT inspect/measure local prep, acceptance/dispatch critical path
+and run scripts/benchmark_daily_cost.py with frozen wake schedule/frequency & chat
+volume. Do not equate chat-only/capture/virtual elapsed to daily cost or QQ timing.
+
 Continuing performance/cost goal (2026-10-03): `docs/audits/focused-recall-and-memory-wire-2026-10-03.md`.
 Goal active, NOT release/5s/1.5CNYday qualification. Automatic BGE attention
 batches observation and context, equal-normalized query vectors (version suffix
