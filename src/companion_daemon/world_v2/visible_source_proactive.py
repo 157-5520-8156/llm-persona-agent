@@ -6,7 +6,10 @@ They grant no authority to other StructuredRole purposes or historical turns.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
+import zlib
 
 from .deliberation import MAX_MODEL_OUTPUT_BYTES, ModelInput, ModelOutput
 from .visible_source_runtime import canonical, digest, requirement_table
@@ -16,6 +19,60 @@ CAPABILITY_PREFIX = "proactive-reviewed-turn-capability:sha256:"
 DECISION_CONTRACT = "character-interior-proactive-reviewed-decision.1"
 REQUIREMENT_KEY = "visible_source_requirement_json"
 MAX_COMPLETED_OUTPUT_BYTES = 2 * MAX_MODEL_OUTPUT_BYTES
+_REQUIREMENT_CODEC = "proactive-private-requirement-zlib.1"
+_MAX_REQUIREMENT_CHARACTERS = 512_000
+_MAX_REQUIREMENT_BYTES = 4 * _MAX_REQUIREMENT_CHARACTERS
+_MAX_CAPABILITY_CHARACTERS = 262_144
+
+
+def _requirement_carrier(*, payload, requirement):
+    """Pack only host-private evidence when its escaped copy overflows.
+
+    The role never sees this field. Preserve its exact UTF-8 bytes, rather
+    than summarizing sources or widening the shared capability envelope.
+    Existing small capabilities retain their historical representation.
+    """
+    if not isinstance(requirement, str) or len(requirement) > _MAX_REQUIREMENT_CHARACTERS:
+        raise ValueError("proactive requirement exceeds its original envelope")
+    if len(canonical({**payload, REQUIREMENT_KEY: requirement})) <= _MAX_CAPABILITY_CHARACTERS:
+        return requirement
+    return _pack_requirement(requirement)
+
+
+def _pack_requirement(requirement):
+    raw = requirement.encode("utf-8")
+    return {
+        "contract": _REQUIREMENT_CODEC,
+        "utf8_bytes": len(raw),
+        "sha256": digest(requirement),
+        "data": base64.b64encode(zlib.compress(raw, level=6)).decode("ascii"),
+    }
+
+
+def _read_requirement(carrier):
+    if isinstance(carrier, str):
+        return carrier
+    if (not isinstance(carrier, dict)
+        or set(carrier) != {"contract", "utf8_bytes", "sha256", "data"}
+        or carrier["contract"] != _REQUIREMENT_CODEC
+        or type(carrier["utf8_bytes"]) is not int
+        or not 0 < carrier["utf8_bytes"] <= _MAX_REQUIREMENT_BYTES
+        or not isinstance(carrier["data"], str)
+        or len(carrier["data"]) > _MAX_CAPABILITY_CHARACTERS):
+        raise ValueError("invalid proactive private requirement carrier")
+    try:
+        compressed = base64.b64decode(carrier["data"], validate=True)
+        decoder = zlib.decompressobj()
+        raw = decoder.decompress(compressed, carrier["utf8_bytes"] + 1)
+        if (len(raw) != carrier["utf8_bytes"] or not decoder.eof
+            or decoder.unconsumed_tail or decoder.unused_data):
+            raise ValueError("proactive private requirement stream is incomplete or oversized")
+        requirement = raw.decode("utf-8")
+    except (binascii.Error, UnicodeError, zlib.error) as exc:
+        raise ValueError("invalid proactive private requirement encoding") from exc
+    if len(requirement) > _MAX_REQUIREMENT_CHARACTERS or digest(requirement) != carrier["sha256"]:
+        raise ValueError("proactive private requirement content differs from its binding")
+    return requirement
 
 
 def qualify_capability(*, payload, request, world_id, actor_ref):
@@ -26,20 +83,20 @@ def qualify_capability(*, payload, request, world_id, actor_ref):
     if (pin["world_id"], pin["actor_ref"]) != (world_id, actor_ref):
         raise ValueError("proactive visible requirement belongs to another subject")
     _verify_participant_binding(request=request, payload=payload)
-    return {
+    full = {
         **payload,
         "contract": CAPABILITY_CONTRACT,
         "world_id": world_id,
         "actor_ref": actor_ref,
-        REQUIREMENT_KEY: requirement,
     }
+    return {**full, REQUIREMENT_KEY: _requirement_carrier(payload=full, requirement=requirement)}
 
 
 def qualified_input(manifest):
     payload = json.loads(manifest.payload_json)
     if payload.get("contract") != CAPABILITY_CONTRACT:
         raise ValueError("required proactive author lacks its reviewed capability")
-    requirement = payload.get(REQUIREMENT_KEY)
+    requirement = _read_requirement(payload.get(REQUIREMENT_KEY))
     requirement_table(requirement)
     if manifest.capability_ref != CAPABILITY_PREFIX + digest(canonical(payload)):
         raise ValueError("proactive capability does not bind its original requirement")
@@ -81,7 +138,7 @@ def verify_original_capability(*, requirement, lineage, author_request_json):
     original = ModelInput.model_validate_json(json.loads(requirement)["original_input_json"])
     _verify_participant_binding(request=original, payload=payload)
     pin = requirement_table(requirement).as_dict()["pin"]
-    full = {**payload, REQUIREMENT_KEY: requirement}
+    full = {**payload, REQUIREMENT_KEY: _requirement_carrier(payload=payload, requirement=requirement)}
     capability_hash = digest(canonical(full))
     expected_refs = list(dict.fromkeys(item.ref_id for item in original.trigger_evidence))
     if (

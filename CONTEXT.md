@@ -1,3 +1,14 @@
+Background capability/memory contract repair (2026-10-04): `docs/audits/background-capability-and-memory-contract-2026-10-04.md`.
+Fixed reviewed-role compact_memory signature TypeError and host-private proactive requirement overflow
+via bounded exact zlib carrier (small historical carriers unchanged, role never sees evidence blob).
+Real follow-up reached appraisal/emotion/proactive/new-experience memory. Fixed pilot interrupted:
+46 calls/known ~.6925 CNY plus1 unknown bill; NOT completed/qualified day saving.
+Full prior baseline COMPLETED198calls/4.2045 CNY,177 role_faculty_unavailable; old running note below obsolete.
+30 memory outputs15valid; cardinality/forgotten-source/exact-quote errors identified, tool instructions
+clarified without relaxing constraints. Three known failures rerun3/3valid/.0503 CNY, no global rate claim.
+World Author cache_stable_prefix remains default-off; system-level guidance/value preservation tested.
+No production cutover/QQ send/<5s/1.5CNYday/release qualification. Evidence and remaining gates in audit.
+
 Local receipt/day-cost continuation (2026-10-03): `docs/audits/local-receipt-and-day-cost-2026-10-03.md`.
 verify_recorded_candidate now selects validated projection parent_model_call_id
 before parsing relevant subcalls; all current receipt/source/cursor/authority checks

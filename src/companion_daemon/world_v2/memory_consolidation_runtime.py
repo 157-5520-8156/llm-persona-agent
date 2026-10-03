@@ -9,6 +9,7 @@ import asyncio
 from datetime import timedelta
 import hashlib
 import json
+import logging
 from typing import Literal
 
 from .character_interior.audit import recorded_character_interior_model_result
@@ -261,7 +262,11 @@ class MemoryConsolidationRuntime(MemoryReviewLease):
             batch = MemoryReviewBatch.model_validate_json(canonical({"contract": CONTRACT, **payload}))
             if job["contract"] == "memory-review-job.2" and batch.understandings is None:
                 raise ValueError("explicit understanding updates or [] required")
-        except (MemoryReviewTechnicalFailure, ValueError):
+        except (MemoryReviewTechnicalFailure, ValueError) as exc:
+            logging.getLogger(__name__).warning(
+                "memory consolidation failed trigger=%s cause=%s detail=%s",
+                process.trigger_id, type(exc).__name__, str(exc)[:512],
+            )
             return MemoryConsolidationRunResult(trigger_id=process.trigger_id, status="processed", work_status="technical_failure")
         fresh = await self._project()
         if fresh.world_revision != projection.world_revision or fresh.logical_time != projection.logical_time:

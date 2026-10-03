@@ -147,8 +147,10 @@ class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
         ) from None
 
     @staticmethod
-    def _capability_view(manifest):
-        view = StructuredCharacterRoleFaculty._capability_view(manifest)
+    def _capability_view(manifest, *, compact_memory: bool = False):
+        view = StructuredCharacterRoleFaculty._capability_view(
+            manifest, compact_memory=compact_memory,
+        )
         if manifest is not None and manifest.payload.get("contract") == CAPABILITY_CONTRACT:
             view["payload"] = {
                 key: value for key, value in view["payload"].items() if key != REQUIREMENT_KEY

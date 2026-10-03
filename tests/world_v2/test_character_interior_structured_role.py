@@ -1856,9 +1856,24 @@ async def test_proactive_contact_closes_a_flattened_silent_decision() -> None:
 
 
 @pytest.mark.asyncio
-async def test_world_stimulus_appraisal_uses_one_versioned_forced_tool() -> None:
+@pytest.mark.parametrize("reviewed", [False, True])
+@pytest.mark.parametrize("reference_wire", [False, True])
+async def test_world_stimulus_appraisal_uses_one_versioned_forced_tool(
+    reviewed, reference_wire,
+) -> None:
     model = _RequiredToolQueueModel(_world_stimulus_no_change_result())
-    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-v4-flash")
+    if reviewed:
+        from companion_daemon.world_v2.character_interior.proactive_visible_review import (
+            ReviewedProactiveStructuredRoleFaculty,
+        )
+        role = ReviewedProactiveStructuredRoleFaculty(
+            model=model, model_id="deepseek-v4-flash", reference_wire=reference_wire,
+            reviewer=None, expression_capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,
+        )
+    else:
+        role = StructuredCharacterRoleFaculty(
+            model=model, model_id="deepseek-v4-flash", reference_wire=reference_wire,
+        )
 
     result = await role.experience(
         await _request(

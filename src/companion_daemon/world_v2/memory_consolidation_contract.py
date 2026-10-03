@@ -183,9 +183,14 @@ def tool_contract(*, capability_payload, source_refs, recall_allowed, compact_sy
                                    else "character_memory_consolidation_v1"),
         payload_schema=schema, capability_identity=capability_payload,
         source_refs=source_refs, recall_allowed=recall_allowed,
-        description=("Review each offered memory once; elapsed time never forces forgetting. "
+        description=("Return exactly one choice per offered memory token, without extra or duplicate choices; "
+                     "elapsed time never forces forgetting. "
                      "When standing understandings are offered, update that existing ledger incrementally: "
-                     "revise or merge existing aspects, retain only genuinely new aspects, or choose [] if unchanged."
+                     "revise or merge existing aspects, retain only genuinely new aspects, or choose [] if unchanged. "
+                     "understandings contains at most 3 updates TOTAL across the whole batch, not 3 per memory or facet. "
+                     "Select which updates matter yourself. A source you choose to forget in choices cannot also support "
+                     "an understanding in this batch. evidence_quotes must copy an exact contiguous passage from "
+                     "that token's supplied source prose; a paraphrase belongs in summary, never in quote."
                      + (" Use only the exact offered source and predecessor tokens in the pinned capability; "
                         "the host rejects unknown tokens, withdrawn sources and non-exact quotes."
                         if compact_synthesis_transport and synthesis else "")),
