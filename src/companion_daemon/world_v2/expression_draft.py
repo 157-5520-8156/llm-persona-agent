@@ -1213,12 +1213,26 @@ def expand_expression_source_ref_aliases(
             if not isinstance(refs, (list, tuple)):
                 expanded_claims.append(claim)
                 continue
+            resolved_refs: list[object] = []
+            seen_original: set[str] = set()
+            seen_canonical: set[str] = set()
+            for ref in refs:
+                canonical = aliases.expand(ref) if isinstance(ref, str) else ref
+                if isinstance(ref, str):
+                    # Two distinct supplied handles may name the exact same
+                    # source. Their collision is introduced by transport
+                    # expansion, not a new claim or missing source. Preserve
+                    # author-authored duplicate handles for normal validation.
+                    if canonical in seen_canonical and ref not in seen_original:
+                        seen_original.add(ref)
+                        continue
+                    seen_original.add(ref)
+                    seen_canonical.add(canonical)
+                resolved_refs.append(canonical)
             expanded_claims.append(
                 {
                     **claim,
-                    "source_refs": [
-                        aliases.expand(ref) if isinstance(ref, str) else ref for ref in refs
-                    ],
+                    "source_refs": resolved_refs,
                 }
             )
         expanded["world_claims"] = expanded_claims

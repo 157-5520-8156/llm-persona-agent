@@ -1,3 +1,15 @@
+Performance/cost work (2026-10-03): `docs/audits/performance-cost-2026-10-03.md`.
+Content-keyed safe YAML parsing and current-row vector decoding cache preserve
+current validation; background reference transport orders stable material before
+ticking situation/capability. Distinct offered aliases resolving to one claim
+source no longer create duplicates; malformed original duplicate refs still fail.
+Vector decode415:107-135ms->warm0.082ms, same values; full-turn benefit unqualified.
+Real final capture6.26/6.28/5.81s,3calls/CNY.0448 vs baseline4calls/.0845, but
+birthday/relationship answers differ and are incomplete: NOT quality-preserving
+cost reduction. Intermediate birthday failed, retained. Three background batches
+.0502 (4calls incl correction) vs .0463 (3calls), normal cost unimproved.
+No production cutover, no <5s/1.5CNYday/P95 or release qualification.
+
 Chat read-work acceleration (2026-10-01): `docs/audits/chat-read-work-acceleration-2026-10-01.md`.
 Pure immutable parsing LRUs + action-addressed receipt query/partial expression
 index preserve live source/actor/privacy/commit checks. Four alternating frozen

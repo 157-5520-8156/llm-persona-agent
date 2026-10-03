@@ -58,6 +58,26 @@ def _ordered(value: Mapping[str, object], first: tuple[str, ...]) -> dict[str, o
     }
 
 
+def cache_ordered_background_material(material: dict[str, object]) -> dict[str, object]:
+    """Keep ticking situation/time after stable background evidence, losslessly.
+
+    The full situation remains visible. This is byte ordering, not a relevance
+    ranking, a remembered response, or permission to reuse an old World view.
+    """
+    snapshot = material.get("inner_life_snapshot")
+    if not isinstance(snapshot, dict):
+        return material
+    materials = snapshot.get("materials")
+    if not isinstance(materials, dict) or materials.get("contract") == "shared-string-view.1":
+        return material
+    ordered = _ordered(materials, (
+        "stable_self", "routine_background", "moments_i_can_share", "photos_i_shared",
+        "recent_self_experiences", "recently_ended_activities", "week_diary", "day_sheet",
+        "relationship", "appraisals", "private_impressions", "unresolved",
+    ))
+    return {**material, "inner_life_snapshot": {**snapshot, "materials": ordered}}
+
+
 def cache_ordered_inbound_material(material: dict[str, object]) -> dict[str, object]:
     """Put reusable evidence before cursor, inbound text and changing dialogue.
 

@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import ClassVar, Literal
 
 from pydantic import Field, model_validator
-import yaml
+from ..safe_yaml import load_yaml_text
 
 from .local_chronology import LocalChronology
 from .biographical_lifecycle import (
@@ -735,7 +735,7 @@ class ReviewedLifeSeedCatalog:
 
     @classmethod
     def from_yaml(cls, *, path: Path, chronology: LocalChronology) -> "ReviewedLifeSeedCatalog":
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        raw = load_yaml_text(path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict) or not isinstance(raw.get("life_author_catalog"), dict):
             raise ValueError("world seed has no reviewed life_author_catalog")
         catalog = dict(raw["life_author_catalog"])

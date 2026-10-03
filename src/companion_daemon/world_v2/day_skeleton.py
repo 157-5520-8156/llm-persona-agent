@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-import yaml
+from ..safe_yaml import load_yaml_text
 
 _DEFAULT_SEED = Path(__file__).resolve().parents[3] / "configs" / "world_seed.yaml"
 _DEFAULT_TIMEZONE = "Asia/Shanghai"
@@ -45,7 +45,7 @@ class WorldDaySkeleton:
 
 def load_world_day_skeleton(path: Path | None = None) -> WorldDaySkeleton:
     seed_path = path or _DEFAULT_SEED
-    raw = yaml.safe_load(seed_path.read_text(encoding="utf-8"))
+    raw = load_yaml_text(seed_path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         return WorldDaySkeleton(slots=(), themes=())
     # Legacy executable templates are not the V2 character's daily agenda.

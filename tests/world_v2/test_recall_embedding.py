@@ -33,6 +33,18 @@ from companion_daemon.world_v2.recall_runtime import (
 
 
 NOW = datetime(2026, 7, 27, 12, tzinfo=UTC)
+
+
+def test_decoded_vector_cache_remains_bound_to_current_bytes_and_dimensions():
+    decode = recall_embedding._decoded_vector
+    decode.cache_clear()
+    assert decode("[1.0,0.0]", 2) == (1.0, 0.0)
+    assert decode("[1.0,0.0]", 2) == (1.0, 0.0)
+    assert decode.cache_info().hits == 1
+    assert decode("[0.0,1.0]", 2) == (0.0, 1.0)
+    for raw, dimensions in (("not-json", 2), ('["invalid",0.0]', 2), ("[1.0,0.0]", 3)):
+        with pytest.raises(ValueError):
+            decode(raw, dimensions)
 CURSOR = RecallCursor(
     world_revision=2,
     deliberation_revision=1,

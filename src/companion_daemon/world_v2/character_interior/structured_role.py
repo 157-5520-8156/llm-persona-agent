@@ -98,17 +98,29 @@ _FACET_NAMES = (
     "expression_stance",
 )
 
+_LEGACY_INTERIOR_USER_PAYLOAD_ORDER = (
+    "wire_contract", "purpose_contract", "current_authorship_authority",
+    "capability_manifest", "background_context_profile", "eight_facets",
+    "citeable_sources", "inner_life_snapshot", "selective_recall",
+    "purpose_instruction", "inner_turn", "correction",
+)
+
+# In the installed reference transport, number references only AFTER stable
+# character/environment material. A new capability must not renumber that
+# material or put its unique hash ahead of the reusable provider prefix.
 _INTERIOR_USER_PAYLOAD_ORDER = (
+    "configured_character_disposition",
+    "lived_evidence_scope",
     "wire_contract",
-    "purpose_contract",
-    "current_authorship_authority",
-    "capability_manifest",
-    "background_context_profile",
     "eight_facets",
-    "citeable_sources",
+    "background_context_profile",
     "inner_life_snapshot",
-    "selective_recall",
     "purpose_instruction",
+    "current_authorship_authority",
+    "purpose_contract",
+    "citeable_sources",
+    "capability_manifest",
+    "selective_recall",
     "inner_turn",
     "correction",
 )
@@ -2169,6 +2181,10 @@ class StructuredCharacterRoleFaculty:
         snapshot = user_payload.get("inner_life_snapshot")
         if isinstance(snapshot, dict):
             user_payload["inner_life_snapshot"] = present_inner_life(snapshot)
+        if self._reference_wire:
+            from .inbound_context_presentation import cache_ordered_background_material
+
+            user_payload = cache_ordered_background_material(user_payload)
         return [
             {
                 "role": "system",
@@ -2210,7 +2226,10 @@ class StructuredCharacterRoleFaculty:
                 "role": "user",
                 "content": ordered_json_dumps(
                     user_payload,
-                    key_order=_INTERIOR_USER_PAYLOAD_ORDER,
+                    key_order=(
+                        _INTERIOR_USER_PAYLOAD_ORDER if self._reference_wire
+                        else _LEGACY_INTERIOR_USER_PAYLOAD_ORDER
+                    ),
                 ),
             },
         ]

@@ -16,7 +16,7 @@ from typing import Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, model_validator
-import yaml
+from ..safe_yaml import load_yaml_text
 
 from .life_events import DomainMutationPayload
 from .schema_core import FrozenModel
@@ -230,7 +230,7 @@ class BiographicalLifecycleCatalog:
         path: Path,
         timezone_name: str,
     ) -> "BiographicalLifecycleCatalog":
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        raw = load_yaml_text(path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
             raise ValueError("world seed must be an object")
         document = raw.get("biographical_lifecycle")

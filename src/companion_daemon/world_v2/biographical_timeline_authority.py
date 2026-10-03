@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-import yaml
+from ..safe_yaml import load_yaml_text
 from pydantic import Field, model_validator
 
 from .biographical_lifecycle import BiographicalLifecycleDocument
@@ -49,7 +49,7 @@ class BiographicalTimelineConfiguredPayload(FrozenModel):
     def from_yaml(
         cls, *, path: Path, timezone_name: str
     ) -> "BiographicalTimelineConfiguredPayload | None":
-        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        raw = load_yaml_text(path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict):
             raise ValueError("world seed must be an object")
         document = raw.get("biographical_lifecycle")

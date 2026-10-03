@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
+from functools import lru_cache
 import hashlib
 import json
 from pathlib import Path
@@ -25,6 +26,19 @@ from .sqlite_coordination import configure_shared_sqlite_connection, sqlite_writ
 
 
 _MAX_CACHED_VECTORS_TOTAL = 8_192
+
+
+@lru_cache(maxsize=1024)
+def _decoded_vector(vector_json: str, dimensions: int) -> tuple[float, ...]:
+    """Reuse immutable vector decoding, never source or row eligibility.
+
+    The caller still reads the current row in its World/version namespace.
+    Changed or corrupted bytes cannot hit a previous successful decode.
+    """
+    value = json.loads(vector_json)
+    if not _is_numeric_vector(value) or len(value) != dimensions:
+        raise ValueError("cached semantic recall vector is invalid")
+    return tuple(float(item) for item in value)
 _MAX_CACHED_VECTOR_BYTES_TOTAL = 32 * 1024 * 1024
 _TRANSIENT_FAILURE_CODE = "semantic recall provider unavailable"
 
@@ -748,10 +762,7 @@ class SQLiteCachedRecallEmbedding:
                 (self._world_id, self.version, *batch),
             )
             for text_hash, vector_json in rows:
-                value = json.loads(str(vector_json))
-                if not _is_numeric_vector(value) or len(value) != self.dimensions:
-                    raise ValueError("cached semantic recall vector is invalid")
-                values[str(text_hash)] = tuple(float(item) for item in value)
+                values[str(text_hash)] = _decoded_vector(str(vector_json), self.dimensions)
         return values
 
     def _write_vectors(self, values: dict[str, tuple[float, ...]]) -> None:

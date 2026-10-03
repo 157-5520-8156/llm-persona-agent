@@ -4941,6 +4941,39 @@ def test_background_attention_wire_preserves_canonical_capacity():
         _ExpandedAttentionWireRoleResult.model_validate({**value, "attended_source_refs": value["attended_source_refs"] + ["source:overflow"]})
 
 
+@pytest.mark.asyncio
+async def test_background_prefix_preserves_environment_before_changing_capability():
+    import os
+    from companion_daemon.world_v2.reference_wire import expand_reference_view
+
+    model = _RequiredToolQueueModel(_world_stimulus_no_change_result())
+    plain = StructuredCharacterRoleFaculty(model=model, model_id="fixture")
+    compact = StructuredCharacterRoleFaculty(model=model, model_id="fixture", reference_wire=True)
+    request = await _request(
+        phase="experience", purpose="world_stimulus_appraisal",
+        capability_manifest=_world_stimulus_manifest(),
+    )
+    # Different opportunity bindings must still invalidate their request hash,
+    # but must not renumber or precede the unchanged character environment.
+    manifest = request.capability_manifest
+    changed = request.model_copy(update={
+        "inner_turn_id": "character-inner-turn:test:72",
+        "capability_manifest": manifest.model_copy(update={
+            "capability_ref": "capability:new:" + "a" * 64,
+        }),
+    })
+    views = []
+    for item in (request, changed):
+        expected = json.loads(plain._base_messages(item, contract=plain._resolve_contract(item))[1]["content"])
+        messages, tool, bindings = compact._prepare_request(item, contract=compact._resolve_contract(item))
+        assert expand_reference_view(json.loads(messages[1]["content"]), bindings) == expected
+        views.append(messages[1]["content"])
+    prefix = os.path.commonprefix(views)
+    assert '"inner_life_snapshot"' in prefix
+    assert prefix.index('"inner_life_snapshot"') < prefix.index('"capability_manifest"')
+    assert views[0] != views[1]
+
+
 def test_compact_proactive_tool_preserves_the_complete_old_strict_schema():
     from companion_daemon.world_v2.character_interior.local_schema_references import expand_local_schema_references
 
