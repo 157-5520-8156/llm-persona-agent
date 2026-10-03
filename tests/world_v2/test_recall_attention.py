@@ -73,6 +73,7 @@ def test_automatic_attention_packet_is_bounded_before_request_validation() -> No
     )
 
     assert len(request.query_text) <= MAX_RECALL_QUERY_CHARACTERS
+    assert len(request.query_text) <= 256
     assert request.lexical_text is not None
     assert len(request.lexical_text) <= MAX_RECALL_QUERY_CHARACTERS
     assert request.lexical_text.startswith("上午那件事后来怎么样了？")

@@ -34,7 +34,6 @@ from ..proposal_envelope import (
     validate_proposal_envelope,
 )
 from ..recall_runtime import (
-    PREFETCH_FIRST_PASS_JOIN_SECONDS,
     PresentedPrefetchTrace,
     TrustedRecallTrace,
     append_presented_prefetch,
@@ -372,7 +371,12 @@ class InboundTurnFaculty:
     # Infrastructure latency policy only: this makes scheduled source-bound
     # candidates visible to the first inbound role call.  It does not decide
     # whether the character recalls, replies, interrupts, or stays silent.
-    automatic_prefetch_join_seconds = PREFETCH_FIRST_PASS_JOIN_SECONDS
+    # Measured full-corpus semantic jobs take 0.8-1.4s and start during
+    # Context compilation. A 450ms join regularly released the lexical view
+    # just before they finished, causing an avoidable second author call.
+    # One second is the existing port's hard ceiling, not a mandatory pause;
+    # ready/empty jobs still return immediately and the role owns Recall.
+    automatic_prefetch_join_seconds = 1.0
 
     def __init__(
         self,

@@ -18,6 +18,7 @@ from .recall_index import MAX_RECALL_QUERY_CHARACTERS
 
 
 _MAX_LEXICAL_CHARACTERS = 768
+_MAX_AUTOMATIC_QUERY_CHARACTERS = 256
 _MAX_DENSE_OBSERVATION_CHARACTERS = 384
 _MAX_AFFECT_COMPONENTS = 6
 _MAX_APPRAISALS = 3
@@ -267,7 +268,26 @@ def build_automatic_recall_request(
     threads = _thread_summary(open_thread_values)
     if threads:
         _append_bounded(parts, "未完话题：" + _compact_json(threads))
+    # Allocate this disposable cue across supplied facets rather than letting
+    # one long Observation or dialogue consume the entire embedding budget.
+    # Full source material and the separate focused Observation stay intact.
     query_text = "\n".join(parts)
+    if len(query_text) > _MAX_AUTOMATIC_QUERY_CHARACTERS:
+        room = _MAX_AUTOMATIC_QUERY_CHARACTERS - (len(parts) - 1)
+        quota = max(1, room // len(parts))
+        widths = [min(len(part), quota) for part in parts]
+        room -= sum(widths)
+        while room > 0:
+            expanded = False
+            for index, part in enumerate(parts):
+                if widths[index] < len(part) and room:
+                    widths[index] += 1
+                    room -= 1
+                    expanded = True
+            if not expanded:
+                break
+        query_text = "\n".join(part if len(part) <= width else part[:width - 1] + "…"
+                               for part, width in zip(parts, widths, strict=True))
     priority_links = tuple(sorted({item for item in priority_link_refs if item}))[:16]
     optional_links = tuple(sorted({item for item in link_refs if item}))
     # Structured recall normalizes each exact link against the whole selector

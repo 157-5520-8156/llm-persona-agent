@@ -180,15 +180,25 @@ class _PinnedBatchRecallEmbedding:
         source: RecallEmbedding,
         texts: tuple[str, ...],
         vectors: tuple[tuple[float, ...], ...],
+        focused_query: tuple[str, tuple[float, ...]] | None = None,
     ) -> None:
         if len(texts) != len(vectors):
             raise ValueError("semantic recall batch count is invalid")
         self.version = source.version
+        if focused_query is not None:
+            self.version += ":balanced-attention.1"
         self.dimensions = source.dimensions
         self.dense_match_threshold_bp = int(
             getattr(source, "dense_match_threshold_bp", 5_500)
         )
         self._vectors = dict(zip(texts, vectors, strict=True))
+        self._focused_query = focused_query
+
+    def embed_query(self, text: str) -> tuple[float, ...]:
+        # Query vectors must never overwrite a document with identical text.
+        if self._focused_query is not None and text == self._focused_query[0]:
+            return self._focused_query[1]
+        return self.embed((text,))[0]
 
     def embed(self, texts: tuple[str, ...]) -> tuple[tuple[float, ...], ...]:
         try:
@@ -621,6 +631,7 @@ class RecallCoordinator:
             request=request,
             accessibility_seed=accessibility_seed,
             semantic=self._semantic_embedding is not None,
+            focused_attention=True,
         )
         trace = self._issue_trace(
             mode="prefetch",
@@ -1274,6 +1285,7 @@ class RecallCoordinator:
             request=request,
             accessibility_seed=accessibility_seed,
             semantic=self._semantic_embedding is not None,
+            focused_attention=True,
         )
         return self._issue_trace(
             mode="prefetch",
@@ -1532,6 +1544,7 @@ class RecallCoordinator:
         request: CharacterRecallRequest,
         accessibility_seed: str,
         semantic: bool,
+        focused_attention: bool = False,
     ) -> RecallResult:
         query = RecallQuery(
             query_text=request.query_text,
@@ -1564,13 +1577,31 @@ class RecallCoordinator:
                 document.retrieval_text or document.text
                 for document in documents
             )
-            batch_texts = (*document_texts, query.query_text)
+            focus = (request.lexical_text if focused_attention and request.lexical_text
+                     and request.lexical_text != request.query_text else None)
+            batch_texts = (*document_texts, query.query_text, *((focus,) if focus else ()))
             batch_vectors = self._semantic_embedding.embed(batch_texts)
+            if len(batch_vectors) != len(batch_texts):
+                raise ValueError("semantic attention batch count is invalid")
+            focused_query = None
+            if focus is not None:
+                vectors = (batch_vectors[-2], batch_vectors[-1])
+                normalized = []
+                for vector in vectors:
+                    if (len(vector) != self._semantic_embedding.dimensions
+                        or any(not isinstance(v, (int, float)) or not math.isfinite(v) for v in vector)):
+                        raise ValueError("semantic attention query vector is invalid")
+                    magnitude = math.sqrt(sum(v * v for v in vector))
+                    normalized.append(tuple(v / magnitude for v in vector) if magnitude else vector)
+                focused_query = (query.query_text, tuple(
+                    (a + b) / 2 for a, b in zip(*normalized, strict=True)
+                ))
             semantic_index = InMemoryRecallIndex(
                 embedding=_PinnedBatchRecallEmbedding(
                     source=self._semantic_embedding,
                     texts=batch_texts,
                     vectors=batch_vectors,
+                    focused_query=focused_query,
                 )
             )
             semantic_index.rebuild(

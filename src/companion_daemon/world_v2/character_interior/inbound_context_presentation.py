@@ -51,6 +51,62 @@ def unpack_literal_rows(packet: dict[str, object]) -> list[dict[str, object]]:
             for row in rows]
 
 
+def _flat_record(record: dict[str, object]) -> dict[str, object]:
+    flat: dict[str, object] = {}
+
+    def collect(node, path):
+        if isinstance(node, dict) and node:
+            for key, value in node.items():
+                if not isinstance(key, str):
+                    raise ValueError("flat record keys must be strings")
+                collect(value, (*path, key))
+        else:
+            pointer = "/" + "/".join(key.replace("~", "~0").replace("/", "~1") for key in path)
+            flat[pointer] = deepcopy(node)
+
+    for key, value in record.items():
+        collect(value, (key,))
+    return flat
+
+
+def pack_flat_literal_rows(items: list[dict[str, object]]) -> dict[str, object] | list[dict[str, object]]:
+    """Share nested field names; arrays, text and selectable refs stay literal."""
+    if len(items) < 2 or any(not isinstance(item, dict) for item in items):
+        return items
+    packet = pack_literal_rows([_flat_record(item) for item in items])
+    if isinstance(packet, list):
+        return items
+    packet["contract"] = "literal-flat-row-table.1"
+    if len(_wire(packet)) >= len(_wire(items)):
+        return items
+    if unpack_flat_literal_rows(packet) != items:
+        raise ValueError("flat row presentation changed its original value")
+    return packet
+
+
+def unpack_flat_literal_rows(packet: dict[str, object]) -> list[dict[str, object]]:
+    if packet.get("contract") != "literal-flat-row-table.1":
+        raise ValueError("invalid flat row table")
+    rows = unpack_literal_rows({**packet, "contract": "literal-row-table.1"})
+    result = []
+    for row in rows:
+        record: dict[str, object] = {}
+        for pointer, value in row.items():
+            if not pointer.startswith("/"):
+                raise ValueError("flat row path must be a JSON pointer")
+            path = [key.replace("~1", "/").replace("~0", "~") for key in pointer[1:].split("/")]
+            node = record
+            for key in path[:-1]:
+                node = node.setdefault(key, {})
+                if not isinstance(node, dict):
+                    raise ValueError("flat row paths collide")
+            node[path[-1]] = value
+        if _flat_record(record) != row:
+            raise ValueError("flat row paths are not canonical")
+        result.append(record)
+    return result
+
+
 def _ordered(value: Mapping[str, object], first: tuple[str, ...]) -> dict[str, object]:
     return {
         **{key: value[key] for key in first if key in value},

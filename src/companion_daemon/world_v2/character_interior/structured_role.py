@@ -420,7 +420,7 @@ def _private_impression_provider_payload(
     return projected
 
 
-def _memory_consolidation_provider_payload(payload):
+def _memory_consolidation_provider_payload(payload, *, compact=False):
     """Remove host proof bytes, preserving source prose, ownership and status."""
     proof_fields = {"authority_event_ref", "authority_world_revision", "authority_payload_hash",
                     "source_values_hash", "excerpt_ref", "excerpt_payload_hash", "source_bindings",
@@ -432,7 +432,30 @@ def _memory_consolidation_provider_payload(payload):
         if isinstance(value, dict):
             return {key:view(item) for key,item in value.items() if key not in proof_fields}
         return value
-    return view({key:value for key,value in payload.items() if key != "attention_token_map"})
+    result = view({key:value for key,value in payload.items() if key != "attention_token_map"})
+    if not compact:
+        return result
+    from .inbound_context_presentation import pack_flat_literal_rows
+
+    for field in ("memories",):
+        items = result.get(field)
+        if isinstance(items, list):
+            result[field] = pack_flat_literal_rows(items)
+    result["source_row_presentation"] = (
+        "literal-flat-row-table.1: columns are JSON-pointer field paths; stable_rows contain the exact cells "
+        "in that order. absent_cell means missing, not null. Each row is one original object. "
+        "Tokens and source prose are literal. Copy evidence quotes from the source text cells."
+    )
+    result["understanding_instruction"] = (
+        "你决定保留或释放一份有来源的理解，也可以选择[]。每项写disposition=retain或release，"
+        "明确列出你选择替代的predecessor_tokens，保留summary、facet、confidence_bp与精确evidence_quotes。"
+        "retain配空前身表示新理解，配一个前身表示修订，配多个前身表示合并；release必须选一个前身。"
+        "不要再写operation。前身只能选understanding_tokens里的现存条目，引用只能选实际提供的来源。"
+        "已有方面没有新变化时不必重复新增；可修订、合并或选择不更新。不能同时忘掉来源又用它产生新理解。"
+        "evidence_quotes只用understanding_source_tokens中的m/k条目，不能引用一般注意目录的s条目。"
+        "forget表示完全遗忘这个候选及其依赖的新理解；若仍想保留它的影响，需要自行选择retain该来源。"
+    )
+    return result
 
 
 class StructuredRoleResultError(_RoleResultContractError):
@@ -1819,7 +1842,8 @@ class StructuredCharacterRoleFaculty:
             if request.purpose == "memory_consolidation":
                 from ..memory_consolidation_contract import tool_contract
                 return tool_contract(capability_payload=manifest.payload, source_refs=manifest.source_refs,
-                                     recall_allowed=not request.recall_completed)
+                                     recall_allowed=not request.recall_completed,
+                                     compact_synthesis_transport=self._reference_wire)
             if request.purpose == "memory_withdrawal_review":
                 return compiler.memory_withdrawal_review(
                     capability_payload=manifest.payload,
@@ -1943,7 +1967,7 @@ class StructuredCharacterRoleFaculty:
         else:
             background_profile = None
             snapshot = full_snapshot
-        capability = self._capability_view(request.capability_manifest)
+        capability = self._capability_view(request.capability_manifest, compact_memory=self._reference_wire)
         user_payload: dict[str, object] = {
             "inner_turn": {
                 "inner_turn_id": request.inner_turn_id,
@@ -2291,6 +2315,16 @@ class StructuredCharacterRoleFaculty:
                 and request.capability_manifest is not None
                 and request.capability_manifest.payload.get("source_binding") == HOST_SOURCE_BINDING
             )
+            if memory_host_bound and self._reference_wire:
+                from ..memory_consolidation_contract import UNDERSTANDING_CONTRACT, expand_understanding_dispositions
+
+                decision = decoded.get("decision")
+                if (request.capability_manifest.payload.get("understanding_contract") == UNDERSTANDING_CONTRACT
+                    and isinstance(decision, dict) and isinstance(decision.get("payload"), dict)):
+                    try:
+                        decoded["decision"] = {**decision, "payload": expand_understanding_dispositions(decision["payload"])}
+                    except ValueError as exc:
+                        self._raise("role_result_schema_invalid", response_hash=response_hash, detail=str(exc))
             wire_model = (
                 _ExpandedAttentionWireRoleResult
                 if (self._reference_wire and request.purpose == "world_stimulus_appraisal") or memory_host_bound
@@ -3460,6 +3494,7 @@ class StructuredCharacterRoleFaculty:
     @staticmethod
     def _capability_view(
         manifest: _InteriorCapabilityManifest | None,
+        *, compact_memory: bool = False,
     ) -> dict[str, object]:
         if manifest is None:
             return {"availability": "unavailable"}
@@ -3467,7 +3502,12 @@ class StructuredCharacterRoleFaculty:
         if manifest.capability_kind == "private_impression_reflection":
             payload = _private_impression_provider_payload(payload)
         elif manifest.capability_kind == "memory_consolidation":
-            payload = _memory_consolidation_provider_payload(payload)
+            from ..memory_consolidation_contract import HOST_SOURCE_BINDING, UNDERSTANDING_CONTRACT
+
+            payload = _memory_consolidation_provider_payload(payload, compact=(
+                compact_memory and payload.get("source_binding") == HOST_SOURCE_BINDING
+                and payload.get("understanding_contract") == UNDERSTANDING_CONTRACT
+            ))
         return {
             "availability": "available",
             "capability_ref": manifest.capability_ref,

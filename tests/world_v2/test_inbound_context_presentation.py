@@ -91,3 +91,33 @@ def test_reference_codec_understands_media_row_source_columns():
     album = expanded['inner_life_snapshot']['materials']['moments_i_can_share']
     album['items'] = unpack_literal_rows(album['items'])
     assert expanded == original
+
+
+def test_flat_memory_rows_preserve_nested_keys_absent_null_arrays_and_references():
+    from companion_daemon.world_v2.character_interior.inbound_context_presentation import (
+        pack_flat_literal_rows, unpack_flat_literal_rows,
+    )
+
+    source = "source:" + "e" * 64
+    items = [{"token": f"m{i}", "candidate": {"source_ref": source, "values": {
+        "salience": {"emotional_residue_bp": 5000}, "nullable": None, "empty": {},
+        "a/b~c": {"": "__absent_cell__"}, **({"optional": False} if i % 2 else {}),
+    }}, "reading": {"source_excerpts": [{"source_ref": source, "text": "原文不能省略"}]}}
+        for i in range(12)]
+    packed = pack_flat_literal_rows(items)
+    assert isinstance(packed, dict)
+    assert unpack_flat_literal_rows(packed) == items
+    view, bindings = prepare_reference_view({"memories": packed})
+    restored = expand_reference_view(view, bindings)
+    assert unpack_flat_literal_rows(restored["memories"]) == items
+
+
+def test_flat_memory_rows_reject_colliding_or_noncanonical_paths():
+    import pytest
+    from companion_daemon.world_v2.character_interior.inbound_context_presentation import unpack_flat_literal_rows
+
+    for columns, row in [(["/a", "/a/b"], [1, 2]), (["/bad~2"], [1])]:
+        packet = {"contract": "literal-flat-row-table.1", "columns": columns,
+                  "stable_rows": [row], "absent_cell": "__absent_cell__"}
+        with pytest.raises(ValueError):
+            unpack_flat_literal_rows(packet)

@@ -1,3 +1,23 @@
+Continuing performance/cost goal (2026-10-03): `docs/audits/focused-recall-and-memory-wire-2026-10-03.md`.
+Goal active, NOT release/5s/1.5CNYday qualification. Automatic BGE attention
+batches observation and context, equal-normalized query vectors (version suffix
+balanced-attention.1), independent query/document vectors. Authored pulls unchanged.
+Original40+1 prehistory diagnostic:37 gold-bearing cases,83.8->94.6% source recall,
+not hallucination/heldout/chat score. Automatic cue now256char with facet allocation;
+full Observation stays in focused channel/role context, authored Recall remains1024.
+Inbound join1s cap returns early when ready; source/privacy checks unchanged.
+Pure long-vector normalization cache415:150ms->warm3.7ms, exact values.
+Memory toolv4 keeps source enums, host rejects unknown/forgotten sources and bad quotes;
+retain/release+explicit predecessors bijectively encode original four operations.
+Primary memory rows share JSON-pointer field names, all values/text/refs retained;
+old non-reference/choice-only paths preserved. Final3 real batches reviewed,3calls/.0381,
+not cheaper than cache-warm dynamic baseline/.0323; failed intermediate probes retained.
+Explicit four-turn capture6.91/5.17/6.83/8.88s,all sent. Two slow turns omit required
+meaning_of_this/my_state INSIDE payload_json and trigger reselection. Next priority:
+minimal native REQUIRED semantic core + compact optional fields; do NOT restore
+the old27k full nullable native schema. Character keeps every semantic choice.
+502 scoped checks pass; cold replay evidence in private directory; no QQ/cutover.
+
 Performance/cost work (2026-10-03): `docs/audits/performance-cost-2026-10-03.md`.
 Content-keyed safe YAML parsing and current-row vector decoding cache preserve
 current validation; background reference transport orders stable material before

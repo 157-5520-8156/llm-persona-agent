@@ -9,6 +9,7 @@ they never change validity, authorize an Action, or recommend behaviour.
 from __future__ import annotations
 
 from datetime import datetime
+from functools import lru_cache
 import hashlib
 import json
 import math
@@ -64,6 +65,15 @@ def _canonical_json(value: object) -> str:
 
 def _digest(value: object) -> str:
     return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
+
+
+@lru_cache(maxsize=1024)
+def _unit_vector(values: tuple[float, ...]) -> tuple[float, ...]:
+    """Cache pure arithmetic, independently of document/source eligibility."""
+    magnitude = math.sqrt(sum(item ** 2 for item in values))
+    if magnitude <= 0:
+        return tuple(0.0 for _ in values)
+    return tuple(round(item / magnitude, 12) for item in values)
 
 
 class RecallCursor(FrozenModel):
@@ -600,7 +610,11 @@ class _RecallIndexCore:
             raise ValueError("recall query cursor does not match the sidecar cursor")
         embedding_failure = self._last_rebuild_embedding_failure
         try:
-            query_vector_values = self._embedding.embed((query.query_text,))
+            embed_query = getattr(self._embedding, "embed_query", None)
+            query_vector_values = (
+                (embed_query(query.query_text),) if callable(embed_query)
+                else self._embedding.embed((query.query_text,))
+            )
         except RecallEmbeddingUnavailable as exc:
             query_vector_values = ((0.0,) * self._embedding.dimensions,)
             embedding_failure = str(exc)[:128] or "embedding_unavailable"
@@ -1091,10 +1105,10 @@ class _RecallIndexCore:
             raise ValueError("recall embedding dimensions do not match the adapter")
         if any(not isinstance(item, (int, float)) or not math.isfinite(item) for item in value):
             raise ValueError("recall embedding contains a non-finite value")
-        magnitude = math.sqrt(sum(float(item) ** 2 for item in value))
-        if magnitude <= 0:
-            return tuple(0.0 for _ in value)
-        return tuple(round(float(item) / magnitude, 12) for item in value)
+        values = tuple(float(item) for item in value)
+        # Keep cheap local feature hashes from evicting the large BGE vectors.
+        normalize = _unit_vector if len(values) >= 512 else _unit_vector.__wrapped__
+        return normalize(values)
 
     @staticmethod
     def _eligible(document: RecallDocument, query: RecallQuery) -> bool:
