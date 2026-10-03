@@ -1770,6 +1770,7 @@ class LifeDevelopmentRuntime:
         world_author: LifeDevelopmentModel,
         world_author_source_rewriter: LifeDevelopmentModel | None = None,
         world_author_transport: Literal["auto", "json_object"] = "auto",
+        world_author_cache_stable_prefix: bool = False,
         character_interior: CharacterInterior,
         source_closure_reviewer: LifeDevelopmentModel | None = None,
         capsule_compiler: LifeContextCapsuleCompiler,
@@ -1790,6 +1791,9 @@ class LifeDevelopmentRuntime:
         self._store = content_store
         self._world_author = world_author
         self._world_author_transport = world_author_transport
+        if type(world_author_cache_stable_prefix) is not bool:
+            raise TypeError("World author cache prefix flag must be a boolean")
+        self._world_author_cache_stable_prefix = world_author_cache_stable_prefix
         self._world_author_source_rewriter = (
             world_author_source_rewriter
             if world_author_source_rewriter is not None
@@ -6615,6 +6619,7 @@ class LifeDevelopmentRuntime:
             return compile_world_consequence_messages(
                 user_context=json.loads(messages[1]["content"]), authority=execution.authority,
                 execution_materials=execution.execution_materials,
+                cache_stable_prefix=self._world_author_cache_stable_prefix,
             )
         if manifest.outcome_contract == "world-consequence.2":
             messages[0]["content"] += (

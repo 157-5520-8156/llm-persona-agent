@@ -179,6 +179,7 @@ def _compliant_propose_example(*, manifest: dict[str, object]) -> dict[str, obje
 def compile_world_consequence_messages(
     *, user_context: dict[str, object], authority: WorldConsequenceAuthority,
     execution_materials: tuple[WorldConsequenceExecutionMaterial, ...],
+    cache_stable_prefix: bool = False,
 ) -> list[dict[str, str]]:
     """Render already-pinned evidence; do not select events or interpret prose."""
     value = deepcopy(user_context)
@@ -319,7 +320,30 @@ def compile_world_consequence_messages(
             "nothing is not itself a concrete result. Do not add actions outside that original "
             "attempt, new decisions, feelings, fabricated earlier history or user-channel delivery.\n"
         )
-    if completion is not None:
+    tail_guidance = None
+    if cache_stable_prefix:
+        tail_guidance = example_guidance
+        example_guidance = (
+            "The following system message carries this request's exact shape/binding guidance. "
+            "No example is historical evidence or a new permission.\n"
+        )
+        stable_manifest_fields = (
+            "version", "owner_actor_ref", "location_capabilities", "entity_refs", "npc_capabilities",
+            "npc_privacy_floors", "biographical_context_tags", "allow_external_observation_outcomes",
+            "outcome_contract", "execution_intention_sources_version", "pinned_source_materials_version",
+            "semantic_source_review_version", "max_future_days", "max_window_minutes",
+        )
+        value["capability_manifest"] = {
+            **{key: manifest[key] for key in stable_manifest_fields if key in manifest},
+            **{key: item for key, item in manifest.items() if key not in stable_manifest_fields},
+        }
+        stable_fields = (
+            "output_contract", "claim_classification_contract", "authored_subject", "world_author_wire",
+            "cross_field_authority", "capability_manifest", "pinned_world_context", "recent_life_texture",
+        )
+        value = {**{key: value[key] for key in stable_fields if key in value},
+                 **{key: item for key, item in value.items() if key not in stable_fields}}
+    elif completion is not None:
         # Keep the invariant author contract at the front of completed-activity
         # requests so later requests can reuse the provider's exact prefix
         # cache. This changes serialization order only: values and authorities
@@ -333,7 +357,7 @@ def compile_world_consequence_messages(
         ordered_keys = [key for key in stable_prefix_fields if key in value]
         ordered_keys.extend(key for key in value if key not in stable_prefix_fields)
         value = {key: value[key] for key in ordered_keys}
-    return [
+    messages = [
         {
             "role": "system",
             "content": (
@@ -402,3 +426,6 @@ def compile_world_consequence_messages(
         },
         {"role": "user", "content": json.dumps(value, ensure_ascii=False, separators=(",", ":"))},
     ]
+    if tail_guidance is not None:
+        messages.append({"role": "system", "content": tail_guidance})
+    return messages

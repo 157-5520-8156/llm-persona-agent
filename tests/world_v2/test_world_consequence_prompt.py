@@ -61,6 +61,18 @@ def test_current_prompt_requires_new_consequences_and_removes_old_action_permiss
     assert outcome["properties"]["world_consequence"] == {"$ref": "#/$defs/WorldConsequenceV2"}
 
 
+def test_cached_prefix_preserves_all_values_and_the_system_level_of_request_guidance():
+    authority, context = _inputs()
+    old = compile_world_consequence_messages(user_context=context, authority=authority, execution_materials=())
+    new = compile_world_consequence_messages(user_context=context, authority=authority, execution_materials=(), cache_stable_prefix=True)
+    assert [m["role"] for m in new] == ["system", "user", "system"]
+    assert json.loads(old[1]["content"]) == json.loads(new[1]["content"])
+    assert new[2]["content"] in old[0]["content"]
+    assert "capability_manifest.anchor_refs is empty" in new[2]["content"]
+    assert "following system message" in new[0]["content"]
+    assert len(old) == 2
+
+
 @pytest.mark.parametrize("wrong", ["owner", "cursor", "legacy"])
 def test_current_prompt_cannot_relabel_another_or_historical_manifest(wrong):
     authority, context = _inputs()

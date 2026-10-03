@@ -755,6 +755,7 @@ class WorldV2TurnApplicationConfig:
     visible_source_review_required: bool = False
     # New World requests only; persisted author requests retain their carrier.
     world_author_transport: Literal["auto", "json_object"] = "auto"
+    world_author_cache_stable_prefix: bool = False
     # Read-only capacity probe for background lanes: true when the day's
     # background envelope is already spent.  It bounds work, never speech, and
     # the visible reply path keeps its own explicit caps.
@@ -4444,6 +4445,7 @@ def build_sqlite_world_v2_turn_application(
                 world_author=life_world_author_model,
                 world_author_source_rewriter=life_world_author_source_rewriter,
                 world_author_transport=config.world_author_transport,
+                world_author_cache_stable_prefix=config.world_author_cache_stable_prefix,
                 character_interior=character_interior,
                 source_closure_reviewer=life_source_closure_reviewer,
                 capsule_compiler=capsules,
