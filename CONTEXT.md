@@ -1,3 +1,20 @@
+Local receipt/day-cost continuation (2026-10-03): `docs/audits/local-receipt-and-day-cost-2026-10-03.md`.
+verify_recorded_candidate now selects validated projection parent_model_call_id
+before parsing relevant subcalls; all current receipt/source/cursor/authority checks
+remain.2490-history identical receipt pairs .189/.132s -> .0485/.0480s; unrelated500
+audit test & tamper/recovery checks pass. No whole-turn percentage/5s claim.
+Daily benchmark now selects explicit QQ World in real multi-World DB, preserves
+legacy startup World; fixed24h/50inputs/all native runtime dues,realV4.1/BGE,virtual
+clock,CaptureDelivery. Running exec10141/PID21747 last confirmed; ~33commands,
+100calls/CNY2.07 already exceeds target, NOT completed/daily qualification.
+Revalidate handle/PID then inspect progress/result; never restart from stale notes.
+Path output/private-audits/daily-workload-20261003/baseline-world-bound.
+World prefix candidate .134->.106 CNY for3 inputs but valid3/3->1/3 (privacy
+coupling failures); implementation REMOVED, raw/results retained. Do not promote.
+NEXT finish running day cost audit, preserve frequencies/unknown bills/failures,
+then target life-author/reviewer costs while maintaining constraint priority/quality.
+Goal remains active; no production cutover/release/1.5CNYday/5s qualification.
+
 Native semantic core experiment (2026-10-03): `docs/audits/native-slim-core-2026-10-03.md`.
 Default-off WORLD_V2_NATIVE_SLIM_CORE wires slim atomic _core tools/prompt.7;
 four required semantic fields native, optional capabilities extras_json, authored

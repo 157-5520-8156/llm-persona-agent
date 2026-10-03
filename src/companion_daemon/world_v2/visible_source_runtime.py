@@ -661,7 +661,15 @@ def verify_recorded_candidate(*, audit, model_result_audits):
         raise ValueError("review pin differs from its original proposal audit")
     subcalls = []
     for item in model_result_audits:
+        # Projection construction already binds this coordinate to the exact
+        # immutable audit JSON. Unrelated historical model results cannot be
+        # this author's source-review subcall; do not parse the whole history
+        # for every acceptance/dispatch. Matching bytes still validate fully.
+        if item.parent_model_call_id != parent.model_call_id:
+            continue
         recorded = RecordedModelResultAudit.model_validate_json(item.audit_json)
+        if recorded.parent_model_call_id != item.parent_model_call_id:
+            raise ValueError("source-review audit differs from its projected parent binding")
         if (
             recorded.parent_model_call_id != parent.model_call_id
             or recorded.route.router_version != "provider-subcall-audit.1"

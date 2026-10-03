@@ -208,6 +208,37 @@ def _audits(app):
 
 
 @pytest.mark.asyncio
+async def test_current_receipt_verification_does_not_parse_unrelated_model_history(tmp_path, monkeypatch):
+    from datetime import timedelta
+    from companion_daemon.world_v2.visible_source_runtime import verify_recorded_candidate
+
+    http = _ReviewHTTP(["pass", "pass"])
+    async with _app(tmp_path / "history.sqlite", http) as app:
+        assert (await app.respond(_inbound())).status == "action_authorized"
+        second = replace(_inbound(), platform_message_id="message:second", trace_id="trace:second",
+                         observed_at=NOW + timedelta(seconds=2))
+        assert (await app.respond(second)).status == "action_authorized"
+        projection = app.export_replay_evidence().projection
+        audit = next(item for item in reversed(projection.proposal_audits) if item.proposal_kind == "decision")
+        parent = next(row for row in projection.model_result_audits if row.model_result_ref == audit.model_result_ref)
+        unrelated = next(row for row in projection.model_result_audits
+                         if row.model_result_ref != parent.model_result_ref and row.parent_model_call_id is None)
+        rows = (*projection.model_result_audits, *((unrelated,) * 500))
+        expected = verify_recorded_candidate(audit=audit, model_result_audits=rows)
+        original = RecordedModelResultAudit.model_validate_json
+        parsed = []
+
+        def counted(raw, *args, **kwargs):
+            parsed.append(raw)
+            return original(raw, *args, **kwargs)
+
+        monkeypatch.setattr(RecordedModelResultAudit, "model_validate_json", counted)
+        assert verify_recorded_candidate(audit=audit, model_result_audits=rows) == expected
+        assert unrelated.audit_json not in parsed
+        assert len(parsed) < 10
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("tool_version", ["1", "3"])
 async def test_unclosed_allows_one_same_role_reselection_and_reviews_whole_replacement(tmp_path, tool_version):
     http = _ReviewHTTP(["unclosed", "pass"], tool_version=tool_version)

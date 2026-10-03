@@ -123,9 +123,10 @@ async def run(args):
     with sqlite3.connect(database) as conn:
         worlds = conn.execute("select world_id,max(ledger_sequence) from world_v2_events group by world_id").fetchall()
     expected_world = "world:companion-v2:qq-c2c:" + args.primary_user_id
-    if len(worlds) != 1 or worlds[0][0] != expected_world:
+    selected_worlds = [row for row in worlds if row[0] == expected_world]
+    if len(selected_worlds) != 1:
         raise ValueError("source World must match the explicitly supplied isolated identity")
-    first_seq = worlds[0][1]
+    first_seq = selected_worlds[0][1]
     first_usage = current_usage_id(database)
     # These are experiment guardrails well above the acceptance target, never
     # a way to achieve it. All variants use the same limits and zero background cap.
@@ -212,6 +213,7 @@ async def run(args):
         "snapshot_sha256": hashlib.sha256(database.read_bytes()).hexdigest(),
         "source_sequence": first_seq, "usage_from": first_usage,
         "world_id": expected_world, "new_user_turns": len(chats), "chat_inputs": chats,
+        "other_worlds_preserved": [row[0] for row in worlds if row[0] != expected_world],
         "workload": "same recorded 24 clock inputs and inherited pending chat; optional fixed additional chat",
         "targets": targets, "background_units": 8, "drain_rounds": 6,
         "models": {"character": settings.deepseek_model, "thinking": settings.deepseek_character_thinking_enabled},
