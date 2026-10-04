@@ -1,4 +1,5 @@
 from datetime import timedelta
+import json
 from types import SimpleNamespace
 
 import pytest
@@ -6,7 +7,7 @@ import pytest
 from companion_daemon.world_v2.fact_memory_candidate_lifecycle import FactMemoryCandidateLifecycle
 from companion_daemon.world_v2.fact_memory_draft import FactMemoryRetentionDraft
 from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
-from companion_daemon.world_v2.memory_consolidation_runtime import MemoryConsolidationRuntime
+from companion_daemon.world_v2.memory_consolidation_runtime import MemoryConsolidationRuntime, balanced_memory_batch
 from companion_daemon.world_v2.memory_consolidation_contract import CONTRACT
 from companion_daemon.world_v2.replay_evaluator import ReplayEvaluator
 from companion_daemon.world_v2.memory_retrieval import _material_updated_at
@@ -63,6 +64,82 @@ def seed_memories(ledger):
             fact=fact, transition=transition, fact_event=event, fact_world_revision=commit.world_revision,
             draft=FactMemoryRetentionDraft(cue_kind="future_utility", retention_rationales=("future_utility",), salience=salience()),
             logical_time=p.logical_time, created_at=p.logical_time, trace_id="trace:periodic", correlation_id="correlation:periodic")
+
+
+def test_bounded_rebalanced_reads_match_complete_filter_for_every_availability_mask():
+    from itertools import product
+
+    ordered = [SimpleNamespace(candidate_id=str(i), values=SimpleNamespace(
+        source_bindings=[SimpleNamespace(source_kind=kind)]))
+        for i, kind in enumerate(("fact", "experience", "fact", "prehistory", "experience",
+                                  "fact", "thread", "prehistory", "thread", "fact", "experience", "thread"))]
+    for limit in (1, 4, 8):
+        for flags in product((False, True), repeat=len(ordered)):
+            readable = {c.candidate_id for c, keep in zip(ordered, flags) if keep}
+            remaining = ordered
+            selected = []
+            while remaining:
+                selected = balanced_memory_batch(remaining, limit=limit)
+                unavailable = {c.candidate_id for c in selected} - readable
+                if not unavailable:
+                    break
+                remaining = [c for c in remaining if c.candidate_id not in unavailable]
+            else:
+                selected = []
+            assert balanced_memory_batch(
+                [c for c in ordered if c.candidate_id in readable], limit=limit) == selected
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("unreadable_mode", ["none", "one", "all"])
+async def test_open_batch_rebalances_without_exposing_unreadable_sources(tmp_path, monkeypatch, unreadable_mode):
+    import companion_daemon.world_v2.memory_consolidation_runtime as module
+
+    async with _sources(tmp_path, extra=True) as case:
+        ledger = case.ledger
+        seed_memories(ledger)
+        projection = ledger.project()
+        store = SQLiteImmutableLifeContentStore(path=tmp_path / "content.sqlite", world_id=ledger.world_id)
+        worker = MemoryConsolidationRuntime(ledger=ledger, character_interior=Reviewer(),
+            actor_ref="agent:companion", owner_id="worker:bounded", content_store=store)
+        original_compile = module.MemoryRetrievalCompiler.compile
+        calls = []
+        suppressed = []
+
+        def compile_readings(self, **kwargs):
+            calls.append(tuple(c.candidate_id for c in kwargs["candidates"]))
+            result = original_compile(self, **kwargs)
+            if unreadable_mode == "all":
+                return result.model_copy(update={"items": ()})
+            if unreadable_mode == "one":
+                if not suppressed:
+                    assert result.items
+                    suppressed.append(result.items[0].candidate_id)
+                return result.model_copy(update={"items": tuple(
+                    r for r in result.items if r.candidate_id not in suppressed)})
+            return result
+
+        monkeypatch.setattr(module.MemoryRetrievalCompiler, "compile", compile_readings)
+        try:
+            process = await worker._open(projection)
+            if unreadable_mode == "all":
+                assert process is None
+                return
+            assert process is not None
+            job = json.loads(store.read_exact(content_ref=process.trigger_ref).text)
+            expected = balanced_memory_batch(sorted(projection.memory_candidates,
+                key=lambda c: (module.review_due(c), c.candidate_id)))
+            assert calls[0] == tuple(c.candidate_id for c in expected)
+            if unreadable_mode == "one":
+                expected = [c for c in expected if c.candidate_id not in suppressed]
+                assert all(not set(call).intersection(suppressed) for call in calls[1:])
+            assert all(len(call) <= 8 for call in calls)
+            due_reads = [identity for call in calls[:-1] for identity in call]
+            assert len(due_reads) == len(set(due_reads))
+            assert [c["candidate_id"] for c in job["candidates"]] == [c.candidate_id for c in expected]
+            assert all(r["source_excerpts"] for r in job["readings"])
+        finally:
+            store.close()
 
 
 @pytest.mark.asyncio

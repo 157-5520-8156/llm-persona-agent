@@ -1,3 +1,13 @@
+Bounded memory source reading (2026-10-04): `docs/audits/bounded-memory-source-reading-2026-10-04.md`.
+RETAIN same balanced eight-item selection using progressive source reads; only unreadable candidates
+removed per unchanged compiler, per-pinned-job readings reused locally. Same final eight complete
+reading values vs full166; actual56candidate reads/17rounds, warm118ms->13.39ms. NOT API/wholechat gain.
+Reject initial full-fallback candidate:stale32/unavailable16 makes fallback always,117->122ms.
+44 scoped tests incl all4096availability masks x3limits, _open all/one/none readable, source/restart/replay.
+All-day exec54594 remains live in corrected-geoff; startup predates both local optimizations,
+3 initialchat first5.199/5.984/6.752s, not5s-qualified; day unfinished. Revalidate handle/ledger;
+do not restart on observation timeout. Goal active/no deployment/full-cost qualification.
+
 Full-day resumption/static tool build (2026-10-04): `docs/audits/static-author-schema-and-full-day-resumption-2026-10-04.md`.
 REJECT uncommitted explicit_authority_basis codec:6 real calls/5valid/1reason overflow,
 ~.2456382CNY all six included; no global benefit proof, source parser unchanged.

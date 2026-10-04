@@ -109,13 +109,32 @@ class MemoryConsolidationRuntime(MemoryReviewLease):
         if not due or not clocks:
             return None
         clock, _ = await self._lookup(clocks[-1].event_id)
-        view = await asyncio.to_thread(
-            MemoryRetrievalCompiler(ledger=self._ledger, life_content_store=self._content,
-                                    max_excerpt_characters=1200).compile,
-            cursor=self._cursor(projection), candidates=tuple(due), projection=projection,
-            actor_ref=self._actor_ref, viewer_privacy_ceiling="private",
-        )
-        readable = {item.candidate_id: item for item in view.items}
+        compiler = MemoryRetrievalCompiler(ledger=self._ledger, life_content_store=self._content,
+                                           max_excerpt_characters=1200)
+        # Remove only candidates the unchanged source reader cannot expose.
+        # Rebalance until all eight selected members are readable. At that
+        # point filtering later unreadable members cannot change the selection.
+        # This preserves the original full-filter result without reading the
+        # entire backlog for every job; no failure is turned into model text.
+        readable = {}
+        while due:
+            first_batch = tuple(balanced_memory_batch(due))
+            unread = tuple(c for c in first_batch if c.candidate_id not in readable)
+            if not unread:
+                break
+            view = await asyncio.to_thread(
+                compiler.compile, cursor=self._cursor(projection), candidates=unread,
+                projection=projection, actor_ref=self._actor_ref, viewer_privacy_ceiling="private",
+            )
+            # Reuse a reading only inside this one pinned job construction,
+            # just as the original complete compile read each candidate once.
+            readable.update((item.candidate_id, item) for item in view.items)
+            unreadable_ids = {c.candidate_id for c in unread} - readable.keys()
+            if not unreadable_ids:
+                break
+            due = [c for c in due if c.candidate_id not in unreadable_ids]
+        else:
+            return None
         due = balanced_memory_batch([c for c in due if c.candidate_id in readable])
         if not due:
             return None
