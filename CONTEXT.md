@@ -1,3 +1,15 @@
+Full-day input/cache diagnosis (2026-10-04): `docs/audits/daily-cost-input-cache-sensitivity-2026-10-04.md`.
+New private sensitivity on same actual rows:partial6.1686CNY vs theoretical ALLinputcached1.04947,
+outputonly.895252. NOT savings/day extrapolation; mostexpense misses on inputs, fullcache unrealistic.
+29distinct captured World outputs null-only removal4.57%chars; no codec/schema edit/no paidtests.
+Started sequential dependent execsession20019: private world-prefix-daily/after_baseline.py,
+WAIT specific baseline result completed/errorNone/50chat/unknown0/denials0, then run fullsame frozen
+day+allruntime-dues/50inputs/V4.1/BGE with --world-author-cache-stable-prefix. No restart oflivebase,
+no parallel billed preload, parent14 staysoff. Defaultgeneration/production unchanged.
+Candidate output willbe daily-workload-20261004-world-prefix; native latency/code/provenance snapshots.
+Actual current integratedcode vsoldrunningbaseline includes purelocal fixes, NOTcausalprefix-onlyclaim.
+Revalidate BOTH sessions54594/20019; statusfilealone notlivenessproof. Goalactive/no targetclosure.
+
 Parent reading receipt budget fix (2026-10-04): `docs/audits/parent-reading-receipt-budget-fix-2026-10-04.md`.
 Actual stored presented trace confirmedhybrid14/f09child480/5items, parent alreadyindexed.
 Rootcause duplicate unused parent retrieval_text +earlier f19 spends remainingbytes. Dropparent
