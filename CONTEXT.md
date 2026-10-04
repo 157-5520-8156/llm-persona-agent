@@ -1,3 +1,15 @@
+Native reviewer reason bound (2026-10-04): `docs/audits/native-review-reason-bound-2026-10-04.md`.
+USER schema is NOT fully redundant:strict provider dropsmin/max keywords;exact diff5830chars
+vsoriginal5600, no USER-copy removal. World Author already$def factored, no extra savings.
+Private novel-tool factoring5242->4449chars,6realV4.1:5validmatchingverdicts,1reason>2000failure.
+RETAIN shared _review_tool_contract reason pattern from canonical maxLength (novel2000/general600);
+old general already same constraint. Clarify coordinate arrays, nevertruncate/dropfindings.
+135tests pass incl2000accepted/2001rejected, actualHTTP/source/old/coldreplay. Failed same case
+with exact bound generated1432chars/unsupported/fullparservalid,1realcall.7calls total.28577336CNY;
+NOT global success-rate/day-cost/5s claim. Factoring staysprivate, no production activation.
+NEXT actual life-generation/review/correction frequency and largest repeated inputs with same
+cache conditions; do not keep adding tiny schema codecs. Goal active/no deployment.
+
 Recall capability clarification contrast (2026-10-04): `docs/audits/recall-capability-explanation-2026-10-04.md`.
 Three exact captured inputs old/new neutral SYSTEM capability explanation,6paidV4.1/.0573CNY.
 Both old/new choose Recall for birthday in initial-choice probe: NOT proof old prompt lacked ability.

@@ -233,3 +233,18 @@ def test_schema_conformance_does_not_grant_missing_source_or_coordinate_authorit
     with pytest.raises(LifeDevelopmentSourceClosureError) as caught:
         parse_life_development_novel_origin_review(raw=json.dumps(response), draft=draft)
     assert caught.value.code == code
+
+
+def test_native_focused_reason_enforces_the_same_canonical_length_bound():
+    from companion_daemon.world_v2.life_development_source_closure import novel_origin_review_tool_contract
+    from test_world_consequence_source_closure import _consequence_material
+
+    _manifest, draft = _consequence_material()
+    tool = novel_origin_review_tool_contract(draft)
+    schema = tool['tools'][0]['function']['parameters']
+    review = {name: [] for name in schema['properties']['review']['properties']}
+    review.update(decision='supported', reason='说明' * 1000)
+    validator = Draft202012Validator(schema)
+    assert validator.is_valid({'review': review})
+    review['reason'] += '字'
+    assert not validator.is_valid({'review': review})

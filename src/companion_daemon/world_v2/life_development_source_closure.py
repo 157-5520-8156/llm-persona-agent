@@ -672,7 +672,9 @@ def novel_origin_review_tool_contract(
     """
     return _review_tool_contract(
         _novel_review_model(draft), "life_novel_origin_review_v1",
-        "Return one complete source-origin review using the supplied evidence.",
+        "Return one complete source-origin review using the supplied evidence. "
+        "Keep reason within its supplied length bound; put findings in the exact "
+        "coordinate arrays instead of repeating the full candidate or source texts.",
     )
 
 
@@ -711,6 +713,11 @@ def _review_tool_contract(review_model, name: str, description: str) -> dict[str
         "type": "object", "properties": {"review": review_schema},
         "required": ["review"], "additionalProperties": False,
     })
+    # DeepSeek omits maxLength in its strict subset, but accepts pattern.
+    # Carry the canonical reason limit through the same supported constraint
+    # already used by the general reviewer, without truncating authored text.
+    maximum = review_model.model_json_schema()["properties"]["reason"]["maxLength"]
+    parameters["properties"]["review"]["properties"]["reason"]["pattern"] = rf"^[\s\S]{{1,{maximum}}}$"
     return {
         "tools": [{"type": "function", "function": {
             "name": name, "strict": True,
