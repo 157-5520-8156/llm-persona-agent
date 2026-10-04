@@ -1,3 +1,14 @@
+Recall diversity follow-up (2026-10-04): `docs/audits/recall-diversity-candidate-rejection-2026-10-04.md`.
+Two private IDF/cue-diversity variants BOTH rejected:41queries/37gold .94595->.90991,
+regressQ14/Q32, no improvements. Real open birthday only improves when focused query changed;
+do not replace whole attention or cherry-pick synthetic specific birthday. No production ranking edits.
+Actual automatic-link scoring: birthday lexical597/read142 vs reconnection1865/read644.
+Total-read-score recency is NOT sole root cause; lexical-first alone cannot fix. Rarest-ngram
+anchor also still chooses reconnection. All trials language-model-disabled/BGE only.
+NEXT stop blind reranking: inspect first-call presented trace/localfallback vs semantic finish,
+and capability explanation (speaking thinking != executing Recall). Role still decides action.
+Goal active; no5s/1.5CNYday/QA/deployment completion.
+
 Birthday recall localization (2026-10-04): `docs/audits/birthday-recall-localization-2026-10-04.md`.
 Actual birthday record f09 EXISTS/active/eligible in BGE corpus; initial role had none of that prose.
 recall_available true and tool allows recall, but role chose only thinking text, no actual answer.
