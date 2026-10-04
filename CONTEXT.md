@@ -1,3 +1,18 @@
+COMPLETE corrected day baseline (2026-10-04): `docs/audits/complete-corrected-day-baseline-2026-10-04.md`.
+Exec54594 EXIT0/result completedtrue/errorNone/24targets/50inputs/alldues;435calls,
+stored9.4303CNY/repriced9.43198444,denials0/unknown0. 49Capture deliveries,p50first7.633s,
+p95(sortedposition)9.456s,1under5. Lastnight messages=[] authored/winner/appraisalaccepted:
+REALsilence, nottechnicalfailure. Contentquality stillunqualified, noQQ proof.
+Failures27 invalid_role_after_correction/3source_exception/23main_invalid/9corrective_invalid/
+3primary_invalid/6life_source_uncertain/3unavailable; original candidates neededforclassification.
+Complete ALLinputcached theoretical1.61516/outputonly1.37519: CACHEALONE insufficient1.5target.
+New correction30packets25attention>32 in world_stimulus; othermemory cardinality/quote/forget.
+No source trimming or invisiblehost attention substitution. Root stillunfixed.
+DEpendentexec20019 now CANDIDATE_STARTED, daily-workload-20261004-world-prefix, prefixtrue,
+samefrozenhash/World/24/50/alldues;parent14staysoff;no baselineconcurrentprewarm. Revalidatehandle.
+NEXT finish same candidate inclquality/receipts/cache/failures/wholebill; neverclaimpartial savings.
+Goalactive/nodeploy. Source/hardboundaries/CharacterInterior authority retained.
+
 Late-day understanding read (2026-10-04): `docs/audits/late-day-understanding-read-localization-2026-10-04.md`.
 New actualbackup/noLLM read cold.3325/hot.1142s, active3/pending49; prof.161s,
 source_read.054/model_validate.045/JSONencode.034 nested, NOTseconds-long dominantcause.
