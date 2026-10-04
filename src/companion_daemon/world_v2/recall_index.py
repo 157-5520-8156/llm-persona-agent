@@ -176,6 +176,7 @@ class RecallDocument(FrozenModel):
         default=None, max_length=32_000, exclude_if=lambda value: value is None,
     )
     source_window_start: int | None = Field(default=None, ge=0, exclude_if=lambda value: value is None)
+    context_only: bool = Field(default=False, exclude_if=lambda value: value is False)
     speaker_ref: str | None = Field(
         default=None,
         min_length=1,
@@ -271,6 +272,12 @@ class RecallDocument(FrozenModel):
             raise ValueError("active understanding cannot be marked archived")
         if (self.epistemic_scope == "character_prehistory") != (self.prehistory is not None):
             raise ValueError("historical recall requires its separate prehistory scope")
+        if self.context_only and (
+            self.prehistory is None or self.source_window_start is not None
+            or not self.source_item_ref.startswith("prehistory-record:")
+            or ":window:" in self.source_item_ref or len(self.text) > 1024
+        ):
+            raise ValueError("context-only recall requires one bounded prehistory record")
         if self.prehistory is not None:
             scope = self.prehistory
             if (
@@ -488,6 +495,7 @@ class RecallSearchDiagnostic(FrozenModel):
     ranked_scores_bp: tuple[int, ...]
     reading_budget_skips: tuple[str, ...] = ()
     result_budget_skips: tuple[str, ...] = ()
+    context_document_ids: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def stages_are_ordered_subsets(self) -> Self:
@@ -497,10 +505,12 @@ class RecallSearchDiagnostic(FrozenModel):
             or len(set(self.matched_candidate_ids)) != len(self.matched_candidate_ids)
             or len(set(self.ranked_candidate_ids)) != len(self.ranked_candidate_ids)
             or len(set(self.selected_document_ids)) != len(self.selected_document_ids)
+            or len(set(self.context_document_ids)) != len(self.context_document_ids)
             or not set(self.eligible_document_ids) <= set(self.corpus_document_ids)
             or not set(self.matched_candidate_ids) <= set(self.eligible_document_ids)
             or set(self.ranked_candidate_ids) != set(self.matched_candidate_ids)
-            or not set(self.selected_document_ids) <= set(self.ranked_candidate_ids)
+            or not set(self.selected_document_ids) <= (set(self.ranked_candidate_ids) | set(self.context_document_ids))
+            or not set(self.context_document_ids) <= (set(self.selected_document_ids) & set(self.eligible_document_ids))
             or len(self.ranked_scores_bp) != len(self.ranked_candidate_ids)
             or any(not 0 <= score <= 10_000 for score in self.ranked_scores_bp)
             or not set(self.reading_budget_skips) <= set(self.ranked_candidate_ids)
@@ -567,15 +577,24 @@ class RecallIndex(Protocol):
 
 
 class _RecallIndexCore:
-    def __init__(self, *, embedding: RecallEmbedding) -> None:
+    def __init__(self, *, embedding: RecallEmbedding, policy_version: str | None = None) -> None:
         if not embedding.version or not 1 <= embedding.dimensions <= 4_096:
             raise ValueError("recall embedding identity or dimensions are invalid")
         self._embedding = embedding
         self._dense_match_threshold_bp = int(getattr(embedding, "dense_match_threshold_bp", 5_500))
         if not 0 <= self._dense_match_threshold_bp <= 10_000:
             raise ValueError("recall dense match threshold is invalid")
-        self._index_version = f"{RECALL_INDEX_POLICY_VERSION}+embedding:{embedding.version}"
+        policy_version = RECALL_INDEX_POLICY_VERSION if policy_version is None else policy_version
+        if not isinstance(policy_version, str) or policy_version not in {
+            RECALL_INDEX_POLICY_VERSION, "world-v2-recall-index.hybrid.14",
+        }:
+            raise ValueError("unknown recall search policy")
+        self._index_version = f"{policy_version}+embedding:{embedding.version}"
         self._last_rebuild_embedding_failure: str | None = None
+
+    @property
+    def policy_version(self) -> str:
+        return self._index_version.partition("+embedding:")[0]
 
     def _materialize(
         self,
@@ -588,19 +607,22 @@ class _RecallIndexCore:
             raise ValueError("recall document identity is duplicated")
         if any(item.source_world_revision > cursor.world_revision for item in ordered):
             raise ValueError("recall document is newer than the index cursor")
+        searchable = tuple(item for item in ordered if not item.context_only)
         try:
-            vectors = self._embedding.embed(
-                tuple(item.retrieval_text or item.text for item in ordered)
-            )
+            vectors = (self._embedding.embed(
+                tuple(item.retrieval_text or item.text for item in searchable)
+            ) if searchable else ())
         except RecallEmbeddingUnavailable as exc:
-            vectors = tuple((0.0,) * self._embedding.dimensions for _ in ordered)
+            vectors = tuple((0.0,) * self._embedding.dimensions for _ in searchable)
             self._last_rebuild_embedding_failure = str(exc)[:128] or "embedding_unavailable"
         else:
             self._last_rebuild_embedding_failure = None
-        if len(vectors) != len(ordered):
+        if len(vectors) != len(searchable):
             raise ValueError("recall embedding count does not match documents")
         normalized = tuple(self._normalize_vector(value) for value in vectors)
-        return tuple(zip(ordered, normalized, strict=True))
+        by_id = {item.document_id: vector for item, vector in zip(searchable, normalized, strict=True)}
+        empty_vector = (0.0,) * self._embedding.dimensions
+        return tuple((item, by_id.get(item.document_id, empty_vector)) for item in ordered)
 
     def _search(
         self,
@@ -630,11 +652,12 @@ class _RecallIndexCore:
                               if self._eligible(document, query))
         lexical_scores = _corpus_lexical_scores(lexical_text, tuple(
             _lexical_features(document.retrieval_text or document.text)
-            for document, _ in eligible_rows
+            for document, _ in eligible_rows if not document.context_only
         ))
         ranked: list[tuple[int, str, RecallHit]] = []
         matched_candidate_ids: list[str] = []
-        for (document, vector), lexical in zip(eligible_rows, lexical_scores, strict=True):
+        search_rows = tuple(row for row in eligible_rows if not row[0].context_only)
+        for (document, vector), lexical in zip(search_rows, lexical_scores, strict=True):
             dense = max(0, min(10_000, round(_cosine(query_vector, vector) * 10_000)))
             structured = _structured_score(query.link_refs, document.link_refs)
             temporal = _temporal_score(query, document)
@@ -761,6 +784,7 @@ class _RecallIndexCore:
             "world-v2-recall-index.hybrid.11",
             "world-v2-recall-index.hybrid.12",
             "world-v2-recall-index.hybrid.13",
+            "world-v2-recall-index.hybrid.14",
         }:
             from .life_recall_windows import attempt_family
             families = {hit.document.document_id: attempt_family(hit.document)
@@ -814,7 +838,8 @@ class _RecallIndexCore:
                 covered_terms.update(terms)
         hits = tuple(selected)
         if (query.include_historical
-                and self._index_version.partition("+embedding:")[0] == "world-v2-recall-index.hybrid.13"):
+                and self._index_version.partition("+embedding:")[0] in {
+                    "world-v2-recall-index.hybrid.13", "world-v2-recall-index.hybrid.14"}):
             hits = self._add_linked_impression_context(
                 hits=hits, eligible_rows=eligible_rows, query=query,
             )
@@ -824,6 +849,10 @@ class _RecallIndexCore:
                 ranked=ranked,
                 eligible_rows=eligible_rows,
                 query=query,
+            )
+        if self._index_version.partition("+embedding:")[0] == "world-v2-recall-index.hybrid.14":
+            hits = self._with_prehistory_parent_context(
+                hits=hits, eligible_rows=eligible_rows,
             )
         if diagnostics is not None:
             diagnostics.append(RecallSearchDiagnostic(
@@ -835,6 +864,10 @@ class _RecallIndexCore:
                 ranked_scores_bp=ranked_scores_bp,
                 reading_budget_skips=tuple(reading_budget_skips),
                 result_budget_skips=tuple(result_budget_skips),
+                context_document_ids=tuple(
+                    hit.document.document_id for hit in hits
+                    if hit.document.document_id not in ranked_candidate_ids
+                ),
             ))
         query_hash = recall_query_hash(
             index_version=self._index_version,
@@ -937,6 +970,44 @@ class _RecallIndexCore:
         return tuple(expanded) if expanded else hits
 
     @staticmethod
+    def _with_prehistory_parent_context(*, hits, eligible_rows):
+        """Keep search order/scores; use an eligible complete record if it fits."""
+        expanded = list(hits)
+        selected_ids = {hit.document.document_id for hit in hits}
+        # The already-qualified linked-story result can use its existing
+        # larger envelope. Parent substitution inherits that envelope; it
+        # never upgrades an ordinary result into a story-budget request.
+        reading_size = len(_canonical_json({"items": [interior_recall_item(
+            hit.document, index_version="world-v2-recall-index.hybrid.14",
+        ) for hit in hits]}).encode())
+        result_size = len(_canonical_json([hit.model_dump(mode="json") for hit in hits]).encode())
+        story_budget = reading_size > RECALL_MODEL_READING_MAX_BYTES or result_size > RECALL_RESULT_MAX_BYTES
+        reading_budget = RECALL_STORY_MODEL_READING_MAX_BYTES if story_budget else RECALL_MODEL_READING_MAX_BYTES
+        result_budget = RECALL_STORY_RESULT_MAX_BYTES if story_budget else RECALL_RESULT_MAX_BYTES
+        for index, hit in enumerate(hits):
+            child = hit.document
+            if child.prehistory is None or child.source_window_start is None:
+                continue
+            parent = next((d for d, _ in eligible_rows if d.context_only
+                and d.prehistory == child.prehistory and d.actor_ref == child.actor_ref
+                and d.source_bindings == child.source_bindings
+                and d.text[child.source_window_start:child.source_window_start + len(child.text)] == child.text), None)
+            if parent is None:
+                continue
+            if parent.document_id in selected_ids:
+                continue
+            replacement = hit.model_copy(update={"document": parent})
+            candidate = (*expanded[:index], replacement, *expanded[index + 1:])
+            if (len(_canonical_json({"items": [interior_recall_item(
+                item.document, index_version="world-v2-recall-index.hybrid.14",
+            ) for item in candidate]}).encode()) > reading_budget
+                or len(_canonical_json([item.model_dump(mode="json") for item in candidate]).encode()) > result_budget):
+                continue
+            expanded[index] = replacement
+            selected_ids.add(parent.document_id)
+        return tuple(expanded)
+
+    @staticmethod
     def _add_linked_prehistory_context(
         *,
         hits: tuple[RecallHit, ...],
@@ -967,6 +1038,8 @@ class _RecallIndexCore:
         documents_by_record: dict[str, list[RecallDocument]] = {}
         neighbor_ids: dict[str, set[str]] = {}
         for document, _vector in eligible_rows:
+            if document.context_only:
+                continue
             current = record_ref(document)
             if current is None:
                 continue
@@ -1171,6 +1244,10 @@ class RecallIndexSnapshot:
         self._rows = rows
 
     @property
+    def policy_version(self) -> str:
+        return self._core.policy_version
+
+    @property
     def cursor(self) -> RecallCursor:
         return self._cursor
 
@@ -1202,8 +1279,8 @@ class RecallIndexSnapshot:
 
 
 class InMemoryRecallIndex(_RecallIndexCore):
-    def __init__(self, *, embedding: RecallEmbedding) -> None:
-        super().__init__(embedding=embedding)
+    def __init__(self, *, embedding: RecallEmbedding, policy_version: str | None = None) -> None:
+        super().__init__(embedding=embedding, policy_version=policy_version)
         self._cursor: RecallCursor | None = None
         self._rows: tuple[tuple[RecallDocument, tuple[float, ...]], ...] = ()
 
@@ -1253,8 +1330,9 @@ class SQLiteRecallIndex(_RecallIndexCore):
         path: str | Path,
         world_id: str,
         embedding: RecallEmbedding,
+        policy_version: str | None = None,
     ) -> None:
-        super().__init__(embedding=embedding)
+        super().__init__(embedding=embedding, policy_version=policy_version)
         if not world_id:
             raise ValueError("SQLite recall index requires a world")
         self._world_id = world_id

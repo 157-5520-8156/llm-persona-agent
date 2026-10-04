@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import pytest
 
 from companion_daemon.world_v2.character_prehistory import (
-    PrehistoryReview,
     ReviewedPrehistoryArchive,
     digest,
 )
@@ -29,7 +29,6 @@ from test_prehistory_memory_source import (
     ACTOR,
     START,
     _choice,
-    _install,
     _read,
     _corpus,
     started_ledger,
@@ -68,6 +67,78 @@ def _long_reviewed_archive():
         "review_artifact_hash": "e" * 64,
     })
     return ReviewedPrehistoryArchive(document=document, review=review), statement
+
+
+@pytest.mark.parametrize("boundary", ["available", "private", "conflicting", "budget"])
+def test_parent_source_context_keeps_direct_rank_and_respects_boundaries(tmp_path, monkeypatch, boundary):
+    class LexicalOnly:
+        version = "fixture-lexical-only.1"
+        dimensions = 3
+
+        def __init__(self):
+            self.calls = []
+
+        def embed(self, texts):
+            self.calls.append(texts)
+            return tuple((0.0, 0.0, 0.0) for _ in texts)
+
+    ledger = started_ledger(tmp_path / "adjacent.sqlite")
+    archive, statement = _long_reviewed_archive()
+    statement = statement[:650]
+    record = archive.document.records[0].model_copy(update={"statement": statement})
+    document = archive.document.model_copy(update={"records": (record,)})
+    archive = ReviewedPrehistoryArchive(document=document, review=archive.review.model_copy(
+        update={"manifest_hash": digest(document.manifest())}))
+    try:
+        row, = PrehistoryArchiveRuntime(ledger=ledger, owner_actor_ref=ACTOR).import_reviewed(archive, created_at=START)
+        source = prehistory_memory_binding(row)
+        pending = _choice(ledger, source)
+        _choice(ledger, source, before=pending, status="active")
+        corpus = _corpus(ledger, _read(ledger), parent_context=True)
+        if boundary == "private":
+            corpus = tuple(d.model_copy(update={"privacy_class": "withhold"})
+                           if d.context_only else d for d in corpus)
+        if boundary == "conflicting":
+            corpus = tuple(d.model_copy(update={"text": "不" * 64 + d.text[64:]})
+                           if d.context_only else d for d in corpus)
+        p = ledger.project()
+        cursor = RecallCursor(world_revision=p.world_revision, deliberation_revision=p.deliberation_revision,
+                              ledger_sequence=p.ledger_sequence)
+        query = RecallQuery(query_text="十五岁", cursor=cursor, actor_ref=ACTOR,
+            subject_refs=(ACTOR,), viewer_privacy_ceiling="private", at=START,
+            accessibility_seed="fixture:adjacent", limit=1)
+        old_embedding, new_embedding = LexicalOnly(), LexicalOnly()
+        old = InMemoryRecallIndex(embedding=old_embedding)
+        new = InMemoryRecallIndex(embedding=new_embedding, policy_version="world-v2-recall-index.hybrid.14")
+        old.rebuild(cursor=cursor, documents=corpus)
+        new.rebuild(cursor=cursor, documents=corpus)
+        previous = old.search(query)
+        if boundary == "budget":
+            import companion_daemon.world_v2.recall_index as module
+            from companion_daemon.world_v2.recall_model_reading import interior_recall_item
+
+            exact_size = len(module._canonical_json({"items": [interior_recall_item(
+                hit.document, index_version=new._index_version,
+            ) for hit in previous.hits]}).encode())
+            monkeypatch.setattr(module, "RECALL_MODEL_READING_MAX_BYTES", exact_size)
+        result, diagnostic = new.snapshot().search_with_diagnostics(query)
+        assert len(previous.hits) == 1
+        parent_texts = {d.retrieval_text or d.text for d in corpus if d.context_only}
+        assert all(not parent_texts.intersection(call) for call in new_embedding.calls)
+        assert len(result.hits) == 1
+        assert result.hits[0].model_dump(exclude={"document"}) == previous.hits[0].model_dump(exclude={"document"})
+        if boundary == "available":
+            neighbor = result.hits[0].document
+            assert neighbor.source_window_start is None and neighbor.context_only
+            assert neighbor.text == statement
+            assert neighbor.prehistory == result.hits[0].document.prehistory
+            assert neighbor.source_bindings == result.hits[0].document.source_bindings
+            assert neighbor.document_id in diagnostic.context_document_ids
+        else:
+            assert result.hits == previous.hits
+        assert not new.search(query.model_copy(update={"actor_ref": "actor:other", "subject_refs": ("actor:other",)})).hits
+    finally:
+        ledger.close()
 
 
 def test_retained_long_prehistory_is_windowed_only_in_the_local_recall_corpus(tmp_path):

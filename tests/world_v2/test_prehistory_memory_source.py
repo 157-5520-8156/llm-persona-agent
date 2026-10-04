@@ -79,7 +79,7 @@ def _read(ledger, *, candidates=None, actor_ref=ACTOR, privacy="private", limit=
     )
 
 
-def _corpus(ledger, retrieval, *, omitted=(), actor_ref=ACTOR):
+def _corpus(ledger, retrieval, *, omitted=(), actor_ref=ACTOR, parent_context=False):
     projection = ledger.project()
     refs = required_recall_authority_refs(RecallCorpusSources(active_memory_candidates=retrieval.items))
     sources = RecallCorpusSources(
@@ -89,7 +89,7 @@ def _corpus(ledger, retrieval, *, omitted=(), actor_ref=ACTOR):
             source_world_revision=item.world_revision, immutable_hash=item.payload_hash,
         ) for item in projection.committed_world_event_refs if item.event_id in refs and item.event_id not in omitted),
     )
-    return RecallCorpusCompiler().compile(
+    return RecallCorpusCompiler(prehistory_parent_context=parent_context).compile(
         cursor=RecallCursor(world_revision=projection.world_revision,
                             deliberation_revision=projection.deliberation_revision,
                             ledger_sequence=projection.ledger_sequence),

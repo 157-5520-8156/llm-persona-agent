@@ -181,6 +181,13 @@ class RecallCorpusCompiler:
 
     VERSION = "world-v2-recall-corpus.12"
 
+    def __init__(self, *, prehistory_parent_context: bool = False) -> None:
+        if type(prehistory_parent_context) is not bool:
+            raise ValueError("prehistory parent context flag must be boolean")
+        self._prehistory_parent_context = prehistory_parent_context
+        if prehistory_parent_context:
+            self.VERSION = "world-v2-recall-corpus.13-parent-context"
+
     def compile(
         self,
         *,
@@ -419,11 +426,13 @@ class RecallCorpusCompiler:
                     full_text = source_record.statement
                 windowed = len(full_text) > len(excerpt.text)
                 starts = range(0, len(full_text), 416) if windowed else (0,)
+                if self._prehistory_parent_context and windowed and len(full_text) <= 1024:
+                    starts = (*starts, None)
                 for start in starts:
-                    text = full_text[start : start + 480]
+                    text = full_text if start is None else full_text[start : start + 480]
                     if not text:
                         continue
-                    window_ref = f"{excerpt.source_id}:window:{start}" if windowed else excerpt.source_id
+                    window_ref = f"{excerpt.source_id}:window:{start}" if windowed and start is not None else excerpt.source_id
                     document = self._document(
                         memory_kind="episodic", source_item_ref=window_ref,
                         source_slice="active_memory_candidates", bindings=bindings,
@@ -440,6 +449,7 @@ class RecallCorpusCompiler:
                         privacy_class=candidate.privacy_ceiling, epistemic_scope="character_prehistory",
                         prehistory=historical,
                         source_window_start=start if windowed else None,
+                        context_only=start is None,
                     )
                     previous = historical_documents.get(document.document_id)
                     if previous is not None:
@@ -951,6 +961,7 @@ class RecallCorpusCompiler:
         accepted_fact: FactRecallItem | HistoricalFactRecallItem | None = None,
         settled_life: WorldLifeContextItem | None = None,
         source_window_start: int | None = None,
+        context_only: bool = False,
     ) -> RecallDocument:
         canonical = _canonical_bindings(bindings)
         return RecallDocument(
@@ -965,6 +976,7 @@ class RecallCorpusCompiler:
             source_slice=source_slice,
             source_refs=tuple(sorted({item.ref for item in canonical})),
             source_bindings=canonical,
+            context_only=context_only,
             source_world_revision=max(item.source_world_revision for item in canonical),
             # Recall exposes a source-bound excerpt, not an unbounded payload
             # archive.  The immutable binding still points to the complete

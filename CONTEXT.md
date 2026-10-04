@@ -1,3 +1,17 @@
+Opt-in parent-record reading (2026-10-04): `docs/audits/parent-record-reading-prototype-2026-10-04.md`.
+Default STILL hybrid13. Explicit policy14 uses complete <=1024char actor/source-verified parent
+records as context_only Corpus docs, NEVER ranking or embedding; replaces selected child in place
+if same source/actor/text and ORIGINAL normal/story budget allows. No count/budget/authority increase.
+41realBGEqueries/37gold unchanged .9459459, allsourceorder same; fixedbirthday parent618 complete.
+124tests legacy/source +5final scoped embed assertions, Ruff/diff pass. Deleted no-benefit adjacentappend.
+Two realcapture trials9.282/9.222s,1call/.0227 and1call/.0116; ACTUAL input still480 window,
+even second answersfathercorrectly. NOT mechanism/quality/cost/5s pass; first inventsmotherdirective.
+No-provider realstage diagnostic DOES replace f09 480->618 in5slots; budget/seed/context variation
+stillnotqualified. NEXT inspect saved actual foreground source traces/budget BEFORE morepaidrepeat.
+Evidence private adjacent-recall-context, parent-recall-runtime[-final], parent-recall-offline-stage.
+Main exec54594 stilllive,dayalready>5CNY; finishsamebaseline then world-author prefixday contrast.
+Goalactive/nodeploy; do NOT enableparentdefault fromfixedquery or answerwithoutpresentationproof.
+
 Streamed state hash/legacy gate/birthday reading (2026-10-04): `docs/audits/streamed-state-hash-and-birthday-source-completeness-2026-10-04.md`.
 RETAIN hash.update streaming of EXACT same canonical material. Actual61.62MB state,
 35.5MB model audits; old55-58ms->28.4ms/hash,temporary185MB->1791bytes,same SHA.

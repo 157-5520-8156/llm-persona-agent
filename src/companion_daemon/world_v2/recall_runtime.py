@@ -355,7 +355,9 @@ class RecallCoordinator:
         semantic_embedding: RecallEmbedding | None = None,
     ) -> None:
         self._index = index
-        self._corpus = corpus or RecallCorpusCompiler()
+        self._corpus = corpus or RecallCorpusCompiler(prehistory_parent_context=(
+            getattr(index, "policy_version", None) == "world-v2-recall-index.hybrid.14"
+        ))
         self._semantic_embedding = semantic_embedding
         self._closed = False
         self._active_recall_guard = threading.Lock()
@@ -1575,7 +1577,7 @@ class RecallCoordinator:
             documents = context.snapshot.documents
             document_texts = tuple(
                 document.retrieval_text or document.text
-                for document in documents
+                for document in documents if not document.context_only
             )
             focus = (request.lexical_text if focused_attention and request.lexical_text
                      and request.lexical_text != request.query_text else None)
@@ -1602,7 +1604,9 @@ class RecallCoordinator:
                     texts=batch_texts,
                     vectors=batch_vectors,
                     focused_query=focused_query,
-                )
+                ),
+                policy_version=("world-v2-recall-index.hybrid.14"
+                    if context.snapshot.policy_version == "world-v2-recall-index.hybrid.14" else None),
             )
             semantic_index.rebuild(
                 cursor=context.snapshot.cursor,

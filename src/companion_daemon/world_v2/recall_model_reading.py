@@ -14,11 +14,13 @@ _ATTRIBUTED_READING_POLICIES = frozenset({
     "world-v2-recall-index.hybrid.8", "world-v2-recall-index.hybrid.9",
     "world-v2-recall-index.hybrid.10", "world-v2-recall-index.hybrid.11",
     "world-v2-recall-index.hybrid.12", "world-v2-recall-index.hybrid.13",
+    "world-v2-recall-index.hybrid.14",
 })
 _FACT_READING_POLICIES = frozenset({
     "world-v2-recall-index.hybrid.9", "world-v2-recall-index.hybrid.10",
     "world-v2-recall-index.hybrid.11", "world-v2-recall-index.hybrid.12",
     "world-v2-recall-index.hybrid.13",
+    "world-v2-recall-index.hybrid.14",
 })
 
 
@@ -26,6 +28,7 @@ def supports_life_reading(index_version: str) -> bool:
     return index_version.partition("+embedding:")[0] in {
         "world-v2-recall-index.hybrid.10", "world-v2-recall-index.hybrid.11",
         "world-v2-recall-index.hybrid.12", "world-v2-recall-index.hybrid.13",
+        "world-v2-recall-index.hybrid.14",
     }
 
 
@@ -88,7 +91,8 @@ def interior_recall_item(
             **({"interpretation_scope": document.interpretation_scope}
                if document.interpretation_scope is not None else {})}
            if document.authority == "defeasible_interpretation"
-           and index_version.partition("+embedding:")[0] == "world-v2-recall-index.hybrid.13"
+           and index_version.partition("+embedding:")[0] in {
+               "world-v2-recall-index.hybrid.13", "world-v2-recall-index.hybrid.14"}
            else {}),
         **({"subject_refs": list(document.subject_refs)} if attributed else {}),
         **({"speaker_ref": document.speaker_ref}
@@ -100,6 +104,7 @@ def interior_recall_item(
            if document.source_window_start is not None and index_version.partition("+embedding:")[0] in {
                "world-v2-recall-index.hybrid.11", "world-v2-recall-index.hybrid.12",
                "world-v2-recall-index.hybrid.13",
+               "world-v2-recall-index.hybrid.14",
            } else {}),
         **({"settled_life": {
             "settled_at": life.settled_at.isoformat(),
