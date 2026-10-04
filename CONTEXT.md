@@ -1,3 +1,14 @@
+Recall capability clarification contrast (2026-10-04): `docs/audits/recall-capability-explanation-2026-10-04.md`.
+Three exact captured inputs old/new neutral SYSTEM capability explanation,6paidV4.1/.0573CNY.
+Both old/new choose Recall for birthday in initial-choice probe: NOT proof old prompt lacked ability.
+Full copies old1call/.0098first5.951s vs candidate1call/.023first5.710s; both no completed memory
+answer/no Recall; candidate only thinking text. DO NOT promote extra prompt or repeat same probe.
+Original immutable audit presented initial PREFETCH embedding_status=used/BGE balanced-attention,
+4hits no birthday. For this run NOT a join-localfallback miss; prior elapsed-vs-join inference weak.
+Concrete today/birthday habits withworld_claims=[] still need source validation, not quality passes.
+All8paidcalls/~.0901 retained; no daily-load/QQ/deployment qualification. NEXT source/temporal
+material distinction and empty claim actual closure path, whole-turn stages/day cost. Goal active.
+
 Recall diversity follow-up (2026-10-04): `docs/audits/recall-diversity-candidate-rejection-2026-10-04.md`.
 Two private IDF/cue-diversity variants BOTH rejected:41queries/37gold .94595->.90991,
 regressQ14/Q32, no improvements. Real open birthday only improves when focused query changed;
