@@ -15,6 +15,18 @@ from companion_daemon.world_v2.qq_face_render_catalog import (
 FACE_HASH = "sha256:" + "b" * 64
 
 
+def test_text_only_observation_needs_no_render_catalog(monkeypatch):
+    import companion_daemon.world_v2.qq_face_render_catalog as module
+
+    def unavailable(*args, **kwargs):
+        raise RuntimeError("catalog unavailable")
+
+    monkeypatch.setattr(module, "load_face_render_catalog", unavailable)
+    assert compile_inbound_surfaces(reaction_refs=()) == ()
+    with pytest.raises(RuntimeError, match="catalog unavailable"):
+        compile_inbound_surfaces(reaction_refs=("qq-face:74",))
+
+
 def test_catalog_covers_the_production_sun_face() -> None:
     catalog_id, entries = load_face_render_catalog()
     assert catalog_id == CATALOG_ID

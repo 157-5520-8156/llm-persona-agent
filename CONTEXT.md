@@ -1,3 +1,16 @@
+Dialogue recovery/latency accounting (2026-10-04): `docs/audits/dialogue-recovery-and-latency-accounting-2026-10-04.md`.
+Audit prefix wrapper forwards optional action-addressed receipt reader with prefix guard;
+legacy None fallback unchanged. Fresh-ledger dialogue old/new255/154 and194/160ms,
+253fullrows/121acknowledgements exact. Warm20/18ms, NOT100ms ordinarychat gain.
+No surface refs ->sameemptytuple without unusedfaceYAML; actual refs still requirecatalog.
+PinnedTurn logs NOW true context/model/record duration plus cumulative elapsed; old phase values
+were cumulative, e.g record6.27 minusmodel5.97 ~=.30s, NOT6seconds standalone record work.
+Future daily runs save native latency-NNN perstep; current process startup predates these edits.
+84tests + Ruff/diff pass. Reject validator leaf-filter gainonly~1.3ms/no productionchange.
+One diagnostic realchat failed nestedcProfile atacceptance,1bill~.0093644 retained, NOTrole silence
+or latencyqualified. Preserve raw evidence; no repeat paid diagnostic without newhypothesis.
+Exec54594 day RUNNING; eight observedchat firstall>5s, daycost unfinished/goalactive/nodeploy.
+
 Bounded memory source reading (2026-10-04): `docs/audits/bounded-memory-source-reading-2026-10-04.md`.
 RETAIN same balanced eight-item selection using progressive source reads; only unreadable candidates
 removed per unchanged compiler, per-pinned-job readings reused locally. Same final eight complete

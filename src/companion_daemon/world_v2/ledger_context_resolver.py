@@ -1492,6 +1492,15 @@ class _AuditRecoveryLedger:
         self._require_prefix(cursor)
         return self._ledger.observation_events_at(locators, cursor=cursor)
 
+    def execution_receipt_events_for_actions(self, *, action_ids, cursor: ProjectionCursor):
+        self._require_prefix(cursor)
+        reader = getattr(self._ledger, "execution_receipt_events_for_actions", None)
+        # The optional fast reader must retain the audited prefix. Adapters
+        # without it keep RecentDialogueCompiler's verified lookup fallback.
+        if not callable(reader):
+            return None
+        return reader(action_ids=action_ids, cursor=cursor)
+
     def recent_fact_transition_events(self, *, subject_refs, cursor: ProjectionCursor, limit):
         self._require_prefix(cursor)
         return self._ledger.recent_fact_transition_events(

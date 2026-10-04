@@ -181,6 +181,8 @@ def compile_inbound_surfaces(
 ) -> tuple[InboundSurfaceFact, ...]:
     """Attach catalog/provider labels to opaque refs. Unmatched refs stay honest."""
 
+    if not reaction_refs and not sticker_refs:
+        return ()
     catalog_id, _entries = load_face_render_catalog()
     surfaces: list[InboundSurfaceFact] = []
     for ref in reaction_refs:

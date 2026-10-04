@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from collections import Counter
+from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
@@ -271,6 +272,14 @@ async def run(args):
                    "cost_cny": sum(x["cost_cny"] for x in rows), "calls": len(rows)}
             progress.append(row)
             dump(args.output / "progress.json", progress)
+            # Preserve the application's own monotonic stage measurements.
+            # Virtual Clock timestamps and whole capture latency cannot tell
+            # context preparation from provider, source closure, or dispatch.
+            # Per-step snapshots avoid losing early turns from the recorder's
+            # bounded in-memory sample window during a complete-day run.
+            dump(args.output / f"latency-{index:03d}.json", [
+                asdict(sample) for sample in session.host.latency_samples()
+            ])
             print(json.dumps({k: row[k] for k in ("index", "kind", "cost_cny", "calls")}), flush=True)
             if row["cost_cny"] >= 15:
                 raise RuntimeError("diagnostic spending guard reached; benchmark failed")

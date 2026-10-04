@@ -294,11 +294,28 @@ async def test_later_budget_and_model_audits_cannot_enter_recovered_context_or_r
         resolver = compiler._resolver.for_audit_recovery(case.query)
         reader = resolver._ledger
         assert not hasattr(reader, "commit_at_cursor") and not hasattr(reader, "commit")
+        action_ids = frozenset(a.action_id for a in state.actions)
+        assert reader.execution_receipt_events_for_actions(
+            action_ids=action_ids, cursor=case.query.cursor,
+        ) == case.ledger.execution_receipt_events_for_actions(
+            action_ids=action_ids, cursor=case.query.cursor,
+        )
+        from companion_daemon.world_v2.ledger_context_resolver import _AuditRecoveryLedger
+        legacy_reader = _AuditRecoveryLedger(SimpleNamespace(), reader.project())
+        assert legacy_reader.execution_receipt_events_for_actions(
+            action_ids=action_ids, cursor=case.query.cursor,
+        ) is None
         assert reader.lookup_event_commit(budget.event_id) is None
         assert reader.lookup_event_commit(later_audit.event_ref) is None
         with pytest.raises(ValueError, match="audited prefix"):
             reader.project_at(query_from_projection(case.ledger.project(), actor_ref=OWNER,
                                                    trigger_ref=case.wake.event_id).cursor)
+        for receipt_reader in (reader, legacy_reader):
+            with pytest.raises(ValueError, match="audited prefix"):
+                receipt_reader.execution_receipt_events_for_actions(
+                    action_ids=action_ids, cursor=query_from_projection(
+                        case.ledger.project(), actor_ref=OWNER, trigger_ref=case.wake.event_id).cursor,
+                )
         case.provider.reject_new_calls = True
         result = await _advance(case.runtime, case.wake)
         assert result.status == "technical_failure"

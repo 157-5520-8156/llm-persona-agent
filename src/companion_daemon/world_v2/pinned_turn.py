@@ -489,6 +489,7 @@ class PinnedTurnCompiler:
                 expression_attempt_id=expression_attempt_id,
                 failure_code="interactive_budget_exhausted",
             )
+        context_started = time.perf_counter()
         try:
             query = query_from_projection(
                 projection,
@@ -566,8 +567,9 @@ class PinnedTurnCompiler:
             await self._raise_if_stale(cursor, exc)
             raise
         _LOG.warning(
-            "pinned turn phases trace=%s phase=context_ms value=%.1f",
+            "pinned turn phases trace=%s phase=context_ms value=%.1f elapsed_since_start_ms=%.1f",
             observation.trace_id,
+            (time.perf_counter() - context_started) * 1000,
             (time.perf_counter() - started) * 1000,
         )
         # Keep an operator-readable answer to the most important production
@@ -631,17 +633,21 @@ class PinnedTurnCompiler:
             deliberate_kwargs["affect_target_bounds"] = lower_bounds_from_projection(
                 projection
             )
+        model_started = time.perf_counter()
         result = await self._deliberation.deliberate(capsule, **deliberate_kwargs)
         _LOG.warning(
-            "pinned turn phases trace=%s phase=model_ms value=%.1f",
+            "pinned turn phases trace=%s phase=model_ms value=%.1f elapsed_since_start_ms=%.1f",
             observation.trace_id,
+            (time.perf_counter() - model_started) * 1000,
             (time.perf_counter() - started) * 1000,
         )
         try:
+            record_started = time.perf_counter()
             recorded = await self._record(result, context)
             _LOG.warning(
-                "pinned turn phases trace=%s phase=record_ms value=%.1f",
+                "pinned turn phases trace=%s phase=record_ms value=%.1f elapsed_since_start_ms=%.1f",
                 observation.trace_id,
+                (time.perf_counter() - record_started) * 1000,
                 (time.perf_counter() - started) * 1000,
             )
             return recorded
