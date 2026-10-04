@@ -1,3 +1,12 @@
+Late-day understanding read (2026-10-04): `docs/audits/late-day-understanding-read-localization-2026-10-04.md`.
+New actualbackup/noLLM read cold.3325/hot.1142s, active3/pending49; prof.161s,
+source_read.054/model_validate.045/JSONencode.034 nested, NOTseconds-long dominantcause.
+No new cache/trim/permissionchange. Script failures attr corrected to actual suppressions,
+original error retained/no bills. 45initial chats authorized/p50first7.593s/only1under5,
+notQQ/contentqualification. Both live sessions54594/20019 verified, no timeoutrestart.
+Baseline nearingfinalcommands; wait exact terminal and audit whole50 before candidatecomparison.
+Goalactive/nodeploy; completecost/ordinary5s/sourcequality remain unresolved.
+
 Full-day input/cache diagnosis (2026-10-04): `docs/audits/daily-cost-input-cache-sensitivity-2026-10-04.md`.
 New private sensitivity on same actual rows:partial6.1686CNY vs theoretical ALLinputcached1.04947,
 outputonly.895252. NOT savings/day extrapolation; mostexpense misses on inputs, fullcache unrealistic.
