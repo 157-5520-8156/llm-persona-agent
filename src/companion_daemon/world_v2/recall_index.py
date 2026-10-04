@@ -486,6 +486,8 @@ class RecallSearchDiagnostic(FrozenModel):
     ranked_candidate_ids: tuple[str, ...]
     selected_document_ids: tuple[str, ...] = Field(max_length=12)
     ranked_scores_bp: tuple[int, ...]
+    reading_budget_skips: tuple[str, ...] = ()
+    result_budget_skips: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def stages_are_ordered_subsets(self) -> Self:
@@ -501,6 +503,8 @@ class RecallSearchDiagnostic(FrozenModel):
             or not set(self.selected_document_ids) <= set(self.ranked_candidate_ids)
             or len(self.ranked_scores_bp) != len(self.ranked_candidate_ids)
             or any(not 0 <= score <= 10_000 for score in self.ranked_scores_bp)
+            or not set(self.reading_budget_skips) <= set(self.ranked_candidate_ids)
+            or not set(self.result_budget_skips) <= set(self.ranked_candidate_ids)
         ):
             raise ValueError("recall diagnostic stages are inconsistent")
         return self
@@ -689,6 +693,8 @@ class _RecallIndexCore:
         ranked_candidate_ids = tuple(document_id for _, document_id, _ in ranked)
         ranked_scores_bp = tuple(score for score, _, _ in ranked)
         selected: list[RecallHit] = []
+        reading_budget_skips: list[str] = []
+        result_budget_skips: list[str] = []
 
         def add_if_within_budget(hit: RecallHit) -> bool:
             if len(selected) >= query.limit:
@@ -698,6 +704,8 @@ class _RecallIndexCore:
                 interior_recall_item(item.document, index_version=self._index_version)
                 for item in candidate
             ]}).encode("utf-8")) > RECALL_MODEL_READING_MAX_BYTES:
+                if diagnostics is not None:
+                    reading_budget_skips.append(hit.document.document_id)
                 return False
             if (
                 len(
@@ -707,6 +715,8 @@ class _RecallIndexCore:
                 )
                 > RECALL_RESULT_MAX_BYTES
             ):
+                if diagnostics is not None:
+                    result_budget_skips.append(hit.document.document_id)
                 return False
             selected.append(hit)
             return True
@@ -823,6 +833,8 @@ class _RecallIndexCore:
                 ranked_candidate_ids=ranked_candidate_ids,
                 selected_document_ids=tuple(hit.document.document_id for hit in hits),
                 ranked_scores_bp=ranked_scores_bp,
+                reading_budget_skips=tuple(reading_budget_skips),
+                result_budget_skips=tuple(result_budget_skips),
             ))
         query_hash = recall_query_hash(
             index_version=self._index_version,

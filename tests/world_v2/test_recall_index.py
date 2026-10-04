@@ -1089,3 +1089,24 @@ def test_paired_carry_cannot_skip_an_intervening_different_trigger_context() -> 
             evaluated_cursor=target,
             trigger_ref="trigger:paired",
         )
+
+
+def test_diagnostic_budget_skips_do_not_change_results_or_audit_hashes():
+    base = _documents()[0]
+    documents = tuple(base.model_copy(update={
+        "document_id": f"recall:budget-diagnostic:{i}",
+        "source_item_ref": f"fact:budget-diagnostic:{i}",
+        "text": "凤凰单丛" * 256,
+    }) for i in range(6))
+    index = InMemoryRecallIndex(embedding=FeatureHashRecallEmbedding())
+    index.rebuild(cursor=CURSOR, documents=documents)
+    query = RecallQuery(query_text="凤凰单丛", cursor=CURSOR, actor_ref="agent:companion",
+                        subject_refs=("agent:companion", "user:primary"),
+                        viewer_privacy_ceiling="private", at=NOW, limit=6,
+                        accessibility_seed="budget-diagnostic")
+    plain = index.search(query)
+    traced, diagnostic = index.snapshot().search_with_diagnostics(query)
+    assert plain == traced
+    assert plain.result_hash == traced.result_hash
+    assert diagnostic.reading_budget_skips or diagnostic.result_budget_skips
+    assert not (set(diagnostic.reading_budget_skips) | set(diagnostic.result_budget_skips)) & set(diagnostic.selected_document_ids)

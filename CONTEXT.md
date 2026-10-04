@@ -1,3 +1,17 @@
+Birthday recall localization (2026-10-04): `docs/audits/birthday-recall-localization-2026-10-04.md`.
+Actual birthday record f09 EXISTS/active/eligible in BGE corpus; initial role had none of that prose.
+recall_available true and tool allows recall, but role chose only thinking text, no actual answer.
+Language-model-disabled BGE probes: gold enters rank2/3/4/7 but absent final4; new diagnostic budget
+skip fields confirm NOT byte-budget exclusion. Selection novelty can displace query relevance;
+auto priority link points at unrelated 2025 reconnection. Probe prefetch1.275s vs inbound join.45s;
+need actual presentation audit before declaring timeout cause in original turn.
+Private MMR(.7) improves one birthday variant but41query suite/37gold regresses .94595->.85811
+mix50 (.87613focused); DO NOT promote MMR or cherry-pick birthday. No paid chat calls this diagnosis.
+Retain only optional RecallSearchDiagnostic reading/result budget skip traces;38tests verify result
+and durable audit hashes unchanged. NEXT relevance/cue coverage balance + automatic link ranking
+(exact question relevance vs total recency/importance score), actual prefetch presentation.
+Goal active; no5s/1.5CNYday/fullQA/QQ/deployment qualification.
+
 Current-projection lookup optimization (2026-10-04): `docs/audits/current-projection-lookup-2026-10-04.md`.
 Retain bounded tuple-identity address indexes (8 collections; build after8reads; <=100krows),
 only frozen scalar fields; current source/hash/actor/privacy/receipt checks still run every read.
