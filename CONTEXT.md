@@ -1,3 +1,17 @@
+World prefix independent review supplement (2026-10-04): `docs/audits/world-prefix-review-qualification-2026-10-04.md`.
+Saved SYSTEM-tail World Author3 drafts now focused3/3 +general3/3 supported/fullparservalid;
+same manifest hash/cursor/execution authority;6 realcalls/.12922704CNY,no newauthorcalls.
+Only3positive savedcases; NOT Runtime/Plan/NPC/QQ/wholequality/daycost qualification. Default remainsoff.
+Daily benchmark exposes --world-author-cache-stable-prefix via open_session ->existing host,
+defaultfalse/provenanceexplicit/booleanchecked; use after exec54594 baseline actually terminates.
+REJECT further tiny productioncodecs: life.review21 USER80-88k, jointstrings4-9%/tables9-10%
+char savings only. No LLMcalls/codepromotion. Do not drop author_snapshot_display when readers
+complete_source_coverage=False; missing-reader evidence must remain distinguishable.
+Current corrected-geoff16chat/~1.8864completedcommandcost already>target; run stilllive.
+Birthday explicitquestion/nextdetail actuallyanswered but8.05/7.99s andsourcecheck stillneeded.
+One ordinary4.986s is NOTwhole5squalification. Goalactive/nodeploy. NEXT finish same fullbaseline,
+verify birthday vsrecord/quality/failures, then fullycomparable prefixcandidate incl native timings.
+
 Dialogue recovery/latency accounting (2026-10-04): `docs/audits/dialogue-recovery-and-latency-accounting-2026-10-04.md`.
 Audit prefix wrapper forwards optional action-addressed receipt reader with prefix guard;
 legacy None fallback unchanged. Fresh-ledger dialogue old/new255/154 and194/160ms,

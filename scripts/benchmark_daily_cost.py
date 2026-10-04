@@ -223,6 +223,7 @@ async def run(args):
         "virtual_delivery_clock": args.virtual_clock,
         "follow_runtime_dues": args.follow_runtime_dues,
         "configured_recall_embedding": args.configured_recall_embedding,
+        "world_author_cache_stable_prefix": args.world_author_cache_stable_prefix,
         "code_sha256": code_hashes,
         "source_clock_variant": "baseline" if args.baseline_source_clock else "fixed",
         "frozen_baseline_hash": frozen_baseline_hash,
@@ -246,6 +247,7 @@ async def run(args):
         session = await open_session(database=database, output_dir=args.output,
                                      enable_media=False, primary_user_id=args.primary_user_id,
                                      journey_clock=journey_clock,
+                                     world_author_cache_stable_prefix=args.world_author_cache_stable_prefix,
                                      use_configured_recall_embedding=args.configured_recall_embedding)
         for index, (target, kind, ordinal, text) in enumerate(commands):
             automatic = []
@@ -340,6 +342,8 @@ def main():
     parser.add_argument("--virtual-clock", action="store_true")
     parser.add_argument("--follow-runtime-dues", action="store_true")
     parser.add_argument("--configured-recall-embedding", action="store_true")
+    parser.add_argument("--world-author-cache-stable-prefix", action="store_true",
+                        help="Opt into the existing isolated World Author prefix candidate; default off")
     parser.add_argument("--chat-scenario", type=Path)
     parser.add_argument("--allow-real-provider", action="store_true", required=True)
     args = parser.parse_args()
