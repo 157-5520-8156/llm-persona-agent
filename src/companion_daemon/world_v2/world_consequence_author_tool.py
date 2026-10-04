@@ -8,6 +8,7 @@ the original stored messages and the unchanged canonical draft parser.
 from __future__ import annotations
 
 from copy import deepcopy
+from functools import lru_cache
 import hashlib
 import json
 
@@ -37,6 +38,21 @@ def world_consequence_author_tool_contract(
 ) -> dict[str, object]:
     if not isinstance(contract_id, str) or contract_id not in _CONTRACTS:
         raise ValueError("unknown World author tool contract")
+    tool_name = _CONTRACTS[contract_id]
+    # Only the static schema is reusable. Provider mode is resolved anew on
+    # every invocation; callers receive an owned copy they may safely bind.
+    tools = deepcopy(_static_author_tools(contract_id))
+    transport = resolve_single_tool_transport(
+        provider=getattr(provider, "authority_origin", provider),
+        tools=tools,
+        tool_choice={"type": "function", "function": {"name": tool_name}},
+        identity={"contract_id": contract_id, "tool_name": tool_name},
+    )
+    return {"tools": tools, "tool_choice": transport.tool_choice}
+
+
+@lru_cache(maxsize=len(_CONTRACTS))
+def _static_author_tools(contract_id: str) -> list[dict[str, object]]:
     tool_name = _CONTRACTS[contract_id]
     propose = life_possibility_output_schema(outcome_contract="world-consequence.2", authorized_attempt_claims=contract_id == CONTRACT)
     if contract_id in {"world-consequence-author-tool.3", "world-consequence-author-tool.4", CONTRACT}:
@@ -82,13 +98,7 @@ def world_consequence_author_tool_contract(
             "parameters": parameters,
         },
     }]
-    transport = resolve_single_tool_transport(
-        provider=getattr(provider, "authority_origin", provider),
-        tools=tools,
-        tool_choice={"type": "function", "function": {"name": tool_name}},
-        identity={"contract_id": contract_id, "tool_name": tool_name},
-    )
-    return {"tools": tools, "tool_choice": transport.tool_choice}
+    return tools
 
 
 def _bind_nonempty_visual_environment(propose: dict[str, object]) -> None:

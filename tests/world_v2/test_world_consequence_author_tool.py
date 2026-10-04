@@ -62,6 +62,29 @@ def _model(respond, *, thinking=False):
     )
 
 
+@pytest.mark.parametrize("contract_id", [f"world-consequence-author-tool.{i}" for i in range(1, 6)])
+def test_static_tool_cache_preserves_fresh_schema_and_provider_changes(contract_id):
+    from companion_daemon.world_v2.world_consequence_author_tool import _static_author_tools
+
+    provider = SimpleNamespace(single_tool_selection_mode="forced")
+    fresh_tools = _static_author_tools.__wrapped__(contract_id)
+    first = world_consequence_author_tool_contract(provider=provider, contract_id=contract_id)
+    assert first["tools"] == fresh_tools
+    first["tools"][0]["function"]["parameters"].clear()
+    first["tools"].clear()
+    provider.single_tool_selection_mode = "auto"
+    second = world_consequence_author_tool_contract(provider=provider, contract_id=contract_id)
+    assert second["tools"] == fresh_tools
+    assert second["tool_choice"] == "auto"
+    provider.single_tool_selection_mode = "forced"
+    third = world_consequence_author_tool_contract(provider=provider, contract_id=contract_id)
+    assert third["tools"] == fresh_tools
+    assert third["tool_choice"]["function"]["name"] == fresh_tools[0]["function"]["name"]
+    provider.single_tool_selection_mode = "unsupported"
+    with pytest.raises(ValueError, match="selection mode"):
+        world_consequence_author_tool_contract(provider=provider, contract_id=contract_id)
+
+
 def test_strict_schema_retains_execution_union_and_binds_exact_transport():
     contract = world_consequence_author_tool_contract(provider=object())
     schema = contract["tools"][0]["function"]["parameters"]

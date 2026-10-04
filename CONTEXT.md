@@ -1,3 +1,18 @@
+Full-day resumption/static tool build (2026-10-04): `docs/audits/static-author-schema-and-full-day-resumption-2026-10-04.md`.
+REJECT uncommitted explicit_authority_basis codec:6 real calls/5valid/1reason overflow,
+~.2456382CNY all six included; no global benefit proof, source parser unchanged.
+RETAIN static World Author schema template cache for five known contracts; owned deep copy,
+provider mode resolved each call. Cold/warm12 median41.25ms/.35ms, all five exact prechange
+tool values;74tests incl old hashes/provider changes/mutation/source/recovery. NOT chat/API saving.
+Corrected full24h/50chat/defaultprefix-off/V4.1/BGE/allruntime-dues now RUNNING:
+exec session54594, output/private-audits/daily-workload-20261004-corrected-geoff.
+Revalidate handle/ledger/progress before following; do not restart from this note. First attempted
+numeric recipient World failed preflight/no Provider, preserved separate corrected/ directory.
+Memory consolidation now actually executes; old177error baseline omitted this cost. Entire run
+must finish incl these mechanisms/failed/unanswered/unknown bills. No target/release completion.
+Running process predates this static-schema cache change and has startup code snapshots.
+NEXT finish same corrected day; largest dynamic input remains repeated boundary/location material.
+
 Native reviewer reason bound (2026-10-04): `docs/audits/native-review-reason-bound-2026-10-04.md`.
 USER schema is NOT fully redundant:strict provider dropsmin/max keywords;exact diff5830chars
 vsoriginal5600, no USER-copy removal. World Author already$def factored, no extra savings.
