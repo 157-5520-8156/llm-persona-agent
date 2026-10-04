@@ -1,3 +1,15 @@
+Negative cache/performance qualification (2026-10-04): `docs/audits/novel-review-cache-negative-result-2026-10-04.md`.
+Goal resumed ACTIVE. Six fixed matched inputs, supported/unsupported3 each; 12 real V4.1 calls.
+Novel reviewer key-order-only candidate kept all values/binding but missed environment/actor boundary
+on1/3 prior negative cases versus paired old. REVERTED helper/tests; no production activation.
+Old6 .01938CNY/245120hit vs new6 .17111/89088hit (same246441 inputtokens): old full requests already
+cache-warm from prior experiments, so NOT fair cost savings comparison. Do not repeat paid warmups
+on semantically failing candidate. Pure binding parse LRU also REVERTED:32bindings x3, pairs
+.123/.110 then .113/.121 seconds, no stable gain.27 tests passed but no performance qualification.
+NEXT current-projection source lookup/indexing and duplicate native-tool/USER protocol material;
+cache A/B must isolate prior warm entries or consistently warm both sides on changing real Context.
+No <5s/1.5CNYday/QQ/release completion claim. Goal remains active, evidence paths in audit.
+
 Background capability/memory contract repair (2026-10-04): `docs/audits/background-capability-and-memory-contract-2026-10-04.md`.
 Fixed reviewed-role compact_memory signature TypeError and host-private proactive requirement overflow
 via bounded exact zlib carrier (small historical carriers unchanged, role never sees evidence blob).
