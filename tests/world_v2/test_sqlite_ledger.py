@@ -42,6 +42,27 @@ from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger, _json_rea
 NOW = datetime(2026, 7, 14, 12, 0, tzinfo=UTC)
 
 
+@pytest.mark.parametrize("state", [
+    {},
+    {"z": [], "a": None},
+    {"引号\"换行\n": {"value": "雪☃\n\\"}, "records": [{"id": 1}, {"id": 2}]},
+    {"large": ["记忆与来源" * 20_000], "clock": "2026-07-14T12:00:00Z"},
+])
+def test_streamed_state_hash_matches_full_canonical_material(tmp_path, state):
+    ledger = SQLiteWorldLedger(path=tmp_path / "hash.sqlite", world_id='world:哈希"\\')
+    cursor = ProjectionCursor(world_revision=17, deliberation_revision=31, ledger_sequence=48)
+    def encode(value):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    try:
+        fragments = {name: encode(value).encode("utf-8") for name, value in state.items()}
+        expected = hashlib.sha256(ledger._state_hash_material(
+            canonical_state=encode(state), cursor=cursor,
+        )).hexdigest()
+        assert ledger._state_hash_from_fragment_bytes(fragment_bytes=fragments, cursor=cursor) == expected
+    finally:
+        ledger.close()
+
+
 def event(event_id: str, observation_id: str) -> WorldEvent:
     return WorldEvent.from_payload(
         schema_version="world-v2.1",

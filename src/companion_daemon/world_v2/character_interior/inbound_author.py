@@ -4628,7 +4628,7 @@ class _InboundCharacterAuthor:
             messages[0]["content"] += (
                 "\n本轮唯一函数名称：" + cognition_tool_choice["function"]["name"]
                 + "。函数名按原样使用，不根据result_kind另造函数名。")
-        if cognition_contract.native_slim_core:
+        if isinstance(cognition_contract, InboundToolContract) and cognition_contract.native_slim_core:
             from .slim_native_core import prompt
 
             messages[0]["content"] = prompt(messages[0]["content"])

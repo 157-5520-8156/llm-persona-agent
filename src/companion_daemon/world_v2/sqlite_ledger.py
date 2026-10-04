@@ -1458,9 +1458,9 @@ class SQLiteWorldLedger:
     ) -> str:
         """Hash the exact ``_state_hash_material`` bytes from per-field chunks.
 
-        UTF-8 encoding distributes over concatenation, so joining the encoded
-        fragments reproduces byte-for-byte the encoding of the assembled
-        document; only fields changed by this commit were re-encoded.
+        Feed the same canonical bytes incrementally, without assembling a
+        second full state document. Only changed fields were re-encoded;
+        every field still participates in this commit's integrity hash.
         """
 
         cursor_json = json.dumps(
@@ -1469,24 +1469,26 @@ class SQLiteWorldLedger:
             sort_keys=True,
             separators=(",", ":"),
         )
-        state_chunks = b",".join(
-            json.dumps(field_name, ensure_ascii=False).encode("utf-8")
-            + b":"
-            + fragment_bytes[field_name]
-            for field_name in sorted(fragment_bytes)
-        )
-        material = (
+        digest = hashlib.sha256()
+        digest.update(
             b'{"cursor":'
             + cursor_json.encode("utf-8")
             + b',"reducer_bundle_version":'
             + json.dumps(REDUCER_BUNDLE_VERSION).encode("utf-8")
             + b',"state":{'
-            + state_chunks
-            + b'},"world_id":'
+        )
+        for index, field_name in enumerate(sorted(fragment_bytes)):
+            if index:
+                digest.update(b",")
+            digest.update(json.dumps(field_name, ensure_ascii=False).encode("utf-8"))
+            digest.update(b":")
+            digest.update(fragment_bytes[field_name])
+        digest.update(
+            b'},"world_id":'
             + json.dumps(self._world_id, ensure_ascii=False).encode("utf-8")
             + b"}"
         )
-        return hashlib.sha256(material).hexdigest()
+        return digest.hexdigest()
 
     def _encode_state_delta(
         self, state: ReducerState, cursor: ProjectionCursor

@@ -1,3 +1,20 @@
+Streamed state hash/legacy gate/birthday reading (2026-10-04): `docs/audits/streamed-state-hash-and-birthday-source-completeness-2026-10-04.md`.
+RETAIN hash.update streaming of EXACT same canonical material. Actual61.62MB state,
+35.5MB model audits; old55-58ms->28.4ms/hash,temporary185MB->1791bytes,same SHA.
+RETAIN isinstance(InboundToolContract) guard before native_slim_core access; legacyGate hasnone,
+caused6real regressions/AttributeError, notsilence. Final433scopedtests pass +Ruff/diff.
+REJECT proposed birthday actor/answerfocus prompt after fullruntime stilladds mother sharingcake;
+promptfile RESTORED. Two isolatedcalls/.05463344CNY +runtime1/.0295 retained, notqualitypass.
+Actual supplied f09 automatic_prefetch text480 ENDS '塌掉的那边划给父'; fullrecord saysfather alone.
+First original misattributes fastsinging to mother; father isexplicit inrecord. Notjustprompt issue:
+recordexists/candidatefound/visiblewindowtruncated/generationexpands. Corpus480 width/416stride.
+NEXT bounded child-to-parent selected-event context with SAME BGE rank/source/actor/privacy/time,
+budget/receipt; primary LangChain reference in audit. NOTimplemented/notglobalthresholdtuning.
+Unprofiled normalnativeprobe first7.582s,role2.226s,Context1.539s,ledger total2.047s,
+ingress->role3.116s,1bill/.0248. ConcurrentCPU caveat/Capture notQQ. Newbirthday~9.999s not5s.
+Exec54594 day RUNNING;26/50chat/latestcompletedcommand~3.8009CNY. Revalidate samehandle,
+finish original then --world-author-cache-stable-prefix completecandidate. Goalactive/nodeploy.
+
 World prefix independent review supplement (2026-10-04): `docs/audits/world-prefix-review-qualification-2026-10-04.md`.
 Saved SYSTEM-tail World Author3 drafts now focused3/3 +general3/3 supported/fullparservalid;
 same manifest hash/cursor/execution authority;6 realcalls/.12922704CNY,no newauthorcalls.
