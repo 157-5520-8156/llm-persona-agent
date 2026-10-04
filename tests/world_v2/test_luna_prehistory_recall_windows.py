@@ -130,6 +130,7 @@ def test_parent_source_context_keeps_direct_rank_and_respects_boundaries(tmp_pat
         if boundary == "available":
             neighbor = result.hits[0].document
             assert neighbor.source_window_start is None and neighbor.context_only
+            assert neighbor.retrieval_text is None
             assert neighbor.text == statement
             assert neighbor.prehistory == result.hits[0].document.prehistory
             assert neighbor.source_bindings == result.hits[0].document.source_bindings

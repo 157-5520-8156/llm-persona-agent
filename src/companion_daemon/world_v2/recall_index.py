@@ -984,7 +984,11 @@ class _RecallIndexCore:
         story_budget = reading_size > RECALL_MODEL_READING_MAX_BYTES or result_size > RECALL_RESULT_MAX_BYTES
         reading_budget = RECALL_STORY_MODEL_READING_MAX_BYTES if story_budget else RECALL_MODEL_READING_MAX_BYTES
         result_budget = RECALL_STORY_RESULT_MAX_BYTES if story_budget else RECALL_RESULT_MAX_BYTES
-        for index, hit in enumerate(hits):
+        # Spend optional completion bytes on the strongest direct query
+        # evidence first, without changing the returned match order/scores.
+        for index, hit in sorted(enumerate(hits), key=lambda entry: (
+            -entry[1].lexical_score_bp, -entry[1].dense_score_bp, entry[0],
+        )):
             child = hit.document
             if child.prehistory is None or child.source_window_start is None:
                 continue

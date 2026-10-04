@@ -1,3 +1,16 @@
+Parent reading receipt budget fix (2026-10-04): `docs/audits/parent-reading-receipt-budget-fix-2026-10-04.md`.
+Actual stored presented trace confirmedhybrid14/f09child480/5items, parent alreadyindexed.
+Rootcause duplicate unused parent retrieval_text +earlier f19 spends remainingbytes. Dropparent
+retrieval_text only; allocate optional completion by existing lexical/dense scores, KEEP output
+position/scores/otheritems/allsource checks/ORIGINAL budget. Exactactual replay f09 480->618,
+reading10368->10747 (<11000),receipt21686->20750 (<22000). No quota/permission increase.
+41 BGEqueries/37gold still .9459459, allsourceorder same;124tests +Ruff/diff pass.
+Real priority trial ACTUAL INPUT includesfullf09, dad allocation/cream/box and momcandle grounded,
+first7.9036s NOT5s,1call/.009cachewarm NOTdaily saving. Previousreceipt-only1/.0136failedfullread
+andphotoexpansion retained. Default13 still,14 opt-in; morequality/ordinarylatency gates remain.
+Main dayexec54594 still RUNNING,>6CNY; finishsamebaseline before WorldAuthorprefix daycontrast.
+Goalactive/nodeploy; seeactualstoredtrace/rawinputs, notjust endpoint/API success.
+
 Opt-in parent-record reading (2026-10-04): `docs/audits/parent-record-reading-prototype-2026-10-04.md`.
 Default STILL hybrid13. Explicit policy14 uses complete <=1024char actor/source-verified parent
 records as context_only Corpus docs, NEVER ranking or embedding; replaces selected child in place

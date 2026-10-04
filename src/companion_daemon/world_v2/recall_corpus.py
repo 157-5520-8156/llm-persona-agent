@@ -982,7 +982,9 @@ class RecallCorpusCompiler:
             # archive.  The immutable binding still points to the complete
             # authority while this prefix keeps the replay audit compact.
             text=text[:1_024],
-            retrieval_text=(retrieval_text[:4_096] if retrieval_text is not None else None),
+            # Parent records never enter search or embedding. Retaining a
+            # second copy of their full text needlessly fills receipt budgets.
+            retrieval_text=(retrieval_text[:4_096] if retrieval_text is not None and not context_only else None),
             actor_ref=actor_ref,
             subject_refs=_subjects(*subject_refs),
             link_refs=_subjects(*link_refs),
