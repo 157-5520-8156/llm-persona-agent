@@ -17,6 +17,7 @@ from .character_life_experience_contract import (
 from .character_life_response_contract import CharacterLifeResponseRecordedPayload
 from .character_life_response_runtime import derive_character_life_responses
 from .event_identity import domain_idempotency_key
+from .projection_lookup import lookup_first
 from .errors import ConcurrencyConflict
 from .experience_events import ExperienceCommittedPayload, experience_mutation_hash
 from .life_content_events import LifeContentRecordedPayload
@@ -63,17 +64,9 @@ def validate_character_life_experience_binding(*, state, world_id: str, binding)
     binding = ExperienceWorldLifeResponseBinding.model_validate_json(binding.model_dump_json())
     source = binding.settlement
     response = binding.response
-    committed = next(
-        (x for x in state.committed_world_event_refs if x.event_id == binding.response_event_ref),
-        None,
-    )
-    settlement = next(
-        (x for x in state.committed_world_event_refs if x.event_id == source.authority_event_ref),
-        None,
-    )
-    occurrence = next(
-        (x for x in state.world_occurrences if x.occurrence_id == source.occurrence_id), None
-    )
+    committed = lookup_first(state.committed_world_event_refs, "event_id", binding.response_event_ref)
+    settlement = lookup_first(state.committed_world_event_refs, "event_id", source.authority_event_ref)
+    occurrence = lookup_first(state.world_occurrences, "occurrence_id", source.occurrence_id)
     selected = (
         next(
             (

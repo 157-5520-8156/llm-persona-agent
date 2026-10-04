@@ -15,6 +15,7 @@ from typing import Literal
 from pydantic import Field
 
 from .schema_core import FrozenModel
+from .projection_lookup import lookup_first
 from .life_content_store import life_content_payload_hash
 from .world_consequence_contract import WorldConsequenceExecutionBinding, WorldConsequenceV2
 
@@ -124,10 +125,7 @@ def selected_world_consequence(
     Callers separately enforce their published descriptor/Experience and viewer
     gates. This helper cannot itself publish a candidate or grant read access.
     """
-    source = next((
-        item for item in projection.committed_world_event_refs
-        if item.event_id == occurrence.settlement_event_ref
-    ), None)
+    source = lookup_first(projection.committed_world_event_refs, "event_id", occurrence.settlement_event_ref)
     if source is None or (
         source.event_type != "WorldOccurrenceSettled"
         or source.world_revision != occurrence.settlement_world_revision
@@ -226,11 +224,10 @@ def read_character_life_experience_content(
         raise ValueError("structured life reading is outside the viewer privacy ceiling")
     if experience not in projection.experiences:
         raise ValueError("structured life reading requires the pinned Experience")
-    accepted = next((
-        item for item in projection.committed_world_event_refs
-        if item.event_id == experience.origin.accepted_event_ref
-        and item.event_type == "ExperienceCommitted"
-    ), None)
+    accepted = lookup_first(
+        projection.committed_world_event_refs, "event_id", experience.origin.accepted_event_ref,
+        predicate=lambda item: item.event_type == "ExperienceCommitted",
+    )
     descriptor = next((
         item for item in projection.life_content_descriptors
         if item.content_kind == "experience_summary"
@@ -248,13 +245,14 @@ def read_character_life_experience_content(
         descriptor.privacy_class == "withhold"
         or _PRIVACY[descriptor.privacy_class] < _PRIVACY[experience.values.privacy_class]
         or _PRIVACY[descriptor.privacy_class] > _PRIVACY[viewer_privacy_ceiling]
-        or not any(
-            item.event_id == descriptor.descriptor_event_ref
-            and item.event_type == "LifeContentRecorded"
-            and item.world_revision == descriptor.descriptor_world_revision
-            and item.payload_hash == descriptor.descriptor_payload_hash
-            for item in projection.committed_world_event_refs
-        )
+        or lookup_first(
+            projection.committed_world_event_refs, "event_id", descriptor.descriptor_event_ref,
+            predicate=lambda item: (
+                item.event_type == "LifeContentRecorded"
+                and item.world_revision == descriptor.descriptor_world_revision
+                and item.payload_hash == descriptor.descriptor_payload_hash
+            ),
+        ) is None
     ):
         raise ValueError("structured life reading has no published summary descriptor")
     validate_character_life_experience_binding(
@@ -269,10 +267,7 @@ def read_character_life_experience_content(
     ):
         raise ValueError("structured life summary body is unavailable")
     summary = validate_character_life_experience_summary(stored.text, binding)
-    occurrence = next((
-        item for item in projection.world_occurrences
-        if item.occurrence_id == binding.settlement.occurrence_id
-    ), None)
+    occurrence = lookup_first(projection.world_occurrences, "occurrence_id", binding.settlement.occurrence_id)
     if occurrence is None or (
         occurrence.visibility == "withhold"
         or _PRIVACY[occurrence.visibility] > _PRIVACY[viewer_privacy_ceiling]

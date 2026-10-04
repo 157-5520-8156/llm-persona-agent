@@ -18,10 +18,10 @@ WORLD_LIFE_INTENT_POLICY_REF = "policy:world-life-intent.1"
 
 def world_life_intent_source_authority(*, state, source_event_ref: str, owner_actor_ref: str):
     """Return only an exact settled occurrence in which this actor participated."""
-    source = next((x for x in state.committed_world_event_refs
-                   if x.event_id == source_event_ref), None)
-    occurrence = next((x for x in state.world_occurrences
-                       if x.settlement_event_ref == source_event_ref), None)
+    from .projection_lookup import lookup_first
+
+    source = lookup_first(state.committed_world_event_refs, "event_id", source_event_ref)
+    occurrence = lookup_first(state.world_occurrences, "settlement_event_ref", source_event_ref)
     if source is None or occurrence is None or any((
         source.event_type != "WorldOccurrenceSettled",
         occurrence.status != "settled",

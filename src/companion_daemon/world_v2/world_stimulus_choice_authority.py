@@ -11,6 +11,7 @@ import json
 
 from .proposal_audit_schemas import RecordedModelResultAudit
 from .proposal_envelope import DecisionProposal, validate_proposal_envelope
+from .projection_lookup import lookup_first
 from .world_life_intent_contract import (
     world_life_intent_capability,
     world_life_intent_source_authority,
@@ -99,7 +100,7 @@ def read_world_stimulus_choice_authority(
     registry_versions: tuple[str, ...],
     error_type: type[ValueError],
 ) -> WorldStimulusChoiceAuthority:
-    audit = next((x for x in state.proposal_audits if x.proposal_id == proposal_id), None)
+    audit = lookup_first(state.proposal_audits, "proposal_id", proposal_id)
     if audit is None:
         raise error_type("proposal_missing")
     proposal = _parsed_proposal(audit.proposal_json)
@@ -117,9 +118,7 @@ def read_world_stimulus_choice_authority(
         if change.kind in {"world_life_intent", "world_life_response"}
     ):
         raise error_type("actor_mismatch")
-    model = next(
-        (x for x in state.model_result_audits if x.model_result_ref == audit.model_result_ref), None
-    )
+    model = lookup_first(state.model_result_audits, "model_result_ref", audit.model_result_ref)
     if model is None or any(
         (
             model.proposal_hash != audit.proposal_hash,
@@ -180,13 +179,8 @@ def world_stimulus_source_origin(
         )
     ):
         raise error_type("source_binding_invalid")
-    selected_clock = next(
-        (
-            x
-            for x in state.committed_world_event_refs
-            if x.world_revision == audit.evaluated_world_revision
-        ),
-        None,
+    selected_clock = lookup_first(
+        state.committed_world_event_refs, "world_revision", audit.evaluated_world_revision,
     )
     if selected_clock is not None and selected_clock.logical_time < source.logical_time:
         # A delayed transport/accounting event can occupy the pinned revision

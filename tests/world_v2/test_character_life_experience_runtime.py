@@ -506,6 +506,9 @@ async def test_reader_proof_requires_original_role_audit_and_exact_summary(tmp_p
         for value in (body + " ", body.replace("我自己的感受", "世界发生了改变"), "{}"):
             with pytest.raises(ValueError, match="summary_mismatch"):
                 validate_character_life_experience_summary(value, binding)
+        # Warm current-row indexes before withdrawing authority. Reusing row
+        # addresses must not reuse a successful provenance decision.
+        validate_character_life_experience_binding(state=p, world_id=WORLD, binding=binding)
         # The reader proof cannot be replaced by trusting an embedded response
         # event hash alone when its independently recorded model audit is absent.
         for field in ("proposal_audits", "model_result_audits"):
@@ -516,6 +519,12 @@ async def test_reader_proof_requires_original_role_audit_and_exact_summary(tmp_p
                     world_id=WORLD,
                     binding=binding,
                 )
+        for removed in (binding.response_event_ref, binding.settlement.authority_event_ref):
+            changed = p.model_copy(update={"committed_world_event_refs": tuple(
+                item for item in p.committed_world_event_refs if item.event_id != removed
+            )})
+            with pytest.raises(ValueError):
+                validate_character_life_experience_binding(state=changed, world_id=WORLD, binding=binding)
         with pytest.raises(ValueError):
             validate_character_life_experience_binding(
                 state=p, world_id="world:other", binding=binding

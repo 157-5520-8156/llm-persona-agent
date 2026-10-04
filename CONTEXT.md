@@ -1,3 +1,17 @@
+Current-projection lookup optimization (2026-10-04): `docs/audits/current-projection-lookup-2026-10-04.md`.
+Retain bounded tuple-identity address indexes (8 collections; build after8reads; <=100krows),
+only frozen scalar fields; current source/hash/actor/privacy/receipt checks still run every read.
+Extra predicates re-evaluated; duplicate fallback and mutable collections preserve first-match scans.
+32bindings x3 source-proof pairs directscan .104/.100s vs index .022/.011s. Complete fixed Context
+78519chars byte-identical; warm .389->.271s (~.117s local, NOT whole reply ratio).75/49 scoped tests
+pass incl warm source/audit withdrawal, privacy/replay. No prompt/schema/semantic selection change.
+Real3 V4.1/BGE capture first5.368/5.145/4.235s,3paidcalls/~.0351CNY +3unbilled localQwen estimators.
+Birthday only says thinking, no Recall despite available, no actual answer: NOT quality-qualified
+fast reply. No background load included; not1.5CNYday or QQ qualification.
+NEXT inspect birthday visible evidence/capabilities/choice (do not force Recall by keywords),
+full first-reply stages incl local endpoint/model/acceptance, then complete comparable daily workload.
+Goal remains active; no production deployment.
+
 Negative cache/performance qualification (2026-10-04): `docs/audits/novel-review-cache-negative-result-2026-10-04.md`.
 Goal resumed ACTIVE. Six fixed matched inputs, supported/unsupported3 each; 12 real V4.1 calls.
 Novel reviewer key-order-only candidate kept all values/binding but missed environment/actor boundary
