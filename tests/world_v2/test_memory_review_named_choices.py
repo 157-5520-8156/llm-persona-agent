@@ -76,8 +76,9 @@ def test_quote_handles_restore_exact_selected_prose_without_rewriting_names():
 
 
 @pytest.mark.asyncio
-async def test_public_role_decodes_only_the_authored_named_choices():
-    from companion_daemon.world_v2.character_interior.structured_role import StructuredCharacterRoleFaculty
+@pytest.mark.parametrize("malformed_updates", [None, 1, True])
+async def test_public_role_decodes_only_the_authored_named_choices(malformed_updates):
+    from companion_daemon.world_v2.character_interior.structured_role import StructuredCharacterRoleFaculty, StructuredRoleResultError
     from test_character_interior_structured_role import _StrictToolQueueModel, _request, _manifest
 
     cap = {
@@ -95,9 +96,18 @@ async def test_public_role_decodes_only_the_authored_named_choices():
     value = {"status": "decision", "summary": "我留下第一件，另一件不再保留。",
              "attended_source_refs": [], "recall_query": None, "proposals": [],
              "decision": {"payload": {"choices": choices, "understandings": []}}}
+    if malformed_updates is not None:
+        value["decision"]["payload"]["understandings"] = malformed_updates
     model = _StrictToolQueueModel(json.dumps(value))
     role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-flash", reference_wire=True)
-    result = await role.consider(await _request(purpose="memory_consolidation", capability_manifest=manifest))
+    request = await _request(purpose="memory_consolidation", capability_manifest=manifest)
+    if malformed_updates is not None:
+        with pytest.raises(StructuredRoleResultError) as raised:
+            await role.consider(request)
+        assert raised.value.code == "role_result_schema_invalid"
+        assert "understandings" in raised.value.detail
+        return
+    result = await role.consider(request)
     assert result["decision"]["payload"]["choices"] == [
         {"candidate_token": token, **choices[token]} for token in ("m0", "m1")
     ]

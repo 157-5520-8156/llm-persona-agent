@@ -150,8 +150,11 @@ def quote_handle_view(capability_payload):
 def expand_quote_handles(payload, *, capability_payload):
     """Restore only the exact source and text the role selected by handle."""
     result = deepcopy(payload)
+    updates = result.get("understandings")
+    if not isinstance(updates, list) or not updates:
+        return result  # Canonical validation, including same-role correction, owns shape errors.
     options = quote_handle_view(capability_payload)["quote_options"]
-    for update in result.get("understandings") or ():
+    for update in updates:
         if not isinstance(update, dict):
             continue  # Canonical validation reports the malformed update.
         quotes = update.get("evidence_quotes")
