@@ -101,6 +101,7 @@ async def run_simulation(text: str, fake: bool, *, thinking: bool = False) -> No
             companion_actor_ref="agent:companion",
             reply_target=f"user:{settings.primary_user_id}",
             action_pump_owner="pump:companion-simulator-v2",
+            recall_parent_context=settings.world_v2_recall_parent_context,
             expression_capabilities=PRODUCTION_TEXT_ONLY_EXPRESSION_CAPABILITIES,
             life_ecology=LifeEcologyComposition.production_v1(),
         ),
