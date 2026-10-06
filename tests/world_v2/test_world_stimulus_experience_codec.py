@@ -102,7 +102,7 @@ async def test_current_stimulus_token_crosses_real_http_adapter_unchanged_semant
                                 {
                                     "type": "function",
                                     "function": {
-                                        "name": "character_role_world_stimulus_appraisal_v6",
+                                        "name": "character_role_world_stimulus_appraisal_v7",
                                         "arguments": raw,
                                     },
                                 }

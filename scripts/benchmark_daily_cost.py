@@ -170,6 +170,9 @@ async def run(args):
         "character_interior/life_source_view.py", "character_interior/life_source_readings.py",
         "character_interior/life_source_review_request.py", "character_interior/life_source_review.py",
         "character_interior/experience_transition_tool_schema.py",
+        "memory_consolidation_contract.py", "memory_consolidation_runtime.py", "memory_understanding.py",
+        "recall_index.py", "recall_runtime.py", "recall_corpus.py", "recall_model_reading.py",
+        "production_turn_application.py", "qq_c2c_host.py",
         "world_consequence_author_tool.py", "world_consequence_prompt.py",
         "activity_lifecycle_worker.py", "life_ecology_activity.py",
         "day_open_life_worker.py",
@@ -218,12 +221,14 @@ async def run(args):
         "workload": "same recorded 24 clock inputs and inherited pending chat; optional fixed additional chat",
         "targets": targets, "background_units": 8, "drain_rounds": 6,
         "models": {"character": settings.deepseek_model, "thinking": settings.deepseek_character_thinking_enabled},
+        "native_slim_core": settings.world_v2_native_slim_core,
         "expression_profile": settings.world_v2_visible_expression_profile,
         "reference_wire": settings.world_v2_reference_wire_enabled,
         "virtual_delivery_clock": args.virtual_clock,
         "follow_runtime_dues": args.follow_runtime_dues,
         "configured_recall_embedding": args.configured_recall_embedding,
         "world_author_cache_stable_prefix": args.world_author_cache_stable_prefix,
+        "recall_parent_context": args.recall_parent_context,
         "code_sha256": code_hashes,
         "source_clock_variant": "baseline" if args.baseline_source_clock else "fixed",
         "frozen_baseline_hash": frozen_baseline_hash,
@@ -248,6 +253,7 @@ async def run(args):
                                      enable_media=False, primary_user_id=args.primary_user_id,
                                      journey_clock=journey_clock,
                                      world_author_cache_stable_prefix=args.world_author_cache_stable_prefix,
+                                     recall_parent_context=args.recall_parent_context,
                                      use_configured_recall_embedding=args.configured_recall_embedding)
         for index, (target, kind, ordinal, text) in enumerate(commands):
             automatic = []
@@ -344,6 +350,8 @@ def main():
     parser.add_argument("--configured-recall-embedding", action="store_true")
     parser.add_argument("--world-author-cache-stable-prefix", action="store_true",
                         help="Opt into the existing isolated World Author prefix candidate; default off")
+    parser.add_argument("--recall-parent-context", action="store_true",
+                        help="Read complete verified prehistory parents within the unchanged Recall budgets")
     parser.add_argument("--chat-scenario", type=Path)
     parser.add_argument("--allow-real-provider", action="store_true", required=True)
     args = parser.parse_args()

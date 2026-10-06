@@ -202,10 +202,17 @@ class _RoleHTTP:
 
 def _http_result(body, authored):
     if body.get("tools", [{}])[0].get("function", {}).get("name") in {
+        "character_role_world_stimulus_appraisal_v6", "character_role_world_stimulus_appraisal_v7",
+    }:
+        for proposal in authored.get("proposals", []):
+            if proposal.get("proposal_type") == "world_stimulus_appraisal_result":
+                proposal.setdefault("reflection_depth", "brief")
+    if body.get("tools", [{}])[0].get("function", {}).get("name") in {
         "character_role_world_stimulus_appraisal_v2", "character_role_world_stimulus_appraisal_v3",
         "character_role_world_stimulus_appraisal_v4",
         "character_role_world_stimulus_appraisal_v5",
         "character_role_world_stimulus_appraisal_v6",
+        "character_role_world_stimulus_appraisal_v7",
     }:
         authored = {"result": authored}
     name = body["tool_choice"]["function"]["name"]

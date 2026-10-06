@@ -32,6 +32,7 @@ _WORLD_STIMULUS_STRICT_V3_TOOL_NAME = "character_role_world_stimulus_appraisal_v
 _WORLD_STIMULUS_STRICT_V4_TOOL_NAME = "character_role_world_stimulus_appraisal_v4"
 _WORLD_STIMULUS_STRICT_V5_TOOL_NAME = "character_role_world_stimulus_appraisal_v5"
 _WORLD_STIMULUS_STRICT_V6_TOOL_NAME = "character_role_world_stimulus_appraisal_v6"
+_WORLD_STIMULUS_STRICT_V7_TOOL_NAME = "character_role_world_stimulus_appraisal_v7"
 _PRIVATE_IMPRESSION_TOOL_NAME = "character_role_private_impression_reflection_v1"
 _OUTCOME_SELECTION_TOOL_NAME = "character_role_outcome_selection_v1"
 _ACTIVITY_LIFECYCLE_TOOL_NAME = "character_role_activity_lifecycle_choice_v1"
@@ -40,7 +41,7 @@ _EXPRESSION_RECONSIDERATION_TOOL_NAME = "character_role_expression_reconsiderati
 _FACT_MEMORY_RETENTION_TOOL_NAME = "character_role_fact_memory_retention_v1"
 _EXPERIENCE_MEMORY_RETENTION_TOOL_NAME = "character_role_experience_memory_retention_v1"
 _MEMORY_WITHDRAWAL_REVIEW_TOOL_NAME = "character_role_memory_withdrawal_review_v1"
-StructuredRoleToolSchemaDialect = Literal["standard", "deepseek-strict", "deepseek-strict-v3", "deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6", "deepseek-strict-compact"]
+StructuredRoleToolSchemaDialect = Literal["standard", "deepseek-strict", "deepseek-strict-v3", "deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6", "deepseek-strict-v7", "deepseek-strict-compact"]
 
 
 _ROLE_RESULT_FEATURE_KEYS = ("status", "summary")
@@ -602,6 +603,7 @@ class StructuredRoleToolContract:
             _WORLD_STIMULUS_STRICT_V4_TOOL_NAME,
             _WORLD_STIMULUS_STRICT_V5_TOOL_NAME,
             _WORLD_STIMULUS_STRICT_V6_TOOL_NAME,
+            _WORLD_STIMULUS_STRICT_V7_TOOL_NAME,
         }:
             # This new strict carrier never repairs or salvages provider JSON.
             decoded = json.loads(raw)
@@ -1425,7 +1427,7 @@ class StructuredRoleToolContracts:
         if not isinstance(capability_payload, dict):
             raise ValueError("world stimulus capability must be one object")
         role_schema = _provider_schema(
-            _ExpandedAttentionWireRoleResult if schema_dialect in {"deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6"} else _WireRoleResult
+            _ExpandedAttentionWireRoleResult if schema_dialect in {"deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6", "deepseek-strict-v7"} else _WireRoleResult
         )
         role_properties = _required_object_properties(role_schema)
         common = {
@@ -1437,7 +1439,7 @@ class StructuredRoleToolContracts:
         }
         proposal_schema = _provider_schema(_WorldStimulusAppraisalResult)
         proposal_properties = _required_object_properties(proposal_schema)
-        if schema_dialect != "deepseek-strict-v6":
+        if schema_dialect not in {"deepseek-strict-v6", "deepseek-strict-v7"}:
             # Historical tools still require their original explanation fields.
             proposal_properties.pop("reflection_depth", None)
             for field in ("behavior_tendency", "stance", "display_strategy"):
@@ -1449,7 +1451,7 @@ class StructuredRoleToolContracts:
                 proposal_properties["experience_transition"],
                 capability_payload=capability_payload["experience_transitions"],
                 source_tokens=source_tokens,
-                native_branches=schema_dialect in {"deepseek-strict-v5", "deepseek-strict-v6"},
+                native_branches=schema_dialect in {"deepseek-strict-v5", "deepseek-strict-v6", "deepseek-strict-v7"},
             )
         intent_capability = capability_payload.get("world_life_intent")
         if isinstance(intent_capability, dict):
@@ -1525,7 +1527,11 @@ class StructuredRoleToolContracts:
             {
                 "type": "object",
                 "properties": {
-                    "status": {"type": "string", "enum": ["no_change", "transition"]},
+                    "status": {"type": "string", "enum": (
+                        ["transition"]
+                        if schema_dialect == "deepseek-strict-v7" and response_capability is not None
+                        else ["no_change", "transition"]
+                    )},
                     **proposal_branch_properties,
                 },
                 "required": [
@@ -1571,13 +1577,13 @@ class StructuredRoleToolContracts:
         tool_name = _WORLD_STIMULUS_TOOL_NAME
         version = _CONTRACT_VERSION
         result_wrapper_key = None
-        if schema_dialect in {"deepseek-strict", "deepseek-strict-v3", "deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6"}:
+        if schema_dialect in {"deepseek-strict", "deepseek-strict-v3", "deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6", "deepseek-strict-v7"}:
             # The recall branch permits no proposals. DeepSeek has no maxItems;
             # the canonical validator continues to enforce the empty array.
             if recall_allowed:
                 branches[-1]["properties"]["proposals"]["items"] = {"type": "string"}
             result_wrapper_key = "result"
-            if schema_dialect in {"deepseek-strict-v3", "deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6"}:
+            if schema_dialect in {"deepseek-strict-v3", "deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6", "deepseek-strict-v7"}:
                 parameters = _world_stimulus_strict_v3_schema(parameters)
             parameters = deepseek_strict_tool_schema({
                 "type": "object",
@@ -1590,7 +1596,7 @@ class StructuredRoleToolContracts:
             if schema_dialect == "deepseek-strict-v3":
                 tool_name = _WORLD_STIMULUS_STRICT_V3_TOOL_NAME
                 version = "3"
-            elif schema_dialect in {"deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6"}:
+            elif schema_dialect in {"deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6", "deepseek-strict-v7"}:
                 from .local_schema_references import factor_local_schema_references
 
                 parameters = factor_local_schema_references(parameters)
@@ -1598,6 +1604,8 @@ class StructuredRoleToolContracts:
                 version = "5" if schema_dialect == "deepseek-strict-v5" else "4"
                 if schema_dialect == "deepseek-strict-v6":
                     tool_name, version = _WORLD_STIMULUS_STRICT_V6_TOOL_NAME, "6"
+                elif schema_dialect == "deepseek-strict-v7":
+                    tool_name, version = _WORLD_STIMULUS_STRICT_V7_TOOL_NAME, "7"
         elif schema_dialect != "standard":
             raise ValueError("unsupported world stimulus tool schema dialect")
         function = {
@@ -1615,7 +1623,7 @@ class StructuredRoleToolContracts:
             ),
             "parameters": parameters,
         }
-        if schema_dialect in {"deepseek-strict", "deepseek-strict-v3", "deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6"}:
+        if schema_dialect in {"deepseek-strict", "deepseek-strict-v3", "deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6", "deepseek-strict-v7"}:
             function["strict"] = True
         provider_tools = ({"type": "function", "function": function},)
         schema_digest = "sha256:" + sha256(_canonical_json(parameters).encode("utf-8")).hexdigest()

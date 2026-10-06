@@ -1,5 +1,6 @@
 """Character-owned periodic retention decisions, not automatic forgetting."""
 from typing import Literal
+from copy import deepcopy
 import json
 
 from pydantic import Field, model_validator
@@ -68,7 +69,12 @@ def validate_payload(payload, offered, *, source_tokens=None, predecessor_tokens
     batch = MemoryReviewBatch.model_validate_json(json.dumps(dict(payload)), strict=True)
     tokens = [c.candidate_token for c in batch.choices]
     if len(set(tokens)) != len(tokens) or set(tokens) != set(offered):
-        raise ValueError("periodic memory review must choose once for each offered candidate")
+        raise ValueError(
+            "periodic memory review must choose once for each offered candidate; "
+            f"missing={sorted(set(offered) - set(tokens))}, "
+            f"unoffered={sorted(set(tokens) - set(offered))}, "
+            f"duplicates={sorted({token for token in tokens if tokens.count(token) > 1})}"
+        )
     retired = set()
     forgotten = {c.candidate_token for c in batch.choices if c.disposition == "forget"}
     for index, update in enumerate(batch.understandings or ()):
@@ -87,24 +93,83 @@ def validate_payload(payload, offered, *, source_tokens=None, predecessor_tokens
                              "Choose yourself: retain those candidate sources, or remove/reselect this understanding. "
                              "The host will not change either choice.")
         if readings is not None:
-            for evidence in update.evidence_quotes:
+            for quote_index, evidence in enumerate(update.evidence_quotes):
                 if not any(evidence.quote in text for text in source_texts(readings[evidence.source_token])):
-                    raise ValueError("understanding quote does not occur in its exact memory reading")
+                    raise ValueError(
+                        f"understandings[{index}].evidence_quotes[{quote_index}].quote does not "
+                        f"occur in the exact memory source prose for {evidence.source_token}. "
+                        "Copy one contiguous passage from that token's supplied source text, "
+                        "or reselect the source yourself; keep paraphrases in summary."
+                    )
+
+
+def _source_prose_fields(reading):
+    """Addresses of authored prose only, shared by quoting and validation."""
+    for excerpt in reading["source_excerpts"]:
+        if excerpt.get("text"):
+            yield excerpt, "text"
+        world = excerpt.get("world_consequence") or {}
+        for field in ("environment", "authorized_attempt_result"):
+            if (world.get(field) or {}).get("text"):
+                yield world[field], "text"
+        if (excerpt.get("character_response") or {}).get("response_text"):
+            yield excerpt["character_response"], "response_text"
 
 
 def source_texts(reading):
     """Only authored source prose, never IDs, scores or metadata strings."""
-    texts = []
-    for excerpt in reading["source_excerpts"]:
-        if excerpt.get("text"):
-            texts.append(excerpt["text"])
-        world = excerpt.get("world_consequence") or {}
-        for field in ("environment", "authorized_attempt_result"):
-            if (world.get(field) or {}).get("text"):
-                texts.append(world[field]["text"])
-        if (excerpt.get("character_response") or {}).get("response_text"):
-            texts.append(excerpt["character_response"]["response_text"])
-    return tuple(texts)
+    return tuple(owner[key] for owner, key in _source_prose_fields(reading))
+
+
+def quote_handle_view(capability_payload):
+    """Lossless source prose presentation with explicitly selectable quote IDs.
+
+    Fixed character windows constrain the existing 240-character quote field,
+    not the role's interpretation. All prose remains in order and is shown
+    once. No summary, inferred sentence or unrelated metadata becomes evidence.
+    """
+    view = deepcopy(dict(capability_payload))
+    options = {}
+    for row in [*view.get("memories", []), *view.get("related_memories", [])]:
+        number = 0
+        for owner, key in _source_prose_fields(row["reading"]):
+            text = owner[key]
+            refs = []
+            for start in range(0, len(text), 240):
+                ref = f"{row['token']}.q{number}"
+                if ref in options:
+                    raise ValueError("duplicate memory quote source token")
+                options[ref] = {"source_token": row["token"], "text": text[start:start + 240]}
+                refs.append(ref)
+                number += 1
+            owner[key] = {"quote_parts": refs}
+    view["quote_options"] = options
+    return view
+
+
+def expand_quote_handles(payload, *, capability_payload):
+    """Restore only the exact source and text the role selected by handle."""
+    result = deepcopy(payload)
+    options = quote_handle_view(capability_payload)["quote_options"]
+    for update in result.get("understandings") or ():
+        if not isinstance(update, dict):
+            continue  # Canonical validation reports the malformed update.
+        quotes = update.get("evidence_quotes")
+        if not isinstance(quotes, list):
+            continue
+        expanded = []
+        for quote in quotes:
+            if not isinstance(quote, dict) or "quote_ref" not in quote:
+                expanded.append(quote)  # Historical canonical results remain readable.
+                continue
+            if set(quote) != {"quote_ref"} or not isinstance(quote["quote_ref"], str):
+                raise ValueError("memory quote handle cannot override its source or text")
+            option = options.get(quote["quote_ref"])
+            if option is None:
+                raise ValueError("unoffered quote handle: " + quote["quote_ref"])
+            expanded.append({"source_token": option["source_token"], "quote": option["text"]})
+        update["evidence_quotes"] = expanded
+    return result
 
 
 def expand_understanding_dispositions(payload):
@@ -138,7 +203,24 @@ def expand_understanding_dispositions(payload):
     return {**result, "understandings": expanded}
 
 
-def tool_contract(*, capability_payload, source_refs, recall_allowed, compact_synthesis_transport=False):
+def expand_named_choices(payload, *, offered_tokens):
+    """Decode named choices without adding, dropping or deciding a choice."""
+    choices = payload.get("choices")
+    if not isinstance(choices, dict):
+        return payload  # Historical list-shaped results retain their canonical checks.
+    if set(choices) != set(offered_tokens):
+        raise ValueError("named memory choices must match the offered tokens exactly; "
+                         f"missing={sorted(set(offered_tokens) - set(choices))}, "
+                         f"unoffered={sorted(set(choices) - set(offered_tokens))}")
+    if any(not isinstance(value, dict) or "candidate_token" in value for value in choices.values()):
+        raise ValueError("each named memory choice must be an object with no duplicate token field")
+    return {**payload, "choices": [
+        {"candidate_token": token, **choices[token]} for token in offered_tokens
+    ]}
+
+
+def tool_contract(*, capability_payload, source_refs, recall_allowed, compact_synthesis_transport=False,
+                  named_choices=False, quote_handles=False):
     from .character_interior.structured_role_tool_contract import (
         _compile_generic_decision_contract, _provider_schema,
     )
@@ -147,6 +229,20 @@ def tool_contract(*, capability_payload, source_refs, recall_allowed, compact_sy
     synthesis = capability_payload.get("understanding_contract") == UNDERSTANDING_CONTRACT
     host_bound = capability_payload.get("source_binding") == HOST_SOURCE_BINDING
     compact_synthesis_transport = bool(compact_synthesis_transport and synthesis and host_bound)
+    named_choices = bool(named_choices and compact_synthesis_transport)
+    quote_handles = bool(quote_handles and named_choices)
+    if named_choices:
+        offered = capability_payload.get("offered_tokens")
+        if (not isinstance(offered, list) or not 1 <= len(offered) <= 8
+                or offered != [f"m{i}" for i in range(len(offered))]):
+            raise ValueError("named memory choices need the installed ordered batch tokens")
+        item = schema["properties"]["choices"]["items"]
+        item["properties"].pop("candidate_token")
+        item["required"] = [key for key in item["required"] if key != "candidate_token"]
+        schema["properties"]["choices"] = {
+            "type": "object", "properties": {token: item for token in offered},
+            "required": list(offered), "additionalProperties": False,
+        }
     if not synthesis:
         schema["properties"].pop("understandings", None)
         schema["required"] = [key for key in schema.get("required", []) if key != "understandings"]
@@ -175,10 +271,17 @@ def tool_contract(*, capability_payload, source_refs, recall_allowed, compact_sy
         else:
             item["properties"]["predecessor_tokens"]["maxItems"] = 0
         item["properties"]["evidence_quotes"]["items"]["properties"]["source_token"]["enum"] = list(capability_payload["understanding_source_tokens"])
+        if quote_handles:
+            item["properties"]["evidence_quotes"]["items"] = {
+                "type": "object", "properties": {"quote_ref": {"type": "string"}},
+                "required": ["quote_ref"], "additionalProperties": False,
+            }
     schema["properties"].pop("contract", None)
     schema["required"] = [key for key in schema.get("required", []) if key != "contract"]
     return _compile_generic_decision_contract(
-        purpose=PURPOSE, tool_name=("character_memory_consolidation_v4" if host_bound and synthesis and compact_synthesis_transport
+        purpose=PURPOSE, tool_name=("character_memory_consolidation_v6" if quote_handles
+                                   else "character_memory_consolidation_v5" if named_choices
+                                   else "character_memory_consolidation_v4" if host_bound and synthesis and compact_synthesis_transport
                                    else "character_memory_consolidation_v2" if host_bound
                                    else "character_memory_consolidation_v1"),
         payload_schema=schema, capability_identity=capability_payload,
@@ -189,8 +292,17 @@ def tool_contract(*, capability_payload, source_refs, recall_allowed, compact_sy
                      "revise or merge existing aspects, retain only genuinely new aspects, or choose [] if unchanged. "
                      "understandings contains at most 3 updates TOTAL across the whole batch, not 3 per memory or facet. "
                      "Select which updates matter yourself. A source you choose to forget in choices cannot also support "
-                     "an understanding in this batch. evidence_quotes must copy an exact contiguous passage from "
-                     "that token's supplied source prose; a paraphrase belongs in summary, never in quote."
+                     "an understanding in this batch."
+                     + (" evidence_quotes must copy an exact contiguous passage from "
+                        "that token's supplied source prose; a paraphrase belongs in summary, never in quote."
+                        if not quote_handles else "")
+                     + (" choices is an object keyed by every offered memory token; choose disposition and "
+                        "next_review_hours for every key. Do not add candidate_token inside its value."
+                        if named_choices else "")
+                     + (" For evidence_quotes select quote_ref from quote_options, never retype the prose. "
+                        "quote_parts reconstruct each complete source text in order. The selected handle "
+                        "binds exactly that source and its original text; interpretations belong in summary."
+                        if quote_handles else "")
                      + (" Use only the exact offered source and predecessor tokens in the pinned capability; "
                         "the host rejects unknown tokens, withdrawn sources and non-exact quotes."
                         if compact_synthesis_transport and synthesis else "")),

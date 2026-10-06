@@ -422,6 +422,9 @@ def _private_impression_provider_payload(
 
 def _memory_consolidation_provider_payload(payload, *, compact=False):
     """Remove host proof bytes, preserving source prose, ownership and status."""
+    if compact:
+        from ..memory_consolidation_contract import quote_handle_view
+        payload = quote_handle_view(payload)
     proof_fields = {"authority_event_ref", "authority_world_revision", "authority_payload_hash",
                     "source_values_hash", "excerpt_ref", "excerpt_payload_hash", "source_bindings",
                     "consumed_source_authority_ids", "summary_payload_hash", "semantic_fingerprint",
@@ -444,11 +447,13 @@ def _memory_consolidation_provider_payload(payload, *, compact=False):
     result["source_row_presentation"] = (
         "literal-flat-row-table.1: columns are JSON-pointer field paths; stable_rows contain the exact cells "
         "in that order. absent_cell means missing, not null. Each row is one original object. "
-        "Tokens and source prose are literal. Copy evidence quotes from the source text cells."
+        "Tokens are literal. quote_parts resolve through quote_options in order to the complete original prose."
     )
     result["understanding_instruction"] = (
         "你决定保留或释放一份有来源的理解，也可以选择[]。每项写disposition=retain或release，"
-        "明确列出你选择替代的predecessor_tokens，保留summary、facet、confidence_bp与精确evidence_quotes。"
+        "明确列出你选择替代的predecessor_tokens，保留summary、facet、confidence_bp。"
+        "evidence_quotes每项只写quote_ref，选择quote_options里的原文编号，不重抄或改写引文；"
+        "quote_parts按顺序拼回完整原文，不是删减过的摘要。"
         "retain配空前身表示新理解，配一个前身表示修订，配多个前身表示合并；release必须选一个前身。"
         "不要再写operation。前身只能选understanding_tokens里的现存条目，引用只能选实际提供的来源。"
         "已有方面没有新变化时不必重复新增；可修订、合并或选择不更新。不能同时忘掉来源又用它产生新理解。"
@@ -1797,7 +1802,7 @@ class StructuredCharacterRoleFaculty:
                     capability_payload=manifest.payload,
                     recall_allowed=not request.recall_completed,
                     schema_dialect=(
-                        "deepseek-strict-v6"
+                        "deepseek-strict-v7"
                         if bool(getattr(self._model, "supports_strict_tool_choice", False))
                         else "standard"
                     ),
@@ -1843,7 +1848,9 @@ class StructuredCharacterRoleFaculty:
                 from ..memory_consolidation_contract import tool_contract
                 return tool_contract(capability_payload=manifest.payload, source_refs=manifest.source_refs,
                                      recall_allowed=not request.recall_completed,
-                                     compact_synthesis_transport=self._reference_wire)
+                                     compact_synthesis_transport=self._reference_wire,
+                                     named_choices=self._reference_wire,
+                                     quote_handles=self._reference_wire)
             if request.purpose == "memory_withdrawal_review":
                 return compiler.memory_withdrawal_review(
                     capability_payload=manifest.payload,
@@ -2184,8 +2191,6 @@ class StructuredCharacterRoleFaculty:
                         # field/limit diagnosis, keeping private source IDs
                         # out of the repair instruction.
                         failure_detail = guidance
-                    else:
-                        failure_detail = f"{failure_detail}\n{guidance}"
             user_payload["correction"] = {
                 "ordinal": 1,
                 "failure_code": code,
@@ -2316,13 +2321,20 @@ class StructuredCharacterRoleFaculty:
                 and request.capability_manifest.payload.get("source_binding") == HOST_SOURCE_BINDING
             )
             if memory_host_bound and self._reference_wire:
-                from ..memory_consolidation_contract import UNDERSTANDING_CONTRACT, expand_understanding_dispositions
+                from ..memory_consolidation_contract import (
+                    UNDERSTANDING_CONTRACT, expand_named_choices, expand_understanding_dispositions,
+                    expand_quote_handles,
+                )
 
                 decision = decoded.get("decision")
                 if (request.capability_manifest.payload.get("understanding_contract") == UNDERSTANDING_CONTRACT
                     and isinstance(decision, dict) and isinstance(decision.get("payload"), dict)):
                     try:
-                        decoded["decision"] = {**decision, "payload": expand_understanding_dispositions(decision["payload"])}
+                        payload = expand_named_choices(
+                            decision["payload"], offered_tokens=request.capability_manifest.payload["offered_tokens"],
+                        )
+                        payload = expand_quote_handles(payload, capability_payload=request.capability_manifest.payload)
+                        decoded["decision"] = {**decision, "payload": expand_understanding_dispositions(payload)}
                     except ValueError as exc:
                         self._raise("role_result_schema_invalid", response_hash=response_hash, detail=str(exc))
             wire_model = (
@@ -2692,7 +2704,16 @@ class StructuredCharacterRoleFaculty:
                 else "no_change"
             )
             if result.status != expected_status:
-                cls._raise("role_result_schema_invalid", response_hash=response_hash)
+                cls._raise(
+                    "world_stimulus_status_mismatch",
+                    response_hash=response_hash,
+                    detail=f"status must be {expected_status!r} for the supplied typed proposal; "
+                    f"received {result.status!r}. A life_responses receipt (including explicit null "
+                    "responses), life_intent, aspiration or experience transition requires the "
+                    "outer transition status. The proposal decision=no_change still means no "
+                    "new appraisal. Keep your own feelings and choices; correct the transport "
+                    "status to match the complete proposal you choose to return.",
+                )
             affect_capability = manifest.payload.get("affect_target_lower_bounds")
             raw_bounds = (
                 affect_capability.get("bounds") if isinstance(affect_capability, dict) else None

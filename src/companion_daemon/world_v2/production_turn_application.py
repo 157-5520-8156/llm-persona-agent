@@ -756,6 +756,9 @@ class WorldV2TurnApplicationConfig:
     # New World requests only; persisted author requests retain their carrier.
     world_author_transport: Literal["auto", "json_object"] = "auto"
     world_author_cache_stable_prefix: bool = False
+    # Complete an already-selected, source-verified prehistory window within
+    # the existing reading/receipt budgets. Legacy policy remains the default.
+    recall_parent_context: bool = False
     # Read-only capacity probe for background lanes: true when the day's
     # background envelope is already spent.  It bounds work, never speech, and
     # the visible reply path keeps its own explicit caps.
@@ -876,6 +879,8 @@ class WorldV2TurnApplicationConfig:
             raise ValueError("reply recovery policy must not be empty")
         if self.world_author_transport not in {"auto", "json_object"}:
             raise ValueError("world author transport must be auto or json_object")
+        if type(self.recall_parent_context) is not bool:
+            raise ValueError("Recall parent context flag must be boolean")
         if self.expression_episode_mode not in {"off", "shadow", "stream"}:
             raise ValueError("expression episode mode must be off, shadow, or stream")
         if self.recorded_cadence_mode not in {"off", "shadow", "on"}:
@@ -3699,6 +3704,7 @@ def build_sqlite_world_v2_turn_application(
         path=path,
         world_id=config.world_id,
         embedding=FeatureHashRecallEmbedding(),
+        policy_version="world-v2-recall-index.hybrid.14" if config.recall_parent_context else None,
     )
     cached_semantic_embedding = (
         SQLiteCachedRecallEmbedding(

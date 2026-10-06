@@ -702,6 +702,7 @@ async def open_session(
     journey_clock=None,
     use_configured_recall_embedding: bool = False,
     world_author_cache_stable_prefix: bool = False,
+    recall_parent_context: bool = False,
 ) -> DriveSession:
     from companion_daemon.config import Settings
     from companion_daemon.llm import DeepSeekChatModel
@@ -713,6 +714,8 @@ async def open_session(
         raise SystemExit(f"refusing to open production ledger for write: {database}")
     if type(world_author_cache_stable_prefix) is not bool:
         raise ValueError("isolated World Author cache prefix flag must be boolean")
+    if type(recall_parent_context) is not bool:
+        raise ValueError("isolated Recall parent context flag must be boolean")
     if visible_source_review_version not in {None, "24", "25"}:
         raise ValueError("isolated drive review version must be 24, 25, or None")
     sidecar = output_dir / f"{database.stem}.sidecars"
@@ -780,6 +783,7 @@ async def open_session(
         delivery=delivery,
         model=overlay,
         world_author_cache_stable_prefix=world_author_cache_stable_prefix,
+        recall_parent_context=recall_parent_context,
         **(
             {
                 "visible_source_review_required": True,
