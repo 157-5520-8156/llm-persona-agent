@@ -436,7 +436,7 @@ async def test_public_sqlite_reopens_completed_output_before_proposal(
                     presented[0].trace.audit.embedding_version
                     != presented[1].trace.audit.embedding_version
                 )
-                assert presented[1].trace.audit.embedding_version.endswith(semantic.version)
+                assert presented[1].trace.audit.embedding_version == semantic.version + ":balanced-attention.1"
     finally:
         await app.aclose()
         stores[-1].close()

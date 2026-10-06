@@ -13,6 +13,7 @@ from companion_daemon.llm import provider_invocation_request_hash
 from companion_daemon.world_v2.character_interior.life_source_origin import canonical, digest
 from companion_daemon.world_v2.character_interior.life_source_review import inspect_review, prepare_review
 from companion_daemon.world_v2.character_interior.life_source_view import LifeSourceView
+from companion_daemon.world_v2.character_interior.life_source_state_readings import life_source_profile
 from companion_daemon.world_v2.character_interior.contracts import InnerLifeSnapshot
 from companion_daemon.world_v2.context_capsule import ContextCapsuleBudgetPolicy, SliceBudget
 from test_life_claim_authority import new_fixture_view, review_response
@@ -25,6 +26,16 @@ GOLDEN = json.loads(
 )['cases']
 CURRENT_CONTRACTS = ['life-source-review.13', 'life-source-review.14', 'life-source-review.15',
     'life-source-review.16']
+
+
+def test_standing_understandings_do_not_change_historical_author_profile_metadata():
+    for version in range(1, 17):
+        profile = life_source_profile(f'life-source-review.{version}')
+        assert 'memory_understandings' not in profile.snapshot_material_keys
+        assert 'memory_understandings' not in profile.snapshot_material_limits
+    current = life_source_profile('life-source-review.21')
+    assert 'memory_understandings' in current.snapshot_material_keys
+    assert current.snapshot_material_limits['memory_understandings'] == 6
 
 
 @asynccontextmanager

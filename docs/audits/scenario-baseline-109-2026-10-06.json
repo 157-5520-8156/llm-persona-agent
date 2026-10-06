@@ -1,0 +1,24 @@
+{
+  "contract": "world-v2-offline-baseline-comparison.1",
+  "old_code": "cd8915df",
+  "new_code": "053e9c17 plus historical profile metadata and recovery fixture compatibility repair",
+  "old_version": "world-v2-offline-mechanism-baseline.108",
+  "old_manifest_hash": "74c93b55aef7e0b8c12777d6867b0381af6da3da282eae16e7015b2219a0e6f9",
+  "new_run_hash_with_old_version": "ed342509c2223634ad9c24cc28d7d701d8f9253bd6ebef5953bbfbc683cfd595",
+  "new_version": "world-v2-offline-mechanism-baseline.109",
+  "new_manifest_hash": "931d7f42d746c5cc89ff05ae1783104796554b311a9cb50f58bb03a48eb97a70",
+  "case_count": 120,
+  "changed_cases": [
+    {
+      "scenario_turn_id": "npc_world_impact.01",
+      "fields": [
+        "replay_hash"
+      ]
+    }
+  ],
+  "all_case_predicates_passed": true,
+  "all_case_replays_passed": true,
+  "all_output_hashes_unchanged": true,
+  "rationale": "Current stimulus profile includes standing memory understanding metadata introduced after .108. The only changed case field is npc_world_impact.01 replay_hash; all visible outputs, model/background call counts, event sequences, action/worker states, room hashes and assertions are unchanged. Original .108 was reproduced from archived cd8915df and matched its exact guard; old contracts 1-16 remain byte-exact. No assertion or recorded old ledger is modified.",
+  "limitations": "Fixed fake provider, not real model or delivery qualification."
+}

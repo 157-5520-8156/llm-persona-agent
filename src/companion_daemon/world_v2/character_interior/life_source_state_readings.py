@@ -20,6 +20,17 @@ COMPACT_INVENTORY_CONTRACTS = frozenset({'life-source-review.16', 'life-source-r
 
 def life_source_profile(review_contract):
     profile = background_context_profile_for_purpose('world_stimulus_appraisal')
+    if review_contract in {f'life-source-review.{version}' for version in range(1, 17)}:
+        # These immutable reviewer wires predate standing understandings.
+        # Extending the current background profile must not alter their
+        # recorded author-view identity, even when the old snapshot has none.
+        profile = replace(
+            profile,
+            snapshot_material_keys=tuple(key for key in profile.snapshot_material_keys
+                                         if key != 'memory_understandings'),
+            snapshot_material_limits={key: value for key, value in profile.snapshot_material_limits.items()
+                                      if key != 'memory_understandings'},
+        )
     if review_contract in STATE_REVIEW_CONTRACTS:
         profile = replace(
             profile,
