@@ -116,13 +116,18 @@ async def test_native_core_reaches_v25_http_acceptance_delivery_and_cold_replay(
                 Draft202012Validator(body["tools"][0]["function"]["parameters"]).validate(value)
                 return _http_result(body, value)
             if name.startswith("review_grounded"):
+                assert name == "review_grounded_segments_v5"
                 self.requests.append(body)
                 self.reviews += 1
                 packet = json.loads(body["messages"][1]["content"])
-                return _http_result(body, {"beat_decisions": [{
-                    "beat_index": b["beat_index"], "review_complete": True,
-                    "segments": [{"kind": "non_record", "text": b["text"], "rationale": "当前回应"}],
-                } for b in packet["visible_beats"]]})
+                value = {"beat_decisions": [{
+                    "beat_index": b["beat_index"],
+                    "segments": [{"text": b["text"], "rationale": "当前回应",
+                                  "assessment": {"kind": "non_record"}}],
+                    "review_complete": True,
+                } for b in packet["visible_beats"]]}
+                Draft202012Validator(body["tools"][0]["function"]["parameters"]).validate(value)
+                return _http_result(body, value)
             raise AssertionError(f"unexpected fixture tool {name}")
 
     http = HTTP()

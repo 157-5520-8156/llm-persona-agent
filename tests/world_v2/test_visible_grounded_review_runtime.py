@@ -412,7 +412,6 @@ async def test_wrong_tool_identity_is_corrected_once_by_same_role(tmp_path):
     class WrongToolOnce(GroundedHTTP):
         async def respond(self, request):
             response = await super().respond(request)
-            body = json.loads(request.content)
             if self.authors == 1 and not self.reviews:
                 data = response.json()
                 data["choices"][0]["message"]["tool_calls"][0]["function"]["name"] = "wrong_function"

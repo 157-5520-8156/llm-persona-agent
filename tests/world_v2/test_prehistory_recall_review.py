@@ -157,7 +157,7 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
     app = build_sqlite_world_v2_turn_application(
         path=path, config=replace(config, expression_capabilities=capabilities,
             visible_source_review_required=True, expression_episode_mode="off", reviewed_prehistory=archive,
-            character_memory_enabled=False),
+            character_memory_enabled=False, recall_parent_context=False),
         identities=_Identities(), router=_Router(), character_interior=interior,
         transport=transport, now=NOW,
     )

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from dataclasses import replace
 
 import httpx
+from jsonschema import Draft202012Validator
 import pytest
 
 from companion_daemon.llm import DeepSeekChatModel
@@ -383,13 +384,18 @@ async def test_current_v25_slim_prompt_is_bound_through_http_acceptance_and_repl
         async def __call__(self, request):
             body = json.loads(request.content)
             if body.get('tool_choice',{}).get('function',{}).get('name','').startswith('review_grounded'):
+                assert body['tool_choice']['function']['name'] == 'review_grounded_segments_v5'
                 self.requests.append(body)
                 self.reviews += 1
                 value = json.loads(body['messages'][1]['content'])
-                return _http_result(body, {'beat_decisions': [
-                    {'beat_index': b['beat_index'], 'review_complete': True,
-                     'segments': [{'kind': 'non_record', 'text': b['text'], 'rationale': '当前回应'}]}
-                    for b in value['visible_beats']]})
+                response = {'beat_decisions': [
+                    {'beat_index': b['beat_index'],
+                     'segments': [{'text': b['text'], 'rationale': '当前回应',
+                                   'assessment': {'kind': 'non_record'}}],
+                     'review_complete': True}
+                    for b in value['visible_beats']]}
+                Draft202012Validator(body['tools'][0]['function']['parameters']).validate(response)
+                return _http_result(body, response)
             return await super().__call__(request)
 
     http = HTTP()
