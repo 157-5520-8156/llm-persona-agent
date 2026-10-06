@@ -1,5 +1,7 @@
 # 修复后台接线后的完整日基线
 
+> 2026-10-06 勘误：下文“25 个 attended_source_refs 超过 32 项”的诊断不成立。逐条解析保存输出实际为 5–27 项，其中 18 条是外层 no_change 与必需 life_responses 回执状态冲突；旧纠正包无条件附加来源上限说明，误导了最初归因。原运行计数和费用不受此勘误影响。当前根因、修复与候选验证见[后续审计](role-memory-qualification-2026-10-06.md)。
+
 原 exec session 54594 已明确 exit 0。实际 `result.json` 为 completed=true、error=null，24 个小时目标、50 个固定聊天输入、全部运行时声明到期任务已执行到终态。未重启或删后台任务；V4.1/BGE-M3、CaptureDelivery，未发送真实 QQ。
 
 ## 结果

@@ -1,3 +1,37 @@
+Role/memory qualification finished (2026-10-07): `docs/audits/role-memory-qualification-2026-10-06.md`.
+User defers real QQ. Dedicated tools/CaptureDelivery only; no production config/DB/process writes.
+Own branch codex/role-memory-qualification, base f2d9949e; runtime ad52b795, test fixtures fbd1b81e.
+Implemented world stimulus v7 receipt/status consistency + precise errors; named memory choices and
+pinned quote handles; malformed/duplicate-key rejection; Recall parent .14 enabled in candidate with
+WORLD_V2_RECALL_PARENT_CONTEXT=false rollback across Settings hosts; reviewer wire.5 reason-before-kind.
+Old tool identities retained, Life .1-.16 identities restored, current Life .21 unchanged; no local semantic verdicts.
+IMPORTANT correction to old notes below: 25 old correction packets had5-27 attended refs, NOT >32.
+18 were allowed outer no_change conflicting with required life_responses. New day still has1 provider
+no_change despite advertised enum=[transition] and1 actual attention overflow; do not claim zero failures.
+Final virtual day COMPLETE/exit0:24targets/50inputs/allruntime dues,334DeepSeek calls/CNY7.034,
+unknown0/denials0;50/50Capture receipt,132Beats; first median7.481s/p95nearest9.606s/0under5.
+Additional50localQwen turn-boundary calls at127.0.0.1 (no role semantics), not external API bills.
+11WorldOccurrenceCommitted/10Settled;3ActivityStarted/3Abandoned/0Completed;115MemoryReviewed/12Forgotten.
+NOT savings versus previous complete prefix366calls/6.7087/12events; same offpeak repricing7.034790vs6.709831.
+Final cold replay seq32260 hash match/findings0;52understanding versions/4active/0suppressions.
+Current-production read-only clone startup seq29720 unchanged/hash unchanged/0newusage/0roleHTTP/0Capture.
+Residual audit events main_invalid32/corrective_invalid23/invalid_role_after_correction5/primary_invalid2/
+authored_reselection_invalid2/life_source_unavailable1; overlapping layer events, NOT independent failures.
+15correction packets:2forget-and-quote,2proactive(source/unpinned),11stimulus(9source/1overflow/1status).
+Memory source completeness F09=618/F19=591 proved; semantic ambiguities/overgeneralization remain, no global quality pass.
+Offline: ad52b795 full10174passed/13failed/19skipped/2xfailed; all13 are three fixture files,
+corrected fbd1b81e and21+13 relatedtests pass. Assertions retained/reviewed; no runtime change.
+Preserve raw failed full run; offline-reconciliation.json closes namedfailures, NOT a single all-green full run.
+120scenario .110 passed exact0f32339ce83781e8eb9980be35869a61dccbbf15304bf426d4fe986cfba793f3.
+26mechanism/platform/Ruff gates pass. Formal fixture synthetic/blocked remains not content qualification.
+Final controller exec60202 completed all phases; original exec81147 stopped after expected fixture failures.
+Evidence output/private-audits/role-memory-20261006/final-run; day/result,summary,cold-replay,corrections;
+common-tariff-comparison.json and status-mismatch-schema-proof.json. No paid run remains active.
+Earlier diagnostic totals169calls/CNY3.333 (includes interrupted16chat/7target/133call day; do not extrapolate).
+Whole this-round bill503DeepSeek calls/CNY10.367; no invoice reconciliation/local-compute fee.
+Candidate remains manual_only/qualification_incomplete for cost/speed/content quality. QQ is deferred scope,
+not a blocker for this dedicated-tool validation. No deployment or publish performed.
+
 COMPLETE corrected day baseline (2026-10-04): `docs/audits/complete-corrected-day-baseline-2026-10-04.md`.
 Exec54594 EXIT0/result completedtrue/errorNone/24targets/50inputs/alldues;435calls,
 stored9.4303CNY/repriced9.43198444,denials0/unknown0. 49Capture deliveries,p50first7.633s,
