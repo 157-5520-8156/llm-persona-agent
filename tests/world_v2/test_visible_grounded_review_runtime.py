@@ -60,7 +60,7 @@ class GroundedHTTP:
         self.requests.append(body)
         assert not body.get("stream")
         packet = json.loads(body["messages"][1]["content"])
-        ordered = packet.get("wire_carrier") in {"grounded-review-ordered-wire.1", "grounded-review-ordered-wire.2", "grounded-review-ordered-wire.3", "grounded-review-ordered-wire.4"}
+        ordered = packet.get("wire_carrier") in {"grounded-review-ordered-wire.1", "grounded-review-ordered-wire.2", "grounded-review-ordered-wire.3", "grounded-review-ordered-wire.4", "grounded-review-ordered-wire.5"}
         if "tools" in body and not ordered:
             assert body["tool_choice"]["function"]["name"].startswith("character_inbound_")
             self.authors += 1
@@ -130,6 +130,11 @@ class GroundedHTTP:
                     for part in decision.pop(key):
                         part.pop("segment_index", None)
                         segments.append({**part, "kind": kind})
+                if packet["wire_carrier"] == "grounded-review-ordered-wire.5":
+                    decision.pop("unresolved_details")
+                    segments = [{"text": part["text"], "rationale": part["rationale"],
+                                 "assessment": {k: v for k, v in part.items() if k not in {"text", "rationale"}}}
+                                for part in segments]
                 decision["segments"] = segments
             return _http_result(body, {"beat_decisions": decisions, **({"contract": packet["wire_carrier"]} if packet["wire_carrier"].endswith(".1") else {})})
         content = json.dumps({

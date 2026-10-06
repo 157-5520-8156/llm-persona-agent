@@ -1,0 +1,24 @@
+{
+  "contract": "world-v2-offline-baseline-comparison.1",
+  "old_version": "world-v2-offline-mechanism-baseline.109",
+  "old_manifest_hash": "931d7f42d746c5cc89ff05ae1783104796554b311a9cb50f58bb03a48eb97a70",
+  "new_run_hash_with_old_version": "bcf4527c415ed52db88b6bde8e93c4fa87b69c40d77bc36e973a8709ee4572fd",
+  "new_version": "world-v2-offline-mechanism-baseline.110",
+  "new_manifest_hash": "0f32339ce83781e8eb9980be35869a61dccbbf15304bf426d4fe986cfba793f3",
+  "case_count": 120,
+  "changed_cases": [
+    {
+      "scenario_turn_id": "npc_world_impact.01",
+      "fields": [
+        "replay_hash"
+      ]
+    }
+  ],
+  "changed_fields": {
+    "replay_hash": 1
+  },
+  "all_predicates_passed": true,
+  "all_case_replays_passed": true,
+  "rationale": "Enable the qualified hybrid.14 source-verified parent reading as the application default, retaining the explicit legacy switch and original source/rank/byte limits. Current source material/recall identities move; all per-case semantic assertions remain enforced.",
+  "limitations": "Fixed fake provider; not real-model or real-platform qualification."
+}

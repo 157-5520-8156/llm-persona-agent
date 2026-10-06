@@ -3146,7 +3146,7 @@ def build_qq_c2c_host(
     world_support_model: ChatCompletionModel | None = None,
     world_author_transport: Literal["auto", "json_object"] = "auto",
     world_author_cache_stable_prefix: bool = False,
-    recall_parent_context: bool = False,
+    recall_parent_context: bool | None = None,
     source_closure_model: ChatCompletionModel | None = None,
     visible_source_review_required: bool = False,
     visible_source_review_model: ChatCompletionModel | None = None,
@@ -3375,7 +3375,8 @@ def build_qq_c2c_host(
             visible_source_review_required=visible_source_review_required,
             world_author_transport=world_author_transport,
             world_author_cache_stable_prefix=world_author_cache_stable_prefix,
-            recall_parent_context=recall_parent_context,
+            recall_parent_context=(settings.world_v2_recall_parent_context
+                                   if recall_parent_context is None else recall_parent_context),
             recorded_cadence_mode=getattr(settings, "world_v2_recorded_cadence_mode", "off"),
             private_impression_daily_model_call_limit=(
                 settings.world_v2_private_impression_daily_model_call_limit

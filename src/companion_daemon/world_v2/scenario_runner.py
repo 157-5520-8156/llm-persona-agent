@@ -357,11 +357,11 @@ class ScenarioVerificationError(AssertionError):
 # with attended_source_refs). Complete fake suite hash:
 # 6ab348fe9ea2a49aead4807b0df79440ed426dc88bd0fc30e5e8f360f3bf5204
 # 9ac9e0b3429c19ff3cf29ee39a01af95b163bec617c3e873714df694ede5779c
-# .109 accepts the current standing-understanding profile metadata. Only the
-# NPC continuation replay identity changes; all 120 output/call/event/state
-# predicates match the independently reproduced .108 baseline (cd8915df).
-# See docs/audits/scenario-baseline-109-2026-10-06.json.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.109"
+# .110 enables verified parent reading by default. Relative to .109 only
+# npc_world_impact.01's replay identity changes; all output/call/event/state
+# fields and the complete 120-case assertions remain identical.
+# See docs/audits/scenario-baseline-110-2026-10-06.json.
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.110"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -690,7 +690,7 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.109
 # frozen; changing their historical maximum changes only derived replay
 # identities in all 120 offline cases, not outputs or predicates. See
 # docs/audits/scenario-baseline-108-2026-09-30.json.
-FROZEN_OFFLINE_SUITE_MANIFEST_HASH = "931d7f42d746c5cc89ff05ae1783104796554b311a9cb50f58bb03a48eb97a70"
+FROZEN_OFFLINE_SUITE_MANIFEST_HASH = "0f32339ce83781e8eb9980be35869a61dccbbf15304bf426d4fe986cfba793f3"
 
 
 class _FixedScenarioRouter:

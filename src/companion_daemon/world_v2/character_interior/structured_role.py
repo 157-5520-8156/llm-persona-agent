@@ -2280,8 +2280,17 @@ class StructuredCharacterRoleFaculty:
         response_hash = _hash_text(
             response_hash_source if isinstance(response_hash_source, str) else raw
         )
+        def unique_memory_members(pairs):
+            value = {}
+            for key, item in pairs:
+                if key in value:
+                    raise ValueError(f"duplicate JSON member in memory role result: {key[:80]}")
+                value[key] = item
+            return value
         try:
-            decoded = json.loads(raw)
+            decoded = json.loads(raw, object_pairs_hook=(
+                unique_memory_members if request.purpose == "memory_consolidation" else None
+            ))
         except json.JSONDecodeError as exc:
             raise StructuredRoleResultError(
                 "role_result_not_json",
@@ -2292,6 +2301,10 @@ class StructuredCharacterRoleFaculty:
                     "Return one complete JSON object for the same pinned request."
                 ),
                 response_hash=response_hash,
+            ) from exc
+        except ValueError as exc:
+            raise StructuredRoleResultError(
+                "role_result_schema_invalid", detail=str(exc), response_hash=response_hash,
             ) from exc
         if not isinstance(decoded, dict):
             raise StructuredRoleResultError(

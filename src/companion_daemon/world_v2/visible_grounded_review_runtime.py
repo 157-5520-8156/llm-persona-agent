@@ -27,6 +27,7 @@ async def review_grounded_candidate(
     if not isinstance(reviewer, GroundedVisibleReviewer):
         raise ValidationTechnicalFailure("source_review_exception", failure_detail="grounded reviewer is not configured")
     from .visible_review_protocols import GROUNDED_REVIEW_PROTOCOLS
+    from .grounded_review_wire import REASONED_CONTRACT
 
     protocol = GROUNDED_REVIEW_PROTOCOLS.get(review_version)
     if protocol is None:
@@ -35,7 +36,8 @@ async def review_grounded_candidate(
         candidate=proposal, source_table=source_table, source_ref_aliases=aliases,
         protocol=protocol,
         material_presentation="subjective-proof-elision.1" if review_version == "25" else None,
-        ordered_native=review_version == "25", faithful_proposition="whole_assertion.2" if review_version == "25" else False, reference_wire=review_version == "25",
+        ordered_native=REASONED_CONTRACT if review_version == "25" else False,
+        faithful_proposition="whole_assertion.2" if review_version == "25" else False, reference_wire=review_version == "25",
     )
     model = reviewer.source_model
     author = VisibleReviewAuthorBinding(

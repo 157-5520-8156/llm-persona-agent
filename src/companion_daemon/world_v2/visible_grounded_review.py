@@ -170,8 +170,8 @@ class PreparedGroundedReview:
             parsed = json.loads(raw, object_pairs_hook=_unique)
             if pin.get("reference_bindings") is not None:
                 from .reference_wire import expand_reference_values
-                from .grounded_review_wire import CONTRACT as ORDERED_CONTRACT, expand_response_references
-                expand = expand_response_references if pin.get("wire_carrier") == ORDERED_CONTRACT else expand_reference_values
+                from .grounded_review_wire import CONTRACT as ORDERED_CONTRACT, REASONED_CONTRACT, expand_response_references
+                expand = expand_response_references if pin.get("wire_carrier") in {ORDERED_CONTRACT, REASONED_CONTRACT} else expand_reference_values
                 raw = _json(expand(parsed, pin["reference_bindings"]))
             protocol = pin["protocol"]
             response_model = _ResponseV2 if protocol == PROTOCOL_V2 else _Response
@@ -347,10 +347,13 @@ def _compile_grounded_review(*, candidate, source_table, source_ref_aliases, pro
     if ordered_native:
         if protocol != PROTOCOL_V2:
             raise ValueError("ordered carrier requires grounded review v25")
-        from .grounded_review_wire import CONTRACT, V3_CONTRACT, V2_CONTRACT, LEGACY_CONTRACT, INSTRUCTION, LEGACY_INSTRUCTION, tool_request
+        from .grounded_review_wire import (
+            CONTRACT, V3_CONTRACT, V2_CONTRACT, LEGACY_CONTRACT, REASONED_CONTRACT,
+            INSTRUCTION, LEGACY_INSTRUCTION, REASONED_INSTRUCTION, tool_request,
+        )
 
         carrier_id = CONTRACT if ordered_native is True else ordered_native
-        if carrier_id not in {CONTRACT, V3_CONTRACT, V2_CONTRACT, LEGACY_CONTRACT}:
+        if carrier_id not in {CONTRACT, V3_CONTRACT, V2_CONTRACT, LEGACY_CONTRACT, REASONED_CONTRACT}:
             raise ValueError("unsupported grounded review wire carrier")
 
         body.pop("output_schema")
@@ -363,8 +366,10 @@ def _compile_grounded_review(*, candidate, source_table, source_ref_aliases, pro
         # global segment numbering is replaced by the single native array.
         lifecycle_start = instruction.index(" 新来源边界：", len(_INSTRUCTION))
         native_instruction += instruction[lifecycle_start:]
-        native_instruction += "\n以上 facts/non_record_expressions 是审核概念；实际传输以如下规则为准：" + (LEGACY_INSTRUCTION if carrier_id == LEGACY_CONTRACT else INSTRUCTION)
-        if carrier_id in {V3_CONTRACT, CONTRACT}:
+        wire_instruction = (LEGACY_INSTRUCTION if carrier_id == LEGACY_CONTRACT else
+                            REASONED_INSTRUCTION if carrier_id == REASONED_CONTRACT else INSTRUCTION)
+        native_instruction += "\n以上 facts/non_record_expressions 是审核概念；实际传输以如下规则为准：" + wire_instruction
+        if carrier_id in {V3_CONTRACT, CONTRACT, REASONED_CONTRACT}:
             native_instruction += (
                 " 本传输不要求另写 unresolved_details。review_complete 必须明确给出；"
                 "任何事实含义、前提、覆盖或证据无法确定，都必须写 false，不得以缺字段代替判断。"

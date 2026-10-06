@@ -455,6 +455,11 @@ class Settings(BaseSettings):
         default=False,
         alias="WORLD_V2_RECALL_SEMANTIC_ENABLED",
     )
+    world_v2_recall_parent_context: bool = Field(
+        default=True,
+        alias="WORLD_V2_RECALL_PARENT_CONTEXT",
+        description="Complete selected verified prehistory windows within existing reading and receipt budgets.",
+    )
     world_v2_recall_embedding_base_url: str | None = Field(
         default=None,
         alias="WORLD_V2_RECALL_EMBEDDING_BASE_URL",

@@ -76,7 +76,7 @@ def test_quote_handles_restore_exact_selected_prose_without_rewriting_names():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("malformed_updates", [None, 1, True])
+@pytest.mark.parametrize("malformed_updates", [None, 1, True, "duplicate_choices"])
 async def test_public_role_decodes_only_the_authored_named_choices(malformed_updates):
     from companion_daemon.world_v2.character_interior.structured_role import StructuredCharacterRoleFaculty, StructuredRoleResultError
     from test_character_interior_structured_role import _StrictToolQueueModel, _request, _manifest
@@ -96,16 +96,21 @@ async def test_public_role_decodes_only_the_authored_named_choices(malformed_upd
     value = {"status": "decision", "summary": "我留下第一件，另一件不再保留。",
              "attended_source_refs": [], "recall_query": None, "proposals": [],
              "decision": {"payload": {"choices": choices, "understandings": []}}}
-    if malformed_updates is not None:
+    if malformed_updates is not None and malformed_updates != "duplicate_choices":
         value["decision"]["payload"]["understandings"] = malformed_updates
-    model = _StrictToolQueueModel(json.dumps(value))
+    raw = json.dumps(value)
+    if malformed_updates == "duplicate_choices":
+        original = '"m0": {"disposition": "retain", "next_review_hours": 72}'
+        assert original in raw
+        raw = raw.replace(original, '"m0": {"disposition": "forget", "next_review_hours": 24}, ' + original)
+    model = _StrictToolQueueModel(raw)
     role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-flash", reference_wire=True)
     request = await _request(purpose="memory_consolidation", capability_manifest=manifest)
     if malformed_updates is not None:
         with pytest.raises(StructuredRoleResultError) as raised:
             await role.consider(request)
         assert raised.value.code == "role_result_schema_invalid"
-        assert "understandings" in raised.value.detail
+        assert ("duplicate" if malformed_updates == "duplicate_choices" else "understandings") in raised.value.detail
         return
     result = await role.consider(request)
     assert result["decision"]["payload"]["choices"] == [

@@ -757,8 +757,8 @@ class WorldV2TurnApplicationConfig:
     world_author_transport: Literal["auto", "json_object"] = "auto"
     world_author_cache_stable_prefix: bool = False
     # Complete an already-selected, source-verified prehistory window within
-    # the existing reading/receipt budgets. Legacy policy remains the default.
-    recall_parent_context: bool = False
+    # the existing reading/receipt budgets. False retains the legacy windows.
+    recall_parent_context: bool = True
     # Read-only capacity probe for background lanes: true when the day's
     # background envelope is already spent.  It bounds work, never speech, and
     # the visible reply path keeps its own explicit caps.
