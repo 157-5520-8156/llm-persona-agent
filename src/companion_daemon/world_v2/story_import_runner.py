@@ -101,6 +101,32 @@ def import_plan_request(brief, document, *, feedback=(), check_coverage=False, c
     return value
 
 
+def _stage_capture(attempt, *, model_name, tool_name):
+    """A complete model envelope can be corrected; an HTTP failure cannot."""
+    wire = json.loads((attempt / 'provider-response.json').read_text())
+    if not 200 <= wire.get('status_code', 200) < 300:
+        raise ValueError('story provider returned an unsuccessful HTTP response')
+    payload = json.loads(wire['body_utf8'])
+    choices = payload.get('choices')
+    if (not isinstance(choices, list) or not choices or not isinstance(choices[0], dict)
+            or not isinstance(choices[0].get('message'), dict)):
+        raise ValueError('story provider capture has no complete model message')
+    error = None
+    try:
+        raw, usage = _response_content(wire, expected_tool_name=tool_name)
+    except ValueError as exc:
+        raw = wire['body_utf8']
+        usage = payload.get('usage') if isinstance(payload.get('usage'), dict) else {}
+        error = str(exc)
+    saved = {'content': raw, 'content_hash': digest(raw), 'usage': usage,
+             'captured_at': datetime.now(UTC).isoformat(),
+             'usage_audit': provider_usage_audit(model_name, usage)}
+    if error:
+        saved['response_error'] = error
+    _private_json(attempt / 'response.json', saved)
+    return saved
+
+
 async def _run_stage(*, packet, model_name, base_url, api_key, directory, validate, completion=None):
     """Capture once, then parse/replay; at most one repair of a completed response."""
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -148,11 +174,7 @@ async def _run_stage(*, packet, model_name, base_url, api_key, directory, valida
             if digest(saved['content']) != saved['content_hash']:
                 raise ValueError('captured story response changed')
         elif (attempt / 'provider-response.json').exists():
-            raw, usage = _response_content(json.loads((attempt / 'provider-response.json').read_text()), expected_tool_name=tool_name)
-            saved = {'content': raw, 'content_hash': digest(raw), 'usage': usage,
-                     'captured_at': datetime.now(UTC).isoformat(),
-                     'usage_audit': provider_usage_audit(model_name, usage)}
-            _private_json(response_file, saved)
+            saved = _stage_capture(attempt, model_name=model_name, tool_name=tool_name)
         else:
             if (attempt / 'intent.json').exists() or (attempt / 'provider-request.json').exists():
                 raise RuntimeError('story request may be in flight or billed; no automatic repeat without a captured response')
@@ -165,12 +187,11 @@ async def _run_stage(*, packet, model_name, base_url, api_key, directory, valida
                     'previous_attempt': prior[-1],
                 }, ensure_ascii=False)})
             _private_json(attempt / 'intent.json', {'request_hash': digest(identity), 'started_at': datetime.now(UTC)})
-            observed = []
             try:
                 if completion is None:
                     raw, usage = await _captured_completion(api_key=api_key, base_url=base_url,
                         model_name=model_name, messages=messages, attempt_dir=attempt,
-                        usage_observer=observed.append, max_completion_tokens=16384, tools=tools, tool_choice=tool_choice)
+                        max_completion_tokens=16384, tools=tools, tool_choice=tool_choice)
                 else:
                     raw, usage = await completion(messages=messages, attempt_dir=attempt, model_name=model_name)
                 # Provider usage objects stay in the existing metering adapter;
@@ -182,10 +203,18 @@ async def _run_stage(*, packet, model_name, base_url, api_key, directory, valida
             except BaseException as exc:
                 _private_json(attempt / 'failure.json', {'type': type(exc).__name__,
                     'billing_state': 'unknown_if_request_emitted'}, exclusive=False)
-                raise
+                if isinstance(exc, ValueError) and (attempt / 'provider-response.json').exists():
+                    saved = _stage_capture(attempt, model_name=model_name, tool_name=tool_name)
+                    _private_json(attempt / 'failure.json', {'type': type(exc).__name__,
+                        'billing_state': saved['usage_audit']['cost']['billing_state'],
+                        'complete_model_response_captured': True}, exclusive=False)
+                else:
+                    raise
         if _captured_finish_reason(attempt) == 'length':
             raise RuntimeError('story stage output truncated; captured, not retried')
         try:
+            if saved.get('response_error'):
+                raise ValueError(saved['response_error'])
             parsed = validate(saved['content'], captured_at=datetime.fromisoformat(saved['captured_at']))
         except ValueError as exc:
             prior.append({'failure': str(exc)[:3000], 'content': saved['content']})

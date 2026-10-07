@@ -41,7 +41,8 @@ def test_import_rejects_stale_history_basis_but_exact_reimport_is_inert(tmp_path
         ledger.close()
 
 
-def test_two_stories_share_a_reviewed_event_but_keep_their_own_knowledge_and_links(tmp_path):
+@pytest.mark.parametrize('existing_delta', [False, True])
+def test_two_stories_share_a_reviewed_event_but_keep_their_own_knowledge_and_links(tmp_path, existing_delta):
     from companion_daemon.world_v2.story_import import bind_import_context
     from companion_daemon.world_v2.character_prehistory import StoryEventMatchDraft, CrossStoryRelation
     from test_prehistory_memory_source import _read
@@ -51,6 +52,8 @@ def test_two_stories_share_a_reviewed_event_but_keep_their_own_knowledge_and_lin
     try:
         first = bind_import_context(story_archive().document, accepted_archives=(),
             world_start_ref='world-start', world_start_payload_hash=digest({}), world_started_at=START)
+        if not existing_delta:
+            first = story_archive().document
         first_active = _active_rows(ledger, _reviewed(first))
         old = first.records[0]
         text = '2022年她再次想起那次还伞，明白那是对方特意绕路送来的；此前她只记得对方追到了车站。'
@@ -82,6 +85,9 @@ def test_two_stories_share_a_reviewed_event_but_keep_their_own_knowledge_and_lin
         assert readings[new_id].story.known_from.year == 2022
         assert readings[new_id].related_record_refs == (old.record_id,)
         assert readings[new_id].story.relations[0].left_record_id == old.record_id
+        assert new_id in readings[old.record_id].related_record_refs
+        assert any(edge.right_record_id == new_id and edge.authority is not None
+                   for edge in readings[old.record_id].story.relations)
         assert next(r.record for r in ledger.project().prehistory_records if r.record.record_id == old.record_id) == old
         assert ledger.rebuild().semantic_hash == ledger.project().semantic_hash
         from test_prehistory_memory_source import _choice, _corpus
@@ -90,9 +96,26 @@ def test_two_stories_share_a_reviewed_event_but_keep_their_own_knowledge_and_lin
         from companion_daemon.world_v2.prehistory_memory_source import prehistory_memory_binding
         query = _query(ledger).model_copy(update={'knowledge_as_of': datetime(2021, 1, 1, tzinfo=UTC)})
         index = InMemoryRecallIndex(embedding=FeatureHashRecallEmbedding())
-        index.rebuild(cursor=query.cursor, documents=_corpus(ledger, _read(ledger)))
+        corpus = _corpus(ledger, _read(ledger))
+        index.rebuild(cursor=query.cursor, documents=corpus)
+        from companion_daemon.world_v2.recall_index import RecallQuery, RecallDocument
+        window_query = _query(ledger).model_dump(mode='json')
+        window_query['story_window'] = {'record_ref': old.record_id, 'start': 0}
+        window_result = index.search(RecallQuery.model_validate_json(json.dumps(window_query)))
+        old_window = next(hit.document for hit in window_result.hits
+                          if hit.document.source_item_ref.split(':window:')[0] == old.record_id)
+        assert new_id in old_window.prehistory.related_record_refs
+        assert len(old_window.source_bindings) == 3
+        assert RecallDocument.model_validate_json(old_window.model_dump_json()) == old_window
+        extra_authority = next(edge.authority.event_ref for edge in old_window.prehistory.story.relations
+                               if edge.authority is not None)
+        closed = _corpus(ledger, _read(ledger), omitted=(extra_authority,))
+        assert not any(d.source_item_ref.split(':window:')[0] == old.record_id for d in closed)
         historical = index.search(query).model_dump_json()
         assert new_id not in historical
+        for hit in index.search(query).hits:
+            assert len(hit.document.source_bindings) == 2
+            assert RecallDocument.model_validate_json(hit.document.model_dump_json()) == hit.document
         old_row = next(r for r in ledger.project().prehistory_records if r.record.record_id == old.record_id)
         _choice(ledger, prehistory_memory_binding(old_row), before=first_active[old.record_id],
                 candidate_id=first_active[old.record_id].candidate_id, status='forgotten')

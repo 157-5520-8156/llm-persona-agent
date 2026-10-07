@@ -144,3 +144,38 @@ async def test_stage_recovers_strict_tool_wire_capture_without_a_second_call(tmp
         await _run_stage(**args)
     assert await _run_stage(**args) == {'required_judgment': []}
     assert len(calls) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('resumed_capture', [False, True])
+async def test_wrong_captured_tool_gets_one_bounded_correction(tmp_path, monkeypatch, resumed_capture):
+    from companion_daemon.world_v2.story_import_runner import _run_stage
+    from companion_daemon.world_v2 import story_import_runner as runner
+    packet = {'instruction': 'fixture source', 'output_schema': {'type': 'object',
+        'properties': {'ok': {'type': 'boolean'}}}}
+    calls = []
+    async def provider(**kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            wire = {'status_code': 200, 'body_utf8': json.dumps({'choices': [{'finish_reason': 'stop',
+                'message': {'tool_calls': [{'function': {'name': 'wrong_tool', 'arguments': '{"ok": true}'}}]}}],
+                'usage': {'prompt_tokens': 100, 'completion_tokens': 10}})}
+            (kwargs['attempt_dir'] / 'provider-response.json').write_text(json.dumps(wire))
+            if resumed_capture:
+                raise RuntimeError('fixture crash after capture')
+            raise ValueError('returned the wrong tool')
+        correction = json.loads(kwargs['messages'][-1]['content'])
+        assert 'required story tool' in correction['previous_attempt']['failure']
+        assert 'wrong_tool' in correction['previous_attempt']['content']
+        return '{"ok": true}', {'input_tokens': 100, 'output_tokens': 10}
+    monkeypatch.setattr(runner, '_captured_completion', provider)
+    params = dict(packet=packet, model_name='deepseek-flash', base_url='https://fixture.invalid',
+        api_key='fixture', directory=tmp_path / 'stage', validate=lambda raw, **_: json.loads(raw))
+    if resumed_capture:
+        with pytest.raises(RuntimeError, match='fixture crash'):
+            await _run_stage(**params)
+    assert await _run_stage(**params) == {'ok': True}
+    assert await _run_stage(**params) == {'ok': True}
+    assert len(calls) == 2
+    first = json.loads((params['directory'] / 'attempt-01/response.json').read_text())
+    assert first['usage_audit']['cost']['estimated_cost_cny'] > 0

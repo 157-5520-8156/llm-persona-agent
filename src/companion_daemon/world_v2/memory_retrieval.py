@@ -138,6 +138,9 @@ class MemoryRetrievalItem(FrozenModel):
              source.prehistory.archive_payload_hash)
             for source in self.source_excerpts if source.prehistory is not None
         )
+        claims.update((edge.authority.event_ref, edge.authority.world_revision, edge.authority.payload_hash)
+            for source in self.source_excerpts if source.prehistory is not None and source.prehistory.story is not None
+            for edge in source.prehistory.story.relations if edge.authority is not None)
         return tuple(sorted(claims))
 
 
@@ -390,9 +393,17 @@ class MemoryRetrievalCompiler:
         from .prehistory_memory_source import restrict_story_reading
         visible_records = {excerpt.source_id for item in items for excerpt in item.source_excerpts
                            if excerpt.prehistory is not None}
+        # Only already source-checked, currently readable endpoints contribute
+        # cross-story edges. Their new archive remains the edge's authority.
+        cross_story_relations = tuple(dict.fromkeys(edge
+            for item in items for excerpt in item.source_excerpts
+            if excerpt.prehistory is not None and excerpt.prehistory.story is not None
+            for edge in excerpt.prehistory.story.relations if edge.authority is not None
+            and {edge.left_record_id, edge.right_record_id} <= visible_records))
         items = [item.model_copy(update={"source_excerpts": tuple(
             excerpt.model_copy(update={"prehistory": restrict_story_reading(
-                excerpt.prehistory, visible_records,
+                excerpt.prehistory, visible_records, record_id=excerpt.source_id,
+                cross_story_relations=cross_story_relations,
             )}) if excerpt.prehistory is not None and excerpt.prehistory.story is not None else excerpt
             for excerpt in item.source_excerpts
         )}) for item in items]

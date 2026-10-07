@@ -97,10 +97,17 @@ class StoryBlockReading(FrozenModel):
     occurred_until: datetime | None
 
 
+class StoryRelationAuthority(FrozenModel):
+    event_ref: str = Field(min_length=1)
+    world_revision: int = Field(ge=1)
+    payload_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class StoryRelationReading(FrozenModel):
     left_record_id: str
     right_record_id: str
     relation_kind: StoryRelationKind
+    authority: StoryRelationAuthority | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 class StoryMemoryReading(FrozenModel):

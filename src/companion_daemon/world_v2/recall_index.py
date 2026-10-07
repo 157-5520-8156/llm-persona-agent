@@ -281,6 +281,17 @@ class RecallDocument(FrozenModel):
             raise ValueError("context-only recall requires one bounded prehistory record")
         if self.prehistory is not None:
             scope = self.prehistory
+            archive_proofs = {RecallSourceBinding(
+                source_kind="committed_event", authority_type="CharacterPrehistoryArchiveAccepted",
+                ref=scope.archive_event_ref, source_world_revision=scope.archive_world_revision,
+                immutable_hash=scope.archive_payload_hash,
+            )}
+            if scope.story is not None:
+                archive_proofs.update(RecallSourceBinding(
+                    source_kind="committed_event", authority_type="CharacterPrehistoryArchiveAccepted",
+                    ref=edge.authority.event_ref, source_world_revision=edge.authority.world_revision,
+                    immutable_hash=edge.authority.payload_hash,
+                ) for edge in scope.story.relations if edge.authority is not None)
             if (
                 self.actor_ref != scope.actor_ref
                 or self.occurred_from != scope.occurred_from
@@ -288,14 +299,10 @@ class RecallDocument(FrozenModel):
                 or self.memory_kind != "episodic"
                 or self.status != "active"
                 or self.source_slice != "active_memory_candidates"
-                or len(bindings) != 2
+                or len(bindings) != len(archive_proofs) + 1
                 or not any(item.authority_type == "CharacterPrehistoryRecordImported"
                            and item.source_kind == "committed_event" for item in bindings)
-                or not any(item == RecallSourceBinding(
-                    source_kind="committed_event", authority_type="CharacterPrehistoryArchiveAccepted",
-                    ref=scope.archive_event_ref, source_world_revision=scope.archive_world_revision,
-                    immutable_hash=scope.archive_payload_hash,
-                ) for item in bindings)
+                or not archive_proofs <= set(bindings)
             ):
                 raise ValueError("historical recall changed source ownership, interval or authority")
         if self.accepted_fact is not None:
@@ -886,10 +893,21 @@ class _RecallIndexCore:
             document.source_item_ref.split(":window:")[0] for document, _ in continuation_rows
             if document.prehistory is not None
         }
-        hits = tuple(hit.model_copy(update={"document": hit.document.model_copy(update={
-            "prehistory": restrict_story_reading(hit.document.prehistory, visible_records),
-        })}) if hit.document.prehistory is not None and hit.document.prehistory.story else hit
-                     for hit in hits)
+        def restrict_hit(hit):
+            document = hit.document
+            if document.prehistory is None or document.prehistory.story is None:
+                return hit
+            reading = restrict_story_reading(document.prehistory, visible_records)
+            archive_refs = {reading.archive_event_ref, *(edge.authority.event_ref
+                for edge in reading.story.relations if edge.authority is not None)}
+            bindings = tuple(b for b in document.source_bindings
+                if b.authority_type != "CharacterPrehistoryArchiveAccepted" or b.ref in archive_refs)
+            return hit.model_copy(update={"document": document.model_copy(update={
+                "prehistory": reading, "source_bindings": bindings,
+                "source_refs": tuple(sorted(b.ref for b in bindings)),
+                "source_world_revision": max(b.source_world_revision for b in bindings),
+            })})
+        hits = tuple(restrict_hit(hit) for hit in hits)
         if diagnostics is not None:
             diagnostics.append(RecallSearchDiagnostic(
                 corpus_document_ids=tuple(document.document_id for document, _ in rows),

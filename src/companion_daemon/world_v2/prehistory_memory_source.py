@@ -145,11 +145,12 @@ def prehistory_memory_reading(
     entity_refs = {*record.participant_refs, record.location_ref}
     story = story_memory_reading(record.story, statement=record.statement) if record.story else None
     related = record.related_record_refs
-    if story is not None and archive.manifest.import_context is not None:
+    if story is not None:
         from .story_import import canonical_event_ref
-        from .prehistory_story import StoryRelationReading
-        edges = tuple(edge for edge in archive.manifest.import_context.cross_story_links
-                      if record.record_id in {edge.left_record_id, edge.right_record_id})
+        from .prehistory_story import StoryRelationReading, StoryRelationAuthority
+        context = archive.manifest.import_context
+        edges = tuple(edge for edge in context.cross_story_links
+                      if record.record_id in {edge.left_record_id, edge.right_record_id}) if context else ()
         related = tuple(sorted({*related, *(ref for edge in edges
             for ref in (edge.left_record_id, edge.right_record_id) if ref != record.record_id)}))
         story = story.model_copy(update={
@@ -158,6 +159,8 @@ def prehistory_memory_reading(
             )}) for block in story.blocks),
             "relations": (*story.relations, *(StoryRelationReading(
                 left_record_id=e.left_record_id, right_record_id=e.right_record_id, relation_kind=e.relation_kind,
+                authority=StoryRelationAuthority(event_ref=archive.accepted_event_ref,
+                    world_revision=archive.accepted_world_revision, payload_hash=archive.accepted_payload_hash),
             ) for e in edges)),
         })
     return PrehistoryMemoryReading(
@@ -173,11 +176,19 @@ def prehistory_memory_reading(
     )
 
 
-def restrict_story_reading(reading: PrehistoryMemoryReading, visible_record_ids: set[str]) -> PrehistoryMemoryReading:
+def restrict_story_reading(reading: PrehistoryMemoryReading, visible_record_ids: set[str], *,
+                           record_id: str | None = None, cross_story_relations=()) -> PrehistoryMemoryReading:
     """No metadata route around the current readable memory set."""
     if reading.story is None:
         return reading
+    relations = tuple(dict.fromkeys((*reading.story.relations, *(
+        edge for edge in cross_story_relations if record_id in {edge.left_record_id, edge.right_record_id}
+    ))))
+    related = set(reading.related_record_refs)
+    if record_id is not None:
+        related.update(ref for edge in relations for ref in (edge.left_record_id, edge.right_record_id)
+                       if ref != record_id)
     return reading.model_copy(update={
-        "story": reading.story.restrict_relations(visible_record_ids),
-        "related_record_refs": tuple(ref for ref in reading.related_record_refs if ref in visible_record_ids),
+        "story": reading.story.model_copy(update={'relations': relations}).restrict_relations(visible_record_ids),
+        "related_record_refs": tuple(sorted(ref for ref in related if ref in visible_record_ids)),
     })

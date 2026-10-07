@@ -106,9 +106,7 @@ def required_recall_authority_refs(sources: RecallCorpusSources) -> frozenset[st
         if item.content is not None:
             refs.add(item.content.descriptor_event_ref)
     for item in sources.active_memory_candidates:
-        refs.update(excerpt.authority_event_ref for excerpt in item.source_excerpts)
-        refs.update(excerpt.prehistory.archive_event_ref for excerpt in item.source_excerpts
-                    if excerpt.prehistory is not None)
+        refs.update(ref for ref, _, _ in item.committed_source_claims())
     for item in sources.affect_openings:
         refs.add(item.episode.origin.accepted_event_ref)
         refs.update(ref.ref_id for ref in item.episode.evidence_refs)
@@ -404,6 +402,12 @@ class RecallCorpusCompiler:
                         immutable_hash=historical.archive_payload_hash,
                     ),
                 )
+                if historical.story is not None:
+                    bindings = tuple(dict.fromkeys((*bindings, *(RecallSourceBinding(
+                        source_kind="committed_event", authority_type="CharacterPrehistoryArchiveAccepted",
+                        ref=edge.authority.event_ref, source_world_revision=edge.authority.world_revision,
+                        immutable_hash=edge.authority.payload_hash,
+                    ) for edge in historical.story.relations if edge.authority is not None))))
                 # Both proofs must be reachable in this pinned corpus. The
                 # archive contributes identity labels, never additional text.
                 if not all(authority.get(binding.ref) == binding for binding in bindings):
