@@ -182,7 +182,7 @@ def main(argv=None):
             _private_json(linked_materials_path, json.loads(materials.model_dump_json()))
         linked_artifact = PrehistoryStoryLinkArtifact.model_validate_json(
             story_link_artifact_path.read_text(encoding="utf-8"),
-        )
+        ) if args.preserve_story_structure else None
         document = export_actor_archive(
             materials, args.actor_ref, args.archive_id,
             preserve_story_structure=args.preserve_story_structure,

@@ -108,3 +108,15 @@ PYTHONPATH=src python scripts/prepare_character_prehistory.py bind-semantic-revi
 已完成结构校验、请求准备、逐条审核绑定、独立模型审核、隔离导入及三条真实自主保留；未完成其余21条初始化、自然回忆、长周期记忆与成本验收。首问得到合法拒答，三条新记忆都不在实际聊天输入中，不能据此声称回忆成功。见 [真实保留与输入核查](../../docs/audits/release-rich-prehistory-retention-validation-2026-09-14.json)。
 
 41项创作/审核绑定检查已通过。三次审核调用估算合计0.082023元，后续三条初始化约0.1418256元、一轮在线聊天链约0.2042964元，均无新增未知计费预留。创作/审核/初始化属于一次性建档；在线检索与维护成本需要分别测量，当前样本不证明每月约100元的目标已经达成。
+
+## 结构化故事档案（2026-10-07，候选能力）
+
+`prepare_life_materials_prehistory.py --preserve-story-structure` 可输出
+`character-prehistory-archive.2`，保留来源块、事件身份、发生/获知时间与类型关系。
+离线导出可另传 `--story-links <captured-story-links.json>`；叙事抽取模式会绑定实际关联阶段产物。
+默认仍为旧`.1`，不会升级现有审批或覆盖已接受历史；`.2`必须重新审核。
+
+新结构经既有Memory/Recall读取，支持`knowledge_as_of`和`story_window`续读。
+富结构占用原有预算，单次可能只呈现故事的一部分；合法关联ID可以分次读取，不提供未呈现正文的事实权限。
+当前仍是一轮至多一次角色Recall，尚未验证角色跨轮续读质量/成本；`.2`审核失败后的自动修订尚未实现。
+完整范围、测试及取舍见[本轮审计](../../docs/audits/story-memory-structure-2026-10-07.md)。

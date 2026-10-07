@@ -866,12 +866,16 @@ class _RecallIndexCore:
             hits = self._with_prehistory_parent_context(
                 hits=hits, eligible_rows=eligible_rows,
             )
-        # Expose only links whose other endpoint passed this same read's
-        # actor/status/privacy/time filters. Counts never disclose hidden nodes.
+        # A byte-limited view can retain coordinates of another eligible
+        # scene for a later pull. This never names a hidden/forgotten/future
+        # endpoint, nor supplies its unpresented text as claim evidence.
         from .prehistory_memory_source import restrict_story_reading
+        perspective = query.model_copy(update={"story_window": None})
+        continuation_rows = (tuple((d, v) for d, v in rows if self._eligible(d, perspective))
+                             if query.story_window is not None else eligible_rows)
         visible_records = {
-            hit.document.source_item_ref.split(":window:")[0] for hit in hits
-            if hit.document.prehistory is not None
+            document.source_item_ref.split(":window:")[0] for document, _ in continuation_rows
+            if document.prehistory is not None
         }
         hits = tuple(hit.model_copy(update={"document": hit.document.model_copy(update={
             "prehistory": restrict_story_reading(hit.document.prehistory, visible_records),
@@ -1237,7 +1241,7 @@ class _RecallIndexCore:
             return False
         if query.story_window is not None:
             requested = query.story_window
-            if (story is None or document.context_only
+            if (document.prehistory is None or document.context_only
                     or document.source_item_ref.split(":window:")[0] != requested.record_ref
                     or (document.source_window_start or 0) != requested.start):
                 return False

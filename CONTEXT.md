@@ -6,7 +6,12 @@ Recall knowledge_as_of is conservative structured-prehistory-only, not whole-con
 Explicit story_window continues current retained source windows; current privacy/forget/source proofs
 apply on every read. No new Fate daemon, canonical cross-story merge or NPC binding yet.
 Frozen three-line oracle is an engineering fixture, not production/history or model-quality approval.
-No paid calls/production writes. Full verification and two-axis review recorded in the audit.
+No paid calls/production writes. Full at783caed8:10187pass/11fail/19skip/2xfail; all11 closed by
+legacy full-envelope schema isolation + current native prompt8 mapping; frozen oldhash asserts unchanged.
+Compatibility136pass, preceding scoped99pass, final story12pass; not a single final-head full green.
+Two-axis review closed one legacy continuation P2; no unresolved findings. Fixed budget first2vsold5
+story nodes; eligible continuation reaches all5 across explicit fixture reads; real role use/cost unqualified.
+Full evidence and residual limits are in the audit.
 
 Long-term story system clarification (2026-10-07): user wants long, consequential, evolving and
 interwoven stories; adding isolated scenes is not the goal. Current design proposal:

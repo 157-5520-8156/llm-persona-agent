@@ -26,7 +26,9 @@ increment. Active retention, exact current source proof, actor and privacy check
 reading. Model-facing story metadata contains source coordinates, event identities,
 kinds and dates, never raw narrator quotations, bridge quotes or reviewer rationale.
 Typed edges and compatibility adjacency are restricted to currently readable endpoints;
-a query further restricts edges to the returned endpoints. Forgetting cannot be bypassed
+a query further restricts edges to its eligible endpoints. A budget-omitted but
+still eligible endpoint remains a legal `story_window` continuation coordinate;
+it does not grant evidence for text that was not presented. Forgetting cannot be bypassed
 by traversing the accepted graph or requesting a source window.
 
 `CharacterRecallRequest.knowledge_as_of` selects only structured prehistory with known
@@ -36,7 +38,8 @@ character context. Current privacy, retention and source withdrawal continue to 
 
 `story_window` permits the role to request the next source-exact 480-character window
 (with the existing 64-character overlap) using coordinates from the reading. The same
-current source checks and byte budgets apply. Reading distinguishes full-record coverage
+current source checks and byte budgets apply. Legacy `.1` windows remain readable
+without `knowledge_as_of`; they never gain a missing historical knowledge proof. Reading distinguishes full-record coverage
 from a bounded record excerpt; neither claims complete story coverage. The existing
 one-recall-per-turn constraint is unchanged; no new autonomous multi-step LLM loop.
 
@@ -56,3 +59,9 @@ one-recall-per-turn constraint is unchanged; no new autonomous multi-step LLM lo
 - Frozen three-line source/oracle fixtures validate representation and epistemic boundaries.
   They do not establish independent extraction repeatability, real role understanding,
   NPC continuity, week/month narrative quality or production qualification.
+
+
+Legacy full-envelope tool schemas retain their original fields and frozen identities.
+The current slim/native JSON carriers expose the added reading controls through versioned
+prompts (`.7-slim` and `.8-slim-core`). The previous `.6-slim` to `.7-slim-core`
+conversion remains supported; no frozen hash expectation is rewritten.

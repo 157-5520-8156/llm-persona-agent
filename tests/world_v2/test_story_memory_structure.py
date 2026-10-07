@@ -287,3 +287,91 @@ def test_role_can_expand_an_exact_long_record_window_without_new_source_access(t
         if coordinator:
             coordinator.close()
         ledger.close()
+
+
+def test_budget_limited_story_keeps_only_eligible_continuation_coordinates(tmp_path):
+    from companion_daemon.world_v2.character_prehistory import PrehistoryArchiveDocument
+    from companion_daemon.world_v2.prehistory_story import StoryWindowRequest
+
+    ledger = started_ledger(tmp_path / 'frontier.sqlite')
+    try:
+        archive = story_archive()
+        raw = archive.document.model_dump(mode='json')
+        # Enough retained scenes to exceed the fixed six-hit envelope. Keep
+        # exact source/knowledge fixtures; synthetic names are not story facts.
+        first = raw['records'][0]
+        first['story']['relations'] = []
+        records = []
+        for i in range(8):
+            record = json.loads(json.dumps(first))
+            record['record_id'] = f'prehistory-record:chain-{i}'
+            record['statement'] = f'还伞的第{i}段。'
+            record['related_record_refs'] = [f'prehistory-record:chain-{j}' for j in (i-1, i+1) if 0 <= j < 8]
+            records.append(record)
+        raw['records'] = records
+        document = PrehistoryArchiveDocument.model_validate_json(json.dumps(raw))
+        package = ReviewedPrehistoryArchive(document=document, review=archive.review.model_copy(
+            update={'manifest_hash': digest(document.manifest())},
+        ))
+        active = _active_rows(ledger, package)
+        query = _query(ledger).model_copy(update={'query_text': '还伞',
+            'link_refs': (active['prehistory-record:chain-0'].candidate_id,)})
+        index = InMemoryRecallIndex(embedding=FeatureHashRecallEmbedding())
+        index.rebuild(cursor=query.cursor, documents=_corpus(ledger, _read(ledger)))
+        result = index.search(query)
+        returned = {hit.document.source_item_ref for hit in result.hits}
+        frontier = {ref for hit in result.hits for ref in hit.document.prehistory.related_record_refs} - returned
+        assert frontier, 'A bounded graph read must expose a legal continuation, not silently terminate the story.'
+        next_ref = sorted(frontier)[0]
+        continued = index.search(query.model_copy(update={
+            'story_window': StoryWindowRequest(record_ref=next_ref, start=0),
+        }))
+        assert len(continued.hits) == 1 and continued.hits[0].document.source_item_ref == next_ref
+    finally:
+        ledger.close()
+
+
+def test_legacy_related_record_can_be_read_but_has_no_historical_knowledge_proof(tmp_path):
+    from test_prehistory_story_recall import _linked_archive
+    from companion_daemon.world_v2.prehistory_story import StoryWindowRequest
+
+    ledger = started_ledger(tmp_path / 'legacy-continuation.sqlite')
+    try:
+        _active_rows(ledger, _linked_archive())
+        query = _query(ledger).model_copy(update={
+            'query_text': '继续读',
+            'story_window': StoryWindowRequest(record_ref='prehistory-record:quiet-video', start=0),
+        })
+        index = InMemoryRecallIndex(embedding=FeatureHashRecallEmbedding())
+        index.rebuild(cursor=query.cursor, documents=_corpus(ledger, _read(ledger)))
+        hit, = index.search(query).hits
+        assert '二十秒视频' in hit.document.text
+        assert index.search(query.model_copy(update={
+            'knowledge_as_of': datetime(2026, 1, 1, tzinfo=UTC),
+        })).hits == ()
+    finally:
+        ledger.close()
+
+
+def test_current_slim_transport_carries_story_reading_controls():
+    from companion_daemon.world_v2.character_interior.inbound_tool_contract import InboundToolContracts
+    from companion_daemon.world_v2.expression_draft import qq_expression_capabilities
+    from test_inbound_atomic_result_v2 import _recall
+
+    payload = {key: value for key, value in _recall().items()
+               if key in {'private_turn_state', 'recall_request'}}
+    payload['recall_request'].update(
+        knowledge_as_of='2018-01-01T00:00:00Z',
+        story_window={'record_ref': 'prehistory-record:umbrella', 'start': 416},
+    )
+    for native in (False, True):
+        contract = InboundToolContracts(native_slim_core=native).contract_for(
+            phase='initial', capabilities=qq_expression_capabilities('napcat'),
+            recall_allowed=True, atomic_envelope_version='slim', schema_dialect='deepseek-strict',
+        )
+        carrier = {'result_kind': 'recall', 'payload_json': json.dumps(payload)}
+        wire = {'result': carrier} if native else carrier
+        parsed = json.loads(contract.unwrap(json.dumps(wire)))
+        request = CharacterRecallRequest.model_validate_json(json.dumps(parsed['recall_request']))
+        assert request.story_window.start == 416
+        assert request.knowledge_as_of == datetime(2018, 1, 1, tzinfo=UTC)

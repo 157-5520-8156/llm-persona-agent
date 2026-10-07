@@ -667,6 +667,20 @@ def _provider_schema(model_type: object) -> dict[str, object]:
     return converted
 
 
+
+def _legacy_recall_provider_schema() -> dict[str, object]:
+    """Keep archived full-envelope tools byte-stable as current reads grow.
+
+    Current slim transports carry the role's read request as JSON, with new
+    story capabilities advertised by their separately versioned prompt.
+    Legacy strict envelopes must not acquire required nullable siblings.
+    """
+    schema = _provider_schema(CharacterRecallRequest)
+    for field in ("knowledge_as_of", "story_window"):
+        schema["properties"].pop(field)
+    return schema
+
+
 def _non_null_schema(schema: object, *, field_name: str) -> dict[str, object]:
     """Return the canonical non-null branch of one optional model field."""
 
@@ -1740,7 +1754,7 @@ class InboundToolContracts:
                     "type": "object",
                     "properties": {
                         "result_kind": {"type": "string", "enum": ["recall"]},
-                        "recall_request": _provider_schema(CharacterRecallRequest),
+                        "recall_request": _legacy_recall_provider_schema(),
                         "private_turn_state": _provider_schema(PrivateTurnState),
                     },
                     "required": recall_required,
