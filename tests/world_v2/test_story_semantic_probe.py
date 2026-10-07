@@ -23,6 +23,8 @@ def packet():
 def test_oracle_is_pinned_to_unchanged_sources_and_exact_quote_locations():
     request, oracle, sources, doc = packet()
     assert len(request['cases']) == 18
+    assert request['actor_readable_records'][0]['reader_actor_ref'] == oracle['source_owner']
+    assert request['actor_readable_records'][0]['statement'] == doc.records[0].statement
     sources['a'] += ' 后来她们和解了。'
     with pytest.raises(ValueError, match='source hash'):
         semantic_probe_request(oracle=oracle, sources=sources, documents=(doc,))
