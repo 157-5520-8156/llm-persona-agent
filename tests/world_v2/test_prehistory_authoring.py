@@ -217,3 +217,30 @@ def test_creation_packets_have_a_finite_byte_budget_without_evidence_truncation(
             author_request(b)
         else:
             review_request(b, reviewed_archive().document)
+
+
+def test_semantic_review_preserves_large_existing_history_within_its_own_budget():
+    from companion_daemon.world_v2.prehistory_authoring import (
+        MAX_SEMANTIC_REVIEW_PACKET_BYTES, PrehistorySemanticReview,
+        bind_semantic_review, semantic_review_request,
+    )
+
+    b = brief().model_copy(update={"profile": {"historical_context": "完整旧经历" * 8000}})
+    document = reviewed_archive().document
+    with pytest.raises(ValueError, match="byte budget"):
+        review_request(b, document)
+    packet = semantic_review_request(b, document)
+    assert packet["brief"]["profile"] == b.profile
+    assert packet["document"] == document.model_dump(mode="json")
+    assert len(json.dumps(packet, ensure_ascii=False).encode()) < MAX_SEMANTIC_REVIEW_PACKET_BYTES
+    response = PrehistorySemanticReview.model_validate_json(json.dumps({
+        "decision": "approved", "records": [
+            {"record_index": i, "verdict": "approve", "rationale": "Fixture covers this exact record."}
+            for i in range(len(document.records))
+        ],
+    }))
+    bound = bind_semantic_review(packet, response, reviewer_ref="reviewer:fixture", reviewed_at=START)
+    assert bound.brief_hash == digest(b) and bound.document_hash == digest(document)
+    oversized = b.model_copy(update={"profile": {"historical_context": "完整旧经历" * 18000}})
+    with pytest.raises(ValueError, match="byte budget"):
+        semantic_review_request(oversized, document)

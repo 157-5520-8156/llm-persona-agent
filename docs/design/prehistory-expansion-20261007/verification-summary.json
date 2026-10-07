@@ -1,0 +1,24 @@
+{
+  "baseline_sequence": 30052,
+  "baseline_prehistory_records": 72,
+  "baseline_active": 60,
+  "baseline_forgotten": 11,
+  "reviewed_new_records": 12,
+  "isolated_total_records": 84,
+  "isolated_new_retained": 12,
+  "cold_replay_passed": true,
+  "ordinary_recall_full_new_sources": [
+    "N01",
+    "N02"
+  ],
+  "ordinary_recall_embedding": "feature-hash-ngram.1 local fallback after semantic join timeout",
+  "known_supplier_calls": 15,
+  "known_supplier_cost_cny": 0.2996,
+  "unknown_billing": 0,
+  "local_turn_boundary_calls": 1,
+  "production_imported": false,
+  "narrative_sha256": "b042b13b5dd66c557cd4f545769cb302c9e674a3250817a785caabcae68e96b5",
+  "reviewed_package_sha256": "a55362294dca6a857969912dac94c5e6f722444def4cfc159ad88406f991efb6",
+  "targeted_tests_passed": 69,
+  "full_project_release_suite_rerun": false
+}

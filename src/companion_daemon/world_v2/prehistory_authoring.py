@@ -177,13 +177,17 @@ class PrehistoryCreationReview(FrozenModel):
         return self
 
 
-def review_request(brief: PrehistoryAuthoringBrief, document: PrehistoryArchiveDocument) -> dict:
+def _review_packet(brief: PrehistoryAuthoringBrief, document: PrehistoryArchiveDocument) -> dict:
     validate_draft(brief, document)
-    return _bounded_packet({"contract": "prehistory-review-request.1", "instruction": REVIEW_INSTRUCTION,
+    return {"contract": "prehistory-review-request.1", "instruction": REVIEW_INSTRUCTION,
             "brief": brief.model_dump(mode="json"), "brief_hash": digest(brief),
             "document": document.model_dump(mode="json"), "document_hash": digest(document),
             "record_hashes": {record.record_id: digest(record) for record in document.records},
-            "output_schema": PrehistoryCreationReview.model_json_schema()})
+            "output_schema": PrehistoryCreationReview.model_json_schema()}
+
+
+def review_request(brief: PrehistoryAuthoringBrief, document: PrehistoryArchiveDocument) -> dict:
+    return _bounded_packet(_review_packet(brief, document))
 
 
 class PrehistorySemanticRecordVerdict(FrozenModel):
@@ -231,7 +235,9 @@ def semantic_review_request(
     source_materials=None,
 ) -> dict:
     """Bind the independent reviewer to the exact source, actor view, archive and links."""
-    packet = review_request(brief, document)
+    # Apply the semantic protocol's existing budget after composing its full
+    # evidence. The smaller creation-review limit must not truncate this lane.
+    packet = _review_packet(brief, document)
     instruction = REVIEW_INSTRUCTION
     narrative_source_ref = None
     if narrative_text is not None:

@@ -1,0 +1,12 @@
+{
+  "scope": "structural_checks_only",
+  "scene_count": 12,
+  "prior_accepted_records": 72,
+  "earliest": "2017-08-01T00:00:00+08:00",
+  "latest": "2026-06-30T23:59:59.999999+08:00",
+  "world_started_at": "2026-08-13T17:42:55.383658+00:00",
+  "source_sha256": "b042b13b5dd66c557cd4f545769cb302c9e674a3250817a785caabcae68e96b5",
+  "scene_json_sha256": "5ea41407810771e7ee22e7020644dfd8dc740085bd4493ad281057f2b35fde8f",
+  "packet_utf8_bytes": 130449,
+  "authority": "unreviewed_not_imported"
+}

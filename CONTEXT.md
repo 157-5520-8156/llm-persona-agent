@@ -1,3 +1,20 @@
+Life story coverage and expansion (2026-10-07): `docs/audits/life-story-coverage-2026-10-07.md`.
+Fresh read-only source seq30052:72 accepted archives records,60active+11forgotten of71 once retained.
+Prior60 scenes have real family/growing/university chains but relation friction/swap dominates.
+Added12source scenes for craft/ball practice/text work/own buying/ordinary work/exploration/play;
+`docs/design/prehistory-expansion-20261007/README.md` and stories.md; no future behavior instructions.
+Independent editor pass after4cuts; DeepSeek2review calls .0516CNY (first overall verdict contradiction
+rejected; same-reviewer correction approved all12). New package configs/prehistory/expanded-20261007/.
+Clone only:84archive records,12new autonomous retain; repeat import inert; cold replay hash match0findings.
+1Capture recall8Beats,actual full N01/N02 source bytes shown; FeatureHash local fallback, NOT new BGE score.
+Retention+chat13calls/.248CNY; total15supplier calls/.2996 unknown0;1localQwen not external bill.
+Private exporter invalid unused field retained error; only readonly result export/replay rerun, no paid repeat.
+Offline semantic review fixed premature96KB gate: ordinary stays96000; final semantic remains256000.
+Real130449byte complete72old+new source packet fits; publicRED->GREEN,69relatedtests+Ruff pass,
+old valid packet bytes unchanged; two-axis review P3README clarified. No full release suite rerun.
+Production unchanged; new pack reviewed/clone validated awaiting adoption. Continued runtime lived
+history must come from real accepted actions/outcomes, not retroactive invented running-period stories.
+
 Role/memory qualification finished (2026-10-07): `docs/audits/role-memory-qualification-2026-10-06.md`.
 User defers real QQ. Dedicated tools/CaptureDelivery only; no production config/DB/process writes.
 Own branch codex/role-memory-qualification, base f2d9949e; runtime ad52b795, test fixtures fbd1b81e.

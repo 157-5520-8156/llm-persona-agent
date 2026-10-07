@@ -49,7 +49,7 @@
 
 ## 创作与审核流程
 
-`scripts/prepare_character_prehistory.py` 只读数据库并输出文件，不调用模型、不写入World、不调用记忆保留。创作/审核请求各有96000字节的规范化JSON上限；超限会拒绝，不能通过删掉审核证据来凑预算。这个上限不是模型费用保证。所有输出采用排他创建，不覆盖已有文件。以下命令需在项目Python环境执行，数据库使用已关闭的副本。
+`scripts/prepare_character_prehistory.py` 只读数据库并输出文件，不调用模型、不写入World、不调用记忆保留。创作与普通审核请求各有96000字节的规范化JSON上限；`semantic-review-request` 在加入完整来源材料后统一执行256000字节上限。超限会拒绝，不能通过删掉审核证据来凑预算。这个上限不是模型费用保证。所有输出采用排他创建，不覆盖已有文件。以下命令需在项目Python环境执行，数据库使用已关闭的副本。
 
 ```sh
 mkdir -p output/prehistory-review
