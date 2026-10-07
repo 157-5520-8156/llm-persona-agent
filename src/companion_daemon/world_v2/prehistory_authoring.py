@@ -243,6 +243,11 @@ class PrehistorySemanticAssessment(FrozenModel):
 
     @model_validator(mode="after")
     def independent_verdicts_are_unique(self):
+        # Captured .2 schema bytes stay replayable. Strict provider projection
+        # requires every property; the canonical parser must also distinguish
+        # an explicit empty judgment from an omitted dimension.
+        if not {"records", "story_links", "cross_record_findings"} <= self.model_fields_set:
+            raise ValueError("assessment requires explicit records, story_links and cross_record_findings")
         if len({item.record_index for item in self.records}) != len(self.records):
             raise ValueError("review duplicates a record index")
         if len({item.relation_index for item in self.story_links}) != len(self.story_links):

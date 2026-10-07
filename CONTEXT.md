@@ -1,3 +1,18 @@
+Story reading qualified on a frozen historical sample (2026-10-07):
+`docs/audits/story-continuity-qualification-2026-10-07.md`, design `story-reading-qualification-2026-10-07.md`.
+Opt-in hybrid15 fits actual5-node chain in10867 reading/21367 receipt bytes under original11k/22k caps.
+New compact reading keeps event/kind/actor/time/typed edge; block coordinates remain in detailed read/archive.
+Default remains off; driver+qq capture host accept recall_story_context. Parent opt-out independent.
+Assessment.2 removes redundant model overall field; aggregates ONLY full explicit per-record/edge/cross findings.
+Old.1 preserved, omitted dimensions rejected, prior failed replies not converted. Real2badold+1newapproved.
+Historical12-record clone only:17new source records reviewed/imported/autonomously retained,18calls incl1chosenRecall.
+Actual.15role input shows5 complete scenes; .14shows3then2. One .15first turn technical cancel, NOTsilence.
+Grouped come_back object, invalid type guards, pinned Recall alias expansion and eligible record/event anchors added.
+7chats6authorized/1technical deferred/16CaptureBeats;4coldreplayspass. Private comprehension2calls is diagnostic only.
+Full db79b119:10205pass/19skip/2xfail; later286/154/58scoped pass (overlap; NOTfinal-head fullgreen).
+36externalcalls known1.5608CNY +1unknownbilling hold.258832;7localQwen requests. No production/realQQwrites.
+Quality/latency/cost and P2-P4 still incomplete; canonical merge/NPC/fate not claimed. Full raw failures retained.
+
 Structured story-memory first P0/P1 loop (2026-10-07):
 `docs/audits/story-memory-structure-2026-10-07.md`, ADR0022. Archive.2 opt-in preserves source
 blocks, event IDs, actor knowledge bounds and typed edges through existing import/Memory/Recall.

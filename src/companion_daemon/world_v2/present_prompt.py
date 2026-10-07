@@ -2473,6 +2473,20 @@ def compile_slim_consider_payload(
 
     if not is_slim_consider_payload(value):
         return None
+    # Current carriers keep the topic and duration in one authored object.
+    # Legacy pairs still replay exactly. No missing choice is inferred.
+    revisit = value.get("come_back")
+    if revisit is not None and not isinstance(revisit, (str, Mapping)):
+        raise ValueError("come_back必须是完整对象；旧字符串格式必须配come_back_in，不需要时省略或null")
+    if isinstance(revisit, Mapping):
+        if set(revisit) != {"thought", "after_seconds"} or "come_back_in" in value:
+            raise ValueError("come_back对象必须且只能包含thought和after_seconds，不能混写come_back_in")
+        thought, seconds = revisit["thought"], revisit["after_seconds"]
+        if not isinstance(thought, str) or not thought.strip() or len(thought) > 160:
+            raise ValueError("come_back.thought必须是1到160字符的自选主题")
+        if type(seconds) is not int or not 30 <= seconds <= 86400:
+            raise ValueError("come_back.after_seconds必须是30到86400整数秒")
+        value = {**value, "come_back": thought, "come_back_in": seconds}
     validate_authored_impression_retention(value)
     messages = _slim_messages(value.get("messages"))
     if messages is None:

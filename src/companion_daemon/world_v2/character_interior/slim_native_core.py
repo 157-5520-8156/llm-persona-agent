@@ -76,6 +76,7 @@ def prompt(original):
     if "本轮使用 native slim core：" in original:
         return original
     updated = original.replace(_SLIM_TRANSPORT, "")
+    updated = updated.replace("character-inbound-prompt.9-slim\n", "character-inbound-prompt.10-slim-core\n", 1)
     updated = updated.replace("character-inbound-prompt.7-slim\n", "character-inbound-prompt.8-slim-core\n", 1)
     updated = updated.replace("character-inbound-prompt.6-slim\n", "character-inbound-prompt.7-slim-core\n", 1)
     updated = updated.replace("SLIM PAYLOAD_JSON 形状", "完整内部决定的字段示意")

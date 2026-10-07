@@ -189,7 +189,7 @@ def test_current_slim_contract_is_shorter_and_does_not_promise_semantic_fallback
     args = dict(identity_instruction='EXACT_IDENTITY', recall_available=True, private_cognition_scope=True)
     old = compact_atomic_slim_system_prompt(**args)
     current = compact_atomic_slim_system_prompt(**args, concise_contract=True)
-    assert current.startswith('character-inbound-prompt.7-slim\n')
+    assert current.startswith('character-inbound-prompt.9-slim\n')
     assert old.startswith('character-inbound-prompt.2-slim\n')
     assert len(current) < len(old) * .70
     assert '只对那份写坏的 appraisal 记 affect no_change' not in current

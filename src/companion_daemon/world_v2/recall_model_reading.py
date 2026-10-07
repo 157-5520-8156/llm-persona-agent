@@ -132,8 +132,10 @@ def interior_recall_item(
         history = result["prehistory"]
         for key in ("archive_event_ref", "archive_world_revision", "archive_payload_hash",
                     "world_started_at", "occurred_from", "occurred_until", "time_precision",
-                    "participant_refs", "location_ref"):
+                    "participant_refs"):
             history.pop(key, None)
+        if history.get("location_ref") is None:
+            history.pop("location_ref", None)
         for key in ("memory_kind", "source_slice", "authority", "subject_refs",
                     "occurred_from", "occurred_to"):
             result.pop(key, None)

@@ -139,4 +139,4 @@ async def test_native_core_reaches_v25_http_acceptance_delivery_and_cold_replay(
     assert http.authors == 1
     assert evidence.projection.semantic_hash == evidence.replay.semantic_hash
     assert tuple(item.text for item in evidence.projection.stored_message_payloads) == fixture.BEATS
-    assert http.requests[0]["messages"][0]["content"].startswith("character-inbound-prompt.8-slim-core\n")
+    assert http.requests[0]["messages"][0]["content"].startswith("character-inbound-prompt.10-slim-core\n")

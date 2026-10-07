@@ -679,7 +679,7 @@ class _RecallIndexCore:
         for (document, vector), lexical in zip(search_rows, lexical_scores, strict=True):
             dense = max(0, min(10_000, round(_cosine(query_vector, vector) * 10_000)))
             structured = (10_000 if query.story_window is not None
-                          else _structured_score(query.link_refs, document.link_refs))
+                          else _structured_score(query.link_refs, self._structured_refs(document)))
             temporal = _temporal_score(query, document)
             channels: list[Literal["lexical", "dense", "temporal", "structured"]] = []
             # A remembered entity can be a two-character island inside a
@@ -791,7 +791,7 @@ class _RecallIndexCore:
             entry
             for entry in remaining
             if entry[2].document.prehistory is not None
-            and set(query.link_refs).intersection(entry[2].document.link_refs)
+            and set(query.link_refs).intersection(self._structured_refs(entry[2].document))
         ), None)
         if story_linked_anchor is not None:
             remaining.remove(story_linked_anchor)
@@ -1004,6 +1004,12 @@ class _RecallIndexCore:
         for hit in hits:
             add(hit)
         return tuple(expanded) if expanded else hits
+
+    def _structured_refs(self, document: RecallDocument) -> tuple[str, ...]:
+        if self.policy_version == "world-v2-recall-index.hybrid.15" and document.prehistory is not None:
+            return tuple(sorted({*document.link_refs, *document.source_refs,
+                                 document.source_item_ref, document.source_item_ref.split(":window:")[0]}))
+        return document.link_refs
 
     def _result_hit(self, hit: RecallHit) -> RecallHit:
         if self.policy_version == "world-v2-recall-index.hybrid.15" and hit.document.prehistory is not None:

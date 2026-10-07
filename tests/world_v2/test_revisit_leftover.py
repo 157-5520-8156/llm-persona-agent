@@ -419,3 +419,26 @@ def test_social_initiative_policy_still_owns_only_opportunity_timing() -> None:
         contact_cooldown_seconds=900,
     )
     assert policy.contact_cooldown_seconds == 900
+
+
+def test_grouped_revisit_preserves_both_authored_choices_without_filling_either():
+    grouped = compile_slim_consider_payload(_slim_payload(
+        come_back={'thought': '这段往事还想再想一想', 'after_seconds': 600},
+    ))
+    legacy = compile_slim_consider_payload(_slim_payload(
+        come_back='这段往事还想再想一想', come_back_in=600,
+    ))
+    assert grouped == legacy
+    for incomplete in ({'after_seconds': 600}, {'thought': '尚未选时间'}):
+        with pytest.raises(ValueError, match='come_back'):
+            compile_slim_consider_payload(_slim_payload(come_back=incomplete))
+    with pytest.raises(ValueError, match='come_back'):
+        compile_slim_consider_payload(_slim_payload(
+            come_back={'thought': '自己选的主题', 'after_seconds': 600}, come_back_in=300,
+        ))
+
+
+@pytest.mark.parametrize('value', [123, True, False, ['later'], []])
+def test_revisit_does_not_silently_discard_an_invalid_whole_field_type(value):
+    with pytest.raises(ValueError, match='come_back'):
+        compile_slim_consider_payload(_slim_payload(come_back=value))

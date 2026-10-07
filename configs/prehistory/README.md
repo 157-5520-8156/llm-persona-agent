@@ -120,3 +120,9 @@ PYTHONPATH=src python scripts/prepare_character_prehistory.py bind-semantic-revi
 富结构占用原有预算，单次可能只呈现故事的一部分；合法关联ID可以分次读取，不提供未呈现正文的事实权限。
 当前仍是一轮至多一次角色Recall，尚未验证角色跨轮续读质量/成本；`.2`审核失败后的自动修订尚未实现。
 完整范围、测试及取舍见[本轮审计](../../docs/audits/story-memory-structure-2026-10-07.md)。
+
+
+后续候选验证：新审核可选`--assessment-only`（完整材料流程为`--assessment-only-review`），
+所有逐项/跨记录判断仍由审核模型给出，绑定器仅在完整覆盖后作逻辑汇总。旧审核请求不变。
+隔离driver支持`recall_story_context=True`使用hybrid.15，当前默认关闭。
+真实验证及已知限制见[故事连续性审计](../../docs/audits/story-continuity-qualification-2026-10-07.md)。

@@ -11189,6 +11189,24 @@ def parse_character_recall_request(
             code="recall_choice.invalid_type",
             field_path="recall_request",
         )
+    if source_ref_aliases is not None:
+        recall_value = dict(recall_value)
+        field = "link_refs"
+        try:
+            refs = recall_value.get("link_refs")
+            if isinstance(refs, (list, tuple)) and all(isinstance(ref, str) for ref in refs):
+                expanded = [source_ref_aliases.expand(ref) for ref in refs]
+                if expanded != list(refs):
+                    recall_value["link_refs"] = sorted(set(expanded))
+            field = "story_window"
+            window = recall_value.get("story_window")
+            if isinstance(window, dict) and isinstance(window.get("record_ref"), str):
+                recall_value["story_window"] = {**window,
+                    "record_ref": source_ref_aliases.expand(window["record_ref"])}
+        except ValueError:
+            raise RecallChoiceValidationError(
+                code="recall_choice.invalid_value", field_path=f"recall_request.{field}",
+            ) from None
     return _validated_character_recall_request(recall_value)
 
 

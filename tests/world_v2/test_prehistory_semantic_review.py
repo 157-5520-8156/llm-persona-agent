@@ -272,7 +272,12 @@ def test_assessment_wire_aggregates_only_complete_model_judgments_and_rejects_ol
     value = response().model_dump(mode='json')
     with pytest.raises(ValueError):
         PrehistorySemanticAssessment.model_validate_json(json.dumps(value))
-    value.pop('decision'); value['contract'] = 'prehistory-semantic-assessment.2'
+    value.pop('decision')
+    value['contract'] = 'prehistory-semantic-assessment.2'
+    for missing in ('cross_record_findings', 'story_links'):
+        incomplete = {key: item for key, item in value.items() if key != missing}
+        with pytest.raises(ValueError, match='explicit'):
+            PrehistorySemanticAssessment.model_validate_json(json.dumps(incomplete))
     parsed_assessment = PrehistorySemanticAssessment.model_validate_json(json.dumps(value))
     bound = bind(packet, parsed_assessment)
     assert bound.decision == 'approved'

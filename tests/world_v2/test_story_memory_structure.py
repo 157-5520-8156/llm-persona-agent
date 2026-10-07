@@ -437,6 +437,7 @@ def test_rich_five_scene_chain_fits_existing_budgets_with_compact_policy(tmp_pat
         assert {h.document.source_item_ref for h in result.hits} == {r.record_id for r in document.records}
         def size(value):
             return len(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode())
+        assert interior_recall_item(result.hits[0].document, index_version=result.index_version)['prehistory']['location_ref'] == document.records[0].location_ref
         assert size({'items': [interior_recall_item(h.document, index_version=result.index_version)
                                for h in result.hits]}) <= RECALL_STORY_MODEL_READING_MAX_BYTES
         assert size([h.model_dump(mode='json') for h in result.hits]) <= RECALL_STORY_RESULT_MAX_BYTES
@@ -461,3 +462,34 @@ def test_next_authoring_brief_preserves_accepted_structured_history(tmp_path):
         assert accepted.manifest() == archive.document.manifest()
     finally:
         ledger.close()
+
+
+def test_role_can_use_the_presented_record_reference_as_a_recall_anchor(tmp_path):
+    ledger = started_ledger(tmp_path / 'record-anchor.sqlite')
+    try:
+        _active_rows(ledger, story_archive())
+        query = _query(ledger).model_copy(update={'query_text': 'quuxzzyy',
+            'link_refs': ('prehistory-record:umbrella',)})
+        index = InMemoryRecallIndex(embedding=FeatureHashRecallEmbedding(),
+                                   policy_version='world-v2-recall-index.hybrid.15')
+        index.rebuild(cursor=query.cursor, documents=_corpus(ledger, _read(ledger)))
+        result = index.search(query)
+        anchor = next(hit for hit in result.hits if hit.document.source_item_ref == 'prehistory-record:umbrella')
+        assert 'structured' in anchor.match_channels and anchor.structured_score_bp > 0
+    finally:
+        ledger.close()
+
+
+def test_role_recall_expands_pinned_source_aliases_before_validation():
+    from companion_daemon.world_v2.character_interior.inbound_wire import parse_character_recall_request
+    from companion_daemon.world_v2.expression_draft import SourceRefAliasTable, qq_expression_capabilities
+    from test_character_interior_inbound_wire import _qq_request
+    canonical = 'prehistory-record:umbrella'
+    aliases = SourceRefAliasTable(entries=(('@r:145', canonical),), canonical_refs=frozenset({canonical}))
+    request = parse_character_recall_request(
+        json.dumps({'recall_request': {'query_text': '接着读', 'link_refs': ['@r:145'],
+                                      'story_window': {'record_ref': '@r:145', 'start': 0}}}),
+        request=_qq_request(), capabilities=qq_expression_capabilities('napcat').model_copy(
+            update={'private_turn_state_mode': 'optional'}), source_ref_aliases=aliases,
+    )
+    assert request.link_refs == (canonical,) and request.story_window.record_ref == canonical
