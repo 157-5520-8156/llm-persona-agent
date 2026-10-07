@@ -1,3 +1,16 @@
+Latest user-confirmed direction (2026-10-07):
+User objects to generation-then-mandatory-LLM-review and accepted structured story source -> deterministic
+compilation -> character-owned retention. Also explicitly requires stories to interweave and carry lasting
+cross-line consequences. This supersedes the earlier next-step proposal to keep expanding routine review.
+Design: docs/design/long-horizon-story-system-2026-10-07.md section9. One shared event graph, many story
+views; unique occurrences, separate actor knowledge/interpretation; shared resources/commitments and
+settled consequences affect other lines. No forced intersections/endings, mood formulas or parallel Fate.
+Private-line titles/edges/summaries remain permission-bound. Generate/convert with structure up front;
+model review becomes evaluation/sampling/dispute diagnosis, not assumed every-import second call.
+This is approved design direction, not an implemented new acceptance contract. Current reviewed archives
+and replay stay valid; never label compiler-only acceptance as independently reviewed. Do not disable
+source/privacy/execution/CAS/budget constraints or unrelated runtime review paths. No new paid call here.
+
 Budgeted story preparation and semantic diagnostics (2026-10-07):
 `docs/audits/story-budget-and-semantic-gates-2026-10-07.md`; base ac94ab30, runtime6d86b53c,
 reader view915761d9, formal reviewb9c2d3c4. Actual HTTP payload admitted against durable SQLite
