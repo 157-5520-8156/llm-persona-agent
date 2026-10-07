@@ -1,3 +1,19 @@
+Long-term story system clarification (2026-10-07): user wants long, consequential, evolving and
+interwoven stories; adding isolated scenes is not the goal. Current design proposal:
+`docs/design/long-horizon-story-system-2026-10-07.md`; audit and primary research linked there.
+Read-only audit at759b59b5: source->materials->review->import->retain->Recall has real short-story
+examples, not arbitrary long-novel reliability. event_ref/typed edges/known-time are flattened on
+export; current graph traversal is bounded/actor-filtered, not complete story reconstruction.
+Samecaptured-run resume/idempotence differ from independent extraction semantic repeatability.
+Global same-ID checks exist; cross-story canonical event merge/dual-time reader remain incomplete.
+Existing LifeArc/WorldAuthor/activities/aftermath/NPC are foundations, not a finished fate engine.
+Proposal order: frozen story/knowledge oracle -> rich structure+StoryMemory -> reproducible multi-story
+import/merge -> one NPC/one rolling continuity line -> longitudinal multiple-line qualification.
+World tree should project accepted events/actor perspectives with typed links; future outlook is
+non-authoritative and revisable, each role owns choices; no parallel Fate loop or forced plot ending.
+Current audit79scopedtests passed; no new paid calls, runtime implementation or production changes.
+These interfaces are proposed, not accepted new schema or completed features.
+
 Life story coverage and expansion (2026-10-07): `docs/audits/life-story-coverage-2026-10-07.md`.
 Fresh read-only source seq30052:72 accepted archives records,60active+11forgotten of71 once retained.
 Prior60 scenes have real family/growing/university chains but relation friction/swap dominates.
