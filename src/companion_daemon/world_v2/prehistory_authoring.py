@@ -13,7 +13,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from .character_prehistory import (
-    PrehistoryArchiveDocument, PrehistoryReview, ReviewedPrehistoryArchive, digest,
+    PrehistoryArchiveDocument, PrehistoryReview, ReviewedPrehistoryArchive, digest, validate_story_boundary,
 )
 from .schema_core import FrozenModel
 
@@ -108,6 +108,7 @@ def validate_draft(brief: PrehistoryAuthoringBrief, document: PrehistoryArchiveD
         if entity.entity_ref in existing_entities and entity != existing_entities[entity.entity_ref]:
             raise ValueError("draft cannot rename an accepted historical identity")
     for record in document.records:
+        validate_story_boundary(record, actor_ref=document.actor_ref, world_started_at=brief.world_started_at)
         if not brief.born_at <= record.occurred_from <= record.occurred_until < brief.world_started_at:
             raise ValueError("draft interval lies outside the character pre-start lifetime")
         if set(record.related_record_refs) - proposed - existing_records:
@@ -256,7 +257,11 @@ def semantic_review_request(
         expected_archive_ref = f"life-materials:sha256:{materials_hash}"
         if document.source_artifact_ref != expected_archive_ref:
             raise ValueError("reviewed archive does not bind the supplied source materials")
-        rebuilt = export_actor_archive(source_materials, document.actor_ref, document.archive_id)
+        rebuilt = export_actor_archive(
+            source_materials, document.actor_ref, document.archive_id,
+            preserve_story_structure=document.contract == "character-prehistory-archive.2",
+            story_links=story_links if document.contract == "character-prehistory-archive.2" else None,
+        )
         if digest(rebuilt) != digest(document):
             raise ValueError("reviewed archive differs from the actor-scoped source materials")
         packet["source_materials"] = source_materials.model_dump(mode="json")

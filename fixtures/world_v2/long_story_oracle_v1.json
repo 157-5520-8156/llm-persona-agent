@@ -1,0 +1,122 @@
+{
+  "contract": "long-story-oracle.1",
+  "status": "engineering_fixture_not_production_history_or_model_quality_pass",
+  "source_path": "docs/design/celia-life-arc-v2-2026-09-29.md",
+  "source_sha256": "21fc89ed4c6199a2919e43496aef8a871afaf470dcb1376d7d10d0decf86c528",
+  "materials_path": "fixtures/world_v2/celia_life_materials_pilot.json",
+  "materials_sha256": "766d2d5bc41c5426b01f1271843e666ddfedebc489fb54c186116d65a51abc72",
+  "actor_ref": "agent:companion",
+  "lines": [
+    {
+      "line": "friendship_and_photos",
+      "records": [
+        "prehistory-record:celia-lifeline-12",
+        "prehistory-record:celia-lifeline-15",
+        "prehistory-record:celia-lifeline-17",
+        "prehistory-record:celia-lifeline-16"
+      ],
+      "question": "拍照片那次为什么留下隔阂，搬东西和后来的消息又补上了哪些信息？",
+      "required_events": [
+        "ev:photo-session-and-workroom",
+        "ev:photos-sent",
+        "ev:friendship-fight-photo-day",
+        "ev:friendship-moving-day",
+        "ev:photo-use-disclosure"
+      ],
+      "must_remain_unknown": [
+        "照片使用的具体日期和渠道",
+        "顾客身份",
+        "两人已经解决所有分歧"
+      ]
+    },
+    {
+      "line": "work_and_shared_travel",
+      "records": [
+        "prehistory-record:celia-lifeline-03",
+        "prehistory-record:celia-lifeline-08",
+        "prehistory-record:celia-lifeline-09",
+        "prehistory-record:celia-lifeline-18",
+        "prehistory-record:celia-lifeline-19"
+      ],
+      "question": "本子里的青岛、没订成的旅行、后来那次看海与嘉禾的工作变化如何相交？",
+      "required_events": [
+        "ev:notebook-qingdao",
+        "ev:trip-postponed",
+        "ev:bakery-expo-chat",
+        "ev:2026-spring-sea",
+        "ev:2026-shanghai-rental-talk"
+      ],
+      "must_remain_unknown": [
+        "后来海边的具体城市",
+        "双方认定旧约定已兑现",
+        "嘉禾已经决定并入职上海"
+      ]
+    },
+    {
+      "line": "writing_and_self_interpretation",
+      "records": [
+        "prehistory-record:celia-lifeline-06",
+        "prehistory-record:celia-lifeline-07",
+        "prehistory-record:celia-lifeline-11",
+        "prehistory-record:celia-lifeline-12"
+      ],
+      "question": "她的发言、写稿和帮忙之间有哪些经历；哪些只是她当时的解释？",
+      "required_events": [
+        "ev:2021-school-speech",
+        "ev:2021-video-and-next-morning",
+        "ev:college-draft-copywriting",
+        "ev:photo-session-and-workroom"
+      ],
+      "must_remain_unknown": [
+        "前排低头的人确实在嘲笑",
+        "嘉禾要求她以后总是优先帮忙"
+      ]
+    }
+  ],
+  "perspectives": [
+    {
+      "knowledge_as_of": "2025-06-01T00:00:00+08:00",
+      "must_include": [
+        "prehistory-record:celia-lifeline-12"
+      ],
+      "must_exclude": [
+        "prehistory-record:celia-lifeline-15",
+        "prehistory-record:celia-lifeline-16",
+        "prehistory-record:celia-lifeline-17",
+        "prehistory-record:celia-lifeline-18",
+        "prehistory-record:celia-lifeline-19"
+      ],
+      "reason": "Acquire ranges are coarse: whole record becomes definitely readable at known_until, not a guessed instant."
+    },
+    {
+      "knowledge_as_of": "2026-03-01T00:00:00+08:00",
+      "must_include": [
+        "prehistory-record:celia-lifeline-12",
+        "prehistory-record:celia-lifeline-15",
+        "prehistory-record:celia-lifeline-16",
+        "prehistory-record:celia-lifeline-17"
+      ],
+      "must_exclude": [
+        "prehistory-record:celia-lifeline-18",
+        "prehistory-record:celia-lifeline-19"
+      ]
+    }
+  ],
+  "actor_private_block_ids": [
+    "j06-hangzhou-private-life",
+    "m01-work-planning",
+    "m03-partnership-ended"
+  ],
+  "controls": [
+    "same_actor_allowed_original_scenes",
+    "structured_full_view",
+    "same_budget_actual_recall",
+    "same_budget_links_removed"
+  ],
+  "scoring": "Score source coverage, knowledge timing, unknown preservation and source-supported interpretation separately. Never require a fixed emotion, reconciliation or future action.",
+  "unrun": [
+    "independent_model_extraction_repeatability",
+    "real_role_narrative_and_branch_quality",
+    "week_or_month_live_continuity"
+  ]
+}

@@ -64,7 +64,8 @@ def test_out_of_order_judgments_bind_each_exact_submitted_record():
         package_reviewed(b, changed, result, review_artifact_ref="fixture:semantic-review")
 
 
-def test_story_link_evidence_is_pinned_into_semantic_review_request():
+@pytest.mark.parametrize("structured", [False, True])
+def test_story_link_evidence_is_pinned_into_semantic_review_request(structured):
     from test_prehistory_story_links import ACTOR as LINK_ACTOR, STORY, _draft, _materials
     from companion_daemon.world_v2.prehistory_life_materials import export_actor_archive
     from companion_daemon.world_v2.prehistory_story_links import apply_story_links
@@ -88,6 +89,11 @@ def test_story_link_evidence_is_pinned_into_semantic_review_request():
         linked_materials_hash=digest(linked_materials),
         draft=links,
     )
+    if structured:
+        document = export_actor_archive(
+            linked_materials, LINK_ACTOR, "prehistory-archive:story-review",
+            preserve_story_structure=True, story_links=link_artifact,
+        )
     packet = semantic_review_request(
         b, document, story_links=link_artifact, narrative_text=STORY,
         source_materials=linked_materials,
@@ -102,7 +108,7 @@ def test_story_link_evidence_is_pinned_into_semantic_review_request():
     rejected = bind(packet, response_with_link(verdict="reject", decision="rejected"))
     assert rejected.decision == "rejected" and rejected.story_links[0].verdict == "reject"
     packet["story_link_artifact"]["draft"]["relations"][0]["rationale"] = "声称二人相识"
-    with pytest.raises(ValueError, match="submitted semantic review packet"):
+    with pytest.raises(ValueError, match="actor-scoped source materials" if structured else "submitted semantic review packet"):
         bind(packet)
 
 

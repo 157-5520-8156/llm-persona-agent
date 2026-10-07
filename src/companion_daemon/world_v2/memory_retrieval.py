@@ -387,6 +387,15 @@ class MemoryRetrievalCompiler:
                     assessment_scope="memory_salience_not_current_goal_or_obligation",
                 )
             )
+        from .prehistory_memory_source import restrict_story_reading
+        visible_records = {excerpt.source_id for item in items for excerpt in item.source_excerpts
+                           if excerpt.prehistory is not None}
+        items = [item.model_copy(update={"source_excerpts": tuple(
+            excerpt.model_copy(update={"prehistory": restrict_story_reading(
+                excerpt.prehistory, visible_records,
+            )}) if excerpt.prehistory is not None and excerpt.prehistory.story is not None else excerpt
+            for excerpt in item.source_excerpts
+        )}) for item in items]
         return MemoryRetrievalResult(items=tuple(items), suppressions=tuple(suppressions))
 
     def _prehistory_excerpt(self, *, binding, projection, actor_ref):

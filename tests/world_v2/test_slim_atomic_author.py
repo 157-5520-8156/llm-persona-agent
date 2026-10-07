@@ -408,7 +408,7 @@ async def test_current_v25_slim_prompt_is_bound_through_http_acceptance_and_repl
         body = json.loads(http.requests[0]['messages'][1]['content'])
         assert 'author_evidence_view' not in body
         assert ('context_window' in body) == (context_profile == 'bounded')
-        assert http.requests[0]['messages'][0]['content'].startswith('character-inbound-prompt.6-slim\n')
+        assert http.requests[0]['messages'][0]['content'].startswith('character-inbound-prompt.7-slim\n')
         winner = next(a for a in _audits(app) if a.visible_source_review_json)
         stored = read_review_evidence(winner.visible_source_review_json)
         carrier = json.loads(stored['author_request_json'])

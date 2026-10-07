@@ -31,6 +31,9 @@ def main(argv=None):
     )
 
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--preserve-story-structure", action="store_true",
+                        help="Export archive .2 with source blocks, knowledge times and typed story edges; requires a new review")
+    parser.add_argument("--story-links", help="Captured story-link artifact for structured materials export")
     parser.add_argument("--materials")
     parser.add_argument("--actor-ref")
     parser.add_argument("--archive-id")
@@ -177,7 +180,14 @@ def main(argv=None):
                 parser.error("existing linked materials differ from the captured story-link result")
         else:
             _private_json(linked_materials_path, json.loads(materials.model_dump_json()))
-        document = export_actor_archive(materials, args.actor_ref, args.archive_id)
+        linked_artifact = PrehistoryStoryLinkArtifact.model_validate_json(
+            story_link_artifact_path.read_text(encoding="utf-8"),
+        )
+        document = export_actor_archive(
+            materials, args.actor_ref, args.archive_id,
+            preserve_story_structure=args.preserve_story_structure,
+            story_links=linked_artifact if args.preserve_story_structure else None,
+        )
         link_summary = {
             "status": story_link_manifest.get("status"),
             "origin": story_link_manifest.get("origin"),
@@ -354,7 +364,13 @@ def main(argv=None):
         parser.error("export mode requires --materials, --actor-ref and --archive-id; --narrative is only for --author-request")
     materials = LifeMaterialsDraft.model_validate_json(Path(args.materials).read_text(encoding="utf-8"))
     as_of = datetime.fromisoformat(args.as_of) if args.as_of else None
-    document = export_actor_archive(materials, args.actor_ref, args.archive_id, as_of=as_of)
+    links = PrehistoryStoryLinkArtifact.model_validate_json(
+        Path(args.story_links).read_text(encoding="utf-8"),
+    ) if args.story_links else None
+    document = export_actor_archive(
+        materials, args.actor_ref, args.archive_id, as_of=as_of,
+        preserve_story_structure=args.preserve_story_structure, story_links=links,
+    )
     if args.brief:
         brief = PrehistoryAuthoringBrief.model_validate_json(Path(args.brief).read_text(encoding="utf-8"))
         if materials.world_started_at != brief.world_started_at:

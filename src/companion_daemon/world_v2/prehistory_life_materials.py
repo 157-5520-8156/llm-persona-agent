@@ -170,7 +170,7 @@ class LifeMaterialsDraft(FrozenModel):
         return self
 
 
-def export_actor_archive(materials: LifeMaterialsDraft, actor_ref: str, archive_id: str, *, as_of: datetime | None = None) -> PrehistoryArchiveDocument:
+def export_actor_archive(materials: LifeMaterialsDraft, actor_ref: str, archive_id: str, *, as_of: datetime | None = None, preserve_story_structure: bool = False, story_links=None) -> PrehistoryArchiveDocument:
     materials = LifeMaterialsDraft.model_validate_json(materials.model_dump_json())
     actor = next((a for a in materials.actors if a.actor_ref == actor_ref), None)
     if actor is None:
@@ -189,6 +189,17 @@ def export_actor_archive(materials: LifeMaterialsDraft, actor_ref: str, archive_
     block_map = {b.block_id: b for b in materials.blocks}
     record_ids = {r.record_id for r in selected}
     out_records = []
+    relations = ()
+    if story_links is not None:
+        from .prehistory_story_links import PrehistoryStoryLinkArtifact
+        story_links = PrehistoryStoryLinkArtifact.model_validate_json(story_links.model_dump_json())
+        if not preserve_story_structure:
+            raise ValueError("typed story links require structured archive export")
+        if (story_links.linked_materials_hash != digest(materials)
+                or story_links.source_artifact_ref != materials.source_artifact_ref
+                or story_links.draft.actor_ref != actor_ref):
+            raise ValueError("story links do not bind the exported materials and actor")
+        relations = story_links.draft.relations
     for r in selected:
         parts = []
         if r.known_until == materials.world_started_at:
@@ -222,17 +233,31 @@ def export_actor_archive(materials: LifeMaterialsDraft, actor_ref: str, archive_
             if r.known_until == materials.world_started_at else r.known_until
         )
         record_precision = "interval" if r.known_until == materials.world_started_at else r.time_precision
+        story = None
+        if preserve_story_structure:
+            from .prehistory_story import PrehistoryStoryStructure, StoryMaterialBlock
+            story = PrehistoryStoryStructure(
+                actor_ref=actor_ref, source_artifact_ref=materials.source_artifact_ref,
+                known_from=r.known_from, known_until=r.known_until,
+                blocks=tuple(StoryMaterialBlock(**block_map[ref].model_dump(
+                    exclude={"allowed_actor_refs"},
+                )) for ref in r.block_ids),
+                relations=tuple(edge for edge in relations if edge.left_record_id == r.record_id
+                                and edge.right_record_id in record_ids),
+            )
         out_records.append(PrehistoryRecord(
             record_id=r.record_id, occurred_from=r.known_from, occurred_until=record_end,
             time_precision=record_precision, timezone_name=r.timezone_name, statement=statement,
             participant_refs=r.participant_refs, related_record_refs=related, privacy_class=r.privacy_class,
+            story=story,
         ))
     participant_ids = {actor.historical_entity_ref}
     for row in selected:
         participant_ids.update(row.participant_refs)
     entities = tuple(e for e in materials.entities if e.entity_ref in participant_ids)
     source = f"life-materials:sha256:{digest(materials)}"
-    document = PrehistoryArchiveDocument(contract="character-prehistory-archive.1", archive_id=archive_id,
+    document = PrehistoryArchiveDocument(contract=("character-prehistory-archive.2" if preserve_story_structure
+                                                  else "character-prehistory-archive.1"), archive_id=archive_id,
         world_id=materials.world_id, actor_ref=actor_ref, source_artifact_ref=source,
         entities=entities, records=tuple(out_records))
     return document

@@ -2,7 +2,7 @@
 from .character_prehistory import (
     IMPORT_ACTOR, SOURCE, PrehistoryArchiveAcceptedPayload, PrehistoryArchiveProjection,
     PrehistoryRecordImportedPayload, PrehistoryRecordProjection, digest, prehistory_event_id,
-    validate_historical_references,
+    validate_historical_references, validate_story_boundary,
 )
 
 
@@ -67,6 +67,7 @@ def record_imported(state, event):
         or event.created_at < archive.review.reviewed_at
     ):
         raise ValueError("prehistory record differs from reviewed history or crosses runtime start")
+    validate_story_boundary(payload.record, actor_ref=archive.manifest.actor_ref, world_started_at=archive.world_started_at)
     validate_historical_references(payload.record, {x.entity_ref: x for x in archive.manifest.entities})
     projection = PrehistoryRecordProjection(
         **payload.model_dump(), actor_ref=archive.manifest.actor_ref,

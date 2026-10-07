@@ -1558,6 +1558,8 @@ class RecallCoordinator:
             at=context.logical_time,
             occurred_from=request.occurred_from,
             occurred_to=request.occurred_to,
+            knowledge_as_of=request.knowledge_as_of,
+            story_window=request.story_window,
             link_refs=request.link_refs,
             memory_kinds=request.memory_kinds,
             include_historical=request.include_historical,

@@ -18,9 +18,10 @@ from .character_prehistory import (
     PrehistoryRecord,
     PrehistoryRecordImportedPayload,
     PrehistoryRecordProjection,
-    digest,
+    digest, validate_story_boundary,
 )
 from .schema_core import FrozenModel
+from .prehistory_story import StoryMemoryReading, story_memory_reading
 if TYPE_CHECKING:
     from .schemas import CommittedWorldEventRef, MemorySourceBinding
 
@@ -28,6 +29,7 @@ if TYPE_CHECKING:
 class PrehistoryMemoryReading(FrozenModel):
     """Historical scope, without a second unbounded copy of the source text."""
 
+    story: StoryMemoryReading | None = Field(default=None, exclude_if=lambda value: value is None)
     actor_ref: str = Field(min_length=1, max_length=256)
     occurred_from: datetime
     occurred_until: datetime
@@ -132,6 +134,7 @@ def resolve_prehistory_memory_source(
             raise ValueError("prehistory memory source event is unavailable")
     if archive.accepted_world_revision >= row.accepted_world_revision:
         raise ValueError("prehistory memory source precedes its archive")
+    validate_story_boundary(row.record, actor_ref=row.actor_ref, world_started_at=row.world_started_at)
     return row, archive
 
 
@@ -141,6 +144,7 @@ def prehistory_memory_reading(
     record: PrehistoryRecord = row.record
     entity_refs = {*record.participant_refs, record.location_ref}
     return PrehistoryMemoryReading(
+        story=story_memory_reading(record.story, statement=record.statement) if record.story else None,
         actor_ref=row.actor_ref, occurred_from=record.occurred_from,
         occurred_until=record.occurred_until, time_precision=record.time_precision,
         timezone_name=record.timezone_name, world_started_at=row.world_started_at,
@@ -150,3 +154,13 @@ def prehistory_memory_reading(
         archive_event_ref=archive.accepted_event_ref, archive_world_revision=archive.accepted_world_revision,
         archive_payload_hash=archive.accepted_payload_hash,
     )
+
+
+def restrict_story_reading(reading: PrehistoryMemoryReading, visible_record_ids: set[str]) -> PrehistoryMemoryReading:
+    """No metadata route around the current readable memory set."""
+    if reading.story is None:
+        return reading
+    return reading.model_copy(update={
+        "story": reading.story.restrict_relations(visible_record_ids),
+        "related_record_refs": tuple(ref for ref in reading.related_record_refs if ref in visible_record_ids),
+    })

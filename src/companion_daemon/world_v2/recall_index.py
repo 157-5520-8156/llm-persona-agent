@@ -24,6 +24,7 @@ from .fact_recall_item import FactRecallItem, HistoricalFactRecallItem
 from .fact_observation_value_lookup import resolve_observation_fact_value
 from .prehistory_memory_source import PrehistoryMemoryReading
 from .recall_model_reading import RECALL_INDEX_POLICY_VERSION, interior_recall_item
+from .prehistory_story import StoryWindowRequest
 from .schema_core import FrozenModel, PrivacyClass
 from .sqlite_coordination import configure_shared_sqlite_connection, sqlite_write_lock
 
@@ -422,6 +423,14 @@ class RecallQuery(FrozenModel):
     subject_refs: tuple[str, ...] = Field(min_length=1, max_length=8)
     viewer_privacy_ceiling: PrivacyClass
     at: datetime
+    story_window: StoryWindowRequest | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+        description="Continue reading one exact retained story window using returned coordinates.",
+    )
+    knowledge_as_of: datetime | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+        description="Read only structured prehistory fully known by this time; excludes unqualified legacy and live sources.",
+    )
     occurred_from: datetime | None = None
     occurred_to: datetime | None = None
     link_refs: tuple[str, ...] = Field(default=(), max_length=32)
@@ -438,7 +447,7 @@ class RecallQuery(FrozenModel):
             raise ValueError("recall query links must be sorted and unique")
         if self.memory_kinds != tuple(sorted(set(self.memory_kinds))):
             raise ValueError("recall query kinds must be sorted and unique")
-        for value in (self.at, self.occurred_from, self.occurred_to):
+        for value in (self.at, self.occurred_from, self.occurred_to, self.knowledge_as_of):
             if value is not None and (value.tzinfo is None or value.utcoffset() is None):
                 raise ValueError("recall query times must be timezone-aware")
         if (
@@ -447,6 +456,8 @@ class RecallQuery(FrozenModel):
             and self.occurred_to < self.occurred_from
         ):
             raise ValueError("recall query occurrence interval is reversed")
+        if self.knowledge_as_of is not None and self.knowledge_as_of > self.at:
+            raise ValueError("knowledge perspective cannot exceed the pinned present")
         return self
 
 
@@ -659,7 +670,8 @@ class _RecallIndexCore:
         search_rows = tuple(row for row in eligible_rows if not row[0].context_only)
         for (document, vector), lexical in zip(search_rows, lexical_scores, strict=True):
             dense = max(0, min(10_000, round(_cosine(query_vector, vector) * 10_000)))
-            structured = _structured_score(query.link_refs, document.link_refs)
+            structured = (10_000 if query.story_window is not None
+                          else _structured_score(query.link_refs, document.link_refs))
             temporal = _temporal_score(query, document)
             channels: list[Literal["lexical", "dense", "temporal", "structured"]] = []
             # A remembered entity can be a two-character island inside a
@@ -854,6 +866,17 @@ class _RecallIndexCore:
             hits = self._with_prehistory_parent_context(
                 hits=hits, eligible_rows=eligible_rows,
             )
+        # Expose only links whose other endpoint passed this same read's
+        # actor/status/privacy/time filters. Counts never disclose hidden nodes.
+        from .prehistory_memory_source import restrict_story_reading
+        visible_records = {
+            hit.document.source_item_ref.split(":window:")[0] for hit in hits
+            if hit.document.prehistory is not None
+        }
+        hits = tuple(hit.model_copy(update={"document": hit.document.model_copy(update={
+            "prehistory": restrict_story_reading(hit.document.prehistory, visible_records),
+        })}) if hit.document.prehistory is not None and hit.document.prehistory.story else hit
+                     for hit in hits)
         if diagnostics is not None:
             diagnostics.append(RecallSearchDiagnostic(
                 corpus_document_ids=tuple(document.document_id for document, _ in rows),
@@ -1203,6 +1226,21 @@ class _RecallIndexCore:
     def _eligible(document: RecallDocument, query: RecallQuery) -> bool:
         if document.actor_ref != query.actor_ref:
             return False
+        story = document.prehistory.story if document.prehistory is not None else None
+        if query.knowledge_as_of is not None:
+            # A broad acquisition interval is definitely available only at its
+            # upper bound. Current thoughts/live facts lack historical knowledge
+            # provenance and cannot fill this restricted historical perspective.
+            if story is None or story.known_until > query.knowledge_as_of:
+                return False
+        if story is not None and story.known_until > query.at:
+            return False
+        if query.story_window is not None:
+            requested = query.story_window
+            if (story is None or document.context_only
+                    or document.source_item_ref.split(":window:")[0] != requested.record_ref
+                    or (document.source_window_start or 0) != requested.start):
+                return False
         if not set(document.subject_refs) & set(query.subject_refs):
             return False
         if _PRIVACY_RANK[document.privacy_class] > _PRIVACY_RANK[query.viewer_privacy_ceiling]:
@@ -1223,11 +1261,13 @@ class _RecallIndexCore:
             and not query.include_historical
         ):
             return False
-        document_end = document.occurred_to or document.occurred_from
-        if query.occurred_from is not None and document_end < query.occurred_from:
-            return False
-        if query.occurred_to is not None and document.occurred_from > query.occurred_to:
-            return False
+        if query.occurred_from is not None or query.occurred_to is not None:
+            if not any(
+                (query.occurred_from is None or end >= query.occurred_from)
+                and (query.occurred_to is None or start <= query.occurred_to)
+                for start, end in _occurrence_intervals(document)
+            ):
+                return False
         return True
 
 
@@ -1726,12 +1766,23 @@ def _structured_score(query_refs: tuple[str, ...], document_refs: tuple[str, ...
     return min(10_000, round(overlap / len(set(query_refs)) * 10_000))
 
 
+def _occurrence_intervals(document: RecallDocument) -> tuple[tuple[datetime, datetime], ...]:
+    story = document.prehistory.story if document.prehistory is not None else None
+    if story is not None:
+        # Unknown source occurrence remains unknown. No substitution of the
+        # later acquisition date; multiple events keep separate intervals.
+        return tuple((block.occurred_from, block.occurred_until) for block in story.blocks
+                     if block.occurred_from is not None)
+    return ((document.occurred_from, document.occurred_to or document.occurred_from),)
+
+
 def _temporal_score(query: RecallQuery, document: RecallDocument) -> int:
-    end = document.occurred_to or document.occurred_from
-    if query.occurred_from is not None and end < query.occurred_from:
+    intervals = tuple((start, end) for start, end in _occurrence_intervals(document)
+                      if (query.occurred_from is None or end >= query.occurred_from)
+                      and (query.occurred_to is None or start <= query.occurred_to))
+    if not intervals:
         return 0
-    if query.occurred_to is not None and document.occurred_from > query.occurred_to:
-        return 0
+    start, end = max(intervals, key=lambda interval: interval[1])
     if document.prehistory is not None:
         # A historical dating window is not evidence that the remembered
         # occurrence happened at its newest possible instant. Average the
@@ -1739,7 +1790,7 @@ def _temporal_score(query: RecallQuery, document: RecallDocument) -> int:
         # prior, never a new occurrence date or a character decision.
         return _historical_window_accessibility(
             youngest_days=max(0.0, (query.at - end).total_seconds() / 86_400),
-            oldest_days=max(0.0, (query.at - document.occurred_from).total_seconds() / 86_400),
+            oldest_days=max(0.0, (query.at - start).total_seconds() / 86_400),
         )
     distance_seconds = max(
         0.0,

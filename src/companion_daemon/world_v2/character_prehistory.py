@@ -6,7 +6,7 @@ These records grant no current presence, NPC action, or remembered content.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import hashlib
 import json
 from typing import Literal
@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import Field, model_validator
 
 from .schema_core import FrozenModel, PrivacyClass, canonicalize_json_value
+from .prehistory_story import PrehistoryStoryStructure
 
 _HASH = r"^[0-9a-f]{64}$"
 _ENTITY = r"^history:(person|place|object|group):[a-z0-9][a-z0-9._-]*$"
@@ -59,6 +60,9 @@ class PrehistoryRecord(FrozenModel):
     location_ref: str | None = None
     related_record_refs: tuple[str, ...] = Field(default=(), max_length=32)
     privacy_class: PrivacyClass
+    story: PrehistoryStoryStructure | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
 
     @model_validator(mode="after")
     def history_is_well_formed(self):
@@ -78,6 +82,12 @@ class PrehistoryRecord(FrozenModel):
                 raise ValueError("prehistory references must be unique")
         if self.record_id in self.related_record_refs:
             raise ValueError("prehistory record cannot relate to itself")
+        if self.story is not None:
+            if (self.story.known_from != self.occurred_from
+                    or self.story.known_until - self.occurred_until not in {timedelta(0), timedelta(microseconds=1)}):
+                raise ValueError("legacy record interval must retain its knowledge coordinates")
+            if any(edge.left_record_id != self.record_id for edge in self.story.relations):
+                raise ValueError("story relations must belong to their left record endpoint")
         return self
 
 
@@ -103,7 +113,7 @@ class PrehistoryArchiveManifest(FrozenModel):
 
 
 class PrehistoryArchiveDocument(FrozenModel):
-    contract: Literal["character-prehistory-archive.1"]
+    contract: Literal["character-prehistory-archive.1", "character-prehistory-archive.2"]
     archive_id: str
     world_id: str
     actor_ref: str
@@ -126,6 +136,32 @@ class PrehistoryArchiveDocument(FrozenModel):
         entities = {x.entity_ref: x for x in self.entities}
         for record in self.records:
             validate_historical_references(record, entities)
+        if any((record.story is not None) != (self.contract == "character-prehistory-archive.2")
+               for record in self.records):
+            raise ValueError("archive version must match its story structure")
+        records = {record.record_id: record for record in self.records}
+        for record in self.records:
+            story = record.story
+            if story is None:
+                continue
+            if story.actor_ref != self.actor_ref:
+                raise ValueError("story structure belongs to another actor")
+            for edge in story.relations:
+                right = records.get(edge.right_record_id)
+                if right is None or right.story is None:
+                    raise ValueError("story relation endpoint is outside its archive")
+                if (right.record_id not in record.related_record_refs
+                        or record.record_id not in right.related_record_refs):
+                    raise ValueError("typed story relation differs from its retrieval links")
+                blocks = {b.block_id: b for b in (*story.blocks, *right.story.blocks)}
+                evidence_ids = {e.block_id for e in edge.evidence}
+                if not evidence_ids & {b.block_id for b in story.blocks} or not evidence_ids & {
+                    b.block_id for b in right.story.blocks
+                }:
+                    raise ValueError("story relation requires evidence at both endpoints")
+                if any(e.block_id not in blocks or e.source_quote not in blocks[e.block_id].source_quote
+                       for e in edge.evidence):
+                    raise ValueError("story relation evidence differs from accepted blocks")
         return self
 
 
@@ -263,3 +299,15 @@ def validate_prehistory_state(archives, records, events, *, logical_time, world_
         ):
             raise ValueError("prehistory record projection differs from reviewed history")
         validate_historical_references(row.record, {x.entity_ref: x for x in archive.manifest.entities})
+        validate_story_boundary(row.record, actor_ref=row.actor_ref, world_started_at=row.world_started_at)
+
+
+def validate_story_boundary(record: PrehistoryRecord, *, actor_ref: str, world_started_at: datetime):
+    story = record.story
+    if story is None:
+        return
+    if (story.actor_ref != actor_ref or story.known_until > world_started_at
+            or story.known_from >= world_started_at
+            or any(block.occurred_until is not None and block.occurred_until >= world_started_at
+                   for block in story.blocks)):
+        raise ValueError("story actor, knowledge or occurrence crosses its World start boundary")

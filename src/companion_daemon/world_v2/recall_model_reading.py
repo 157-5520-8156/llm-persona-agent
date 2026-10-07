@@ -72,7 +72,19 @@ def interior_recall_item(
             "valid_from": document.valid_from.isoformat() if document.valid_from else None,
             "valid_to": document.valid_to.isoformat() if document.valid_to else None,
         }
+    story_window = {}
+    if document.prehistory is not None and document.prehistory.story is not None:
+        start = document.source_window_start or 0
+        total = document.prehistory.story.record_characters
+        story_window = {"story_window": {
+            "record_ref": document.source_item_ref.split(":window:")[0],
+            "start": start, "end": start + len(document.text),
+            "complete_record": start == 0 and len(document.text) == total,
+            "next": {"record_ref": document.source_item_ref.split(":window:")[0], "start": start + 416}
+                    if start + len(document.text) < total else None,
+        }}
     return {
+        **story_window,
         "source_ref": (
             fact.accepted_fact_event_ref
             if fact is not None and fact.status == "historical"

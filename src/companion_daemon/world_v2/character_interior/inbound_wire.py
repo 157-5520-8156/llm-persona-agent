@@ -11056,6 +11056,8 @@ _RECALL_CHOICE_FIELDS = frozenset(
         "lexical_text",
         "occurred_from",
         "occurred_to",
+        "knowledge_as_of",
+        "story_window",
         "link_refs",
         "memory_kinds",
         "include_historical",

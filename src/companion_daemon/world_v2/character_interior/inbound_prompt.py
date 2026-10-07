@@ -136,6 +136,8 @@ def _current_slim_recall_instruction() -> str:
         "attended_source_refs只选当前已有引用、最多8条，也可为空。"
         "recall_request必填query_text；可选lexical_text、带时区的occurred_from/occurred_to、"
         "link_refs（已有引用）、memory_kinds（episodic/semantic/reflective）、"
+        "story_window（复制读取材料给出的next坐标，继续读同一条仍可用的记忆）、"
+        "knowledge_as_of（带时区，仅读取该时点已完整获知的结构化前史，非重置整份当前情境）、"
         "include_historical（布尔）、limit（1..8）。引用和种类是集合，宿主会去重并规范顺序；"
         "不写query、intent、target_scopes、max_items等未提供字段。"
         "只对完整内部对象进行一次JSON序列化；结果作为payload_json字符串。"
@@ -168,7 +170,7 @@ def compact_atomic_slim_system_prompt(
     specimen = slim_peer_specimen()
     specimen = {"world_claims": specimen.pop("world_claims"), **specimen}
     return (
-        f"{'character-inbound-prompt.6-slim' if concise_contract else SLIM_PROMPT_VERSION}\n"
+        f"{'character-inbound-prompt.7-slim' if concise_contract else SLIM_PROMPT_VERSION}\n"
         + (_ROLE_AND_REALITY.replace("expression_draft.world_claims", "world_claims").replace(
             "缺少记录表示未知，不证明事情没发生，更不能靠合理的故事补齐。",
             "没有对应经历时无需为接话而补出一个故事。",

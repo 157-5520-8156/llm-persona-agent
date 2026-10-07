@@ -15,38 +15,13 @@ from .prehistory_life_materials import LifeMaterialsDraft
 from .schema_core import FrozenModel
 
 
-StoryRelationKind = Literal[
-    "shared_scene",
-    "episode_followup",
-    "later_disclosure",
-    "explicit_callback",
-]
+from .prehistory_story import (
+    PrehistoryStoryRelation as PrehistoryStoryRelation,
+    StoryLinkEvidence as StoryLinkEvidence,
+    StoryRelationKind as StoryRelationKind,
+)
+
 MAX_STORY_LINK_RELATIONS = 24
-
-
-class StoryLinkEvidence(FrozenModel):
-    block_id: str = Field(min_length=1, max_length=256)
-    source_quote: str = Field(min_length=1, max_length=1_200)
-
-
-class PrehistoryStoryRelation(FrozenModel):
-    left_record_id: str = Field(min_length=1, max_length=256,
-        description="First scene in the narrative when order is known; otherwise an endpoint of an undirected association.")
-    right_record_id: str = Field(min_length=1, max_length=256,
-        description="Later scene when order is known; otherwise the other endpoint of an undirected association.")
-    relation_kind: StoryRelationKind
-    evidence: tuple[StoryLinkEvidence, ...] = Field(min_length=2, max_length=6)
-    bridge_source_quote: str = Field(min_length=1, max_length=1_200,
-        description="Exact original-narrative text that explicitly connects the two scenes; chronology alone is insufficient.")
-    rationale: str = Field(min_length=1, max_length=1_000)
-
-    @model_validator(mode="after")
-    def identities_are_distinct(self):
-        if self.left_record_id == self.right_record_id:
-            raise ValueError("story-link record endpoints must be distinct")
-        if len({item.block_id for item in self.evidence}) != len(self.evidence):
-            raise ValueError("story-link evidence block IDs must be unique")
-        return self
 
 
 class PrehistoryStoryLinkDraft(FrozenModel):

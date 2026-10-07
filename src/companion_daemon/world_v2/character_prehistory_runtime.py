@@ -6,7 +6,7 @@ from .schema_core import canonicalize_json_value
 
 from .character_prehistory import (
     IMPORT_ACTOR, SOURCE, PrehistoryArchiveAcceptedPayload, PrehistoryRecordImportedPayload,
-    ReviewedPrehistoryArchive, digest, prehistory_event_id,
+    ReviewedPrehistoryArchive, digest, prehistory_event_id, validate_story_boundary,
 )
 
 
@@ -39,6 +39,7 @@ class PrehistoryArchiveRuntime:
             start = starts[0]
             # Validate all records before assembling or committing any event.
             for record in records:
+                validate_story_boundary(record, actor_ref=document.actor_ref, world_started_at=start.logical_time)
                 if record.occurred_until >= start.logical_time:
                     raise ValueError("prehistory cannot cover runtime life")
             known = {x.record.record_id for x in state.prehistory_records if x.actor_ref == document.actor_ref}

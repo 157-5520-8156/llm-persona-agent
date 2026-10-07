@@ -1,3 +1,13 @@
+Structured story-memory first P0/P1 loop (2026-10-07):
+`docs/audits/story-memory-structure-2026-10-07.md`, ADR0022. Archive.2 opt-in preserves source
+blocks, event IDs, actor knowledge bounds and typed edges through existing import/Memory/Recall.
+Old archive.1 serialization/hash unchanged. Raw narrator/bridge quotes stay out of role readings.
+Recall knowledge_as_of is conservative structured-prehistory-only, not whole-context time travel.
+Explicit story_window continues current retained source windows; current privacy/forget/source proofs
+apply on every read. No new Fate daemon, canonical cross-story merge or NPC binding yet.
+Frozen three-line oracle is an engineering fixture, not production/history or model-quality approval.
+No paid calls/production writes. Full verification and two-axis review recorded in the audit.
+
 Long-term story system clarification (2026-10-07): user wants long, consequential, evolving and
 interwoven stories; adding isolated scenes is not the goal. Current design proposal:
 `docs/design/long-horizon-story-system-2026-10-07.md`; audit and primary research linked there.

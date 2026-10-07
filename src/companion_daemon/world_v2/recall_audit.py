@@ -17,6 +17,7 @@ from .recall_index import (
     recall_query_hash,
     recall_result_hash,
 )
+from .prehistory_story import StoryWindowRequest
 from .schema_core import FrozenModel
 
 
@@ -59,6 +60,14 @@ class CharacterRecallRequest(FrozenModel):
         min_length=1,
         max_length=MAX_RECALL_QUERY_CHARACTERS,
         exclude_if=lambda value: value is None,
+    )
+    story_window: StoryWindowRequest | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+        description="Continue reading one exact retained story window using returned coordinates.",
+    )
+    knowledge_as_of: datetime | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+        description="Read only structured prehistory fully known by this time; excludes unqualified legacy and live sources.",
     )
     occurred_from: datetime | None = None
     occurred_to: datetime | None = None
@@ -166,6 +175,8 @@ class RecallAuditTrace(FrozenModel):
             or self.request.lexical_text != self.query.lexical_text
             or self.request.occurred_from != self.query.occurred_from
             or self.request.occurred_to != self.query.occurred_to
+            or self.request.knowledge_as_of != self.query.knowledge_as_of
+            or self.request.story_window != self.query.story_window
             or self.request.link_refs != self.query.link_refs
             or self.request.memory_kinds != self.query.memory_kinds
             or self.request.include_historical != self.query.include_historical
