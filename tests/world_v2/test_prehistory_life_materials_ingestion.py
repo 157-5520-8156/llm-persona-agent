@@ -666,3 +666,79 @@ def test_capture_transport_redacts_auth_and_preserves_wire_payloads(tmp_path):
     assert "authorization" not in request["headers"]
     assert "secret" not in json.dumps(request)
     assert response["status_code"] == 200
+
+
+def test_structured_revision_preserves_approved_sources_and_resumes_without_model_calls(tmp_path):
+    b, previous, legacy_archive, review = revision_case()
+    archive = export_actor_archive(previous, 'agent:celia', legacy_archive.archive_id,
+                                   preserve_story_structure=True)
+    review = review.model_copy(update={
+        'document_hash': digest(archive),
+        'records': tuple(row.model_copy(update={'record_hash': digest(record)})
+                         for row, record in zip(review.records, archive.records, strict=True)),
+    })
+    corrected = previous.model_copy(update={'recollections': (
+        previous.recollections[0].model_copy(update={'related_record_refs': ()}),
+    )})
+    calls = []
+
+    async def completion(**kwargs):
+        calls.append(kwargs)
+        request = json.loads(kwargs['messages'][1]['content'])
+        assert request['contract'] == 'prehistory-life-materials-revision-request.2'
+        assert request['prior_candidate']['archive']['contract'] == 'character-prehistory-archive.2'
+        return corrected.model_dump_json(), {'input_tokens': 300, 'output_tokens': 120}
+
+    params = dict(brief=b, narrative_text=NARRATIVE, actor_ref='agent:celia', archive_id=archive.archive_id,
+                  run_dir=tmp_path / 'rich-revision', api_key='fixture', previous_materials=previous,
+                  previous_archive=archive, revision_review=review, completion=completion)
+    _, result, first = asyncio.run(run_faithful_ingestion(**params))
+    _, resumed, second = asyncio.run(run_faithful_ingestion(**params))
+    assert len(calls) == 1
+    assert result == resumed and first == second
+    assert result.contract == 'character-prehistory-archive.2'
+    assert result.records[0].story.blocks == archive.records[0].story.blocks
+    assert result.records[0].story.known_from == archive.records[0].story.known_from
+
+
+@pytest.mark.parametrize('mutation', ['review', 'materials'])
+def test_revision_resume_rejects_changed_frozen_inputs_or_outputs(tmp_path, mutation):
+    b, previous, archive, review = revision_case()
+    corrected = previous.model_copy(update={'recollections': (
+        previous.recollections[0].model_copy(update={'related_record_refs': ()}),
+    )})
+    calls = []
+    async def completion(**kwargs):
+        calls.append(kwargs)
+        return corrected.model_dump_json(), {'input_tokens': 100, 'output_tokens': 50}
+    params = dict(brief=b, narrative_text=NARRATIVE, actor_ref='agent:celia', archive_id=archive.archive_id,
+                  run_dir=tmp_path / 'revision', api_key='fixture', previous_materials=previous,
+                  previous_archive=archive, revision_review=review, completion=completion)
+    asyncio.run(run_faithful_ingestion(**params))
+    if mutation == 'review':
+        params['revision_review'] = review.model_copy(update={'cross_record_findings': ('Changed review instruction.',)})
+    else:
+        path = params['run_dir'] / 'materials.json'
+        value = json.loads(path.read_text())
+        value['blocks'][0]['source_locator'] = 'source-segment:0001'
+        value['blocks'][0]['text'] += ' 另一个版本的文字。'
+        path.write_text(json.dumps(value, ensure_ascii=False))
+    with pytest.raises(ValueError):
+        asyncio.run(run_faithful_ingestion(**params))
+    assert len(calls) == 1
+
+
+def test_ingestion_uses_its_own_declared_packet_budget_without_clipping_context():
+    b = brief().model_copy(update={'profile': {'reference_notes': 'x' * 100000}})
+    packet = ingestion_request(b, NARRATIVE)
+    assert packet['brief']['profile']['reference_notes'] == 'x' * 100000
+    assert packet['source']['segments'][0]['text'] == NARRATIVE
+
+
+def test_acquisition_contract_does_not_instruct_retention_until_world_start():
+    legacy = ingestion_request(brief(), NARRATIVE)
+    current = ingestion_request(brief(), NARRATIVE, precise_knowledge=True)
+    assert current['contract'] == 'prehistory-life-materials-ingestion-request.2'
+    assert '若该回忆持续可用至初始World启动' in legacy['instruction']
+    assert '若该回忆持续可用至初始World启动' not in current['instruction']
+    assert '绝不是记忆持有' in current['instruction']

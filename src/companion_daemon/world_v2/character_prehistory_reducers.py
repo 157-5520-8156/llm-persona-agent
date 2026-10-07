@@ -33,6 +33,8 @@ def archive_accepted(state, event):
         or any(x.manifest.archive_id == payload.manifest.archive_id for x in state.prehistory_archives)
     ):
         raise ValueError("prehistory archive start, review or identity mismatch")
+    from .story_import import validate_import_basis
+    validate_import_basis(payload.manifest, state=state)
     entities = {e.entity_ref: e for a in state.prehistory_archives for e in a.manifest.entities}
     if any(x.entity_ref in entities and entities[x.entity_ref] != x for x in payload.manifest.entities):
         raise ValueError("prehistory cannot rewrite an existing historical identity")
@@ -69,6 +71,12 @@ def record_imported(state, event):
         raise ValueError("prehistory record differs from reviewed history or crosses runtime start")
     validate_story_boundary(payload.record, actor_ref=archive.manifest.actor_ref, world_started_at=archive.world_started_at)
     validate_historical_references(payload.record, {x.entity_ref: x for x in archive.manifest.entities})
+    if archive.manifest.import_context is not None:
+        from .story_import import validate_import_record, validate_complete_import
+        validate_import_record(archive.manifest, payload.record)
+        records = tuple(row.record for row in state.prehistory_records if row.archive_id == payload.archive_id) + (payload.record,)
+        if len(records) == len(archive.manifest.records):
+            validate_complete_import(archive.manifest, records)
     projection = PrehistoryRecordProjection(
         **payload.model_dump(), actor_ref=archive.manifest.actor_ref,
         world_started_at=archive.world_started_at, accepted_event_ref=event.event_id,

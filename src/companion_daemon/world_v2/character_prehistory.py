@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import Field, model_validator
 
 from .schema_core import FrozenModel, PrivacyClass, canonicalize_json_value
-from .prehistory_story import PrehistoryStoryStructure
+from .prehistory_story import PrehistoryStoryStructure, StoryRelationKind
 
 _HASH = r"^[0-9a-f]{64}$"
 _ENTITY = r"^history:(person|place|object|group):[a-z0-9][a-z0-9._-]*$"
@@ -90,10 +90,78 @@ class PrehistoryRecord(FrozenModel):
                 raise ValueError("story relations must belong to their left record endpoint")
         return self
 
+    def without_story_links(self) -> PrehistoryRecord:
+        return self.model_copy(update={
+            "related_record_refs": (),
+            "story": self.story.model_copy(update={"relations": ()}) if self.story is not None else None,
+        })
+
 
 class PrehistoryRecordPin(FrozenModel):
     record_id: str = Field(pattern=_RECORD, max_length=256)
     record_hash: str = Field(pattern=_HASH)
+
+
+class PrehistoryArchiveBasisPin(FrozenModel):
+    archive_id: str
+    manifest_hash: str = Field(pattern=_HASH)
+
+
+class PrehistoryAuthorityPin(FrozenModel):
+    event_ref: str
+    payload_hash: str = Field(pattern=_HASH)
+
+
+class StoryEventMatchDraft(FrozenModel):
+    event_ref: str = Field(min_length=1, max_length=256)
+    prior_record_id: str = Field(pattern=_RECORD, max_length=256)
+    prior_event_ref: str = Field(min_length=1, max_length=256)
+
+
+class PrehistoryEventMatch(StoryEventMatchDraft):
+    canonical_event_ref: str = Field(pattern=r"^history-event:[0-9a-f]{64}$")
+
+
+class CrossStoryRelation(FrozenModel):
+    left_record_id: str = Field(pattern=_RECORD, max_length=256)
+    right_record_id: str = Field(pattern=_RECORD, max_length=256)
+    relation_kind: StoryRelationKind
+    left_block_id: str = Field(min_length=1, max_length=256)
+    left_source_quote: str = Field(min_length=1, max_length=1200)
+    right_block_id: str = Field(min_length=1, max_length=256)
+    right_source_quote: str = Field(min_length=1, max_length=1200)
+    bridge_source_quote: str = Field(min_length=1, max_length=1200)
+    rationale: str = Field(min_length=1, max_length=1000)
+
+
+class PrehistoryExistingRecord(FrozenModel):
+    archive_id: str
+    archive_manifest_hash: str = Field(pattern=_HASH)
+    actor_ref: str
+    record: PrehistoryRecord
+
+
+class PrehistoryImportContext(FrozenModel):
+    contract: Literal["prehistory-import-context.1"] = "prehistory-import-context.1"
+    world_start_ref: str
+    world_start_payload_hash: str = Field(pattern=_HASH)
+    world_started_at: datetime
+    require_coverage_review: bool = Field(default=False, exclude_if=lambda v: v is False)
+    base_archives: tuple[PrehistoryArchiveBasisPin, ...] = Field(default=(), max_length=256)
+    biography_events: tuple[PrehistoryAuthorityPin, ...] = Field(default=(), max_length=256)
+    existing_records: tuple[PrehistoryExistingRecord, ...] = Field(default=(), max_length=256)
+    event_matches: tuple[PrehistoryEventMatch, ...] = Field(default=(), max_length=128)
+    cross_story_links: tuple[CrossStoryRelation, ...] = Field(default=(), max_length=128)
+
+    @model_validator(mode="after")
+    def basis_is_canonical(self):
+        for refs in (tuple(p.archive_id for p in self.base_archives),
+                     tuple(p.event_ref for p in self.biography_events),
+                     tuple(p.record.record_id for p in self.existing_records),
+                     tuple(p.event_ref for p in self.event_matches)):
+            if refs != tuple(sorted(set(refs))):
+                raise ValueError("story import basis must be sorted and unique")
+        return self
 
 
 class PrehistoryArchiveManifest(FrozenModel):
@@ -101,6 +169,7 @@ class PrehistoryArchiveManifest(FrozenModel):
     world_id: str = Field(min_length=1, max_length=256)
     actor_ref: str = Field(min_length=1, max_length=256)
     source_artifact_ref: str = Field(min_length=1, max_length=512)
+    import_context: PrehistoryImportContext | None = Field(default=None, exclude_if=lambda v: v is None)
     entities: tuple[HistoricalEntity, ...] = Field(default=(), max_length=256)
     records: tuple[PrehistoryRecordPin, ...] = Field(min_length=1, max_length=256)
 
@@ -113,18 +182,19 @@ class PrehistoryArchiveManifest(FrozenModel):
 
 
 class PrehistoryArchiveDocument(FrozenModel):
-    contract: Literal["character-prehistory-archive.1", "character-prehistory-archive.2"]
+    contract: Literal["character-prehistory-archive.1", "character-prehistory-archive.2", "character-prehistory-archive.3"]
     archive_id: str
     world_id: str
     actor_ref: str
     source_artifact_ref: str
+    import_context: PrehistoryImportContext | None = Field(default=None, exclude_if=lambda v: v is None)
     entities: tuple[HistoricalEntity, ...] = Field(default=(), max_length=256)
     records: tuple[PrehistoryRecord, ...] = Field(min_length=1, max_length=256)
 
     def manifest(self) -> PrehistoryArchiveManifest:
         return PrehistoryArchiveManifest(
             archive_id=self.archive_id, world_id=self.world_id, actor_ref=self.actor_ref,
-            source_artifact_ref=self.source_artifact_ref,
+            source_artifact_ref=self.source_artifact_ref, import_context=self.import_context,
             entities=tuple(sorted(self.entities, key=lambda x: x.entity_ref)),
             records=tuple(PrehistoryRecordPin(record_id=x.record_id, record_hash=digest(x))
                           for x in sorted(self.records, key=lambda x: x.record_id)),
@@ -136,9 +206,11 @@ class PrehistoryArchiveDocument(FrozenModel):
         entities = {x.entity_ref: x for x in self.entities}
         for record in self.records:
             validate_historical_references(record, entities)
-        if any((record.story is not None) != (self.contract == "character-prehistory-archive.2")
+        if any((record.story is not None) != (self.contract != "character-prehistory-archive.1")
                for record in self.records):
             raise ValueError("archive version must match its story structure")
+        if (self.import_context is not None) != (self.contract == "character-prehistory-archive.3"):
+            raise ValueError("incremental archive requires its import context")
         records = {record.record_id: record for record in self.records}
         for record in self.records:
             story = record.story
@@ -162,6 +234,9 @@ class PrehistoryArchiveDocument(FrozenModel):
                 if any(e.block_id not in blocks or e.source_quote not in blocks[e.block_id].source_quote
                        for e in edge.evidence):
                     raise ValueError("story relation evidence differs from accepted blocks")
+        if self.import_context is not None:
+            from .story_import import validate_context_document
+            validate_context_document(self)
         return self
 
 
@@ -300,6 +375,15 @@ def validate_prehistory_state(archives, records, events, *, logical_time, world_
             raise ValueError("prehistory record projection differs from reviewed history")
         validate_historical_references(row.record, {x.entity_ref: x for x in archive.manifest.entities})
         validate_story_boundary(row.record, actor_ref=row.actor_ref, world_started_at=row.world_started_at)
+    from .story_import import validate_complete_import, validate_import_record
+    for archive in archives:
+        if archive.manifest.import_context is None:
+            continue
+        owned = tuple(row.record for row in records if row.archive_id == archive.manifest.archive_id)
+        for record in owned:
+            validate_import_record(archive.manifest, record)
+        if len(owned) == len(archive.manifest.records):
+            validate_complete_import(archive.manifest, owned)
 
 
 def validate_story_boundary(record: PrehistoryRecord, *, actor_ref: str, world_started_at: datetime):

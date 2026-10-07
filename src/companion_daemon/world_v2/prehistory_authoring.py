@@ -65,6 +65,7 @@ class PrehistoryAuthoringBrief(FrozenModel):
     world_started_at: datetime
     world_start_event_ref: str = Field(min_length=1)
     world_start_event_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    world_start_payload_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$", exclude_if=lambda v: v is None)
     born_at: datetime
     created_at: datetime
     author_ref: str = Field(min_length=1)
@@ -97,6 +98,9 @@ def validate_draft(brief: PrehistoryAuthoringBrief, document: PrehistoryArchiveD
         brief.world_id, brief.actor_ref, brief.draft_source_ref,
     ):
         raise ValueError("draft differs from bound World, actor or creation source")
+    if document.import_context is not None:
+        from .story_import import validate_context_brief
+        validate_context_brief(document, brief)
     existing_records = {r.record_id for archive in brief.accepted_archives for r in archive.records}
     existing_entities = {e.entity_ref: e for archive in brief.accepted_archives for e in archive.entities}
     if document.archive_id in {archive.archive_id for archive in brief.accepted_archives}:
@@ -168,14 +172,53 @@ class PrehistoryCreationReview(FrozenModel):
             raise ValueError("review duplicates a record")
         if len({item.relation_index for item in self.story_links}) != len(self.story_links):
             raise ValueError("review duplicates a story-link index")
-        all_approved = (
-            not self.cross_record_findings
-            and all(item.verdict == "approve" for item in self.records)
-            and all(item.verdict == "approve" for item in self.story_links)
-        )
+        all_approved = self._all_approved()
         if (self.decision == "approved") != all_approved:
             raise ValueError("review decision disagrees with record or cross-record findings")
         return self
+
+    def _all_approved(self):
+        return (not self.cross_record_findings and all(v.verdict == "approve" for v in self.records)
+                and all(v.verdict == "approve" for v in self.story_links))
+
+
+class PrehistoryImportVerdict(FrozenModel):
+    index: int = Field(ge=0, le=255)
+    verdict: Literal["approve", "reject"]
+    rationale: str = Field(min_length=1, max_length=4096)
+
+
+class PrehistoryDeltaCreationReview(PrehistoryCreationReview):
+    contract: Literal["prehistory-creation-review.2"] = "prehistory-creation-review.2"
+    event_matches: tuple[PrehistoryImportVerdict, ...] = Field(max_length=128)
+    cross_story_links: tuple[PrehistoryImportVerdict, ...] = Field(max_length=128)
+
+    def _all_approved(self):
+        return (super()._all_approved() and all(v.verdict == "approve" for v in self.event_matches)
+                and all(v.verdict == "approve" for v in self.cross_story_links))
+
+
+class MissingStoryConnection(FrozenModel):
+    new_record_id: str
+    prior_record_id: str
+    new_source_quote: str = Field(min_length=1, max_length=1200)
+    prior_source_quote: str = Field(min_length=1, max_length=1200)
+    rationale: str = Field(min_length=1, max_length=2000)
+
+
+class PrehistoryCoverageCreationReview(PrehistoryDeltaCreationReview):
+    contract: Literal["prehistory-creation-review.3"] = "prehistory-creation-review.3"
+    missing_connections: tuple[MissingStoryConnection, ...] = Field(max_length=128)
+
+    def _all_approved(self):
+        return super()._all_approved() and not self.missing_connections
+
+
+def parse_creation_review(raw: str) -> PrehistoryCreationReview | PrehistoryDeltaCreationReview:
+    model = {"prehistory-creation-review.1": PrehistoryCreationReview,
+             "prehistory-creation-review.2": PrehistoryDeltaCreationReview,
+             "prehistory-creation-review.3": PrehistoryCoverageCreationReview}[json.loads(raw).get("contract", "prehistory-creation-review.1")]
+    return model.model_validate_json(raw)
 
 
 def _review_packet(brief: PrehistoryAuthoringBrief, document: PrehistoryArchiveDocument) -> dict:
@@ -255,6 +298,66 @@ class PrehistorySemanticAssessment(FrozenModel):
         return self
 
 
+class PrehistoryImportAssessment(PrehistorySemanticAssessment):
+    contract: Literal["prehistory-import-assessment.3"] = "prehistory-import-assessment.3"
+    event_matches: tuple[PrehistoryImportVerdict, ...] = Field(max_length=128)
+    cross_story_links: tuple[PrehistoryImportVerdict, ...] = Field(max_length=128)
+
+    @property
+    def decision(self) -> Literal["approved", "rejected"]:
+        return "approved" if (super().decision == "approved"
+            and all(v.verdict == "approve" for v in self.event_matches)
+            and all(v.verdict == "approve" for v in self.cross_story_links)) else "rejected"
+
+
+class PrehistoryCoverageAssessment(PrehistoryImportAssessment):
+    contract: Literal["prehistory-import-assessment.4"] = "prehistory-import-assessment.4"
+    missing_connections: tuple[MissingStoryConnection, ...] = Field(max_length=128,
+        description="Explicit source-supported prior references or shared events omitted by the proposed context; [] only after checking omissions.")
+
+    @property
+    def decision(self) -> Literal["approved", "rejected"]:
+        return "approved" if super().decision == "approved" and not self.missing_connections else "rejected"
+
+
+def semantic_response_type(request):
+    return {"prehistory-semantic-review-request.1": PrehistorySemanticReview,
+            "prehistory-semantic-review-request.2": PrehistorySemanticAssessment,
+            "prehistory-semantic-review-request.3": PrehistoryImportAssessment,
+            "prehistory-semantic-review-request.4": PrehistoryCoverageAssessment}[request["contract"]]
+
+
+def _validate_import_verdict_coverage(document, review):
+    context = document.import_context
+    if context is None:
+        if isinstance(review, (PrehistoryDeltaCreationReview, PrehistoryImportAssessment)):
+            raise ValueError("import review requires an incremental archive")
+        return
+    if not isinstance(review, (PrehistoryDeltaCreationReview, PrehistoryImportAssessment)):
+        raise ValueError("incremental archive requires explicit import judgments")
+    if context.require_coverage_review and not isinstance(review, (PrehistoryCoverageAssessment, PrehistoryCoverageCreationReview)):
+        raise ValueError("incremental archive requires explicit missing-connection assessment")
+    for field in ("event_matches", "cross_story_links"):
+        values = getattr(review, field)
+        if len(values) != len(getattr(context, field)) or {v.index for v in values} != set(range(len(values))):
+            raise ValueError(f"review must cover every submitted {field} index exactly once")
+
+
+def _validate_missing_connections(brief, document, review):
+    if not isinstance(review, (PrehistoryCoverageAssessment, PrehistoryCoverageCreationReview)):
+        return
+    own = {r.record_id: r for r in document.records}
+    prior = {r.record_id: r for a in brief.accepted_archives for r in a.records}
+    for finding in review.missing_connections:
+        for ref, quote, records in ((finding.new_record_id, finding.new_source_quote, own),
+                                    (finding.prior_record_id, finding.prior_source_quote, prior)):
+            record = records.get(ref)
+            quotes = tuple(b.source_quote for b in record.story.blocks) if record and record.story else (
+                (record.statement,) if record else ())
+            if not any(quote in original for original in quotes):
+                raise ValueError("missing story connection finding lacks exact endpoint source evidence")
+
+
 def semantic_review_request(
     brief: PrehistoryAuthoringBrief,
     document: PrehistoryArchiveDocument,
@@ -268,6 +371,8 @@ def semantic_review_request(
     # Apply the semantic protocol's existing budget after composing its full
     # evidence. The smaller creation-review limit must not truncate this lane.
     packet = _review_packet(brief, document)
+    if document.import_context is not None:
+        assessment_only = True
     instruction = REVIEW_INSTRUCTION
     narrative_source_ref = None
     if narrative_text is not None:
@@ -288,9 +393,12 @@ def semantic_review_request(
             raise ValueError("reviewed archive does not bind the supplied source materials")
         rebuilt = export_actor_archive(
             source_materials, document.actor_ref, document.archive_id,
-            preserve_story_structure=document.contract == "character-prehistory-archive.2",
-            story_links=story_links if document.contract == "character-prehistory-archive.2" else None,
+            preserve_story_structure=document.contract != "character-prehistory-archive.1",
+            story_links=story_links if document.contract != "character-prehistory-archive.1" else None,
         )
+        if document.import_context is not None:
+            rebuilt = rebuilt.model_copy(update={"contract": "character-prehistory-archive.3",
+                                                  "import_context": document.import_context})
         if digest(rebuilt) != digest(document):
             raise ValueError("reviewed archive differs from the actor-scoped source materials")
         packet["source_materials"] = source_materials.model_dump(mode="json")
@@ -348,8 +456,30 @@ def semantic_review_request(
             "每项语义判断仍由你负责。调用方只有在完整覆盖且全部approve、跨记录问题为空时汇总为通过；"
             "任何不通过理由必须写入对应逐项reject或cross_record_findings，不能漏掉。"
         )
-    response_type = PrehistorySemanticAssessment if assessment_only else PrehistorySemanticReview
-    packet.update(contract=("prehistory-semantic-review-request.2" if assessment_only
+    if document.import_context is not None:
+        instruction += (
+            "document.import_context是待审增量方案，不是已证明的关联。逐项审核event_matches："
+            "必须是原稿与既有记录明确支持的同一发生，而不是同名、相似、同主题或只是同一长期线；"
+            "不同人的意见或后来解释不同不是新事件，也不应被抹成同一种看法。"
+            "逐项审核cross_story_links两端与桥接引用；两个故事都须有来源，无法确认就reject。"
+            "event_matches和cross_story_links分别按各自数组0-based下标返回index，每项恰好一次，无项则明确[]。"
+            "同时检查新记忆是否只是重复旧记忆；新增视角应确有原文支持的新信息/知情时点，而不是换ID重存。"
+        )
+    coverage = document.import_context is not None and document.import_context.require_coverage_review
+    if coverage:
+        instruction += (
+            "还必须主动核查遗漏：即使方案的event_matches/cross_story_links为空，也逐一检查新原文对既有历史的明确回指。"
+            "缺失同一发生标注或有充分原文依据的跨故事关联时，写入missing_connections，列新旧record_id和两端逐字source_quote；"
+            "不确定、只是同主题/同人物不是漏边，不要为通过验收硬造关系。已有关系也不要求穷举传递边。"
+            "逐条检查known_from/known_until是整条信息获得时间的最窄有据区间，不是保存记忆的起止时间。"
+            "原文已明确日/月/年时，不能把known_until拖到World启动；混合不同获知时间应拆记录。"
+            "获知区间错误需在相应record_index标reject并说明正确证据；不从发生时间无条件推知情。"
+        )
+    response_type = (PrehistoryCoverageAssessment if coverage else PrehistoryImportAssessment if document.import_context is not None
+                     else PrehistorySemanticAssessment if assessment_only else PrehistorySemanticReview)
+    packet.update(contract=("prehistory-semantic-review-request.4" if coverage
+                            else "prehistory-semantic-review-request.3" if document.import_context is not None
+                            else "prehistory-semantic-review-request.2" if assessment_only
                             else "prehistory-semantic-review-request.1"),
         instruction=instruction, output_schema=response_type.model_json_schema())
     return _bounded_packet(packet, max_bytes=MAX_SEMANTIC_REVIEW_PACKET_BYTES)
@@ -384,14 +514,16 @@ def bind_semantic_review(
         source_materials = LifeMaterialsDraft.model_validate_json(
             json.dumps(submitted_request["source_materials"], ensure_ascii=False),
         )
-    assessment_only = submitted_request.get("contract") == "prehistory-semantic-review-request.2"
+    assessment_only = submitted_request.get("contract") in {"prehistory-semantic-review-request.2", "prehistory-semantic-review-request.3", "prehistory-semantic-review-request.4"}
     if submitted_request != semantic_review_request(
         brief, document, story_links=story_links, narrative_text=narrative_text,
         source_materials=source_materials, assessment_only=assessment_only,
     ):
         raise ValueError("submitted semantic review packet differs from its bound content or contract")
-    response_type = PrehistorySemanticAssessment if assessment_only else PrehistorySemanticReview
+    response_type = semantic_response_type(submitted_request)
     response = response_type.model_validate_json(response.model_dump_json())
+    _validate_import_verdict_coverage(document, response)
+    _validate_missing_connections(brief, document, response)
     by_index = {item.record_index: item for item in response.records}
     if set(by_index) != set(range(len(document.records))):
         raise ValueError("semantic review must cover every submitted record index exactly once")
@@ -403,7 +535,12 @@ def bind_semantic_review(
         raise ValueError("author cannot supply the separate reviewer identity")
     if reviewed_at.tzinfo is None or reviewed_at.utcoffset() is None or reviewed_at < brief.created_at:
         raise ValueError("review time must be aware and cannot predate the authoring brief")
-    return PrehistoryCreationReview(
+    model = (PrehistoryCoverageCreationReview if isinstance(response, PrehistoryCoverageAssessment)
+             else PrehistoryDeltaCreationReview if document.import_context is not None else PrehistoryCreationReview)
+    return model(
+        **({"missing_connections": response.missing_connections} if isinstance(response, PrehistoryCoverageAssessment) else {}),
+        **({"event_matches": response.event_matches, "cross_story_links": response.cross_story_links}
+           if document.import_context is not None else {}),
         brief_hash=digest(brief), document_hash=digest(document),
         reviewer_ref=reviewer_ref, reviewed_at=reviewed_at, decision=response.decision,
         cross_record_findings=response.cross_record_findings,
@@ -425,7 +562,7 @@ def package_reviewed(
 ) -> ReviewedPrehistoryArchive:
     """Bind operator-supplied review to exact content; never import or retain."""
     validate_draft(brief, document)
-    review = PrehistoryCreationReview.model_validate_json(review.model_dump_json())
+    review = parse_creation_review(review.model_dump_json())
     if (review.brief_hash, review.document_hash) != (digest(brief), digest(document)):
         raise ValueError("review does not bind the current brief and document")
     if review.reviewer_ref == brief.author_ref:
@@ -436,6 +573,8 @@ def package_reviewed(
         record.record_id: digest(record) for record in document.records
     }:
         raise ValueError("review must cover every exact record once")
+    _validate_import_verdict_coverage(document, review)
+    _validate_missing_connections(brief, document, review)
     if review.decision != "approved":
         raise ValueError("rejected draft cannot become an import package")
     return ReviewedPrehistoryArchive(document=document, review=PrehistoryReview(

@@ -12,7 +12,7 @@ from pydantic import Field, model_validator
 from .character_prehistory import (
     HistoricalEntity, PrehistoryArchiveDocument, PrehistoryRecord, _RECORD, _aware, digest,
 )
-from .prehistory_authoring import PrehistoryAuthoringBrief, PrehistoryCreationReview
+from .prehistory_authoring import PrehistoryAuthoringBrief, PrehistoryCreationReview, parse_creation_review
 from .schema_core import FrozenModel, PrivacyClass
 
 MAX_INGESTION_BLOCKS_PER_RECOLLECTION = 8
@@ -360,7 +360,7 @@ def source_segments(text: str) -> tuple[dict[str, str], ...]:
     return tuple(segments)
 
 
-def ingestion_request(brief: PrehistoryAuthoringBrief, narrative_text: str) -> dict[str, Any]:
+def ingestion_request(brief: PrehistoryAuthoringBrief, narrative_text: str, *, precise_knowledge: bool = False) -> dict[str, Any]:
     """Build a source-bound faithful extraction packet, never a creative brief."""
     from .prehistory_authoring import _bounded_packet
 
@@ -403,10 +403,24 @@ def ingestion_request(brief: PrehistoryAuthoringBrief, narrative_text: str) -> d
         },
         "output_schema": LifeMaterialsDraft.model_json_schema(),
     }
+    if precise_knowledge:
+        packet["contract"] = "prehistory-life-materials-ingestion-request.2"
+        packet["instruction"] = INGESTION_INSTRUCTION.replace(
+            "若该回忆持续可用至初始World启动，known_until可精确等于brief.world_started_at作为区间截断边界；", ""
+        ) + (
+            "known_from/known_until表示获得这一整条信息的最窄有据日期范围，绝不是记忆持有/持续可用的期限。"
+            "若明示某天亲历/获知，区间止于那天；某月/某年则保留该精度，不能无故延至World开始。"
+            "不要把明确日期的经历与之后时间未知的长期背景合成一条而拖宽全部知情；必要时拆记录。"
+            "只有原文无法给出更窄范围时才保留未知上界，不捏造精确日期。"
+            "原稿对旧事件的新细节或后来理解可形成新视角，但不要照抄已接受记忆；后续关联阶段会明确同一发生与回扣。"
+        )
+        props = packet["output_schema"]["$defs"]["LifeRecollection"]["properties"]
+        props["known_from"]["description"] = "Earliest supported acquisition of this complete recollection; not occurrence or retention time."
+        props["known_until"]["description"] = "Latest supported acquisition, as narrow as the source permits; never the expiration of remembered knowledge."
     serialized = json.dumps(packet, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     if len(serialized) > MAX_INGESTION_PACKET_BYTES:
         raise ValueError("ingestion packet exceeds its byte budget; split source without dropping evidence")
-    return _bounded_packet(packet)
+    return _bounded_packet(packet, max_bytes=MAX_INGESTION_PACKET_BYTES)
 
 
 REVISION_INSTRUCTION = (
@@ -437,6 +451,8 @@ def faithful_revision_request(
     previous_materials: LifeMaterialsDraft,
     previous_archive: PrehistoryArchiveDocument,
     review: PrehistoryCreationReview,
+    previous_story_links=None,
+    precise_knowledge: bool = False,
 ) -> dict[str, Any]:
     """Build a source-bound correction request from a separately bound rejection."""
     from .prehistory_authoring import validate_draft
@@ -444,7 +460,7 @@ def faithful_revision_request(
     brief = PrehistoryAuthoringBrief.model_validate_json(brief.model_dump_json())
     previous_materials = LifeMaterialsDraft.model_validate_json(previous_materials.model_dump_json())
     previous_archive = PrehistoryArchiveDocument.model_validate_json(previous_archive.model_dump_json())
-    review = PrehistoryCreationReview.model_validate_json(review.model_dump_json())
+    review = parse_creation_review(review.model_dump_json())
     if actor_ref != brief.actor_ref or previous_archive.actor_ref != actor_ref:
         raise ValueError("revision must target the same actor as the original brief and archive")
     if previous_archive.archive_id != archive_id:
@@ -453,7 +469,15 @@ def faithful_revision_request(
         raise ValueError("revision material source differs from the original narrative")
     if previous_archive.source_artifact_ref != f"life-materials:sha256:{digest(previous_materials)}":
         raise ValueError("revision archive does not bind its previous source materials")
-    previous_document = export_actor_archive(previous_materials, actor_ref, archive_id)
+    structured = previous_archive.contract != "character-prehistory-archive.1"
+    previous_document = export_actor_archive(
+        previous_materials, actor_ref, archive_id, preserve_story_structure=structured,
+        story_links=previous_story_links if structured else None,
+    )
+    if previous_archive.import_context is not None:
+        previous_document = previous_document.model_copy(update={
+            "contract": "character-prehistory-archive.3", "import_context": previous_archive.import_context,
+        })
     if digest(previous_document) != digest(previous_archive):
         raise ValueError("previous archive differs from its source materials")
     review_brief = brief.model_copy(update={"draft_source_ref": previous_archive.source_artifact_ref})
@@ -466,7 +490,7 @@ def faithful_revision_request(
     if review.decision != "rejected":
         raise ValueError("faithful revision requires a rejected semantic review")
 
-    packet = ingestion_request(brief, narrative_text)
+    packet = ingestion_request(brief, narrative_text, precise_knowledge=precise_knowledge)
     prior_records = {record.record_id: record for record in previous_archive.records}
     verdicts = {item.record_id: item for item in review.records}
     packet["revision_feedback"] = {
@@ -485,9 +509,11 @@ def faithful_revision_request(
         "cross_record_findings": review.cross_record_findings,
     }
     packet.update(
-        contract="prehistory-life-materials-revision-request.1",
+        contract=("prehistory-life-materials-revision-request.3" if precise_knowledge
+                  else "prehistory-life-materials-revision-request.2" if structured
+                  else "prehistory-life-materials-revision-request.1"),
         mode="faithful_source_revision",
-        instruction=INGESTION_INSTRUCTION + REVISION_INSTRUCTION,
+        instruction=packet["instruction"] + REVISION_INSTRUCTION,
         prior_review_brief_hash=review.brief_hash,
         prior_candidate={
             "archive": previous_archive.model_dump(mode="json"),
@@ -514,33 +540,39 @@ def validate_faithful_revision(
     previous_archive: PrehistoryArchiveDocument,
     review: PrehistoryCreationReview,
     revised_materials: LifeMaterialsDraft,
+    previous_story_links=None,
+    precise_knowledge: bool = False,
 ) -> PrehistoryArchiveDocument:
     """Keep approved history and every non-target actor byte-stable during correction."""
     from .prehistory_authoring import validate_draft
 
     previous_materials = LifeMaterialsDraft.model_validate_json(previous_materials.model_dump_json())
     revised_materials = validate_ingested_materials(brief, narrative_text, revised_materials)
-    review = PrehistoryCreationReview.model_validate_json(review.model_dump_json())
+    review = parse_creation_review(review.model_dump_json())
     previous_archive = PrehistoryArchiveDocument.model_validate_json(previous_archive.model_dump_json())
     faithful_revision_request(
         brief, narrative_text, actor_ref=actor_ref, archive_id=archive_id,
         previous_materials=previous_materials, previous_archive=previous_archive, review=review,
+        previous_story_links=previous_story_links, precise_knowledge=precise_knowledge,
     )
     review_brief = brief.model_copy(update={"draft_source_ref": previous_archive.source_artifact_ref})
     previous_records = {record.record_id: record for record in previous_archive.records}
     reviewed = {item.record_id: item for item in review.records}
-    revised_archive = export_actor_archive(revised_materials, actor_ref, archive_id)
+    revised_archive = export_actor_archive(
+        revised_materials, actor_ref, archive_id,
+        preserve_story_structure=previous_archive.contract != "character-prehistory-archive.1",
+    )
     revised_records = {record.record_id: record for record in revised_archive.records}
 
     for record_id, verdict in reviewed.items():
         if verdict.verdict == "approve":
-            previous_content = previous_records[record_id].model_copy(update={"related_record_refs": ()})
+            previous_content = previous_records[record_id].without_story_links()
             revised_content = revised_records.get(record_id)
-            if revised_content is None or revised_content.model_copy(update={"related_record_refs": ()}) != previous_content:
+            if revised_content is None or revised_content.without_story_links() != previous_content:
                 raise ValueError(f"revision changed previously approved record {record_id}")
         elif verdict.verdict == "reject" and record_id in revised_records:
-            previous_content = previous_records[record_id].model_copy(update={"related_record_refs": ()})
-            revised_content = revised_records[record_id].model_copy(update={"related_record_refs": ()})
+            previous_content = previous_records[record_id].without_story_links()
+            revised_content = revised_records[record_id].without_story_links()
             if revised_content == previous_content:
                 raise ValueError(f"revision left rejected record {record_id} unchanged; revise it or remove it")
     if any(record.related_record_refs for record in revised_materials.recollections):

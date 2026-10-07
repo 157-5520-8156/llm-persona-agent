@@ -58,6 +58,9 @@ class PrehistoryArchiveRuntime:
                 for key in PrehistoryArchiveAcceptedPayload.model_fields
             ):
                 raise ValueError("prehistory archive identity already has different content")
+            if previous is None:
+                from .story_import import validate_import_basis
+                validate_import_basis(manifest, state=state)
             payloads = [] if previous is not None else [("CharacterPrehistoryArchiveAccepted", accepted)]
             existing = {x.record.record_id: x for x in state.prehistory_records}
             for record in records:

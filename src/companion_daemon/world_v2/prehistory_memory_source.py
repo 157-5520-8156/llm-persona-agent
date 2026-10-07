@@ -143,13 +143,30 @@ def prehistory_memory_reading(
 ) -> PrehistoryMemoryReading:
     record: PrehistoryRecord = row.record
     entity_refs = {*record.participant_refs, record.location_ref}
+    story = story_memory_reading(record.story, statement=record.statement) if record.story else None
+    related = record.related_record_refs
+    if story is not None and archive.manifest.import_context is not None:
+        from .story_import import canonical_event_ref
+        from .prehistory_story import StoryRelationReading
+        edges = tuple(edge for edge in archive.manifest.import_context.cross_story_links
+                      if record.record_id in {edge.left_record_id, edge.right_record_id})
+        related = tuple(sorted({*related, *(ref for edge in edges
+            for ref in (edge.left_record_id, edge.right_record_id) if ref != record.record_id)}))
+        story = story.model_copy(update={
+            "blocks": tuple(block.model_copy(update={"canonical_event_ref": canonical_event_ref(
+                archive.manifest, block.event_ref,
+            )}) for block in story.blocks),
+            "relations": (*story.relations, *(StoryRelationReading(
+                left_record_id=e.left_record_id, right_record_id=e.right_record_id, relation_kind=e.relation_kind,
+            ) for e in edges)),
+        })
     return PrehistoryMemoryReading(
-        story=story_memory_reading(record.story, statement=record.statement) if record.story else None,
+        story=story,
         actor_ref=row.actor_ref, occurred_from=record.occurred_from,
         occurred_until=record.occurred_until, time_precision=record.time_precision,
         timezone_name=record.timezone_name, world_started_at=row.world_started_at,
         participant_refs=record.participant_refs, location_ref=record.location_ref,
-        related_record_refs=record.related_record_refs,
+        related_record_refs=related,
         entities=tuple(item for item in archive.manifest.entities if item.entity_ref in entity_refs),
         archive_event_ref=archive.accepted_event_ref, archive_world_revision=archive.accepted_world_revision,
         archive_payload_hash=archive.accepted_payload_hash,

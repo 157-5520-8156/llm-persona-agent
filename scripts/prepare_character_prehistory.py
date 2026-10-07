@@ -15,8 +15,8 @@ from companion_daemon.world_v2.character_prehistory import (
     PrehistoryArchiveAcceptedPayload, PrehistoryArchiveDocument, PrehistoryRecordImportedPayload,
 )
 from companion_daemon.world_v2.prehistory_authoring import (
-    PrehistoryAuthoringBrief, PrehistoryCreationReview, author_request, package_reviewed, review_request,
-    PrehistorySemanticReview, PrehistorySemanticAssessment, bind_semantic_review, semantic_review_request,
+    PrehistoryAuthoringBrief, author_request, package_reviewed, review_request,
+    bind_semantic_review, semantic_review_request, semantic_response_type, parse_creation_review,
 )
 from companion_daemon.world_v2.schemas import WorldEvent
 
@@ -42,7 +42,7 @@ def brief_from_database(*, database, profile_path, world_id, actor_ref, born_at,
                 starts.append((event, event_hash))
             elif event.event_type == "BiographicalTimelineConfigured":
                 chronologies.append({"event_ref": event.event_id, "event_hash": event_hash,
-                                     "payload": json.loads(event.payload_json)})
+                                     "payload": json.loads(event.payload_json), "payload_hash": event.payload_hash})
             elif event.event_type == "CharacterPrehistoryArchiveAccepted":
                 archive = PrehistoryArchiveAcceptedPayload.model_validate_json(event.payload_json)
                 if archive.manifest.actor_ref == actor_ref:
@@ -57,9 +57,10 @@ def brief_from_database(*, database, profile_path, world_id, actor_ref, born_at,
     for archive_id, manifest in archives.items():
         accepted_records = tuple(records.get(archive_id, ()))
         document = PrehistoryArchiveDocument(
-            contract=("character-prehistory-archive.2" if any(r.story is not None for r in accepted_records)
+            contract=("character-prehistory-archive.3" if manifest.import_context is not None
+                      else "character-prehistory-archive.2" if any(r.story is not None for r in accepted_records)
                       else "character-prehistory-archive.1"), archive_id=archive_id, world_id=world_id,
-            actor_ref=actor_ref, source_artifact_ref=manifest.source_artifact_ref,
+            actor_ref=actor_ref, source_artifact_ref=manifest.source_artifact_ref, import_context=manifest.import_context,
             entities=manifest.entities, records=accepted_records,
         )
         if document.manifest() != manifest:
@@ -79,6 +80,7 @@ def brief_from_database(*, database, profile_path, world_id, actor_ref, born_at,
     return PrehistoryAuthoringBrief(
         world_id=world_id, actor_ref=actor_ref, world_started_at=start.logical_time,
         world_start_event_ref=start.event_id, world_start_event_hash=start_hash,
+        world_start_payload_hash=start.payload_hash,
         born_at=born_at, created_at=datetime.now(UTC), author_ref=author_ref,
         draft_source_ref=source_ref, profile_source_ref=str(profile_path),
         profile_sha256=hashlib.sha256(profile_path.read_bytes()).hexdigest(),
@@ -120,8 +122,7 @@ def main(argv=None):
             born_at=datetime.fromisoformat(args.born_at), author_ref=args.author_ref, source_ref=args.source_ref)
     elif args.command == "bind-semantic-review":
         submitted = json.loads(Path(args.request).read_text())
-        response_type = (PrehistorySemanticAssessment if submitted.get("contract") == "prehistory-semantic-review-request.2"
-                         else PrehistorySemanticReview)
+        response_type = semantic_response_type(submitted)
         value = bind_semantic_review(
             submitted,
             response_type.model_validate_json(Path(args.response).read_text()),
@@ -152,7 +153,7 @@ def main(argv=None):
                     source_materials=source_materials, assessment_only=args.assessment_only,
                 )
             else:
-                review = PrehistoryCreationReview.model_validate_json(Path(args.review).read_text())
+                review = parse_creation_review(Path(args.review).read_text())
                 value = package_reviewed(brief, draft, review, review_artifact_ref=args.review_artifact_ref)
     payload = value.model_dump(mode="json") if hasattr(value, "model_dump") else value
     with Path(args.out).open("x", encoding="utf-8") as stream:

@@ -260,7 +260,7 @@ def carry_forward_approved_story_links(
     only when current record content and all cited blocks are byte-equivalent.
     """
     from .character_prehistory import PrehistoryArchiveDocument, digest
-    from .prehistory_authoring import PrehistoryCreationReview
+    from .prehistory_authoring import parse_creation_review
 
     previous_source_materials = LifeMaterialsDraft.model_validate_json(previous_source_materials.model_dump_json())
     previous_linked_materials = LifeMaterialsDraft.model_validate_json(previous_linked_materials.model_dump_json())
@@ -268,7 +268,7 @@ def carry_forward_approved_story_links(
     previous_archive = PrehistoryArchiveDocument.model_validate_json(previous_archive.model_dump_json())
     current_archive = PrehistoryArchiveDocument.model_validate_json(current_archive.model_dump_json())
     previous_artifact = PrehistoryStoryLinkArtifact.model_validate_json(previous_artifact.model_dump_json())
-    previous_review = PrehistoryCreationReview.model_validate_json(previous_review.model_dump_json())
+    previous_review = parse_creation_review(previous_review.model_dump_json())
 
     if previous_artifact.origin != "model_generated":
         raise ValueError("carry-forward source must be an original model-generated link artifact")
@@ -330,8 +330,8 @@ def carry_forward_approved_story_links(
             dropped.append({"relation_index": index, "reason": "endpoint_record_removed"})
             continue
         if any(
-            previous_records[record_id].model_copy(update={"related_record_refs": ()})
-            != current_records[record_id].model_copy(update={"related_record_refs": ()})
+            previous_records[record_id].without_story_links()
+            != current_records[record_id].without_story_links()
             for record_id in endpoints
         ):
             dropped.append({"relation_index": index, "reason": "endpoint_record_changed"})

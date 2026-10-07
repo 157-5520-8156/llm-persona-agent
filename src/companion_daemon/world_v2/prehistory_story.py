@@ -87,6 +87,7 @@ class PrehistoryStoryStructure(FrozenModel):
 
 
 class StoryBlockReading(FrozenModel):
+    canonical_event_ref: str | None = Field(default=None, exclude_if=lambda v: v is None)
     block_id: str
     event_ref: str
     kind: Literal["event", "historical_interpretation", "background", "intention"]
@@ -141,6 +142,7 @@ class StoryWindowRequest(FrozenModel):
 
 class StoryEventReading(FrozenModel):
     """Semantic coordinates; exact block/quote positions remain in the archive."""
+    canonical_event_ref: str | None = Field(default=None, exclude_if=lambda v: v is None)
     event_ref: str
     kind: Literal["event", "historical_interpretation", "background", "intention"]
     subject_actor_ref: str | None = Field(default=None, exclude_if=lambda v: v is None)

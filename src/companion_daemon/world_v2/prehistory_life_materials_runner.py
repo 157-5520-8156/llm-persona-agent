@@ -173,7 +173,7 @@ class _AttemptCaptureTransport:
         await self.inner.aclose()
 
 
-def _response_content(raw_response: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+def _response_content(raw_response: dict[str, Any], *, expected_tool_name: str | None = None) -> tuple[str, dict[str, Any]]:
     """Extract a normal Chat Completions JSON result from captured wire bytes."""
     body = raw_response.get("body_utf8")
     if not isinstance(body, str):
@@ -182,6 +182,12 @@ def _response_content(raw_response: dict[str, Any]) -> tuple[str, dict[str, Any]
     choices = payload.get("choices") if isinstance(payload, dict) else None
     message = choices[0].get("message") if isinstance(choices, list) and choices and isinstance(choices[0], dict) else None
     content = message.get("content") if isinstance(message, dict) else None
+    if expected_tool_name is not None:
+        calls = message.get("tool_calls") if isinstance(message, dict) else None
+        if (not isinstance(calls, list) or len(calls) != 1
+                or calls[0].get("function", {}).get("name") != expected_tool_name):
+            raise ValueError("captured provider response differs from the required story tool")
+        content = calls[0]["function"].get("arguments")
     if not isinstance(content, str) or not content:
         raise ValueError("provider response has no JSON content")
     usage = payload.get("usage") if isinstance(payload.get("usage"), dict) else {}
@@ -221,6 +227,7 @@ def provider_usage_audit(model_name: str, usage: dict[str, Any], observer: dict[
 async def _captured_completion(
     *, api_key: str, base_url: str, model_name: str, messages: list[dict[str, str]], attempt_dir: Path,
     usage_observer=None, max_completion_tokens: int = MAX_PREHISTORY_OUTPUT_TOKENS,
+    tools=None, tool_choice=None,
 ) -> tuple[str, dict[str, Any]]:
     """One call through the existing DeepSeek adapter with durable wire capture."""
     import httpx
@@ -240,7 +247,7 @@ async def _captured_completion(
     previous_debug_ledger_flag = os.environ.get("COMPANION_DISABLE_DEBUG_USAGE_LEDGER")
     os.environ["COMPANION_DISABLE_DEBUG_USAGE_LEDGER"] = "1"
     try:
-        content, usage = await model.complete_json_with_usage(messages, temperature=0.1)
+        content, usage = await model.complete_json_with_usage(messages, temperature=0.1, tools=tools, tool_choice=tool_choice)
         return content, usage
     finally:
         if previous_debug_ledger_flag is None:
@@ -257,6 +264,8 @@ async def run_faithful_ingestion(
     previous_materials: LifeMaterialsDraft | None = None,
     previous_archive: PrehistoryArchiveDocument | None = None,
     revision_review: PrehistoryCreationReview | None = None,
+    previous_story_links=None,
+    precise_knowledge: bool = False,
 ) -> tuple[LifeMaterialsDraft, PrehistoryArchiveDocument, dict[str, Any]]:
     """Call the author model, capture each attempt, validate, and export.
 
@@ -277,12 +286,12 @@ async def run_faithful_ingestion(
     if any(value is not None for value in revision_args) and not all(value is not None for value in revision_args):
         raise ValueError("faithful revision requires previous materials, archive and a bound rejected review together")
     if revision_review is None:
-        packet = ingestion_request(brief, narrative_text)
+        packet = ingestion_request(brief, narrative_text, precise_knowledge=precise_knowledge)
     else:
         packet = faithful_revision_request(
             brief, narrative_text, actor_ref=actor_ref, archive_id=archive_id,
             previous_materials=previous_materials, previous_archive=previous_archive,
-            review=revision_review,
+            review=revision_review, previous_story_links=previous_story_links, precise_knowledge=precise_knowledge,
         )
     source_hash = hashlib.sha256(narrative_text.encode("utf-8")).hexdigest()
     manifest_path = run_dir / "manifest.json"
@@ -291,6 +300,7 @@ async def run_faithful_ingestion(
         "brief_hash": digest(brief), "model": model_name, "mode": packet["mode"],
         "request_contract": packet["contract"], "actor_ref": actor_ref,
         "archive_id": archive_id, "base_url": base_url.rstrip("/"), "status": "started",
+        "request_hash": canonical_digest(packet),
     }
     if manifest_path.exists():
         current = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -298,6 +308,18 @@ async def run_faithful_ingestion(
                     "actor_ref", "archive_id", "base_url"):
             if current.get(key) != expected_manifest[key]:
                 raise ValueError("existing run directory is bound to different source, brief or model")
+        request_path = run_dir / "ingestion-request.json"
+        if current.get("request_hash") is not None and current["request_hash"] != expected_manifest["request_hash"]:
+            raise ValueError("existing ingestion request differs from its frozen input")
+        if request_path.exists():
+            if canonical_digest(json.loads(request_path.read_text(encoding="utf-8"))) != canonical_digest(packet):
+                raise ValueError("existing ingestion request differs from its frozen input")
+        elif current.get("request_hash") == expected_manifest["request_hash"]:
+            # Initialization may have stopped after the bound manifest write,
+            # before the request file; no network stage has been reached yet.
+            _private_json(request_path, packet)
+        else:
+            raise ValueError("existing run is missing its frozen ingestion request")
         if current.get("status") == "completed":
             materials = LifeMaterialsDraft.model_validate_json((run_dir / "materials.json").read_text(encoding="utf-8"))
             if revision_review is not None:
@@ -305,10 +327,14 @@ async def run_faithful_ingestion(
                     brief, narrative_text, actor_ref=actor_ref, archive_id=archive_id,
                     previous_materials=previous_materials, previous_archive=previous_archive,
                     review=revision_review, revised_materials=materials,
+                    previous_story_links=previous_story_links, precise_knowledge=precise_knowledge,
                 )
             else:
                 validate_ingested_materials(brief, narrative_text, materials)
                 archive = export_actor_archive(materials, actor_ref, archive_id)
+            if (canonical_digest(materials) != current.get("materials_sha256")
+                    or canonical_digest(archive) != current.get("archive_sha256")):
+                raise ValueError("completed ingestion outputs differ from their captured hashes")
             return materials, archive, current
         if current.get("status") == "output_truncated":
             raise RuntimeError("previous ingestion output was truncated; inspect captured evidence instead of retrying")
@@ -453,6 +479,7 @@ async def run_faithful_ingestion(
                         brief, narrative_text, actor_ref=actor_ref, archive_id=archive_id,
                         previous_materials=previous_materials, previous_archive=previous_archive,
                         review=revision_review, revised_materials=materials,
+                        previous_story_links=previous_story_links, precise_knowledge=precise_knowledge,
                     )
                 else:
                     archive = export_actor_archive(materials, actor_ref, archive_id)

@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT / "src"))
 def main(argv=None):
     from companion_daemon.world_v2.character_prehistory import PrehistoryArchiveDocument, digest
     from companion_daemon.world_v2.prehistory_authoring import (
-        PrehistoryAuthoringBrief, PrehistorySemanticReview, PrehistorySemanticAssessment, bind_semantic_review,
+        PrehistoryAuthoringBrief, bind_semantic_review, semantic_response_type, parse_creation_review,
         package_reviewed, semantic_review_request, validate_draft,
     )
     from companion_daemon.world_v2.prehistory_life_materials import (
@@ -58,9 +58,9 @@ def main(argv=None):
     parser.add_argument("--revision-story-links", help="Prior link artifact with structured independent per-edge verdicts")
     args = parser.parse_args(argv)
     output = Path(args.output)
-    revision_paths = (args.revision_materials, args.revision_archive, args.revision_review, args.revision_story_links)
-    if any(revision_paths) and (not args.ingest_narrative or not all(revision_paths)):
-        parser.error("review-guided revision requires --ingest-narrative and all four --revision-* inputs")
+    revision_paths = (args.revision_materials, args.revision_archive, args.revision_review)
+    if (any(revision_paths) or args.revision_story_links) and (not args.ingest_narrative or not all(revision_paths)):
+        parser.error("review-guided revision requires --ingest-narrative and materials/archive/review inputs")
     if args.ingest_request:
         if not args.brief or not args.narrative or args.materials or args.actor_ref or args.archive_id or args.as_of or args.author_request or args.ingest_narrative:
             parser.error("--ingest-request requires --brief and --narrative, and cannot be combined with other modes")
@@ -90,7 +90,6 @@ def main(argv=None):
         narrative_text = Path(args.narrative).read_text(encoding="utf-8")
         previous_materials = previous_archive = revision_review = previous_story_links = None
         if args.revision_materials:
-            from companion_daemon.world_v2.prehistory_authoring import PrehistoryCreationReview
 
             previous_materials = LifeMaterialsDraft.model_validate_json(
                 Path(args.revision_materials).read_text(encoding="utf-8"),
@@ -98,12 +97,14 @@ def main(argv=None):
             previous_archive = PrehistoryArchiveDocument.model_validate_json(
                 Path(args.revision_archive).read_text(encoding="utf-8"),
             )
-            revision_review = PrehistoryCreationReview.model_validate_json(
+            revision_review = parse_creation_review(
                 Path(args.revision_review).read_text(encoding="utf-8"),
             )
             previous_story_links = PrehistoryStoryLinkArtifact.model_validate_json(
                 Path(args.revision_story_links).read_text(encoding="utf-8"),
-            )
+            ) if args.revision_story_links else None
+            if previous_archive.contract != "character-prehistory-archive.1":
+                args.preserve_story_structure = True
         # Isolated prehistory work uses the dedicated debug balance. Never print
         # the resolved credential or include it in captured request metadata.
         from dotenv import dotenv_values
@@ -116,7 +117,7 @@ def main(argv=None):
             brief=brief, narrative_text=narrative_text, actor_ref=args.actor_ref, archive_id=args.archive_id,
             run_dir=Path(args.run_dir), api_key=api_key, base_url=base_url, model_name=args.model,
             previous_materials=previous_materials, previous_archive=previous_archive,
-            revision_review=revision_review,
+            revision_review=revision_review, previous_story_links=previous_story_links,
         ))
         story_link_artifact_path = Path(args.run_dir) / "story-linking" / "story-links.json"
         try:
@@ -142,7 +143,8 @@ def main(argv=None):
                     for record in previous_materials.recollections
                 ),
             })
-            current_archive = export_actor_archive(materials, args.actor_ref, args.archive_id)
+            current_archive = export_actor_archive(materials, args.actor_ref, args.archive_id,
+                preserve_story_structure=previous_archive.contract != "character-prehistory-archive.1")
             materials, carry_artifact, story_link_manifest = carry_forward_approved_story_links(
                 previous_source_materials=previous_source_materials,
                 previous_linked_materials=previous_materials,
@@ -318,11 +320,10 @@ def main(argv=None):
                     "same_model_as_author": (args.reviewer_model or args.model) == args.model,
                 }
                 _private_json(review_result_path, saved_review)
-            semantic = (PrehistorySemanticAssessment if args.assessment_only_review else PrehistorySemanticReview).model_validate_json(raw_review)
+            semantic = semantic_response_type(request).model_validate_json(raw_review)
             bound_review_path = review_dir / "bound-review.json"
             if bound_review_path.exists():
-                from companion_daemon.world_v2.prehistory_authoring import PrehistoryCreationReview
-                review = PrehistoryCreationReview.model_validate_json(bound_review_path.read_text(encoding="utf-8"))
+                review = parse_creation_review(bound_review_path.read_text(encoding="utf-8"))
             else:
                 review = bind_semantic_review(request, semantic,
                     reviewer_ref=f"model:{args.reviewer_model or args.model}:prehistory-semantic-review.1",

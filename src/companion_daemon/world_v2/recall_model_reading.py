@@ -144,12 +144,16 @@ def interior_recall_item(
             story.pop(key, None)
         record_ref = document.source_item_ref.split(":window:")[0]
         edges = story.pop("relations")
-        if any(edge["left_record_id"] != record_ref for edge in edges):
-            raise ValueError("story reading relation does not start at its source record")
+        if any(record_ref not in {edge["left_record_id"], edge["right_record_id"]} for edge in edges):
+            raise ValueError("story reading relation is unrelated to its source record")
         story["outgoing_relations"] = [
             {"to_record_ref": edge["right_record_id"], "relation_kind": edge["relation_kind"]}
-            for edge in edges
+            for edge in edges if edge["left_record_id"] == record_ref
         ]
+        incoming = [{"from_record_ref": edge["left_record_id"], "relation_kind": edge["relation_kind"]}
+                    for edge in edges if edge["right_record_id"] == record_ref]
+        if incoming:
+            story["incoming_relations"] = incoming
         if result["story_window"]["complete_record"]:
             result["story_window"] = {"complete_record": True}
     return result
