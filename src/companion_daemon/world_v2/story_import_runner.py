@@ -192,7 +192,7 @@ async def _run_stage(*, packet, model_name, base_url, api_key, directory, valida
                 if completion is None:
                     raw, usage = await _captured_completion(api_key=api_key, base_url=base_url,
                         model_name=model_name, messages=messages, attempt_dir=attempt,
-                        max_completion_tokens=16384, tools=tools, tool_choice=tool_choice)
+                        max_completion_tokens=packet.get('max_completion_tokens', 16384), tools=tools, tool_choice=tool_choice)
                 else:
                     raw, usage = await completion(messages=messages, attempt_dir=attempt, model_name=model_name)
                 # Provider usage objects stay in the existing metering adapter;

@@ -21,6 +21,7 @@ _HASH = r"^[0-9a-f]{64}$"
 _ENTITY = r"^history:(person|place|object|group):[a-z0-9][a-z0-9._-]*$"
 _RECORD = r"^prehistory-record:[a-z0-9][a-z0-9._-]*$"
 SOURCE = "world-v2:reviewed-prehistory"
+COMPILED_SOURCE = "world-v2:compiled-prehistory"
 IMPORT_ACTOR = "system:prehistory-import"
 
 
@@ -275,10 +276,35 @@ class ReviewedPrehistoryArchive(FrozenModel):
         return self
 
 
+class PrehistoryCompilationReceipt(FrozenModel):
+    contract: Literal['prehistory-compilation-receipt.1'] = 'prehistory-compilation-receipt.1'
+    compiler_version: Literal['native-story-compiler.1'] = 'native-story-compiler.1'
+    manifest_hash: str = Field(pattern=_HASH)
+    source_hash: str = Field(pattern=_HASH)
+    context_hash: str = Field(pattern=_HASH)
+    source_authored_at: datetime
+    source_json: str = Field(min_length=1, max_length=1_000_000)
+    context_json: str = Field(min_length=1, max_length=1_000_000)
+
+
+class CompiledPrehistoryArchive(FrozenModel):
+    document: PrehistoryArchiveDocument
+    compilation: PrehistoryCompilationReceipt
+
+    @model_validator(mode='after')
+    def source_reproduces_exact_document(self):
+        from .native_story import validate_compilation
+        document = validate_compilation(self.document.manifest(), self.compilation)
+        if document != self.document:
+            raise ValueError('compiled archive differs from its native source')
+        return self
+
+
 class PrehistoryArchiveAcceptedPayload(FrozenModel):
-    contract: Literal["character-prehistory-acceptance.1"] = "character-prehistory-acceptance.1"
+    contract: Literal["character-prehistory-acceptance.1", "character-prehistory-acceptance.2"] = "character-prehistory-acceptance.1"
     manifest: PrehistoryArchiveManifest
-    review: PrehistoryReview
+    review: PrehistoryReview | None = Field(default=None, exclude_if=lambda v: v is None)
+    compilation: PrehistoryCompilationReceipt | None = Field(default=None, exclude_if=lambda v: v is None)
     world_started_ref: str
     world_started_revision: int = Field(ge=1)
     world_started_hash: str = Field(pattern=_HASH)
@@ -287,9 +313,25 @@ class PrehistoryArchiveAcceptedPayload(FrozenModel):
     @model_validator(mode="after")
     def acceptance_is_bound(self):
         _aware(self.world_started_at)
-        if digest(self.manifest) != self.review.manifest_hash:
+        if self.contract == 'character-prehistory-acceptance.1':
+            if self.review is None or self.compilation is not None:
+                raise ValueError('legacy acceptance requires its actual review')
+        elif self.review is not None or self.compilation is None:
+            raise ValueError('compiled acceptance requires its compilation receipt, not a review')
+        if digest(self.manifest) != self.admission_manifest_hash:
             raise ValueError("prehistory acceptance review mismatch")
+        if self.compilation is not None:
+            from .native_story import validate_compilation
+            validate_compilation(self.manifest, self.compilation)
         return self
+
+    @property
+    def admission_manifest_hash(self):
+        return self.review.manifest_hash if self.review is not None else self.compilation.manifest_hash
+
+    @property
+    def admission_evidence_time(self):
+        return self.review.reviewed_at if self.review is not None else self.compilation.source_authored_at
 
 
 class PrehistoryArchiveProjection(PrehistoryArchiveAcceptedPayload):
@@ -368,7 +410,7 @@ def validate_prehistory_state(archives, records, events, *, logical_time, world_
         if (
             row.actor_ref != archive.manifest.actor_ref
             or row.world_started_at != archive.world_started_at
-            or row.archive_manifest_hash != archive.review.manifest_hash
+            or row.archive_manifest_hash != archive.admission_manifest_hash
             or pins.get(row.record.record_id) != digest(row.record)
             or row.record.occurred_until >= row.world_started_at
         ):

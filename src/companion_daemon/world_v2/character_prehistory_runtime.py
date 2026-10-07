@@ -5,8 +5,8 @@ import json
 from .schema_core import canonicalize_json_value
 
 from .character_prehistory import (
-    IMPORT_ACTOR, SOURCE, PrehistoryArchiveAcceptedPayload, PrehistoryRecordImportedPayload,
-    ReviewedPrehistoryArchive, digest, prehistory_event_id, validate_story_boundary,
+    IMPORT_ACTOR, SOURCE, COMPILED_SOURCE, PrehistoryArchiveAcceptedPayload, PrehistoryRecordImportedPayload,
+    ReviewedPrehistoryArchive, CompiledPrehistoryArchive, digest, prehistory_event_id, validate_story_boundary,
 )
 
 
@@ -16,7 +16,15 @@ class PrehistoryArchiveRuntime:
         self.owner_actor_ref = owner_actor_ref
 
     def import_reviewed(self, archive: ReviewedPrehistoryArchive, *, created_at):
-        """Accept trusted operator-reviewed input, never an unreviewed role draft.
+        archive = ReviewedPrehistoryArchive.model_validate_json(archive.model_dump_json())
+        return self._import(archive, created_at=created_at)
+
+    def import_compiled(self, archive: CompiledPrehistoryArchive, *, created_at):
+        archive = CompiledPrehistoryArchive.model_validate_json(archive.model_dump_json())
+        return self._import(archive, created_at=created_at)
+
+    def _import(self, archive, *, created_at):
+        """Accept operator-authorized reviewed history or compiled native source.
 
         Review checks happen before this interface. The importer rechecks its
         exact content binding, World/actor, original start, identities and CAS.
@@ -24,10 +32,13 @@ class PrehistoryArchiveRuntime:
         """
         from .schemas import WorldEvent
 
-        archive = ReviewedPrehistoryArchive.model_validate_json(json.dumps(
+        archive = type(archive).model_validate_json(json.dumps(
             canonicalize_json_value(archive.model_dump(mode="json")), ensure_ascii=False,
         ))
-        document, review = archive.document, archive.review
+        document = archive.document
+        review = getattr(archive, 'review', None)
+        compilation = getattr(archive, 'compilation', None)
+        evidence_time = review.reviewed_at if review is not None else compilation.source_authored_at
         records = tuple(sorted(document.records, key=lambda value: value.record_id))
         if document.world_id != self.ledger.world_id or document.actor_ref != self.owner_actor_ref:
             raise ValueError("prehistory import World or actor mismatch")
@@ -48,7 +59,8 @@ class PrehistoryArchiveRuntime:
                 raise ValueError("prehistory has unknown related records")
             manifest = document.manifest()
             accepted = PrehistoryArchiveAcceptedPayload(
-                manifest=manifest, review=review, world_started_ref=start.event_id,
+                contract='character-prehistory-acceptance.1' if review is not None else 'character-prehistory-acceptance.2',
+                manifest=manifest, review=review, compilation=compilation, world_started_ref=start.event_id,
                 world_started_revision=start.world_revision, world_started_hash=start.payload_hash,
                 world_started_at=start.logical_time,
             )
@@ -78,8 +90,8 @@ class PrehistoryArchiveRuntime:
                 events.append(WorldEvent.from_payload(
                     schema_version="world-v2.1", event_id=event_id, world_id=document.world_id,
                     event_type=event_type, logical_time=state.logical_time,
-                    created_at=max(created_at, review.reviewed_at, state.logical_time),
-                    actor=IMPORT_ACTOR, source=SOURCE, trace_id="trace:" + event_id,
+                    created_at=max(created_at, evidence_time, state.logical_time),
+                    actor=IMPORT_ACTOR, source=SOURCE if review is not None else COMPILED_SOURCE, trace_id="trace:" + event_id,
                     causation_id=start.event_id, correlation_id=manifest.archive_id,
                     idempotency_key=event_id, payload=payload.model_dump(mode="json"),
                 ))

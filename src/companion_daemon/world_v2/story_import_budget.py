@@ -45,7 +45,7 @@ _ACTIVE_BUDGET: ContextVar[tuple | None] = ContextVar('story_import_budget', def
 
 
 class StoryImportBudget:
-    """One immutable budget policy, shared by independently recoverable runs."""
+    """One task ceiling, with explicit audited per-batch allocation changes."""
 
     def __init__(self, path: Path, *, total_limit_cny=5, batch_limit_cny=1):
         self.path = Path(path).resolve()
@@ -59,7 +59,10 @@ class StoryImportBudget:
         os.chmod(self.path, 0o600)
         with self._transaction() as db:
             db.execute('CREATE TABLE IF NOT EXISTS policy (id INTEGER PRIMARY KEY CHECK(id=1), total_limit INTEGER NOT NULL, batch_limit INTEGER NOT NULL)')
+            db.execute('CREATE TABLE IF NOT EXISTS allocation_changes (changed_at TEXT NOT NULL, old_limit INTEGER NOT NULL, new_limit INTEGER NOT NULL, reason TEXT NOT NULL)')
             db.execute('CREATE TABLE IF NOT EXISTS runs (run_id TEXT PRIMARY KEY, root TEXT NOT NULL UNIQUE, binding TEXT NOT NULL)')
+            if 'cost_scope' not in {r[1] for r in db.execute('PRAGMA table_info(runs)')}:
+                db.execute("ALTER TABLE runs ADD COLUMN cost_scope TEXT NOT NULL DEFAULT 'source_preparation'")
             db.execute('''CREATE TABLE IF NOT EXISTS requests (
                 request_id TEXT PRIMARY KEY, run_id TEXT NOT NULL, attempt TEXT NOT NULL UNIQUE,
                 wire_hash TEXT NOT NULL, endpoint TEXT NOT NULL, model TEXT NOT NULL,
@@ -69,6 +72,24 @@ class StoryImportBudget:
             row = db.execute('SELECT total_limit, batch_limit FROM policy WHERE id=1').fetchone()
             if tuple(row) != (total, self.batch_limit):
                 raise StoryBudgetPolicyError('budget ledger limits differ; existing spend cannot be reset by reopening it')
+
+    def reallocate_batch_limit(self, limit_cny, *, reason: str):
+        """Operator allocation only. Never erase spend or raise the task ceiling."""
+        limit = _micros(limit_cny)
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError('budget allocation change requires an explicit reason')
+        with self._transaction() as db:
+            policy = db.execute('SELECT * FROM policy WHERE id=1').fetchone()
+            if limit > policy['total_limit']:
+                raise ValueError('batch allocation cannot raise the total task ceiling')
+            maximum = db.execute('SELECT MAX(spend) FROM (SELECT SUM(COALESCE(charged, reserve)) AS spend FROM requests GROUP BY run_id)').fetchone()[0] or 0
+            if limit < maximum:
+                raise ValueError('batch allocation cannot hide already spent or reserved funds')
+            if limit != policy['batch_limit']:
+                db.execute('INSERT INTO allocation_changes VALUES (?, ?, ?, ?)',
+                    (datetime.now(UTC).isoformat(), policy['batch_limit'], limit, reason))
+                db.execute('UPDATE policy SET batch_limit=? WHERE id=1', (limit,))
+        self.batch_limit = limit
 
     @contextmanager
     def _transaction(self):
@@ -85,7 +106,9 @@ class StoryImportBudget:
             db.close()
 
     @contextmanager
-    def scope(self, run_dir: Path, *, binding: str):
+    def scope(self, run_dir: Path, *, binding: str, cost_scope: str = 'source_preparation'):
+        if cost_scope not in {'source_preparation', 'source_authoring', 'role_retention', 'embedding', 'runtime_recall'}:
+            raise ValueError('unsupported story cost scope')
         root = Path(run_dir).resolve()
         root.mkdir(parents=True, exist_ok=True, mode=0o700)
         run_id = _hash(str(root).encode())
@@ -96,14 +119,20 @@ class StoryImportBudget:
         if policy_path.exists():
             recorded = json.loads(policy_path.read_text())
             policy['legacy_capture_only'] = recorded.get('legacy_capture_only', False)
+            if 'cost_scope' in recorded:
+                policy['cost_scope'] = cost_scope
+            elif cost_scope != 'source_preparation':
+                raise StoryBudgetPolicyError('legacy budget binding cannot change cost scope')
             if recorded != policy:
                 raise StoryBudgetPolicyError('run is bound to a different budget ledger or input')
         else:
+            policy['cost_scope'] = cost_scope
             from .prehistory_life_materials_runner import _private_json
             _private_json(policy_path, policy)
         with self._transaction() as db:
-            db.execute('INSERT OR IGNORE INTO runs VALUES (?, ?, ?)', (run_id, str(root), binding))
-            if db.execute('SELECT binding FROM runs WHERE run_id=?', (run_id,)).fetchone()[0] != binding:
+            db.execute('INSERT OR IGNORE INTO runs (run_id, root, binding, cost_scope) VALUES (?, ?, ?, ?)',
+                       (run_id, str(root), binding, cost_scope))
+            if tuple(db.execute('SELECT binding, cost_scope FROM runs WHERE run_id=?', (run_id,)).fetchone()) != (binding, cost_scope):
                 raise StoryBudgetPolicyError('budget run input changed')
         self.reconcile(run_id)
         token = _ACTIVE_BUDGET.set((self, run_id, root, policy['legacy_capture_only']))
@@ -174,15 +203,21 @@ class StoryImportBudget:
             policy = dict(db.execute('SELECT * FROM policy WHERE id=1').fetchone())
             rows = [dict(row) for row in db.execute('SELECT * FROM requests ORDER BY issued_at, request_id')]
             runs = [dict(row) for row in db.execute('SELECT * FROM runs ORDER BY run_id')]
+            changes = [dict(row) for row in db.execute('SELECT * FROM allocation_changes ORDER BY changed_at')]
         spent = sum(row['charged'] or 0 for row in rows)
         reserved = sum(row['reserve'] for row in rows if row['charged'] is None)
-        return {'contract': 'story-import-budget-report.1', 'scope': 'source_preparation_only',
+        covered = {run['cost_scope'] for run in runs}
+        return {'contract': 'story-import-budget-report.1',
+            'scope': 'source_preparation_only' if covered <= {'source_preparation'} else 'explicit_scopes',
+            'covered_stages': sorted(covered),
             'total_limit_cny': policy['total_limit'] / 1_000_000, 'batch_limit_cny': policy['batch_limit'] / 1_000_000,
             'spent_cny': spent / 1_000_000, 'reserved_cny': reserved / 1_000_000,
             'remaining_cny': max(0, policy['total_limit'] - spent - reserved) / 1_000_000,
             'unknown_or_inflight_count': sum(row['charged'] is None for row in rows),
             'request_count': len(rows), 'requests': rows,
-            'excluded_stages': ['source_authoring', 'role_retention', 'embedding', 'runtime_recall'],
+            'allocation_changes': [{'changed_at': c['changed_at'], 'old_limit_cny': c['old_limit']/1_000_000,
+                'new_limit_cny': c['new_limit']/1_000_000, 'reason': c['reason']} for c in changes],
+            'excluded_stages': sorted({'source_authoring', 'source_preparation', 'role_retention', 'embedding', 'runtime_recall'} - covered),
             'batches': [{**run, 'spent_cny': sum(r['charged'] or 0 for r in rows if r['run_id'] == run['run_id']) / 1_000_000,
                 'reserved_cny': sum(r['reserve'] for r in rows if r['run_id'] == run['run_id'] and r['charged'] is None) / 1_000_000,
                 'request_count': sum(r['run_id'] == run['run_id'] for r in rows)} for run in runs]}

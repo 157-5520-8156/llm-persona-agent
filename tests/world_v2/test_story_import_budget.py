@@ -201,3 +201,19 @@ def test_prepare_cli_reports_budget_stop_and_writes_a_cost_report(tmp_path, monk
     assert json.loads(capsys.readouterr().out)['status'] == 'budget_exceeded'
     report = json.loads((tmp_path / 'run/budget-report.json').read_text())
     assert report['request_count'] == 0 and report['scope'] == 'source_preparation_only'
+
+
+def test_explicit_batch_reallocation_preserves_shared_ceiling_and_audit(tmp_path):
+    from companion_daemon.world_v2.story_import_budget import StoryImportBudget, StoryBudgetPolicyError
+    budget = StoryImportBudget(tmp_path / 'budget.sqlite', total_limit_cny=5, batch_limit_cny=1)
+    with pytest.raises(StoryBudgetPolicyError):
+        StoryImportBudget(tmp_path / 'budget.sqlite', total_limit_cny=5, batch_limit_cny=2)
+    budget.reallocate_batch_limit(2, reason='One long source needs a larger conservative reserve; total task remains CNY5.')
+    reopened = StoryImportBudget(tmp_path / 'budget.sqlite', total_limit_cny=5, batch_limit_cny=2)
+    report = reopened.snapshot()
+    assert report['total_limit_cny'] == 5 and report['batch_limit_cny'] == 2
+    assert report['request_count'] == 0
+    assert report['allocation_changes'][0]['old_limit_cny'] == 1
+    assert report['allocation_changes'][0]['new_limit_cny'] == 2
+    with pytest.raises(ValueError):
+        reopened.reallocate_batch_limit(6, reason='Must not raise the task ceiling.')

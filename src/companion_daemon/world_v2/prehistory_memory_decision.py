@@ -29,7 +29,10 @@ def initialization_opportunity(*, world_id, row, archive, cursor):
         source_text=row.record.statement,
     )
     capability["prehistory"] = prehistory_memory_reading(row, archive, initialization_snapshot=True).model_dump(mode="json")
-    capability["initialization_scope"] = "one reviewed historical record at its original import snapshot"
+    capability["initialization_scope"] = (
+        "one natively authored and deterministically compiled historical record at its original import snapshot; no independent model review"
+        if archive.compilation is not None else "one reviewed historical record at its original import snapshot"
+    )
     return _memory_opportunity(
         world_id=world_id, actor_ref=row.actor_ref, purpose=_FACT_MEMORY_PURPOSE,
         context=InteriorPurposeContext(
