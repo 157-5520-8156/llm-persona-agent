@@ -356,7 +356,7 @@ class RecallCoordinator:
     ) -> None:
         self._index = index
         self._corpus = corpus or RecallCorpusCompiler(prehistory_parent_context=(
-            getattr(index, "policy_version", None) == "world-v2-recall-index.hybrid.14"
+            getattr(index, "policy_version", None) in {"world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15"}
         ))
         self._semantic_embedding = semantic_embedding
         self._closed = False
@@ -1607,8 +1607,7 @@ class RecallCoordinator:
                     vectors=batch_vectors,
                     focused_query=focused_query,
                 ),
-                policy_version=("world-v2-recall-index.hybrid.14"
-                    if context.snapshot.policy_version == "world-v2-recall-index.hybrid.14" else None),
+                policy_version=context.snapshot.policy_version,
             )
             semantic_index.rebuild(
                 cursor=context.snapshot.cursor,

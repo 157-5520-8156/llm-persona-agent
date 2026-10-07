@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT / "src"))
 def main(argv=None):
     from companion_daemon.world_v2.character_prehistory import PrehistoryArchiveDocument, digest
     from companion_daemon.world_v2.prehistory_authoring import (
-        PrehistoryAuthoringBrief, PrehistorySemanticReview, bind_semantic_review,
+        PrehistoryAuthoringBrief, PrehistorySemanticReview, PrehistorySemanticAssessment, bind_semantic_review,
         package_reviewed, semantic_review_request, validate_draft,
     )
     from companion_daemon.world_v2.prehistory_life_materials import (
@@ -34,6 +34,7 @@ def main(argv=None):
     parser.add_argument("--preserve-story-structure", action="store_true",
                         help="Export archive .2 with source blocks, knowledge times and typed story edges; requires a new review")
     parser.add_argument("--story-links", help="Captured story-link artifact for structured materials export")
+    parser.add_argument("--assessment-only-review", action="store_true")
     parser.add_argument("--materials")
     parser.add_argument("--actor-ref")
     parser.add_argument("--archive-id")
@@ -243,7 +244,7 @@ def main(argv=None):
                 )
             request = semantic_review_request(
                 review_brief, document, story_links=story_links,
-                narrative_text=narrative_text, source_materials=materials,
+                narrative_text=narrative_text, source_materials=materials, assessment_only=args.assessment_only_review,
             )
             review_request_path = review_dir / "submitted-request.json"
             if not review_request_path.exists():
@@ -317,7 +318,7 @@ def main(argv=None):
                     "same_model_as_author": (args.reviewer_model or args.model) == args.model,
                 }
                 _private_json(review_result_path, saved_review)
-            semantic = PrehistorySemanticReview.model_validate_json(raw_review)
+            semantic = (PrehistorySemanticAssessment if args.assessment_only_review else PrehistorySemanticReview).model_validate_json(raw_review)
             bound_review_path = review_dir / "bound-review.json"
             if bound_review_path.exists():
                 from companion_daemon.world_v2.prehistory_authoring import PrehistoryCreationReview

@@ -375,3 +375,89 @@ def test_current_slim_transport_carries_story_reading_controls():
         request = CharacterRecallRequest.model_validate_json(json.dumps(parsed['recall_request']))
         assert request.story_window.start == 416
         assert request.knowledge_as_of == datetime(2018, 1, 1, tzinfo=UTC)
+
+
+def test_compact_story_policy_keeps_semantics_and_source_detail_expandable(tmp_path):
+    from companion_daemon.world_v2.recall_model_reading import interior_recall_item
+    from companion_daemon.world_v2.prehistory_story import StoryWindowRequest
+    ledger = started_ledger(tmp_path / 'compact-story.sqlite')
+    try:
+        active = _active_rows(ledger, story_archive())
+        query = _query(ledger).model_copy(update={'query_text': '还伞', 'link_refs': (
+            active['prehistory-record:umbrella'].candidate_id,
+        )})
+        index = InMemoryRecallIndex(embedding=FeatureHashRecallEmbedding(),
+                                   policy_version='world-v2-recall-index.hybrid.15')
+        index.rebuild(cursor=query.cursor, documents=_corpus(ledger, _read(ledger)))
+        result = index.search(query)
+        hit = next(hit for hit in result.hits if hit.document.source_item_ref == 'prehistory-record:umbrella')
+        view = interior_recall_item(hit.document, index_version=result.index_version)
+        assert view['prehistory']['story']['known_from'].startswith('2015')
+        assert view['prehistory']['story']['blocks'][0]['event_ref'] == 'event:umbrella'
+        assert 'archive_payload_hash' not in view['prehistory']
+        assert hit.document.retrieval_text is None
+        assert len(hit.document.source_bindings) == 2
+        from companion_daemon.world_v2.recall_index import RecallResult
+        assert RecallResult.model_validate_json(result.model_dump_json()) == result
+        detail, = index.search(query.model_copy(update={'story_window': StoryWindowRequest(
+            record_ref='prehistory-record:umbrella', start=0,
+        )})).hits
+        assert detail.document.prehistory.story.blocks[0].source_locator == 'source-segment:0001'
+    finally:
+        ledger.close()
+
+
+def test_rich_five_scene_chain_fits_existing_budgets_with_compact_policy(tmp_path):
+    from test_prehistory_story_recall import _linked_archive
+    from companion_daemon.world_v2.character_prehistory import PrehistoryArchiveDocument
+    from companion_daemon.world_v2.recall_model_reading import interior_recall_item
+    from companion_daemon.world_v2.recall_index import RECALL_STORY_MODEL_READING_MAX_BYTES, RECALL_STORY_RESULT_MAX_BYTES
+    ledger = started_ledger(tmp_path / 'rich-chain.sqlite')
+    try:
+        base = _linked_archive()
+        raw = base.document.model_dump(mode='json')
+        raw['contract'] = 'character-prehistory-archive.2'
+        for row in raw['records']:
+            row['story'] = {
+                'actor_ref': ACTOR, 'source_artifact_ref': 'narrative#sha256=' + 'b' * 64,
+                'known_from': row['occurred_from'], 'known_until': row['occurred_until'],
+                'blocks': [{'block_id': f"block:{row['record_id']}-{i}",
+                    'event_ref': f'event:scene-{i}', 'kind': 'event',
+                    'text': row['statement'], 'source_quote': row['statement'],
+                    'source_locator': f'source-segment:{i:04d}'} for i in range(8)],
+            }
+        document = PrehistoryArchiveDocument.model_validate_json(json.dumps(raw))
+        _active_rows(ledger, ReviewedPrehistoryArchive(document=document,
+            review=base.review.model_copy(update={'manifest_hash': digest(document.manifest())})))
+        query = _query(ledger)
+        index = InMemoryRecallIndex(embedding=FeatureHashRecallEmbedding(),
+                                   policy_version='world-v2-recall-index.hybrid.15')
+        index.rebuild(cursor=query.cursor, documents=_corpus(ledger, _read(ledger)))
+        result = index.search(query)
+        assert {h.document.source_item_ref for h in result.hits} == {r.record_id for r in document.records}
+        def size(value):
+            return len(json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode())
+        assert size({'items': [interior_recall_item(h.document, index_version=result.index_version)
+                               for h in result.hits]}) <= RECALL_STORY_MODEL_READING_MAX_BYTES
+        assert size([h.model_dump(mode='json') for h in result.hits]) <= RECALL_STORY_RESULT_MAX_BYTES
+    finally:
+        ledger.close()
+
+
+def test_next_authoring_brief_preserves_accepted_structured_history(tmp_path):
+    from pathlib import Path
+    from prepare_character_prehistory import brief_from_database
+    db = tmp_path / 'next-brief.sqlite'
+    ledger = started_ledger(db)
+    archive = story_archive()
+    try:
+        _active_rows(ledger, archive)
+        brief = brief_from_database(database=db,
+            profile_path=Path(__file__).resolve().parents[2] / 'configs/character.yaml',
+            world_id=WORLD_ID, actor_ref=ACTOR, born_at=datetime(2005, 4, 12, tzinfo=UTC),
+            author_ref='author:next-story', source_ref='fixture:next-story')
+        accepted, = brief.accepted_archives
+        assert accepted.contract == 'character-prehistory-archive.2'
+        assert accepted.manifest() == archive.document.manifest()
+    finally:
+        ledger.close()

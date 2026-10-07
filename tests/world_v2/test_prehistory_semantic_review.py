@@ -261,3 +261,23 @@ def test_cli_uses_the_saved_request_and_preserves_original_judgment(tmp_path, ca
     assert json.loads(review_path.read_text())["document_hash"] == digest(document)
     assert json.loads(response_path.read_text()) == response().model_dump(mode="json")
     capsys.readouterr()
+
+
+def test_assessment_wire_aggregates_only_complete_model_judgments_and_rejects_old_output():
+    from companion_daemon.world_v2.prehistory_authoring import PrehistorySemanticAssessment
+    b, document = materials()
+    packet = semantic_review_request(b, document, assessment_only=True)
+    assert packet['contract'] == 'prehistory-semantic-review-request.2'
+    assert 'decision' not in packet['output_schema']['properties']
+    value = response().model_dump(mode='json')
+    with pytest.raises(ValueError):
+        PrehistorySemanticAssessment.model_validate_json(json.dumps(value))
+    value.pop('decision'); value['contract'] = 'prehistory-semantic-assessment.2'
+    parsed_assessment = PrehistorySemanticAssessment.model_validate_json(json.dumps(value))
+    bound = bind(packet, parsed_assessment)
+    assert bound.decision == 'approved'
+    value['records'][0]['verdict'] = 'reject'
+    assert bind(packet, PrehistorySemanticAssessment.model_validate_json(json.dumps(value))).decision == 'rejected'
+    value['records'] = value['records'][:1]
+    with pytest.raises(ValueError, match='every submitted record'):
+        bind(packet, PrehistorySemanticAssessment.model_validate_json(json.dumps(value)))

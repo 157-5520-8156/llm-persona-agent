@@ -227,6 +227,29 @@ class PrehistorySemanticReview(FrozenModel):
         return self
 
 
+class PrehistorySemanticAssessment(FrozenModel):
+    """Model owns every semantic verdict; the host only takes their conjunction."""
+    contract: Literal["prehistory-semantic-assessment.2"] = "prehistory-semantic-assessment.2"
+    records: tuple[PrehistorySemanticRecordVerdict, ...] = Field(min_length=1, max_length=256)
+    story_links: tuple[PrehistorySemanticLinkVerdict, ...] = Field(default=(), max_length=128)
+    cross_record_findings: tuple[str, ...] = Field(default=(), max_length=256,
+        description="Blocking cross-record problems only; [] when none. No positive summaries.")
+
+    @property
+    def decision(self) -> Literal["approved", "rejected"]:
+        return "approved" if (not self.cross_record_findings
+            and all(item.verdict == "approve" for item in self.records)
+            and all(item.verdict == "approve" for item in self.story_links)) else "rejected"
+
+    @model_validator(mode="after")
+    def independent_verdicts_are_unique(self):
+        if len({item.record_index for item in self.records}) != len(self.records):
+            raise ValueError("review duplicates a record index")
+        if len({item.relation_index for item in self.story_links}) != len(self.story_links):
+            raise ValueError("review duplicates a story-link index")
+        return self
+
+
 def semantic_review_request(
     brief: PrehistoryAuthoringBrief,
     document: PrehistoryArchiveDocument,
@@ -234,6 +257,7 @@ def semantic_review_request(
     story_links=None,
     narrative_text: str | None = None,
     source_materials=None,
+    assessment_only: bool = False,
 ) -> dict:
     """Bind the independent reviewer to the exact source, actor view, archive and links."""
     # Apply the semantic protocol's existing budget after composing its full
@@ -313,13 +337,21 @@ def semantic_review_request(
         "按document.records的从0开始的数组下标逐条返回record_index；"
         "每个下标必须出现一次。不输出哈希、记录ID、审核者或时间，这些由调用方绑定实际输入。"
     )
-    packet.update(contract="prehistory-semantic-review-request.1",
-        instruction=instruction, output_schema=PrehistorySemanticReview.model_json_schema())
+    if assessment_only:
+        instruction = instruction.replace("decision", "汇总结论") + (
+            "本协议只输出逐条记录判断、逐边关系判断和跨记录问题；不输出decision或其他总判断字段。"
+            "每项语义判断仍由你负责。调用方只有在完整覆盖且全部approve、跨记录问题为空时汇总为通过；"
+            "任何不通过理由必须写入对应逐项reject或cross_record_findings，不能漏掉。"
+        )
+    response_type = PrehistorySemanticAssessment if assessment_only else PrehistorySemanticReview
+    packet.update(contract=("prehistory-semantic-review-request.2" if assessment_only
+                            else "prehistory-semantic-review-request.1"),
+        instruction=instruction, output_schema=response_type.model_json_schema())
     return _bounded_packet(packet, max_bytes=MAX_SEMANTIC_REVIEW_PACKET_BYTES)
 
 
 def bind_semantic_review(
-    submitted_request: dict, response: PrehistorySemanticReview, *,
+    submitted_request: dict, response: PrehistorySemanticReview | PrehistorySemanticAssessment, *,
     reviewer_ref: str, reviewed_at: datetime,
 ) -> PrehistoryCreationReview:
     """Bind to the submitted packet, never a fresh read of the mutable draft.
@@ -347,12 +379,14 @@ def bind_semantic_review(
         source_materials = LifeMaterialsDraft.model_validate_json(
             json.dumps(submitted_request["source_materials"], ensure_ascii=False),
         )
+    assessment_only = submitted_request.get("contract") == "prehistory-semantic-review-request.2"
     if submitted_request != semantic_review_request(
         brief, document, story_links=story_links, narrative_text=narrative_text,
-        source_materials=source_materials,
+        source_materials=source_materials, assessment_only=assessment_only,
     ):
         raise ValueError("submitted semantic review packet differs from its bound content or contract")
-    response = PrehistorySemanticReview.model_validate_json(response.model_dump_json())
+    response_type = PrehistorySemanticAssessment if assessment_only else PrehistorySemanticReview
+    response = response_type.model_validate_json(response.model_dump_json())
     by_index = {item.record_index: item for item in response.records}
     if set(by_index) != set(range(len(document.records))):
         raise ValueError("semantic review must cover every submitted record index exactly once")

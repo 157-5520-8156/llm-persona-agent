@@ -137,3 +137,27 @@ class StoryWindowRequest(FrozenModel):
     """Coordinates into an already retained, source-verified record."""
     record_ref: str = Field(pattern=r"^prehistory-record:[a-z0-9][a-z0-9._-]*$", max_length=256)
     start: int = Field(ge=0, le=1600)
+
+
+class StoryEventReading(FrozenModel):
+    """Semantic coordinates; exact block/quote positions remain in the archive."""
+    event_ref: str
+    kind: Literal["event", "historical_interpretation", "background", "intention"]
+    subject_actor_ref: str | None = Field(default=None, exclude_if=lambda v: v is None)
+    occurred_from: datetime | None = Field(default=None, exclude_if=lambda v: v is None)
+    occurred_until: datetime | None = Field(default=None, exclude_if=lambda v: v is None)
+
+
+class CompactStoryMemoryReading(StoryMemoryReading):
+    contract: Literal["story-memory-reading.2"] = "story-memory-reading.2"
+    blocks: tuple[StoryEventReading, ...]
+
+
+def compact_story_reading(reading: StoryMemoryReading) -> CompactStoryMemoryReading:
+    if isinstance(reading, CompactStoryMemoryReading):
+        return reading
+    return CompactStoryMemoryReading(
+        **reading.model_dump(exclude={"contract", "blocks"}),
+        blocks=tuple(StoryEventReading(**block.model_dump(exclude={"block_id", "source_locator"}))
+                     for block in reading.blocks),
+    )

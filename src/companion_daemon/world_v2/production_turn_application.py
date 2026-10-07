@@ -759,6 +759,7 @@ class WorldV2TurnApplicationConfig:
     # Complete an already-selected, source-verified prehistory window within
     # the existing reading/receipt budgets. False retains the legacy windows.
     recall_parent_context: bool = True
+    recall_story_context: bool = False
     # Read-only capacity probe for background lanes: true when the day's
     # background envelope is already spent.  It bounds work, never speech, and
     # the visible reply path keeps its own explicit caps.
@@ -879,6 +880,8 @@ class WorldV2TurnApplicationConfig:
             raise ValueError("reply recovery policy must not be empty")
         if self.world_author_transport not in {"auto", "json_object"}:
             raise ValueError("world author transport must be auto or json_object")
+        if type(self.recall_story_context) is not bool:
+            raise ValueError("Recall story context flag must be boolean")
         if type(self.recall_parent_context) is not bool:
             raise ValueError("Recall parent context flag must be boolean")
         if self.expression_episode_mode not in {"off", "shadow", "stream"}:
@@ -3704,7 +3707,8 @@ def build_sqlite_world_v2_turn_application(
         path=path,
         world_id=config.world_id,
         embedding=FeatureHashRecallEmbedding(),
-        policy_version="world-v2-recall-index.hybrid.14" if config.recall_parent_context else None,
+        policy_version=("world-v2-recall-index.hybrid.15" if config.recall_story_context else
+                        "world-v2-recall-index.hybrid.14" if config.recall_parent_context else None),
     )
     cached_semantic_embedding = (
         SQLiteCachedRecallEmbedding(
@@ -3715,8 +3719,11 @@ def build_sqlite_world_v2_turn_application(
         if semantic_recall_embedding is not None
         else None
     )
+    from .recall_corpus import RecallCorpusCompiler
+
     recall_coordinator = RecallCoordinator(
         index=recall_index,
+        corpus=RecallCorpusCompiler(prehistory_parent_context=config.recall_parent_context),
         semantic_embedding=cached_semantic_embedding,
     )
     # CharacterInterior binds its private selective-recall Faculty when the

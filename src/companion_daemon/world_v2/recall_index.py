@@ -597,7 +597,7 @@ class _RecallIndexCore:
             raise ValueError("recall dense match threshold is invalid")
         policy_version = RECALL_INDEX_POLICY_VERSION if policy_version is None else policy_version
         if not isinstance(policy_version, str) or policy_version not in {
-            RECALL_INDEX_POLICY_VERSION, "world-v2-recall-index.hybrid.14",
+            RECALL_INDEX_POLICY_VERSION, "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15",
         }:
             raise ValueError("unknown recall search policy")
         self._index_version = f"{policy_version}+embedding:{embedding.version}"
@@ -661,6 +661,14 @@ class _RecallIndexCore:
         lexical_text = query.lexical_text or query.query_text
         eligible_rows = tuple((document, vector) for document, vector in rows
                               if self._eligible(document, query))
+        if self.policy_version == "world-v2-recall-index.hybrid.15" and query.story_window is None:
+            from .prehistory_story import compact_story_reading
+            eligible_rows = tuple((document.model_copy(update={
+                "prehistory": document.prehistory.model_copy(update={
+                    "story": compact_story_reading(document.prehistory.story),
+                }),
+            }) if document.prehistory is not None and document.prehistory.story is not None else document,
+                                   vector) for document, vector in eligible_rows)
         lexical_scores = _corpus_lexical_scores(lexical_text, tuple(
             _lexical_features(document.retrieval_text or document.text)
             for document, _ in eligible_rows if not document.context_only
@@ -732,6 +740,7 @@ class _RecallIndexCore:
         result_budget_skips: list[str] = []
 
         def add_if_within_budget(hit: RecallHit) -> bool:
+            hit = self._result_hit(hit)
             if len(selected) >= query.limit:
                 return False
             candidate = (*selected, hit)
@@ -796,7 +805,7 @@ class _RecallIndexCore:
             "world-v2-recall-index.hybrid.11",
             "world-v2-recall-index.hybrid.12",
             "world-v2-recall-index.hybrid.13",
-            "world-v2-recall-index.hybrid.14",
+            "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15",
         }:
             from .life_recall_windows import attempt_family
             families = {hit.document.document_id: attempt_family(hit.document)
@@ -851,7 +860,7 @@ class _RecallIndexCore:
         hits = tuple(selected)
         if (query.include_historical
                 and self._index_version.partition("+embedding:")[0] in {
-                    "world-v2-recall-index.hybrid.13", "world-v2-recall-index.hybrid.14"}):
+                    "world-v2-recall-index.hybrid.13", "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15"}):
             hits = self._add_linked_impression_context(
                 hits=hits, eligible_rows=eligible_rows, query=query,
             )
@@ -862,7 +871,7 @@ class _RecallIndexCore:
                 eligible_rows=eligible_rows,
                 query=query,
             )
-        if self._index_version.partition("+embedding:")[0] == "world-v2-recall-index.hybrid.14":
+        if self.policy_version in {"world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15"}:
             hits = self._with_prehistory_parent_context(
                 hits=hits, eligible_rows=eligible_rows,
             )
@@ -996,8 +1005,12 @@ class _RecallIndexCore:
             add(hit)
         return tuple(expanded) if expanded else hits
 
-    @staticmethod
-    def _with_prehistory_parent_context(*, hits, eligible_rows):
+    def _result_hit(self, hit: RecallHit) -> RecallHit:
+        if self.policy_version == "world-v2-recall-index.hybrid.15" and hit.document.prehistory is not None:
+            return hit.model_copy(update={"document": hit.document.model_copy(update={"retrieval_text": None})})
+        return hit
+
+    def _with_prehistory_parent_context(self, *, hits, eligible_rows):
         """Keep search order/scores; use an eligible complete record if it fits."""
         expanded = list(hits)
         selected_ids = {hit.document.document_id for hit in hits}
@@ -1005,7 +1018,7 @@ class _RecallIndexCore:
         # larger envelope. Parent substitution inherits that envelope; it
         # never upgrades an ordinary result into a story-budget request.
         reading_size = len(_canonical_json({"items": [interior_recall_item(
-            hit.document, index_version="world-v2-recall-index.hybrid.14",
+            hit.document, index_version=self._index_version,
         ) for hit in hits]}).encode())
         result_size = len(_canonical_json([hit.model_dump(mode="json") for hit in hits]).encode())
         story_budget = reading_size > RECALL_MODEL_READING_MAX_BYTES or result_size > RECALL_RESULT_MAX_BYTES
@@ -1027,10 +1040,10 @@ class _RecallIndexCore:
                 continue
             if parent.document_id in selected_ids:
                 continue
-            replacement = hit.model_copy(update={"document": parent})
+            replacement = self._result_hit(hit.model_copy(update={"document": parent}))
             candidate = (*expanded[:index], replacement, *expanded[index + 1:])
             if (len(_canonical_json({"items": [interior_recall_item(
-                item.document, index_version="world-v2-recall-index.hybrid.14",
+                item.document, index_version=self._index_version,
             ) for item in candidate]}).encode()) > reading_budget
                 or len(_canonical_json([item.model_dump(mode="json") for item in candidate]).encode()) > result_budget):
                 continue
@@ -1038,9 +1051,8 @@ class _RecallIndexCore:
             selected_ids.add(parent.document_id)
         return tuple(expanded)
 
-    @staticmethod
     def _add_linked_prehistory_context(
-        *,
+        self, *,
         hits: tuple[RecallHit, ...],
         ranked: list[tuple[int, str, RecallHit]],
         eligible_rows: tuple[tuple[RecallDocument, tuple[float, ...]], ...],
@@ -1148,11 +1160,13 @@ class _RecallIndexCore:
         expanded: list[RecallHit] = []
 
         def add_within_budget(hit: RecallHit) -> bool:
+            hit = self._result_hit(hit)
             if len(expanded) >= hit_limit:
                 return False
             candidate = (*expanded, hit)
             reading_size = len(_canonical_json({"items": [
-                interior_recall_item(item.document, index_version="world-v2-recall-index.hybrid.12")
+                interior_recall_item(item.document, index_version=(self._index_version
+                    if self.policy_version == "world-v2-recall-index.hybrid.15" else "world-v2-recall-index.hybrid.12"))
                 for item in candidate
             ]}).encode("utf-8"))
             result_size = len(_canonical_json([

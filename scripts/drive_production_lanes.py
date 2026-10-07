@@ -703,6 +703,7 @@ async def open_session(
     use_configured_recall_embedding: bool = False,
     world_author_cache_stable_prefix: bool = False,
     recall_parent_context: bool | None = None,
+    recall_story_context: bool = False,
 ) -> DriveSession:
     from companion_daemon.config import Settings
     from companion_daemon.llm import DeepSeekChatModel
@@ -784,6 +785,7 @@ async def open_session(
         model=overlay,
         world_author_cache_stable_prefix=world_author_cache_stable_prefix,
         recall_parent_context=recall_parent_context,
+        recall_story_context=recall_story_context,
         **(
             {
                 "visible_source_review_required": True,

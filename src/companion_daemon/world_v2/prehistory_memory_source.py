@@ -21,7 +21,7 @@ from .character_prehistory import (
     digest, validate_story_boundary,
 )
 from .schema_core import FrozenModel
-from .prehistory_story import StoryMemoryReading, story_memory_reading
+from .prehistory_story import CompactStoryMemoryReading, StoryMemoryReading, story_memory_reading
 if TYPE_CHECKING:
     from .schemas import CommittedWorldEventRef, MemorySourceBinding
 
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 class PrehistoryMemoryReading(FrozenModel):
     """Historical scope, without a second unbounded copy of the source text."""
 
-    story: StoryMemoryReading | None = Field(default=None, exclude_if=lambda value: value is None)
+    story: StoryMemoryReading | CompactStoryMemoryReading | None = Field(default=None, exclude_if=lambda value: value is None)
     actor_ref: str = Field(min_length=1, max_length=256)
     occurred_from: datetime
     occurred_until: datetime

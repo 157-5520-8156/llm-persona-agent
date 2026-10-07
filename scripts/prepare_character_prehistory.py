@@ -16,7 +16,7 @@ from companion_daemon.world_v2.character_prehistory import (
 )
 from companion_daemon.world_v2.prehistory_authoring import (
     PrehistoryAuthoringBrief, PrehistoryCreationReview, author_request, package_reviewed, review_request,
-    PrehistorySemanticReview, bind_semantic_review, semantic_review_request,
+    PrehistorySemanticReview, PrehistorySemanticAssessment, bind_semantic_review, semantic_review_request,
 )
 from companion_daemon.world_v2.schemas import WorldEvent
 
@@ -55,10 +55,12 @@ def brief_from_database(*, database, profile_path, world_id, actor_ref, born_at,
     start, start_hash = starts[0]
     accepted = []
     for archive_id, manifest in archives.items():
+        accepted_records = tuple(records.get(archive_id, ()))
         document = PrehistoryArchiveDocument(
-            contract="character-prehistory-archive.1", archive_id=archive_id, world_id=world_id,
+            contract=("character-prehistory-archive.2" if any(r.story is not None for r in accepted_records)
+                      else "character-prehistory-archive.1"), archive_id=archive_id, world_id=world_id,
             actor_ref=actor_ref, source_artifact_ref=manifest.source_artifact_ref,
-            entities=manifest.entities, records=tuple(records.get(archive_id, ())),
+            entities=manifest.entities, records=accepted_records,
         )
         if document.manifest() != manifest:
             raise ValueError("accepted history differs from its committed manifest")
@@ -98,6 +100,7 @@ def main(argv=None):
         if name != "author-request":
             command.add_argument("--draft", required=True)
         if name == "semantic-review-request":
+            command.add_argument("--assessment-only", action="store_true")
             command.add_argument("--narrative")
             command.add_argument("--materials")
             command.add_argument("--story-links")
@@ -116,9 +119,12 @@ def main(argv=None):
             world_id=args.world_id, actor_ref=args.actor_ref,
             born_at=datetime.fromisoformat(args.born_at), author_ref=args.author_ref, source_ref=args.source_ref)
     elif args.command == "bind-semantic-review":
+        submitted = json.loads(Path(args.request).read_text())
+        response_type = (PrehistorySemanticAssessment if submitted.get("contract") == "prehistory-semantic-review-request.2"
+                         else PrehistorySemanticReview)
         value = bind_semantic_review(
-            json.loads(Path(args.request).read_text()),
-            PrehistorySemanticReview.model_validate_json(Path(args.response).read_text()),
+            submitted,
+            response_type.model_validate_json(Path(args.response).read_text()),
             reviewer_ref=args.reviewer_ref, reviewed_at=datetime.fromisoformat(args.reviewed_at),
         )
     else:
@@ -143,7 +149,7 @@ def main(argv=None):
                     story_links = PrehistoryStoryLinkArtifact.model_validate_json(Path(args.story_links).read_text())
                 value = semantic_review_request(
                     brief, draft, story_links=story_links, narrative_text=narrative_text,
-                    source_materials=source_materials,
+                    source_materials=source_materials, assessment_only=args.assessment_only,
                 )
             else:
                 review = PrehistoryCreationReview.model_validate_json(Path(args.review).read_text())

@@ -14,13 +14,13 @@ _ATTRIBUTED_READING_POLICIES = frozenset({
     "world-v2-recall-index.hybrid.8", "world-v2-recall-index.hybrid.9",
     "world-v2-recall-index.hybrid.10", "world-v2-recall-index.hybrid.11",
     "world-v2-recall-index.hybrid.12", "world-v2-recall-index.hybrid.13",
-    "world-v2-recall-index.hybrid.14",
+    "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15",
 })
 _FACT_READING_POLICIES = frozenset({
     "world-v2-recall-index.hybrid.9", "world-v2-recall-index.hybrid.10",
     "world-v2-recall-index.hybrid.11", "world-v2-recall-index.hybrid.12",
     "world-v2-recall-index.hybrid.13",
-    "world-v2-recall-index.hybrid.14",
+    "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15",
 })
 
 
@@ -28,7 +28,7 @@ def supports_life_reading(index_version: str) -> bool:
     return index_version.partition("+embedding:")[0] in {
         "world-v2-recall-index.hybrid.10", "world-v2-recall-index.hybrid.11",
         "world-v2-recall-index.hybrid.12", "world-v2-recall-index.hybrid.13",
-        "world-v2-recall-index.hybrid.14",
+        "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15",
     }
 
 
@@ -83,7 +83,7 @@ def interior_recall_item(
             "next": {"record_ref": document.source_item_ref.split(":window:")[0], "start": start + 416}
                     if start + len(document.text) < total else None,
         }}
-    return {
+    result = {
         **story_window,
         "source_ref": (
             fact.accepted_fact_event_ref
@@ -104,7 +104,7 @@ def interior_recall_item(
                if document.interpretation_scope is not None else {})}
            if document.authority == "defeasible_interpretation"
            and index_version.partition("+embedding:")[0] in {
-               "world-v2-recall-index.hybrid.13", "world-v2-recall-index.hybrid.14"}
+               "world-v2-recall-index.hybrid.13", "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15"}
            else {}),
         **({"subject_refs": list(document.subject_refs)} if attributed else {}),
         **({"speaker_ref": document.speaker_ref}
@@ -116,7 +116,7 @@ def interior_recall_item(
            if document.source_window_start is not None and index_version.partition("+embedding:")[0] in {
                "world-v2-recall-index.hybrid.11", "world-v2-recall-index.hybrid.12",
                "world-v2-recall-index.hybrid.13",
-               "world-v2-recall-index.hybrid.14",
+               "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15",
            } else {}),
         **({"settled_life": {
             "settled_at": life.settled_at.isoformat(),
@@ -124,3 +124,30 @@ def interior_recall_item(
         }}
            if life is not None else {}),
     }
+
+    if (index_version.partition("+embedding:")[0] == "world-v2-recall-index.hybrid.15"
+            and document.prehistory is not None and document.prehistory.story is not None):
+        # Only transport proof and duplicate coordinates leave the model view.
+        # Full typed source proof stays in the immutable RecallAuditTrace.
+        history = result["prehistory"]
+        for key in ("archive_event_ref", "archive_world_revision", "archive_payload_hash",
+                    "world_started_at", "occurred_from", "occurred_until", "time_precision",
+                    "participant_refs", "location_ref"):
+            history.pop(key, None)
+        for key in ("memory_kind", "source_slice", "authority", "subject_refs",
+                    "occurred_from", "occurred_to"):
+            result.pop(key, None)
+        story = history["story"]
+        for key in ("source_artifact_ref", "contract", "outer_interval_semantics", "record_characters"):
+            story.pop(key, None)
+        record_ref = document.source_item_ref.split(":window:")[0]
+        edges = story.pop("relations")
+        if any(edge["left_record_id"] != record_ref for edge in edges):
+            raise ValueError("story reading relation does not start at its source record")
+        story["outgoing_relations"] = [
+            {"to_record_ref": edge["right_record_id"], "relation_kind": edge["relation_kind"]}
+            for edge in edges
+        ]
+        if result["story_window"]["complete_record"]:
+            result["story_window"] = {"complete_record": True}
+    return result
