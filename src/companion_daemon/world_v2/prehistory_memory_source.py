@@ -140,12 +140,15 @@ def resolve_prehistory_memory_source(
 
 def prehistory_memory_reading(
     row: PrehistoryRecordProjection, archive: PrehistoryArchiveProjection,
+    *, initialization_snapshot: bool = False,
 ) -> PrehistoryMemoryReading:
     record: PrehistoryRecord = row.record
     entity_refs = {*record.participant_refs, record.location_ref}
     story = story_memory_reading(record.story, statement=record.statement) if record.story else None
     related = record.related_record_refs
-    if story is not None:
+    # Durable retention opportunities are replayed byte-for-byte. Their old .2
+    # reading has no canonical coordinates; .3 has no later edge-proof fields.
+    if story is not None and (not initialization_snapshot or archive.manifest.import_context is not None):
         from .story_import import canonical_event_ref
         from .prehistory_story import StoryRelationReading, StoryRelationAuthority
         context = archive.manifest.import_context
@@ -160,7 +163,8 @@ def prehistory_memory_reading(
             "relations": (*story.relations, *(StoryRelationReading(
                 left_record_id=e.left_record_id, right_record_id=e.right_record_id, relation_kind=e.relation_kind,
                 authority=StoryRelationAuthority(event_ref=archive.accepted_event_ref,
-                    world_revision=archive.accepted_world_revision, payload_hash=archive.accepted_payload_hash),
+                    world_revision=archive.accepted_world_revision, payload_hash=archive.accepted_payload_hash)
+                    if not initialization_snapshot else None,
             ) for e in edges)),
         })
     return PrehistoryMemoryReading(

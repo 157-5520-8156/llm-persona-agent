@@ -1,0 +1,35 @@
+{
+  "inner_turn_ref": "prehistory-memory:event:prehistory:cd133275e39caed4d31de84819e8c8b27a0fe4386b22d9e9505e0b67b9acf69e",
+  "world_id": "world-v2-life-test",
+  "actor_ref": "actor:companion",
+  "trigger_ref": "event:prehistory:cd133275e39caed4d31de84819e8c8b27a0fe4386b22d9e9505e0b67b9acf69e",
+  "cursor": {
+    "world_revision": 4,
+    "deliberation_revision": 0,
+    "ledger_sequence": 4
+  },
+  "logical_time": "2026-09-01T00:00:00Z",
+  "purpose": "fact_memory_retention",
+  "source_refs": [
+    "event:prehistory:cd133275e39caed4d31de84819e8c8b27a0fe4386b22d9e9505e0b67b9acf69e",
+    "event:prehistory:fa1dc038edc49918a5022b282553eaaf792b858ef53a8fdf33b82d3696b77c4b"
+  ],
+  "viewer_scope": "deliberation_internal",
+  "privacy_ceiling": "private",
+  "budget_policy_ref": "context-capsule-budget:production",
+  "capability_manifest": {
+    "contract": "character-interior-capability-manifest.1",
+    "capability_ref": "capability:fact_memory_retention:sha256:d9030fb8174b240205968bb7fb083257453eb6dfcd48532742f66156cb2743a0",
+    "capability_kind": "fact_memory_retention",
+    "payload_json": "{\"decision_contract\":{\"no_change\":{\"retain\":false},\"retain\":{\"cue_kind\":\"one exact token from: identity, relationship, boundary, unfinished_business, repeated_pattern, future_utility, emotional_residue, world_continuity\",\"retain\":true,\"retention_rationales\":[\"one or more distinct exact tokens from: identity_relevance, relationship_continuity, boundary_relevance, unfinished_business, repeated_pattern, future_utility, emotional_salience, world_continuity\"],\"salience\":{\"autobiographical_relevance_bp\":\"integer 0-10000\",\"emotional_residue_bp\":\"integer 0-10000\",\"future_utility_bp\":\"integer 0-10000\",\"novelty_bp\":\"integer 0-10000\",\"recurrence_bp\":\"integer 0-10000\",\"relationship_relevance_bp\":\"integer 0-10000\",\"unfinished_business_bp\":\"integer 0-10000\",\"world_continuity_bp\":\"integer 0-10000\"}}},\"initialization_scope\":\"one reviewed historical record at its original import snapshot\",\"predicate_code\":\"character.prehistory\",\"prehistory\":{\"actor_ref\":\"actor:companion\",\"archive_event_ref\":\"event:prehistory:fa1dc038edc49918a5022b282553eaaf792b858ef53a8fdf33b82d3696b77c4b\",\"archive_payload_hash\":\"25ae46155b3a0b81428e43b0a4d9b136ac4818a3fcb7977bc356d04a83275cc5\",\"archive_world_revision\":2,\"entities\":[],\"location_ref\":null,\"occurred_from\":\"2015-01-01T00:00:00Z\",\"occurred_until\":\"2016-12-31T00:00:00Z\",\"participant_refs\":[],\"related_record_refs\":[\"prehistory-record:later-message\"],\"story\":{\"blocks\":[{\"block_id\":\"block:umbrella\",\"event_ref\":\"event:umbrella\",\"kind\":\"event\",\"occurred_from\":\"2015-01-01T00:00:00Z\",\"occurred_until\":\"2016-12-31T00:00:00Z\",\"source_locator\":\"source-segment:0001\",\"subject_actor_ref\":null}],\"contract\":\"story-memory-reading.1\",\"coverage\":\"bounded_record_material\",\"known_from\":\"2015-01-01T00:00:00Z\",\"known_until\":\"2016-12-31T00:00:00Z\",\"outer_interval_semantics\":\"knowledge_acquisition\",\"record_characters\":171,\"relations\":[{\"left_record_id\":\"prehistory-record:umbrella\",\"relation_kind\":\"later_disclosure\",\"right_record_id\":\"prehistory-record:later-message\"}],\"source_artifact_ref\":\"narrative#sha256=548df2b61812ffd2f400d699e6edf889edd7d80581fb6e2e71a78b83d1830db7\"},\"time_precision\":\"interval\",\"timezone_name\":\"UTC\",\"world_started_at\":\"2026-09-01T00:00:00Z\"},\"source_kind\":\"character_prehistory\",\"verified_source_text\":\"[记录时段 2015-01-01T00:00:00+00:00 至 2016-12-31T00:00:00+00:00：该角色的经历或获知过程；其中转述往事的发生时间以正文为准。]\\n[事件发生时间 2015-01-01T00:00:00+00:00 至 2016-12-31T00:00:00+00:00] 她忘带伞，对方追到车站把伞还给她。\"}",
+    "payload_hash": "sha256:1014d7f163f34b1f5dd85baee1028296f9ff05f42355ceccfaa2a90cb9a960f0",
+    "source_refs": [
+      "event:prehistory:cd133275e39caed4d31de84819e8c8b27a0fe4386b22d9e9505e0b67b9acf69e",
+      "event:prehistory:fa1dc038edc49918a5022b282553eaaf792b858ef53a8fdf33b82d3696b77c4b"
+    ]
+  },
+  "context_note": "A committed, source-bound memory capability is available. The character owns the semantic choice; the system validates only the offered capability, evidence binding, and wire contract.",
+  "contract": "character-interior-opportunity.1",
+  "opportunity_ref": "opportunity:causal:6954bb5c133cd6f26f8d43367cbb149551e74b6377149777d1c8e832ce90fd73",
+  "occasion": null
+}

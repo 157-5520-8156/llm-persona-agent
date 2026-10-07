@@ -28,7 +28,7 @@ def initialization_opportunity(*, world_id, row, archive, cursor):
         source_kind="character_prehistory", predicate_code="character.prehistory",
         source_text=row.record.statement,
     )
-    capability["prehistory"] = prehistory_memory_reading(row, archive).model_dump(mode="json")
+    capability["prehistory"] = prehistory_memory_reading(row, archive, initialization_snapshot=True).model_dump(mode="json")
     capability["initialization_scope"] = "one reviewed historical record at its original import snapshot"
     return _memory_opportunity(
         world_id=world_id, actor_ref=row.actor_ref, purpose=_FACT_MEMORY_PURPOSE,

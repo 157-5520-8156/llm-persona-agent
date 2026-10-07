@@ -220,12 +220,15 @@ def _visible_prehistory_claim_bindings(
                 binding for binding in bindings
                 if binding.authority_type == "CharacterPrehistoryArchiveAccepted"
             )
+            expected_archives = {(historical.archive_event_ref, historical.archive_world_revision,
+                                  historical.archive_payload_hash)}
+            if historical.story is not None:
+                expected_archives.update((edge.authority.event_ref, edge.authority.world_revision,
+                                          edge.authority.payload_hash)
+                    for edge in historical.story.relations if edge.authority is not None)
             if (
                 len(record_bindings) != 1
-                or len(archive_bindings) != 1
-                or archive_bindings[0].ref != historical.archive_event_ref
-                or archive_bindings[0].source_world_revision != historical.archive_world_revision
-                or archive_bindings[0].immutable_hash != historical.archive_payload_hash
+                or {(b.ref, b.source_world_revision, b.immutable_hash) for b in archive_bindings} != expected_archives
                 or {binding.ref for binding in bindings} != set(document.source_refs)
             ):
                 continue

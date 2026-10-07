@@ -320,7 +320,6 @@ class RecallDocument(FrozenModel):
                     f":window:{self.source_window_start}"
                 )
                 or self.source_slice != "active_memory_candidates"
-                or len(bindings) != 2
             ):
                 raise ValueError("prehistory window identity or length is invalid")
         if self.settled_life_json is not None:

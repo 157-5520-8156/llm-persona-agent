@@ -42,7 +42,8 @@ def test_import_rejects_stale_history_basis_but_exact_reimport_is_inert(tmp_path
 
 
 @pytest.mark.parametrize('existing_delta', [False, True])
-def test_two_stories_share_a_reviewed_event_but_keep_their_own_knowledge_and_links(tmp_path, existing_delta):
+@pytest.mark.parametrize('long_source', [False, True])
+def test_two_stories_share_a_reviewed_event_but_keep_their_own_knowledge_and_links(tmp_path, existing_delta, long_source):
     from companion_daemon.world_v2.story_import import bind_import_context
     from companion_daemon.world_v2.character_prehistory import StoryEventMatchDraft, CrossStoryRelation
     from test_prehistory_memory_source import _read
@@ -54,6 +55,10 @@ def test_two_stories_share_a_reviewed_event_but_keep_their_own_knowledge_and_lin
             world_start_ref='world-start', world_start_payload_hash=digest({}), world_started_at=START)
         if not existing_delta:
             first = story_archive().document
+        if long_source:
+            first = first.model_copy(update={'records': (first.records[0].model_copy(update={
+                'statement': '她记得那次还伞的具体经过。' * 65,
+            }), *first.records[1:])})
         first_active = _active_rows(ledger, _reviewed(first))
         old = first.records[0]
         text = '2022年她再次想起那次还伞，明白那是对方特意绕路送来的；此前她只记得对方追到了车站。'
@@ -106,9 +111,41 @@ def test_two_stories_share_a_reviewed_event_but_keep_their_own_knowledge_and_lin
                           if hit.document.source_item_ref.split(':window:')[0] == old.record_id)
         assert new_id in old_window.prehistory.related_record_refs
         assert len(old_window.source_bindings) == 3
+        assert (old_window.source_window_start is not None) == long_source
         assert RecallDocument.model_validate_json(old_window.model_dump_json()) == old_window
         extra_authority = next(edge.authority.event_ref for edge in old_window.prehistory.story.relations
                                if edge.authority is not None)
+        from test_prehistory_chat_context import _capsule
+        from test_visible_source_composer import _request
+        from companion_daemon.world_v2.recall_audit import CharacterRecallRequest
+        from companion_daemon.world_v2.recall_runtime import (
+            RecallCoordinator, augment_model_content_with_recall, verify_trusted_recall_trace, recall_evidence_json,
+        )
+        from companion_daemon.world_v2.character_interior.inbound_author import _with_visible_recall_traces
+        from companion_daemon.world_v2.prehistory_claim_authority import prehistory_claim_bindings
+        request = _request(_capsule(ledger, actor=ACTOR, trigger='fixture:cross-story-proof'))
+        coordinator = RecallCoordinator.from_built_index(index=index, cursor=query.cursor, actor_ref=ACTOR,
+            subject_refs=(ACTOR,), logical_time=query.at, trigger_ref=request.trigger_ref)
+        try:
+            trace = coordinator.recall(request=CharacterRecallRequest.model_validate_json(json.dumps({
+                'query_text': '还伞', 'story_window': {'record_ref': old.record_id, 'start': 0}})),
+                accessibility_seed='fixture:cross-story', expected_cursor=query.cursor, trigger_ref=request.trigger_ref)
+            visible = json.loads(augment_model_content_with_recall(request.model_content_json,
+                verify_trusted_recall_trace(trace)))
+            visible['slices'].pop('active_memory_candidates', None)
+            audit = verify_trusted_recall_trace(trace)
+            evidence = json.loads(recall_evidence_json(audit))
+            visible.setdefault('inner_life_snapshot', {})['materials'] = {'automatic_prefetch': {'items': [
+                {**candidate, 'source_ref': hit.document.source_item_ref}
+                for candidate, hit in zip(evidence['candidates'], audit.hits, strict=True)
+            ]}}
+            recalled_request = _with_visible_recall_traces(request.model_copy(update={
+                'model_content_json': json.dumps(visible, ensure_ascii=False), 'visible_source_requirement_json': None,
+            }), trace)
+            claim_bindings = prehistory_claim_bindings(recalled_request)
+            assert extra_authority in {b.ref for b in claim_bindings[old_window.source_item_ref]}
+        finally:
+            coordinator.close()
         closed = _corpus(ledger, _read(ledger), omitted=(extra_authority,))
         assert not any(d.source_item_ref.split(':window:')[0] == old.record_id for d in closed)
         historical = index.search(query).model_dump_json()
@@ -237,3 +274,24 @@ def test_complete_replay_revalidates_manifest_against_new_records():
         'event_matches': (manifest.import_context.event_matches[0].model_copy(update={'event_ref': 'event:absent'}),)})})
     with pytest.raises(ValueError, match='unknown source identity'):
         validate_complete_import(bad, doc.records)
+
+
+def test_structured_retention_replays_the_pre_p2_opportunity_bytes(tmp_path):
+    from pathlib import Path
+    from companion_daemon.world_v2.prehistory_memory_decision import initialization_opportunity
+    from companion_daemon.world_v2.schemas import ProjectionCursor
+    ledger = started_ledger(tmp_path / 'legacy-retention.sqlite')
+    try:
+        package = story_archive()
+        rows = PrehistoryArchiveRuntime(ledger=ledger, owner_actor_ref=ACTOR).import_reviewed(package, created_at=START)
+        state = ledger.project()
+        row = next(r for r in rows if r.record.record_id == package.document.records[0].record_id)
+        actual = initialization_opportunity(world_id=ledger.world_id, row=row, archive=state.prehistory_archives[0],
+            cursor=ProjectionCursor(world_revision=state.world_revision,
+                deliberation_revision=state.deliberation_revision, ledger_sequence=state.ledger_sequence))
+        # Captured with dbc0db32's original reader, before derived canonical
+        # coordinates/edge proofs were added to current Recall readings.
+        golden = Path(__file__).parents[1] / 'support/fixtures/prehistory-structured-retention-opportunity.json'
+        assert actual.model_dump(mode='json') == json.loads(golden.read_text())
+    finally:
+        ledger.close()
