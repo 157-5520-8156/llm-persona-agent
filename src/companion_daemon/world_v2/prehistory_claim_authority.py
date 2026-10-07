@@ -23,7 +23,12 @@ def _compact(value):
     value = canonicalize_json_value(value)
     snapshot = value.get("inner_life_snapshot") if isinstance(value, dict) else None
     materials = snapshot.get("materials") if isinstance(snapshot, dict) else None
-    if isinstance(materials, dict) and materials.get("contract") == "shared-string-view.1":
+    compiler = snapshot.get("snapshot_compiler") if isinstance(snapshot, dict) else None
+    version = compiler.get("value") if isinstance(compiler, dict) else None
+    from .character_interior.life_context_presentation import COMPACT_STORY_PREFETCH_COMPILER_VERSIONS
+
+    if (isinstance(version, str) and version in COMPACT_STORY_PREFETCH_COMPILER_VERSIONS
+            and isinstance(materials, dict) and materials.get("contract") == "shared-string-view.1"):
         from .shared_string_view import unpack_shared_strings
 
         # Core can keep the same presented material in its lossless string

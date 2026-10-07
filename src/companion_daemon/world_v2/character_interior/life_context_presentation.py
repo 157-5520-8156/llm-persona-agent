@@ -5,14 +5,15 @@ the character's action or feeling. Call diary rendering only after redaction.
 """
 from __future__ import annotations
 
-LIFE_CONTEXT_COMPILER_VERSION = "inner-life-snapshot-compiler.28"
+LIFE_CONTEXT_COMPILER_VERSION = "inner-life-snapshot-compiler.29"
 SCOPED_DIARY_COMPILER_VERSIONS = frozenset({
-    "inner-life-snapshot-compiler.25", "inner-life-snapshot-compiler.26", "inner-life-snapshot-compiler.27", "inner-life-snapshot-compiler.28",
+    "inner-life-snapshot-compiler.25", "inner-life-snapshot-compiler.26", "inner-life-snapshot-compiler.27", "inner-life-snapshot-compiler.28", "inner-life-snapshot-compiler.29",
 })
 SOURCE_KIND_DIARY_COMPILER_VERSIONS = frozenset({
-    "inner-life-snapshot-compiler.26", "inner-life-snapshot-compiler.27", "inner-life-snapshot-compiler.28",
+    "inner-life-snapshot-compiler.26", "inner-life-snapshot-compiler.27", "inner-life-snapshot-compiler.28", "inner-life-snapshot-compiler.29",
 })
-EXPLICIT_PREFETCH_AUTHORITY_COMPILER_VERSIONS = frozenset({"inner-life-snapshot-compiler.27", "inner-life-snapshot-compiler.28"})
+EXPLICIT_PREFETCH_AUTHORITY_COMPILER_VERSIONS = frozenset({"inner-life-snapshot-compiler.27", "inner-life-snapshot-compiler.28", "inner-life-snapshot-compiler.29"})
+COMPACT_STORY_PREFETCH_COMPILER_VERSIONS = frozenset({"inner-life-snapshot-compiler.29"})
 PENDING_WORLD_SCOPE = "active_world_occurrence_outcome_unsettled_not_personal_experience"
 SETTLED_WORLD_SCOPE = "settled_world_occurrence_with_field_scoped_authority"
 DIARY_TEXT_CHARACTERS = 160

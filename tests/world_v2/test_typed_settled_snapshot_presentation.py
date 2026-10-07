@@ -75,7 +75,7 @@ async def test_real_settlement_without_discriminator_reaches_both_display_lanes(
     assert 'result_payload_hash' not in source['value']  # Production chat compaction ran.
     frozen_item = next(item for item in capsule.world_life.items if item.item_ref == world.occurrence_id)
     assert 'context_kind' not in json.loads(frozen_item.payload_json)
-    assert snapshot.snapshot_compiler.value == 'inner-life-snapshot-compiler.28'
+    assert snapshot.snapshot_compiler.value == 'inner-life-snapshot-compiler.29'
     displayed = snapshot.model_view()['materials']
     entry = next(item for item in displayed['recent_self_experiences']['items']
                  if item['source_ref'] == world.occurrence_id)

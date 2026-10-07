@@ -1531,7 +1531,16 @@ def _prefetch_constants(snapshot: Mapping[str, object]) -> tuple[tuple[str, obje
     return _AUTOMATIC_PREFETCH_CONSTANTS
 
 
-def _present_automatic_prefetch(value: object, *, constants=_AUTOMATIC_PREFETCH_CONSTANTS) -> object:
+def _compact_story_prefetch(snapshot: Mapping[str, object]) -> bool:
+    from .character_interior.life_context_presentation import COMPACT_STORY_PREFETCH_COMPILER_VERSIONS
+
+    compiler = snapshot.get("snapshot_compiler")
+    version = compiler.get("value") if isinstance(compiler, Mapping) else None
+    return isinstance(version, str) and version in COMPACT_STORY_PREFETCH_COMPILER_VERSIONS
+
+
+def _present_automatic_prefetch(value: object, *, constants=_AUTOMATIC_PREFETCH_CONSTANTS,
+                                compact_stories: bool = False) -> object:
     """Elide only the constants allowed by the original snapshot version."""
 
     if not isinstance(value, Mapping):
@@ -1544,7 +1553,7 @@ def _present_automatic_prefetch(value: object, *, constants=_AUTOMATIC_PREFETCH_
         if not isinstance(item, dict):
             presented.append(item)
             continue
-        item_constants = _prefetch_item_constants(item, constants)
+        item_constants = _prefetch_item_constants(item, constants) if compact_stories else constants
         presented.append(
             {
                 name: entry
@@ -1568,7 +1577,8 @@ def _prefetch_item_constants(item: Mapping[str, object], constants):
     return constants
 
 
-def _expand_automatic_prefetch(value: object, *, constants=_AUTOMATIC_PREFETCH_CONSTANTS) -> object:
+def _expand_automatic_prefetch(value: object, *, constants=_AUTOMATIC_PREFETCH_CONSTANTS,
+                               compact_stories: bool = False) -> object:
     if not isinstance(value, Mapping):
         return value
     items = value.get("items")
@@ -1579,7 +1589,7 @@ def _expand_automatic_prefetch(value: object, *, constants=_AUTOMATIC_PREFETCH_C
         if not isinstance(item, dict):
             expanded.append(item)
             continue
-        item_constants = dict(_prefetch_item_constants(item, constants))
+        item_constants = dict(_prefetch_item_constants(item, constants) if compact_stories else constants)
         rebuilt: dict[str, object] = {}
         for name in _AUTOMATIC_PREFETCH_ITEM_ORDER:
             if name in item:
@@ -1642,6 +1652,7 @@ def present_inner_life(
         if "automatic_prefetch" in ordered_materials:
             ordered_materials["automatic_prefetch"] = _present_automatic_prefetch(
                 ordered_materials["automatic_prefetch"], constants=_prefetch_constants(snapshot),
+                compact_stories=_compact_story_prefetch(snapshot),
             )
         # ``production._bind_capability_evidence`` is the only writer and no
         # module in src/ reads it back (its refs are already carried by
@@ -1714,6 +1725,7 @@ def expand_present_world_context(view: Mapping[str, object]) -> dict[str, object
         if "automatic_prefetch" in materials:
             materials["automatic_prefetch"] = _expand_automatic_prefetch(
                 materials["automatic_prefetch"], constants=_prefetch_constants(snapshot),
+                compact_stories=_compact_story_prefetch(snapshot),
             )
     expanded["inner_life_snapshot"] = _expand_availability_wrappers(snapshot)
     return expanded
