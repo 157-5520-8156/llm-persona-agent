@@ -65,3 +65,10 @@ Legacy full-envelope tool schemas retain their original fields and frozen identi
 The current slim/native JSON carriers expose the added reading controls through versioned
 prompts (`.7-slim` and `.8-slim-core`). The previous `.6-slim` to `.7-slim-core`
 conversion remains supported; no frozen hash expectation is rewritten.
+
+## Follow-up (2026-10-07)
+
+ADR0023 adds structured revision/resume, history-scoped `.3` incremental acceptance,
+reviewed cross-story occurrence identity and evidence-bound continuation. The limitations
+above describe this ADR's original P0/P1 increment; the new audit records which P2 paths
+were subsequently implemented and which semantic qualification gates remain open.

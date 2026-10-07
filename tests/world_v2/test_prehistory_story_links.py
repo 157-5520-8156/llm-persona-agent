@@ -338,18 +338,20 @@ def test_story_link_draft_rejects_multiple_relation_kinds_for_the_same_pair():
         )
 
 
-def test_carry_forward_preserves_only_previously_reviewed_links_with_unchanged_evidence():
+@pytest.mark.parametrize('structured', [False, True])
+def test_carry_forward_preserves_only_previously_reviewed_links_with_unchanged_evidence(structured):
     source_materials = _materials()
     old_draft = _draft(source_materials)
     old_linked = apply_story_links(
         source_materials, actor_ref=ACTOR, draft=old_draft, narrative_text=STORY,
     )
-    old_archive = export_actor_archive(old_linked, ACTOR, "prehistory-archive:carry-forward")
     old_artifact = PrehistoryStoryLinkArtifact(
         request_hash="d" * 64, source_artifact_ref=source_materials.source_artifact_ref,
         source_materials_hash=digest(source_materials), linked_materials_hash=digest(old_linked),
         draft=old_draft,
     )
+    old_archive = export_actor_archive(old_linked, ACTOR, "prehistory-archive:carry-forward",
+        preserve_story_structure=structured, story_links=old_artifact if structured else None)
     review = PrehistoryCreationReview(
         brief_hash="e" * 64, document_hash=digest(old_archive), reviewer_ref="reviewer:fixture",
         reviewed_at=WORLD_START, decision="approved",
@@ -367,7 +369,7 @@ def test_carry_forward_preserves_only_previously_reviewed_links_with_unchanged_e
         previous_source_materials=source_materials, previous_linked_materials=old_linked,
         previous_archive=old_archive, previous_artifact=old_artifact, previous_review=review,
         current_materials=source_materials, current_archive=export_actor_archive(
-            source_materials, ACTOR, old_archive.archive_id,
+            source_materials, ACTOR, old_archive.archive_id, preserve_story_structure=structured,
         ), actor_ref=ACTOR, narrative_text=STORY,
     )
     assert artifact.origin == "approved_review_carry_forward"
@@ -381,7 +383,8 @@ def test_carry_forward_preserves_only_previously_reviewed_links_with_unchanged_e
         previous_source_materials=source_materials, previous_linked_materials=old_linked,
         previous_archive=old_archive, previous_artifact=old_artifact, previous_review=review,
         current_materials=changed_materials,
-        current_archive=export_actor_archive(changed_materials, ACTOR, old_archive.archive_id),
+        current_archive=export_actor_archive(changed_materials, ACTOR, old_archive.archive_id,
+            preserve_story_structure=structured),
         actor_ref=ACTOR, narrative_text=STORY,
     )
     assert empty_artifact.draft.relations == ()

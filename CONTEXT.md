@@ -1,3 +1,23 @@
+Incremental story import P2 (2026-10-07):
+`docs/audits/story-import-p2-2026-10-07.md`, ADR0023; base ffdde4c6, implementation dbc0db32,
+review fixes6366b9e1/e95caa09. One prepare entry captures extraction/locallinks/historyplan/review/revision;
+.3 pins same-actor archives, World start, biography and exact prior records; lock-time stale-basis rejection.
+Explicit reviewed canonical event mappings only, no similarity merge. Cross-story edge proofs reach both
+currently readable endpoints; .2/.3 canonical alignment, long windows and actual claim closure tested.
+Durable initialization .1 keeps its historical reader bytes; old opportunity golden and replay preserved.
+New acquisition contract fixes old known_until-retention prompt conflict; old captures retain exact protocol.
+Historical12-record clone only: A14+B7 ->33, final1shared event/9crossedges; exact reimport/resume inert.
+Earlier pilot7+7 with0links is failed coverage; two incomplete review replies rejected. Identity plan
+correction timed out; separately recorded recovery used exact endpoint error, then independent review.
+Independent same-wire extraction A14records vs6records; repeated sample rejected for other-person
+attitude/knowledge bounds. Semantic repeatability/reviewer agreement NOTqualified; no production adoption.
+25providercalls/24known estimated CNY0.65824693/1unknown, copiedcaptures excluded. No new role chats,
+retention calls, localQwen, production/QQ writes. Sourceplan is losslesspartition only, not global novel merge.
+Full process10233pass/19skip/2xfail ran alongside review edits; NOTfinal-head frozen full qualification.
+Final memory/story/Recall857pass; all two-axis actionable findings closed. Full replay results in audit.
+Next: frozen semantic coverage/perspective oracle and repeatability gate, then NPC/rolling continuity.
+manual_only/qualification_incomplete retained; many-line scale/runtime fate/week-month quality remain open.
+
 Story reading qualified on a frozen historical sample (2026-10-07):
 `docs/audits/story-continuity-qualification-2026-10-07.md`, design `story-reading-qualification-2026-10-07.md`.
 Opt-in hybrid15 fits actual5-node chain in10867 reading/21367 receipt bytes under original11k/22k caps.
