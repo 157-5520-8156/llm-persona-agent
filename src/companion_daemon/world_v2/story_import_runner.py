@@ -256,6 +256,7 @@ async def prepare_story_import(*, brief, narrative_text: str, archive_id: str, r
     # acquisition-time/omitted-association gaps found by the first live pilot.
     coverage = previous_identity.get('coverage_review', False) if previous_identity else True
     identity_review = previous_identity.get('identity_inventory', False) if previous_identity else True
+    scope_review = previous_identity.get('actor_readable_review', False) if previous_identity else True
     identity = {'contract': 'story-import-run.1', 'brief_hash': digest(brief),
         'source_hash': hashlib.sha256(narrative_text.encode('utf-8')).hexdigest(), 'archive_id': archive_id, 'actor_ref': brief.actor_ref,
         'model': model_name, 'reviewer_model': reviewer_model or model_name,
@@ -264,6 +265,8 @@ async def prepare_story_import(*, brief, narrative_text: str, archive_id: str, r
         identity['coverage_review'] = coverage
     if previous_identity is None or 'identity_inventory' in previous_identity:
         identity['identity_inventory'] = identity_review
+    if previous_identity is None or 'actor_readable_review' in previous_identity:
+        identity['actor_readable_review'] = scope_review
     if manifest_path.exists():
         if json.loads(manifest_path.read_text()) != identity:
             raise ValueError('story run is bound to a different manuscript, history basis or model')
@@ -313,7 +316,7 @@ async def prepare_story_import(*, brief, narrative_text: str, archive_id: str, r
                                           cross_story_links=plan.cross_story_links, require_coverage_review=coverage)
         review_brief = brief.model_copy(update={'draft_source_ref': document.source_artifact_ref})
         review_packet = semantic_review_request(review_brief, document, story_links=links,
-            narrative_text=narrative_text, source_materials=materials)
+            narrative_text=narrative_text, source_materials=materials, actor_readable_scope=scope_review)
         def validate_review(raw, *, captured_at):
             response = semantic_response_type(review_packet).model_validate_json(raw)
             # The timestamp belongs to the captured response, not a new retry.

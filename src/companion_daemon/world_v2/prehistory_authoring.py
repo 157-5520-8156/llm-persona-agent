@@ -324,7 +324,8 @@ def semantic_response_type(request):
     return {"prehistory-semantic-review-request.1": PrehistorySemanticReview,
             "prehistory-semantic-review-request.2": PrehistorySemanticAssessment,
             "prehistory-semantic-review-request.3": PrehistoryImportAssessment,
-            "prehistory-semantic-review-request.4": PrehistoryCoverageAssessment}[request["contract"]]
+            "prehistory-semantic-review-request.4": PrehistoryCoverageAssessment,
+            "prehistory-semantic-review-request.5": PrehistoryCoverageAssessment}[request["contract"]]
 
 
 def _validate_import_verdict_coverage(document, review):
@@ -366,6 +367,7 @@ def semantic_review_request(
     narrative_text: str | None = None,
     source_materials=None,
     assessment_only: bool = False,
+    actor_readable_scope: bool = False,
 ) -> dict:
     """Bind the independent reviewer to the exact source, actor view, archive and links."""
     # Apply the semantic protocol's existing budget after composing its full
@@ -475,9 +477,17 @@ def semantic_review_request(
             "原文已明确日/月/年时，不能把known_until拖到World启动；混合不同获知时间应拆记录。"
             "获知区间错误需在相应record_index标reject并说明正确证据；不从发生时间无条件推知情。"
         )
+    if actor_readable_scope:
+        if not coverage:
+            raise ValueError('explicit actor scope requires the incremental coverage review')
+        from .prehistory_review_reading import actor_readable_history, ACTOR_READABLE_REVIEW_INSTRUCTION
+        packet['actor_readable_records'] = actor_readable_history((document,))
+        instruction += ACTOR_READABLE_REVIEW_INSTRUCTION.replace('documents.records', 'document.records').replace(
+            'source_owner', 'document.actor_ref').replace('原始sources', '原始叙事')
     response_type = (PrehistoryCoverageAssessment if coverage else PrehistoryImportAssessment if document.import_context is not None
                      else PrehistorySemanticAssessment if assessment_only else PrehistorySemanticReview)
-    packet.update(contract=("prehistory-semantic-review-request.4" if coverage
+    packet.update(contract=("prehistory-semantic-review-request.5" if actor_readable_scope
+                            else "prehistory-semantic-review-request.4" if coverage
                             else "prehistory-semantic-review-request.3" if document.import_context is not None
                             else "prehistory-semantic-review-request.2" if assessment_only
                             else "prehistory-semantic-review-request.1"),
@@ -514,10 +524,11 @@ def bind_semantic_review(
         source_materials = LifeMaterialsDraft.model_validate_json(
             json.dumps(submitted_request["source_materials"], ensure_ascii=False),
         )
-    assessment_only = submitted_request.get("contract") in {"prehistory-semantic-review-request.2", "prehistory-semantic-review-request.3", "prehistory-semantic-review-request.4"}
+    assessment_only = submitted_request.get("contract") in {"prehistory-semantic-review-request.2", "prehistory-semantic-review-request.3", "prehistory-semantic-review-request.4", "prehistory-semantic-review-request.5"}
     if submitted_request != semantic_review_request(
         brief, document, story_links=story_links, narrative_text=narrative_text,
         source_materials=source_materials, assessment_only=assessment_only,
+        actor_readable_scope=submitted_request.get('contract') == 'prehistory-semantic-review-request.5',
     ):
         raise ValueError("submitted semantic review packet differs from its bound content or contract")
     response_type = semantic_response_type(submitted_request)

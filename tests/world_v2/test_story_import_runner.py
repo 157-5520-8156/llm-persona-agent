@@ -24,7 +24,8 @@ async def test_whole_story_preparation_resumes_without_repeating_any_completed_c
                  'prior_event_ref': None, 'rationale': 'Fixture source is distinct.'}
                 for ref in request['new_event_inventory']], 'cross_story_links': []}
         else:
-            assert contract == 'prehistory-semantic-review-request.4'
+            assert contract == 'prehistory-semantic-review-request.5'
+            assert request['actor_readable_records'][0]['reader_actor_ref'] == b.actor_ref
             value = {'contract': 'prehistory-import-assessment.4', 'records': [
                 {'record_index': 0, 'verdict': 'approve', 'rationale': 'Fixture source assessment.'}],
                 'story_links': [], 'cross_record_findings': [], 'event_matches': [], 'cross_story_links': [], 'missing_connections': []}

@@ -189,7 +189,8 @@ def test_delta_review_requires_every_import_dimension_and_binds_the_basis():
         PrehistoryImportAssessment.model_validate_json(json.dumps(raw))
 
 
-def test_coverage_review_cannot_approve_an_empty_plan_that_omits_a_sourced_callback():
+@pytest.mark.parametrize('actor_scope', [False, True])
+def test_coverage_review_cannot_approve_an_empty_plan_that_omits_a_sourced_callback(actor_scope):
     from companion_daemon.world_v2.story_import import bind_import_context
     from companion_daemon.world_v2.prehistory_authoring import (
         PrehistoryCoverageAssessment, semantic_review_request, bind_semantic_review, package_reviewed,
@@ -201,8 +202,10 @@ def test_coverage_review_cannot_approve_an_empty_plan_that_omits_a_sourced_callb
         require_coverage_review=True)
     b = brief().model_copy(update={'draft_source_ref': doc.source_artifact_ref,
         'world_start_payload_hash': digest({}), 'accepted_archives': (prior,)})
-    packet = semantic_review_request(b, doc)
-    assert packet['contract'] == 'prehistory-semantic-review-request.4'
+    packet = semantic_review_request(b, doc, actor_readable_scope=actor_scope)
+    assert packet['contract'] == ('prehistory-semantic-review-request.5' if actor_scope else 'prehistory-semantic-review-request.4')
+    if actor_scope:
+        assert packet['actor_readable_records'][0]['reader_actor_ref'] == doc.actor_ref
     value = {'contract': 'prehistory-import-assessment.4',
         'records': [{'record_index': i, 'verdict': 'approve', 'rationale': 'Fixture judgment.'} for i, _ in enumerate(doc.records)],
         'story_links': [], 'cross_record_findings': [], 'event_matches': [], 'cross_story_links': [],
@@ -216,6 +219,12 @@ def test_coverage_review_cannot_approve_an_empty_plan_that_omits_a_sourced_callb
     assert result.decision == 'rejected'
     with pytest.raises(ValueError, match='rejected draft'):
         package_reviewed(b, doc, result, review_artifact_ref='fixture:review')
+    if actor_scope:
+        changed_packet = json.loads(json.dumps(packet))
+        changed_packet['actor_readable_records'][0]['reader_actor_ref'] = 'actor:other'
+        with pytest.raises(ValueError, match='bound content or contract'):
+            bind_semantic_review(changed_packet, PrehistoryCoverageAssessment.model_validate_json(json.dumps(value)),
+                reviewer_ref='reviewer:fixture', reviewed_at=START)
     value['missing_connections'][0]['prior_source_quote'] = '不存在的证据'
     with pytest.raises(ValueError, match='endpoint source evidence'):
         bind_semantic_review(packet, PrehistoryCoverageAssessment.model_validate_json(json.dumps(value)),
