@@ -1544,17 +1544,28 @@ def _present_automatic_prefetch(value: object, *, constants=_AUTOMATIC_PREFETCH_
         if not isinstance(item, dict):
             presented.append(item)
             continue
+        item_constants = _prefetch_item_constants(item, constants)
         presented.append(
             {
                 name: entry
                 for name, entry in item.items()
                 if not any(
                     name == constant and entry == expected
-                    for constant, expected in constants
+                    for constant, expected in item_constants
                 )
             }
         )
     return {**{k: v for k, v in value.items() if k != "items"}, "items": presented}
+
+
+def _prefetch_item_constants(item: Mapping[str, object], constants):
+    history = item.get("prehistory")
+    story = history.get("story") if isinstance(history, Mapping) else None
+    if isinstance(story, Mapping) and "outgoing_relations" in story:
+        # hybrid.15's compact story reading intentionally has no generic
+        # memory wrapper. Its absent members are not elided emotional defaults.
+        return ()
+    return constants
 
 
 def _expand_automatic_prefetch(value: object, *, constants=_AUTOMATIC_PREFETCH_CONSTANTS) -> object:
@@ -1563,18 +1574,18 @@ def _expand_automatic_prefetch(value: object, *, constants=_AUTOMATIC_PREFETCH_C
     items = value.get("items")
     if not isinstance(items, list):
         return value
-    constants = dict(constants)
     expanded: list[object] = []
     for item in items:
         if not isinstance(item, dict):
             expanded.append(item)
             continue
+        item_constants = dict(_prefetch_item_constants(item, constants))
         rebuilt: dict[str, object] = {}
         for name in _AUTOMATIC_PREFETCH_ITEM_ORDER:
             if name in item:
                 rebuilt[name] = item[name]
-            elif name in constants:
-                rebuilt[name] = constants[name]
+            elif name in item_constants:
+                rebuilt[name] = item_constants[name]
         for name, entry in item.items():
             if name not in rebuilt:
                 rebuilt[name] = entry

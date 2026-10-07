@@ -20,9 +20,17 @@ def _compact(value):
     # Initial and paired materialization use full and chat-compacted inputs.
     # Compare their same bounded semantic view; immutable proof stays in the
     # original requirement table and is validated independently below.
-    return json.loads(compact_chat_model_facing_context(json.dumps(
-        canonicalize_json_value(value), ensure_ascii=False,
-    )))
+    value = canonicalize_json_value(value)
+    snapshot = value.get("inner_life_snapshot") if isinstance(value, dict) else None
+    materials = snapshot.get("materials") if isinstance(snapshot, dict) else None
+    if isinstance(materials, dict) and materials.get("contract") == "shared-string-view.1":
+        from .shared_string_view import unpack_shared_strings
+
+        # Core can keep the same presented material in its lossless string
+        # view. Compare that reading, not its transport wrapper; the original
+        # trace, exact excerpt, actor and cursor checks still supply authority.
+        snapshot["materials"] = unpack_shared_strings(materials)
+    return json.loads(compact_chat_model_facing_context(json.dumps(value, ensure_ascii=False)))
 
 
 def _visible_prehistory_claim_bindings(
