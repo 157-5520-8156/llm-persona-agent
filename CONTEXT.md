@@ -1,3 +1,21 @@
+Budgeted story preparation and semantic diagnostics (2026-10-07):
+`docs/audits/story-budget-and-semantic-gates-2026-10-07.md`; base ac94ab30, runtime6d86b53c,
+reader view915761d9, formal reviewb9c2d3c4. Actual HTTP payload admitted against durable SQLite
+batch/shared ceilings; defaults CNY1/batch,CNY5/ledger. Native CNY price/token evidence pinned;
+missing usage holds fullreserve, no sameattempt reissue, completecapture free recovery. CLIbudgetexit2.
+This covers source preparation and explicitly scoped diagnostic calls ONLY; sourceauthoring, role
+retention, embedding and runtimeRecall excluded. Old unbudgetedcaptures read-only/no paid extension.
+18source-pinned semantic oracle cases added. A14vsA6 diagnostic.1 falselyapproved9/9each by treating
+readable records as narrator-only; explicit actor-reading .2 flags same2knowledge/attitude issues in
+both. Shared reading now in formalrequest.5, newruns pin flag; oldversions/captures unchanged.
+IMPORTANT: one real formal.5review STILLapproves14/14 despite diagnostic failures. Semantic quality
+NOTqualified. Do not promote the testpack or relabel this disagreement as a successful qualification.
+5calls known native-estimate CNY0.121398/unknown0/held0, one sharedCNY1cap. No re-extraction,
+role retention, production/QQwrites. Stop paid repeats without new evidence. Next: explicit supported
+source/actoraccess/time subjudgments, then cost+quality comparison; no keywordhost semantic verdicts.
+Two-axis review no unresolvedfindings. Full frozenb9c2d3c4:10252pass/19skip/2xfail,1246.08s/exit0;
+56focused pass overlaps, not added. Earlier full2209pass interrupted for evidenced follow-up, not a pass.
+
 Incremental story import P2 (2026-10-07):
 `docs/audits/story-import-p2-2026-10-07.md`, ADR0023; base ffdde4c6, implementation dbc0db32,
 review fixes6366b9e1/e95caa09. One prepare entry captures extraction/locallinks/historyplan/review/revision;
