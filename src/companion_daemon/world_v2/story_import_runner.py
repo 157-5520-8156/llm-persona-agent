@@ -21,6 +21,7 @@ from .prehistory_life_materials_runner import (
 )
 from .prehistory_story_links import PrehistoryStoryLinkArtifact
 from .story_import import bind_context_from_brief, import_biography_pins
+from .story_import_budget import budgeted_story_import, StoryBudgetExceeded
 
 
 class StoryImportPlan(FrozenModel):
@@ -201,6 +202,11 @@ async def _run_stage(*, packet, model_name, base_url, api_key, directory, valida
                          'usage_audit': provider_usage_audit(model_name, usage)}
                 _private_json(response_file, saved)
             except BaseException as exc:
+                if isinstance(exc, StoryBudgetExceeded) and not (attempt / 'provider-request.json').exists():
+                    (attempt / 'intent.json').unlink(missing_ok=True)
+                    _private_json(attempt / 'budget-denial.json', {'status': 'budget_exceeded',
+                        'request_emitted': False}, exclusive=False)
+                    raise
                 _private_json(attempt / 'failure.json', {'type': type(exc).__name__,
                     'billing_state': 'unknown_if_request_emitted'}, exclusive=False)
                 if isinstance(exc, ValueError) and (attempt / 'provider-response.json').exists():
@@ -227,6 +233,7 @@ async def _run_stage(*, packet, model_name, base_url, api_key, directory, valida
     raise AssertionError('unreachable story stage')
 
 
+@budgeted_story_import
 async def prepare_story_import(*, brief, narrative_text: str, archive_id: str, run_dir: Path,
                                api_key: str, model_name='deepseek-flash', reviewer_model=None,
                                base_url='https://api.deepseek.com', completion=None, max_revisions=1):

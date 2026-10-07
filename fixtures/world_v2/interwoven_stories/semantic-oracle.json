@@ -1,0 +1,264 @@
+{
+  "contract": "story-semantic-oracle.1",
+  "status": "manually_specified_fixture_not_world_authority",
+  "source_owner": "agent:companion",
+  "sources": [
+    {
+      "source_id": "a",
+      "path": "fixtures/world_v2/interwoven_stories/story-a.md",
+      "sha256": "36654ba68796611c0c44ca51651e519257e7ce87b8cb63accc6cff90593a94eb"
+    },
+    {
+      "source_id": "b",
+      "path": "fixtures/world_v2/interwoven_stories/story-b.md",
+      "sha256": "bb04b5bfee85053fcff7f25271918ea2fd5be473f6c8138f743fbd742390f9b5"
+    }
+  ],
+  "cases": [
+    {
+      "case_id": "a.notebook",
+      "dimension": "coverage",
+      "expectation": "保留买蓝本子、撕掉第一页以及末页记价钱这些原文事实；不要求固定片段数。",
+      "evidence": [
+        {
+          "source_id": "a",
+          "start_char": 13,
+          "end_char": 93,
+          "quote": "2018年秋天，知栀在嘉兴买了一本蓝封面的横线本。她把第一页写得很满，又撕掉，嫌字像在交作业。父亲问她是不是拿来记账，她说不是，随后还是在末页记下了本子的价钱。"
+        }
+      ]
+    },
+    {
+      "case_id": "a.candy-acquisition",
+      "dimension": "actor_knowledge",
+      "expectation": "原文叙述糖纸动作，却没有明示知栀目击或被告知；不能自行补出“主角在场或事后可知”而批准角色知情。世界事件与主角记忆权限须区分。",
+      "evidence": [
+        {
+          "source_id": "a",
+          "start_char": 121,
+          "end_char": 162,
+          "quote": "罗嘉禾见过这个本子，曾把一张皱掉的糖纸压在里面；她们都没把它当成要一起完成的东西。"
+        }
+      ]
+    },
+    {
+      "case_id": "a.shared-attitude",
+      "dimension": "actor_knowledge",
+      "expectation": "不能将嘉禾未表达的私人态度作为知栀已知事实；可保留原文明示属于知栀自己的态度，或将共同态度留在非角色可读的作者视角。",
+      "evidence": [
+        {
+          "source_id": "a",
+          "start_char": 145,
+          "end_char": 162,
+          "quote": "她们都没把它当成要一起完成的东西。"
+        }
+      ]
+    },
+    {
+      "case_id": "a.undated-candy",
+      "dimension": "uncertainty",
+      "expectation": "糖纸动作具体日期和知情日期未明示；不得编造精确日期。仅因有据区间宽不能判定违反。不得把World启动时间称为已确定的事件或获知日期。",
+      "evidence": [
+        {
+          "source_id": "a",
+          "start_char": 93,
+          "end_char": 162,
+          "quote": "之后她有时记路上听见的一句话，有时夹票根，隔很久也不写。罗嘉禾见过这个本子，曾把一张皱掉的糖纸压在里面；她们都没把它当成要一起完成的东西。"
+        }
+      ]
+    },
+    {
+      "case_id": "a.interview-deletion",
+      "dimension": "coverage",
+      "expectation": "保留许宁请求删除衣柜细节及知栀后来划掉该句的过程；许宁已当面表达的理由可以归入知栀获知范围。",
+      "evidence": [
+        {
+          "source_id": "a",
+          "start_char": 235,
+          "end_char": 290,
+          "quote": "许宁读完后却问能不能删掉，说那是闲聊时说的，不想让全校看。知栀当时脸热，先解释自己没有恶意，后来才把那句划掉。"
+        }
+      ]
+    },
+    {
+      "case_id": "a.publication",
+      "dimension": "uncertainty",
+      "expectation": "不得把最终发表或许宁后来同意发表写成已发生事实；允许保留未知。",
+      "evidence": [
+        {
+          "source_id": "a",
+          "start_char": 304,
+          "end_char": 329,
+          "quote": "这不等于许宁后来同意发表，也不等于文章最终刊出了。"
+        }
+      ]
+    },
+    {
+      "case_id": "a.text-difference",
+      "dimension": "coverage",
+      "expectation": "保留“始终热爱”与“做习惯了”的实际差别，以及最终两种说法都没用；不得变成她成功说服对方修改。",
+      "evidence": [
+        {
+          "source_id": "a",
+          "start_char": 358,
+          "end_char": 422,
+          "quote": "别人把一段采访概括成“始终热爱”，她翻自己的记录，只找到受访者说“做习惯了”。她提了这个差别，但最后排版赶时间，两种说法都没用。"
+        }
+      ]
+    },
+    {
+      "case_id": "a.six-photos",
+      "dimension": "coverage",
+      "expectation": "保留义卖当晚发去六张照片、对方回复“收到了”且未说明用途；不能自行推定已印刷或已上网。",
+      "evidence": [
+        {
+          "source_id": "a",
+          "start_char": 765,
+          "end_char": 804,
+          "quote": "晚上嘉禾发消息来要照片，她调了色，发去六张；嘉禾回“收到了”，没说会放在哪里。"
+        }
+      ]
+    },
+    {
+      "case_id": "a.interpretation",
+      "dimension": "actor_knowledge",
+      "expectation": "当时关于作品用途的理解保留为知栀的历史解释；不得提升为客观规律或今后行为脚本。",
+      "evidence": [
+        {
+          "source_id": "a",
+          "start_char": 910,
+          "end_char": 973,
+          "quote": "她当时觉得，别人真正用得上的东西和自己喜欢留下的东西，有时不一样；这是她那时的理解，不是后来每一次拍照或写作都必须遵守的决定。"
+        }
+      ]
+    },
+    {
+      "case_id": "b.lamp",
+      "dimension": "coverage",
+      "expectation": "保留父亲修台灯、知栀照明和连接处拧紧的普通场景；不得凭空增加庆祝或人生转折意义。",
+      "evidence": [
+        {
+          "source_id": "b",
+          "start_char": 63,
+          "end_char": 124,
+          "quote": "父亲说先看看哪里松了，最后只是重新拧紧一个连接处。知栀记得台灯亮起来时并没有什么庆祝；父亲收好螺丝，她把手电放下就去喝水。"
+        }
+      ]
+    },
+    {
+      "case_id": "b.no-future-foresight",
+      "dimension": "acquisition_time",
+      "expectation": "2024年整理夹子及与父亲谈话不能提前拥有2025年义卖计划或2026年用途知识。",
+      "evidence": [
+        {
+          "source_id": "b",
+          "start_char": 228,
+          "end_char": 284,
+          "quote": "她给父亲发了一张盒子的照片，父亲只提醒别把电池一直装在不用的手电里。她照做了。这段谈话没有谈到嘉禾或以后的义卖。"
+        }
+      ]
+    },
+    {
+      "case_id": "ab.same-handover",
+      "dimension": "event_identity",
+      "expectation": "两稿交出同两只黑色夹子的叙述应有明确同一发生映射；新视角可单独保留，不能算第二次借用。",
+      "evidence": [
+        {
+          "source_id": "a",
+          "start_char": 611,
+          "end_char": 635,
+          "quote": "她从随身的小工具盒里拿出两只黑色长尾夹交给嘉禾。"
+        },
+        {
+          "source_id": "b",
+          "start_char": 385,
+          "end_char": 408,
+          "quote": "这里回指的是同一天同一次交夹子，不是另一次借用"
+        }
+      ]
+    },
+    {
+      "case_id": "b.later-clip-use",
+      "dimension": "acquisition_time",
+      "expectation": "保留2026年1月嘉禾消息告知用途；知栀当时才获知夹价目纸，不能说她2025年亲眼见过。",
+      "evidence": [
+        {
+          "source_id": "b",
+          "start_char": 504,
+          "end_char": 587,
+          "quote": "嘉禾回说在，后来摆摊时拿它们夹过价目纸，还发来一张夹子夹着纸边的近照。知栀是在这次消息里才得知夹价目纸的用途；她没有亲自参加那些后来的摊位布置，也不知道具体用了几次。"
+        }
+      ]
+    },
+    {
+      "case_id": "b.later-flyer-use",
+      "dimension": "acquisition_time",
+      "expectation": "保留2026年1月获知纸质传单用途，与2025年6月不知道用途并存；获知事件不应归并成2025年拍照。",
+      "evidence": [
+        {
+          "source_id": "b",
+          "start_char": 697,
+          "end_char": 743,
+          "quote": "知栀只在2026年1月这次聊天才知道纸质传单这个用途；2025年6月她整理蓝本子时还不知道。"
+        }
+      ]
+    },
+    {
+      "case_id": "b.unknown-printing",
+      "dimension": "uncertainty",
+      "expectation": "印刷具体日期、份数与是否上网必须保持未知；嘉禾报告用过不意味着主角亲历印制。",
+      "evidence": [
+        {
+          "source_id": "b",
+          "start_char": 655,
+          "end_char": 697,
+          "quote": "嘉禾说这张图已经印在传单上用过，但没有说哪一天印的、印了多少份，或者是否也发到网上。"
+        }
+      ]
+    },
+    {
+      "case_id": "b.changed-understanding",
+      "dimension": "continuity",
+      "expectation": "保留新用途信息对旧“收到了”理解的补充，以及连接到旧发照事件的有据关系；不能改写成当时已经知道。",
+      "evidence": [
+        {
+          "source_id": "b",
+          "start_char": 775,
+          "end_char": 833,
+          "quote": "她当时想到，那晚只有“收到了”三个字，不足以证明照片没派上用场；这次消息补上了用途，却不能让她改说自己当时已经知道。"
+        }
+      ]
+    },
+    {
+      "case_id": "b.no-forced-resolution",
+      "dimension": "agency",
+      "expectation": "保留旧感受与后来理解可以共存；不能增加“从此不再计较”或规定现在/未来的反应。",
+      "evidence": [
+        {
+          "source_id": "b",
+          "start_char": 833,
+          "end_char": 871,
+          "quote": "她没有删掉蓝本子里原来那页感受，也没有给这件事写一个“从此不再计较”的结尾。"
+        }
+      ]
+    },
+    {
+      "case_id": "b.return-pending",
+      "dimension": "uncertainty",
+      "expectation": "提出下次带回是意向，不能写成已经归还或必然归还；后续照片使用仍未知。",
+      "evidence": [
+        {
+          "source_id": "b",
+          "start_char": 873,
+          "end_char": 941,
+          "quote": "嘉禾说可以下次见面把夹子带回来。知栀回复不用赶，之后她是否实际拿回夹子、嘉禾是否继续使用那些照片，都不在这份截至2026年1月的记载里。"
+        }
+      ]
+    }
+  ],
+  "limits": [
+    "Small diagnostic set, not complete narrative or production qualification.",
+    "Do not score segmentation counts, opaque identifiers or wording equality.",
+    "No code keyword rules may replace semantic source judgment."
+  ]
+}

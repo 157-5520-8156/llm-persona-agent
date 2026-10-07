@@ -148,6 +148,8 @@ class _AttemptCaptureTransport:
         safe_headers = {key.lower(): value for key, value in request.headers.items() if key.lower() != "authorization"}
         parsed_url = urlsplit(str(request.url))
         safe_url = urlunsplit((parsed_url.scheme, parsed_url.netloc, parsed_url.path, "", ""))
+        from .story_import_budget import reserve_current_request
+        reservation = reserve_current_request(self.attempt_dir, request_body, safe_url)
         _private_json(self.attempt_dir / "provider-request.json", {
             "method": request.method, "url": safe_url, "headers": safe_headers,
             "body_utf8": request_body.decode("utf-8", errors="replace"),
@@ -162,6 +164,9 @@ class _AttemptCaptureTransport:
             "body_utf8": response_body.decode("utf-8", errors="replace"),
             "body_sha256": hashlib.sha256(response_body).hexdigest(),
         })
+        if reservation is not None:
+            budget, request_id = reservation
+            budget.settle_capture(request_id)
         headers = {key: value for key, value in response.headers.items()
                    if key.lower() not in {"content-length", "content-encoding", "transfer-encoding"}}
         return type(response)(
@@ -340,7 +345,8 @@ async def run_faithful_ingestion(
             raise RuntimeError("previous ingestion output was truncated; inspect captured evidence instead of retrying")
         if current.get("status") == "provider_or_runner_failed":
             last_attempt = int(current.get("attempts", 1))
-            if (run_dir / f"attempt-{last_attempt:02d}" / "provider-request.json").exists():
+            last_dir = run_dir / f"attempt-{last_attempt:02d}"
+            if (last_dir / "provider-request.json").exists() and not (last_dir / "provider-response.json").exists():
                 raise RuntimeError("previous ingestion request may have been billed; inspect captured evidence instead of retrying")
         manifest = current
     else:
