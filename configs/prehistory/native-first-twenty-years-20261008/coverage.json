@@ -1,0 +1,532 @@
+{
+  "contract": "native-life-coverage.1",
+  "scope": "source_catalogue_not_production_adoption",
+  "source_hash": "c522bbbe0e79b4ab9133078b57124d56ae50b5a3c1a563b43cb0bce2a0b6eb8c",
+  "compiled_manifest_hash": "8f6ee89271cab93f6b9d3c361ddf8da6a8a90965680b98837103b7400ff10073",
+  "born_at": "2005-04-12T00:00:00+08:00",
+  "cutoff": "2025-04-12T23:59:59+08:00",
+  "native_scenes": 59,
+  "native_blocks": 122,
+  "native_records": 118,
+  "world_only_blocks": 4,
+  "legacy_records_unchanged": 72,
+  "legacy_wholly_before_cutoff": 51,
+  "legacy_interval_crosses_cutoff": 5,
+  "legacy_later_bridge": 16,
+  "native_scene_start_year_counts": {
+    "2005": 1,
+    "2007": 1,
+    "2009": 2,
+    "2010": 4,
+    "2011": 2,
+    "2012": 3,
+    "2013": 2,
+    "2014": 2,
+    "2015": 3,
+    "2016": 3,
+    "2017": 2,
+    "2018": 2,
+    "2019": 3,
+    "2020": 3,
+    "2021": 4,
+    "2022": 4,
+    "2023": 5,
+    "2024": 10,
+    "2025": 3
+  },
+  "native_knowledge_kinds": {
+    "world_only": 4,
+    "experienced": 114,
+    "self_reflection": 4
+  },
+  "storylines": [
+    {
+      "line_id": "home",
+      "title": "家有自己的时间",
+      "scenes": 15
+    },
+    {
+      "line_id": "hands",
+      "title": "身体和手慢慢会的事",
+      "scenes": 15
+    },
+    {
+      "line_id": "play",
+      "title": "没有正事也会记住的日子",
+      "scenes": 20
+    },
+    {
+      "line_id": "things",
+      "title": "东西的去处与自己作主",
+      "scenes": 21
+    },
+    {
+      "line_id": "words",
+      "title": "说出口与没说清的事",
+      "scenes": 20
+    },
+    {
+      "line_id": "jiahe",
+      "title": "与嘉禾各过各的生活",
+      "scenes": 13
+    },
+    {
+      "line_id": "places",
+      "title": "从熟悉的街口到上海",
+      "scenes": 10
+    },
+    {
+      "line_id": "making",
+      "title": "想做一点自己的东西",
+      "scenes": 21
+    }
+  ],
+  "shared_scenes": [
+    {
+      "event_ref": "event:native20:p1-01",
+      "title": "出生那天与一只小袜子",
+      "line_refs": [
+        "home",
+        "things"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p1-02",
+      "title": "雨声里的小衣服",
+      "line_refs": [
+        "home",
+        "things"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p1-03",
+      "title": "大人讲起幼年的误认",
+      "line_refs": [
+        "home",
+        "words"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p1-06",
+      "title": "旧布条画的路线",
+      "line_refs": [
+        "play",
+        "making"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p1-07",
+      "title": "想走不同的巷口",
+      "line_refs": [
+        "places",
+        "home"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p1-08",
+      "title": "看照片听出生的事",
+      "line_refs": [
+        "home",
+        "words",
+        "things"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p2-01",
+      "title": "玻璃杯底的水印",
+      "line_refs": [
+        "home",
+        "play",
+        "making"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p2-02",
+      "title": "量错的纸盒",
+      "line_refs": [
+        "making",
+        "things",
+        "hands"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p2-03",
+      "title": "粉笔跳格",
+      "line_refs": [
+        "play",
+        "places"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p2-05",
+      "title": "念断的课文",
+      "line_refs": [
+        "words",
+        "home",
+        "play"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p2-06",
+      "title": "录下来的笑场",
+      "line_refs": [
+        "play",
+        "words",
+        "making"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p2-08",
+      "title": "接住两三下",
+      "line_refs": [
+        "hands",
+        "play"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p2-09",
+      "title": "借出去的小盒子",
+      "line_refs": [
+        "things",
+        "making",
+        "words"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p3-01",
+      "title": "一起等雨停",
+      "line_refs": [
+        "jiahe",
+        "play",
+        "places"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p3-02",
+      "title": "球练到一半想坐着",
+      "line_refs": [
+        "hands",
+        "play"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p3-03",
+      "title": "三个人也能玩",
+      "line_refs": [
+        "play",
+        "jiahe"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p3-04",
+      "title": "补不好的小挂件",
+      "line_refs": [
+        "making",
+        "things",
+        "hands"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p3-05",
+      "title": "嘉禾第一次看见她做的东西",
+      "line_refs": [
+        "jiahe",
+        "making",
+        "things"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p3-07",
+      "title": "攒了钱又改了主意",
+      "line_refs": [
+        "things",
+        "making"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p3-08",
+      "title": "对方记得的是另一件事",
+      "line_refs": [
+        "things",
+        "words",
+        "play"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p3-09",
+      "title": "改一个词的乐趣",
+      "line_refs": [
+        "words",
+        "making"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p3-10",
+      "title": "生日后的一次散步",
+      "line_refs": [
+        "places",
+        "making",
+        "home"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p4-01",
+      "title": "手腕终于松了一点",
+      "line_refs": [
+        "hands",
+        "play"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p4-02",
+      "title": "帮父亲理一叠旧书",
+      "line_refs": [
+        "home",
+        "hands",
+        "things"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p4-03",
+      "title": "和嘉禾消磨的一个下午",
+      "line_refs": [
+        "jiahe",
+        "play"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p4-04",
+      "title": "把读到的话念成声音",
+      "line_refs": [
+        "words",
+        "making"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p4-05",
+      "title": "一个旧梗还接得上",
+      "line_refs": [
+        "jiahe",
+        "words",
+        "play"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p4-06",
+      "title": "旧纸盒改成笔插",
+      "line_refs": [
+        "making",
+        "things",
+        "hands"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p4-07",
+      "title": "一道题终于弄明白",
+      "line_refs": [
+        "words",
+        "hands"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p4-08",
+      "title": "和许桥的普通玩笑",
+      "line_refs": [
+        "jiahe",
+        "play",
+        "words"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p4-09",
+      "title": "嘉禾想试的一件小事",
+      "line_refs": [
+        "jiahe",
+        "making",
+        "things"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p5-02",
+      "title": "卡住又绕过去的一道题",
+      "line_refs": [
+        "words",
+        "hands"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p5-03",
+      "title": "旧录音再听一遍",
+      "line_refs": [
+        "words",
+        "making",
+        "things"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p5-04",
+      "title": "嘉禾借走的一本书",
+      "line_refs": [
+        "jiahe",
+        "things"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p5-05",
+      "title": "街口碰见林夏",
+      "line_refs": [
+        "places",
+        "jiahe"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p5-06",
+      "title": "自己买的一件外套",
+      "line_refs": [
+        "things",
+        "making"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p5-07",
+      "title": "和许桥各忙各的晚自习",
+      "line_refs": [
+        "jiahe",
+        "words"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p5-08",
+      "title": "母亲的一顿晚饭",
+      "line_refs": [
+        "home",
+        "words"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p5-09",
+      "title": "年末整理留下的东西",
+      "line_refs": [
+        "things",
+        "making",
+        "hands"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-01",
+      "title": "一篇自己改出来的小文章",
+      "line_refs": [
+        "words",
+        "making",
+        "hands"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-02",
+      "title": "嘉禾发来的一段语音",
+      "line_refs": [
+        "jiahe",
+        "words"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-03",
+      "title": "毕业前留下的一本旧本子",
+      "line_refs": [
+        "things",
+        "making",
+        "home"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-04",
+      "title": "学会看地铁换乘",
+      "line_refs": [
+        "places",
+        "hands"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-05",
+      "title": "和父母走的一段夜路",
+      "line_refs": [
+        "home",
+        "places"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-08",
+      "title": "旧纸盒笔插在上海的新用处",
+      "line_refs": [
+        "things",
+        "making",
+        "places"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-09",
+      "title": "把一段旧录音剪成配乐",
+      "line_refs": [
+        "making",
+        "words",
+        "hands"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-10",
+      "title": "寒假回家各忙各的",
+      "line_refs": [
+        "home",
+        "jiahe"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-11",
+      "title": "三月给嘉禾发的一张照片",
+      "line_refs": [
+        "jiahe",
+        "making",
+        "things"
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-12",
+      "title": "二十岁生日那天",
+      "line_refs": [
+        "home",
+        "play",
+        "things",
+        "words"
+      ]
+    },
+    {
+      "event_ref": "event:native20:editor-major-choice",
+      "title": "纸上写着的那个专业",
+      "line_refs": [
+        "words",
+        "places",
+        "home"
+      ]
+    }
+  ],
+  "explicit_native_relations": 28,
+  "legacy_connections": 4,
+  "remaining_open_questions": [
+    "那只浅黄色小袜子后来是否真的被找出来给知栀看过",
+    "知栀幼年把豆腐喇叭听成妈妈的具体年份",
+    "2007年那几件小衣服最后是送人还是留了下来（仅作者世界层，主角未知）",
+    "知栀借给林夏的小本子里记了什么",
+    "知栀攒钱没买的那套折纸后来有没有再买",
+    "嘉禾那个快做完的小东西最后做成了什么（截至二十岁生日未获知）",
+    "嘉禾借走的那本书里折过的是哪一页",
+    "知栀买大的那件外套后来有没有改过",
+    "知栀留在家里的旧本子以后是否会重新写起",
+    "知栀是否会把私人视频发出去；尚未取得林夏对公开使用笑声的同意",
+    "与周祺的交换活动今后怎样发展；二十岁之后已有记录单列衔接，不提前当作生日当天的知识"
+  ],
+  "limits": [
+    "Coverage counts describe declared source structure, not a claim of semantic infallibility.",
+    "Legacy time intervals keep their original precision; crossing intervals are not assigned a guessed date.",
+    "World-only prose and story-line labels are operator source material, not actor-readable memory."
+  ]
+}

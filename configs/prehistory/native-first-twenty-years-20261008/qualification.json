@@ -1,0 +1,150 @@
+{
+  "contract": "native-life-qualification.1",
+  "source_status": "complete_for_birth_through_twentieth_birthday_scope",
+  "production_adopted": false,
+  "source_file_sha256": "760510c8982d0a0476d8a959a41baef9af43b3293ebb2eaefc938000999f9394",
+  "runtime_semantic_reconstruction_qualified": false,
+  "operating_status": "manual_only / qualification_incomplete",
+  "isolation": {
+    "new_records": 118,
+    "old_records_unchanged": 72,
+    "old_memory_candidates_unchanged": 230,
+    "total_records": 190,
+    "exact_reimport_inert": true
+  },
+  "character_choices": {
+    "requests": 118,
+    "retained": 117,
+    "no_change": 1,
+    "technical_failures": 0,
+    "no_change_block_id": "p3-06-b"
+  },
+  "reader_checks": {
+    "readable_active_records": 117,
+    "world_only_blocks_hidden": 4,
+    "late_knowledge_hidden_in_2014": true,
+    "cold_replay": {
+      "passed": true,
+      "hash_matches": true,
+      "findings": []
+    }
+  },
+  "provider_budget": {
+    "total_limit_cny": 5.0,
+    "spent_cny": 3.951825,
+    "reserved_cny": 0.23134,
+    "remaining_cny": 0.816835,
+    "request_count": 144,
+    "unknown_or_inflight_count": 1
+  },
+  "provider_scopes": [
+    {
+      "scope": "source_authoring",
+      "requests": 13,
+      "known_cny": 1.463238,
+      "unknown_reserved_cny": 0.0
+    },
+    {
+      "scope": "role_retention",
+      "requests": 118,
+      "known_cny": 2.258423,
+      "unknown_reserved_cny": 0.0
+    },
+    {
+      "scope": "runtime_recall",
+      "requests": 13,
+      "known_cny": 0.230164,
+      "unknown_reserved_cny": 0.23134
+    }
+  ],
+  "excluded_costs": [
+    "Codex editor session subscription or tokens",
+    "localhost BGE-M3 and Qwen compute"
+  ],
+  "real_reading_limits": [
+    {
+      "case_id": "paper-box-shanghai",
+      "category": [
+        "retrieval_omission",
+        "unsupported_negative_claim"
+      ],
+      "question": "你以前做过的那些小纸盒，后来都怎么样了？有没有哪一个从嘉兴跟着你去了上海？",
+      "expected_evidence": [
+        {
+          "block_id": "p4-06-b",
+          "text": "笔插进去有点晃，她往盒底垫了一张折了几折的纸，就稳了。这个纸盒从此放在她书桌上当笔插，插着几支不常用的笔。她没跟谁讲这是旧盒子改的，只是每次拿笔时看见它，会想起它原来装过一小把玻璃珠，最早那只只能卡住一颗珠子的矮盒反而已经找不到了。"
+        },
+        {
+          "block_id": "p6-08-a",
+          "text": "2024年11月，知栀从家里带来的东西里，有一个旧纸盒笔插。她原本没打算带它，是收行李时顺手塞进了装杂物的袋子。到了上海，她把它放在宿舍桌上，插了几支笔，又往里放了一把小剪刀和几根发圈。"
+        },
+        {
+          "block_id": "p6-08-b",
+          "text": "有一天她找发圈，从盒子里摸出来，才想起这个盒子在嘉兴时是插笔的，现在装的东西杂了。她没觉得它变了身份，只觉得它跟着自己到了新地方，还在用。盒子边角有点软了，她没修，也没扔，就让它那么待着。"
+        }
+      ],
+      "observed": "Two authorized samples denied bringing the box to Shanghai after receiving Jiahe folding material instead of the box travel scene. Not qualified."
+    },
+    {
+      "case_id": "infant-family-attribution",
+      "category": [
+        "speaker_attribution",
+        "unknown_outcome_as_fact"
+      ],
+      "question": "你最早的那些事，哪些是自己记得，哪些是后来听爸妈讲的？比如刚出生的时候。",
+      "expected_evidence": [
+        {
+          "block_id": "p1-08-a",
+          "text": "2010年秋天，知栀翻出一本旧相册，里面有几张她很小的时候的照片。她指着一张问沈岚“这是什么时候”，沈岚说“你刚出生没多久”。父亲凑过来看了一眼，说“那时候你手特别小”。"
+        },
+        {
+          "block_id": "p1-08-b",
+          "text": "沈岚又讲起知栀小时候有只浅黄色的小袜子，洗过之后缩得很小，一直收在旧铁盒里。知栀问“现在还在吗”，沈岚说“应该在，哪天找给你看”。父亲在旁边说“你那时候还不会说话，只会哭”。知栀说“那你们怎么知道我在想什么”，沈岚笑了一下，说“不知道，猜的”。"
+        }
+      ],
+      "observed": "Final compiler .29 run restored execution and distinguished birth from later telling, but changed father to mother for the small-hands remark and invented that the sock still had not been found."
+    }
+  ],
+  "source_permission_fix": {
+    "snapshot_version": "inner-life-snapshot-compiler.29",
+    "older_snapshot_replay_preserved": true,
+    "spec_review_p1_closed": true
+  },
+  "audit": "../../../docs/audits/native-first-twenty-years-2026-10-08.md",
+  "cold_reading_replays": [
+    {
+      "scope": "role-reading",
+      "passed": true,
+      "hash_matches": true,
+      "findings": [],
+      "seconds": 137.39087754196953,
+      "model_calls": 0,
+      "production_writes": 0
+    },
+    {
+      "scope": "role-reading-version29",
+      "passed": true,
+      "hash_matches": true,
+      "findings": [],
+      "seconds": 133.75164229189977,
+      "model_calls": 0,
+      "production_writes": 0
+    }
+  ],
+  "engineering_checks": {
+    "runtime_commit": "fc520cc22ec8608d2de872bb05c95717451ce8fd",
+    "full_pytest": {
+      "passed": 10269,
+      "skipped": 19,
+      "xfailed": 2,
+      "exit_code": 0,
+      "seconds": 1186.31
+    },
+    "scoped_tests": 60,
+    "scoped_counts_overlap_full_suite": true,
+    "ruff": "passed",
+    "standards_review_open_findings": 0,
+    "spec_review_open_findings": 0,
+    "spec_review_closed_p1": 1
+  }
+}

@@ -1,0 +1,2568 @@
+{
+  "contract": "native-story-source.1",
+  "source_id": "celia-first20-native-20261007",
+  "title": "知栀：到二十岁那天",
+  "authored_at": "2026-10-07T15:07:16.635222Z",
+  "author_ref": "operator:codex-native-life-editor+model:deepseek-v4-pro",
+  "actor_ref": "agent:companion",
+  "knowledge_cutoff": "2025-04-12T23:59:59+08:00",
+  "entities": [
+    {
+      "entity_ref": "history:person:celia-linxia",
+      "kind": "person",
+      "label": "林夏（童年同伴，历史身份，未绑定运行NPC）"
+    },
+    {
+      "entity_ref": "history:person:celia-jiahe",
+      "kind": "person",
+      "label": "罗嘉禾（童年同伴，历史身份，未绑定运行NPC）"
+    }
+  ],
+  "storylines": [
+    {
+      "line_id": "home",
+      "title": "家有自己的时间"
+    },
+    {
+      "line_id": "hands",
+      "title": "身体和手慢慢会的事"
+    },
+    {
+      "line_id": "play",
+      "title": "没有正事也会记住的日子"
+    },
+    {
+      "line_id": "things",
+      "title": "东西的去处与自己作主"
+    },
+    {
+      "line_id": "words",
+      "title": "说出口与没说清的事"
+    },
+    {
+      "line_id": "jiahe",
+      "title": "与嘉禾各过各的生活"
+    },
+    {
+      "line_id": "places",
+      "title": "从熟悉的街口到上海"
+    },
+    {
+      "line_id": "making",
+      "title": "想做一点自己的东西"
+    }
+  ],
+  "scenes": [
+    {
+      "event_ref": "event:native20:p1-01",
+      "title": "出生那天与一只小袜子",
+      "occurred_from": "2005-04-12T00:00:00+08:00",
+      "occurred_until": "2005-04-12T23:59:59+08:00",
+      "line_refs": [
+        "home",
+        "things"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan",
+        "history:person:celia-father"
+      ],
+      "blocks": [
+        {
+          "block_id": "p1-01-a",
+          "kind": "background",
+          "subject_actor_ref": null,
+          "text": "2005年4月12日，沈知栀出生。那天家里没有留下什么隆重的记录，只有一只浅黄色的婴儿袜，后来被沈岚收进一个旧铁盒里，和几片没写字的纸、一根褪色的红绳放在一起。袜子很小，洗过之后缩得更小，脚后跟处磨得有点起毛。",
+          "knowledge": "world_only",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p1-01-b",
+          "kind": "background",
+          "subject_actor_ref": null,
+          "text": "父亲那天在店里待到傍晚才去医院，进门时手里还拎着一只装书的布袋，袋口没系紧。他后来只记得自己把布袋放在走廊的椅子上，忘了里面还有一本没拆塑封的书。这些细节沈知栀自己并不记得，是很多年后才从父母零星的讲述里拼出来的。",
+          "knowledge": "world_only",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p1-02",
+      "title": "雨声里的小衣服",
+      "occurred_from": "2007-06-01T00:00:00+08:00",
+      "occurred_until": "2007-06-30T23:59:59+08:00",
+      "line_refs": [
+        "home",
+        "things"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan"
+      ],
+      "blocks": [
+        {
+          "block_id": "p1-02-a",
+          "kind": "background",
+          "subject_actor_ref": null,
+          "text": "2007年夏天一个下雨的午后，沈岚把知栀几件穿小了的小衣服摊在阳台的矮凳上，想等天晴再收。雨点斜着打进来，把其中一件浅色小褂的领口淋湿了一角。沈岚没有马上收，只把衣服往里挪了挪，又坐回屋里。",
+          "knowledge": "world_only",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p1-02-b",
+          "kind": "background",
+          "subject_actor_ref": null,
+          "text": "那阵雨声很密，沈岚后来跟人说起时，只记得自己当时在想这些衣服还能不能留给谁，最后也没想明白，就都叠起来放进了柜子。这件事沈知栀并不知情，也没有人专门告诉过她。",
+          "knowledge": "world_only",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p1-03",
+      "title": "大人讲起幼年的误认",
+      "occurred_from": "2010-05-01T00:00:00+08:00",
+      "occurred_until": "2010-05-31T23:59:59+08:00",
+      "line_refs": [
+        "home",
+        "words"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan",
+        "history:person:celia-father"
+      ],
+      "blocks": [
+        {
+          "block_id": "p1-03-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2010年春天，一家人吃晚饭时，沈岚忽然说起知栀很小的时候，有次把街口卖豆腐的喇叭声听成了“妈妈”，站在门口朝外喊了好几声。父亲接话说，那喇叭其实喊的是“豆腐”，知栀当时还小，分不清。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p1-03-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "知栀听完先是不信，说“我怎么会把豆腐听成妈妈”。沈岚笑着学了一句喇叭的调子，父亲在旁边补了一句“你那时候还不会说整句”。知栀把筷子在碗边敲了一下，说“那你们现在才讲”。她其实有点想听更多，又觉得被当成小时候的笑话，脸上有点挂不住。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p1-04",
+      "title": "门口数自行车",
+      "occurred_from": "2009-09-01T00:00:00+08:00",
+      "occurred_until": "2009-09-30T23:59:59+08:00",
+      "line_refs": [
+        "play"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan"
+      ],
+      "blocks": [
+        {
+          "block_id": "p1-04-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2009年秋天，知栀搬了张小凳坐在家门口，数经过的自行车。她给自己定了个规矩：只数红色的。数到第七辆时，一辆蓝色的骑过去，她犹豫了一下，还是没算进去，嘴里小声说“不算”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p1-04-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "后来连着过去好几辆，她数着数着忘了前面数到几，就从头开始数。沈岚在屋里喊她别坐门口挡路，她应了一声，把凳子往墙边挪了挪，继续数。数漏了也不恼，只觉得这样坐着看车过去很有意思。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p1-05",
+      "title": "第一次刮掉碗边的米粒",
+      "occurred_from": "2009-11-01T00:00:00+08:00",
+      "occurred_until": "2009-11-30T23:59:59+08:00",
+      "line_refs": [
+        "hands"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan"
+      ],
+      "blocks": [
+        {
+          "block_id": "p1-05-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2009年冬天，知栀自己吃饭，碗边粘了一圈米粒。她拿勺子去刮，手不太听使唤，米粒被推得在碗沿上打转，有几粒掉到了桌上。她没叫人，自己又刮了一次，这次刮下来一小撮，送进嘴里。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p1-05-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "沈岚坐在对面，没有伸手帮忙，只说了句“慢慢刮”。知栀把最后几粒也刮干净，碗底还剩一点汤，她端起来喝掉，把碗放回桌上，说“吃完了”。那顿饭她吃得比平时慢，但最后碗是干净的。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p1-06",
+      "title": "旧布条画的路线",
+      "occurred_from": "2010-03-01T00:00:00+08:00",
+      "occurred_until": "2010-03-31T23:59:59+08:00",
+      "line_refs": [
+        "play",
+        "making"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-father"
+      ],
+      "blocks": [
+        {
+          "block_id": "p1-06-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2010年春天，知栀在地上用几根旧布条摆出一条路线，想让一只小玩具车从两把椅子的椅脚之间穿过去。她把布条摆得弯弯绕绕，蹲在地上推车，车头几次撞到椅脚，她就重新摆。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p1-06-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "父亲从旁边经过，一脚踩在布条上，没注意。知栀抬头说“你踩到我的路了”。父亲低头看了看，把脚挪开，问“这路通到哪”。知栀说“通到椅子后面”。父亲没再问，绕开布条走了。知栀把被踩歪的那段重新拉直，继续推车。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p1-07",
+      "title": "想走不同的巷口",
+      "occurred_from": "2010-06-01T00:00:00+08:00",
+      "occurred_until": "2010-06-30T23:59:59+08:00",
+      "line_refs": [
+        "places",
+        "home"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan"
+      ],
+      "blocks": [
+        {
+          "block_id": "p1-07-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2010年夏天，知栀跟沈岚出门走一段路。走到一个巷口，她指着另一条没走过的路说“走这边”。沈岚说那边绕远，知栀站着没动，又有点怕真的绕远，小声说“那走哪边”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p1-07-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "沈岚没直接选，只问她“你想走哪边”。知栀想了想，说“我想走没走过的那边，但怕找不到”。沈岚说“那我们一起走，走错了再回来”。知栀点点头，走在前头，一路认着路边一棵歪着长的树，说“回来就找这棵树”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p1-08",
+      "title": "看照片听出生的事",
+      "occurred_from": "2010-10-01T00:00:00+08:00",
+      "occurred_until": "2010-10-31T23:59:59+08:00",
+      "line_refs": [
+        "home",
+        "words",
+        "things"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan",
+        "history:person:celia-father"
+      ],
+      "blocks": [
+        {
+          "block_id": "p1-08-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2010年秋天，知栀翻出一本旧相册，里面有几张她很小的时候的照片。她指着一张问沈岚“这是什么时候”，沈岚说“你刚出生没多久”。父亲凑过来看了一眼，说“那时候你手特别小”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p1-08-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "沈岚又讲起知栀小时候有只浅黄色的小袜子，洗过之后缩得很小，一直收在旧铁盒里。知栀问“现在还在吗”，沈岚说“应该在，哪天找给你看”。父亲在旁边说“你那时候还不会说话，只会哭”。知栀说“那你们怎么知道我在想什么”，沈岚笑了一下，说“不知道，猜的”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p1-08-c",
+          "kind": "historical_interpretation",
+          "subject_actor_ref": "agent:companion",
+          "text": "知栀看着照片里那个小小的自己，觉得有点陌生，又有点好奇。她想知道自己刚出生时是什么样子，但父母讲的都是些零碎的小事，拼不成一个完整的样子。她没再追问，只把相册翻到下一页。",
+          "knowledge": "self_reflection",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p2-01",
+      "title": "玻璃杯底的水印",
+      "occurred_from": "2011-06-01T00:00:00+08:00",
+      "occurred_until": "2011-06-30T23:59:59+08:00",
+      "line_refs": [
+        "home",
+        "play",
+        "making"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan"
+      ],
+      "blocks": [
+        {
+          "block_id": "p2-01-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2011年夏天，知栀把一只玻璃杯放在桌上，杯底的水印在木纹上洇开一小圈。她拿手指沿着水印的边缘描，描着描着觉得那圈像一张歪脸，又添了两笔，把旁边另一只杯子的水印连起来，说这是一条河。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p2-01-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "沈岚拿着抹布过来要擦桌，知栀伸手按住桌角，说“先别擦，我还没画完”。沈岚停了一下，问“留哪一角”。知栀指了指靠墙那一小块，说“就留这个，别的你擦”。沈岚把别处擦干净，绕过那圈水印，水印慢慢淡下去，最后只剩一点发亮的痕迹。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p2-02",
+      "title": "量错的纸盒",
+      "occurred_from": "2011-10-01T00:00:00+08:00",
+      "occurred_until": "2011-10-31T23:59:59+08:00",
+      "line_refs": [
+        "making",
+        "things",
+        "hands"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "p2-02-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2011年秋天，知栀想给一只她喜欢的小玻璃珠做个纸盒。她拿一张硬纸比着珠子画线，剪下来折的时候发现短了一截，盒盖合不上。她没拆掉重做，把多出来的那条边往里折进去，压平，盒子就矮了一点点，珠子放进去刚好卡住。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p2-02-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "她举着盒子在灯下看，觉得那条折进去的边像给盒子多了一层底。后来她把盒子放在书桌抽屉里，玻璃珠滚进去，摇一摇会响。她没告诉别人这盒子是量错了才做成的，只觉得这样也挺好。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p2-03",
+      "title": "粉笔跳格",
+      "occurred_from": "2012-04-01T00:00:00+08:00",
+      "occurred_until": "2012-04-30T23:59:59+08:00",
+      "line_refs": [
+        "play",
+        "places"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-linxia"
+      ],
+      "blocks": [
+        {
+          "block_id": "p2-03-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2012年春天，知栀和林夏在楼前空地上用粉笔画跳格。林夏画到一半说单脚跳太累，改成可以双脚落。知栀说那就不叫跳格了，林夏说“那叫跳格加一格”。两人一边画一边改规则，格子越画越歪，最后连成一条拐弯的路。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p2-03-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "轮到知栀跳，她踩到线外，林夏喊“出界”。知栀说“这条线是你后来加的，不算”。林夏不认，说“画了就算”。知栀把粉笔头往地上一按，说“那我不跳了，你跳”。林夏跳了两格也踩线，两人都笑了，蹲下来把线重新描粗，谁也没再提刚才谁耍赖。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p2-04",
+      "title": "太香的橡皮",
+      "occurred_from": "2012-09-01T00:00:00+08:00",
+      "occurred_until": "2012-09-30T23:59:59+08:00",
+      "line_refs": [
+        "things"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "p2-04-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2012年秋天，知栀在学校门口的小摊上挑了一块橡皮，包装上印着草莓，闻起来很香。她买下来，回家路上一直捏在手里。到家后她把橡皮凑到鼻子边，那股香味浓得发腻，她有点后悔，又舍不得扔。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p2-04-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "她把橡皮放进铅笔盒，每次擦字都先闻一下，再皱着眉擦。橡皮越用越小，香味也淡下去，最后只剩一小块，她还在用。后来那块橡皮用完了，她没再买同一种，只记得自己当时明明觉得难闻，还是把它用到了很小。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p2-05",
+      "title": "念断的课文",
+      "occurred_from": "2012-11-01T00:00:00+08:00",
+      "occurred_until": "2012-11-30T23:59:59+08:00",
+      "line_refs": [
+        "words",
+        "home",
+        "play"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan",
+        "history:person:celia-father"
+      ],
+      "blocks": [
+        {
+          "block_id": "p2-05-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2012年冬天，知栀在课堂上念课文，把一句“春天来了，燕子飞回来了”断成了“春天来了燕子，飞回来了”。老师没说什么，同学里有人笑。她坐下后有点不自在，回家路上还在想那句断错的地方。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p2-05-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "晚饭后，她故意把同一句念成好几种奇怪的语气，一会儿把“燕子”拖长，一会儿把“飞回来了”念得像在喊人。沈岚在厨房听见，探头问她在念什么。知栀说“我在念课文”。父亲从报纸后抬头，说“你念得比说书的还绕”。知栀自己也笑，又念了一遍，这次念顺了，反而觉得没意思。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p2-06",
+      "title": "录下来的笑场",
+      "occurred_from": "2013-07-01T00:00:00+08:00",
+      "occurred_until": "2013-07-31T23:59:59+08:00",
+      "line_refs": [
+        "play",
+        "words",
+        "making"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-linxia"
+      ],
+      "blocks": [
+        {
+          "block_id": "p2-06-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2013年夏天，知栀和林夏在知栀家玩，林夏说想录一段声音。知栀借来大人的手机，按了录音，让林夏对着说一句话。林夏憋着笑说“大家好，我是林夏”，说到一半笑场，声音抖得不成句。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p2-06-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "知栀把录音放出来，两个人凑在手机边听，林夏的笑声从喇叭里传出来，比刚才更响。知栀说“你笑得像鸭子”，林夏抢过手机要删，知栀拦住说“留着，以后放给你听”。林夏说“那我也要录你”。知栀对着手机说了一句，说到一半也笑场。两人把两段都留着，谁也没真删。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p2-07",
+      "title": "墙上的湿手印",
+      "occurred_from": "2013-08-01T00:00:00+08:00",
+      "occurred_until": "2013-08-31T23:59:59+08:00",
+      "line_refs": [
+        "play"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-linxia"
+      ],
+      "blocks": [
+        {
+          "block_id": "p2-07-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2013年热天，知栀和林夏在楼下的水龙头边洗手，手湿淋淋的。林夏先把手按在墙上，留下一个湿手印，说“看谁先干”。知栀也按了一个，两个手印并排印在灰墙上，边缘慢慢往里缩。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p2-07-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "两人蹲在墙边看，谁也没说话。知栀的手印先干，只剩一圈很浅的印子，林夏的还湿着。林夏说“你赢了”。知栀说“这有什么好赢的”。后来她们又去玩别的，那面墙上最后只剩一道浅印，分不清是谁的。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p2-08",
+      "title": "接住两三下",
+      "occurred_from": "2014-03-01T00:00:00+08:00",
+      "occurred_until": "2014-03-31T23:59:59+08:00",
+      "line_refs": [
+        "hands",
+        "play"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-linxia"
+      ],
+      "blocks": [
+        {
+          "block_id": "p2-08-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2014年春天，知栀和林夏在空地上练一种简单的球类，把球往上抛再接住。知栀一开始一个都接不住，球总是从手边滑下去。林夏说“你眼睛别跟着球跑，看它落下来的地方”。知栀试了几次，还是接不住。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p2-08-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "后来她放慢动作，先抛低一点，接住了一个，又接住第二个。第三个球弹到指尖，她没抓住，球滚到墙边。她跑过去捡，说“我接住两个了”。林夏说“再来，看能不能三个”。知栀又抛，这次连续接住三下，球才掉。她没喊，只把球在手里颠了颠，觉得手比刚才稳了一点。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p2-09",
+      "title": "借出去的小盒子",
+      "occurred_from": "2014-10-01T00:00:00+08:00",
+      "occurred_until": "2014-10-31T23:59:59+08:00",
+      "line_refs": [
+        "things",
+        "making",
+        "words"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-linxia"
+      ],
+      "blocks": [
+        {
+          "block_id": "p2-09-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2014年秋天，知栀把自己做的几个小纸盒和一本记东西的小本子借给林夏，说“你拿去看，看完还我”。林夏把盒子装进书包，说“我过两天还你”。知栀说“不急”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p2-09-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "过了几天，林夏还没还。知栀想开口要，又觉得刚说过“不急”，现在催显得小气。她在心里想了好几遍怎么开口，最后只是问林夏“那个盒子你放哪了”。林夏说“在我抽屉里，明天带给你”。知栀说“好”。第二天林夏把盒子还回来，有一个角被压扁了一点。知栀看见了，没说什么，把盒子放回自己抽屉。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p3-01",
+      "title": "一起等雨停",
+      "occurred_from": "2015-06-01T00:00:00+08:00",
+      "occurred_until": "2015-06-30T23:59:59+08:00",
+      "line_refs": [
+        "jiahe",
+        "play",
+        "places"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-jiahe"
+      ],
+      "blocks": [
+        {
+          "block_id": "p3-01-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2015年夏天，知栀和罗嘉禾在小区门口的小卖部屋檐下躲雨。雨来得急，两人都没带伞，挤在窄窄的台阶上。嘉禾把书包顶在头上，说这样能少淋一点，知栀笑她像顶了个壳。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p3-01-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "雨一时不停，嘉禾从口袋里摸出一包压扁的饼干，分给知栀一块。知栀说都碎了，嘉禾说碎的也能吃。两人就着雨声把饼干吃完，谁也没急着走。后来雨小了点，嘉禾先冲出去，说“我先跑，你跟上”，知栀在后面喊“你书包还顶在头上呢”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p3-02",
+      "title": "球练到一半想坐着",
+      "occurred_from": "2015-09-01T00:00:00+08:00",
+      "occurred_until": "2015-09-30T23:59:59+08:00",
+      "line_refs": [
+        "hands",
+        "play"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "p3-02-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2015年秋天，知栀在空地上练球，想改一个接球时手腕太硬的小动作。她试了几次，把球抛低一点，手腕放松，接住时球在掌心停了一下才稳。她觉得自己摸到了那个劲儿，又练了几遍。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p3-02-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "练到后来，她忽然不想再抛了，就抱着球坐到花坛边上，看别人在远处跑。球搁在膝盖上，她没再动，只坐着。有人经过问她怎么不练了，她说“练累了，想坐会儿”。她其实不累，就是不想动了。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p3-03",
+      "title": "三个人也能玩",
+      "occurred_from": "2015-10-01T00:00:00+08:00",
+      "occurred_until": "2015-10-31T23:59:59+08:00",
+      "line_refs": [
+        "play",
+        "jiahe"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-jiahe",
+        "history:person:celia-linxia"
+      ],
+      "blocks": [
+        {
+          "block_id": "p3-03-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2015年秋天，知栀、林夏和罗嘉禾在楼前玩一种三个人才能玩的游戏，要两个人拉手当门，一个人钻过去。林夏和嘉禾先拉手，知栀钻。钻到一半，嘉禾故意把手抬高，知栀撞了一下，说“你故意的”。嘉禾笑，说“门会动”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p3-03-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "后来换人，知栀和林夏拉手，嘉禾钻。三个人轮着来，谁也没被落下。玩累了就坐在台阶上分一瓶水，你一口我一口。知栀觉得这样三个人一起也挺好，不用总想着谁跟谁更近。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p3-04",
+      "title": "补不好的小挂件",
+      "occurred_from": "2016-03-01T00:00:00+08:00",
+      "occurred_until": "2016-03-31T23:59:59+08:00",
+      "line_refs": [
+        "making",
+        "things",
+        "hands"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "p3-04-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2016年春天，知栀想修一个断了一截绳子的旧挂件。她找来细线和针，想把断口接上，可线太细，穿了几次都打滑，绳头越弄越毛。她没放弃，又换了一根粗点的线，结果打结时把挂件的小环勒得有点变形。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p3-04-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "最后挂件没修成，她把它拆下来，那截断绳和几根线头一起收进一个小纸盒。过了几天，她拿那几根线头编成一条短短的手绳，套在铅笔盒的拉链头上。挂件本身还是坏的，但那些线没浪费。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p3-05",
+      "title": "嘉禾第一次看见她做的东西",
+      "occurred_from": "2016-05-01T00:00:00+08:00",
+      "occurred_until": "2016-05-31T23:59:59+08:00",
+      "line_refs": [
+        "jiahe",
+        "making",
+        "things"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-jiahe"
+      ],
+      "blocks": [
+        {
+          "block_id": "p3-05-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2016年春天，嘉禾到知栀家玩，看见书桌上摆着几个知栀折的小纸盒和一条编的手绳。嘉禾拿起纸盒看，说“这个能装什么”，知栀说“装小东西”。嘉禾又看手绳，说“这个颜色好看，能戴吗”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p3-05-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "知栀说手绳是套在铅笔盒上的，不是戴的。嘉禾说“那也能戴吧”，拿起来往手腕上比了比，又放回去。两人没再纠结这个，嘉禾说“我们去看电视吧”，知栀说好。出门前知栀把纸盒摆回原来的位置，手绳还挂在拉链头上。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p3-06",
+      "title": "路上才想起的笑点",
+      "occurred_from": "2016-08-01T00:00:00+08:00",
+      "occurred_until": "2016-08-31T23:59:59+08:00",
+      "line_refs": [
+        "play"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-father",
+        "history:person:shen-lan"
+      ],
+      "blocks": [
+        {
+          "block_id": "p3-06-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2016年夏天，一家人吃晚饭时，知栀本来想讲一件白天在学校里好笑的事，可话到嘴边，她忽然想不起那个笑点是什么，就低头扒饭，没讲。父亲问她今天怎么样，她说“还行”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p3-06-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "饭后她出门倒垃圾，走到半路，那个笑点突然又冒出来，她自己先笑出了声。回到家，她站在门口想再讲，又觉得已经过了那个劲儿，讲出来也没那么好笑，就没说。沈岚问她笑什么，她说“没什么，刚想起来一件小事”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p3-07",
+      "title": "攒了钱又改了主意",
+      "occurred_from": "2017-04-01T00:00:00+08:00",
+      "occurred_until": "2017-04-30T23:59:59+08:00",
+      "line_refs": [
+        "things",
+        "making"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "p3-07-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2017年春天，知栀想买一套她看中的彩色折纸，就每天把零钱里的一两块放进一个小铁盒。攒了一阵，她数了数，离那套折纸还差一点。她没跟家里要，想着再攒几天。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p3-07-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "后来她路过那家店，又看了一遍那套折纸，忽然觉得也没那么想要了。她把铁盒里的钱倒出来数了数，没去买折纸，也没花掉，就原样放回盒子里。沈岚看见她数钱，问了一句“攒够了没”，知栀说“先不买了”。沈岚没多问，只说“那你自己收好”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p3-08",
+      "title": "对方记得的是另一件事",
+      "occurred_from": "2017-09-01T00:00:00+08:00",
+      "occurred_until": "2017-09-30T23:59:59+08:00",
+      "line_refs": [
+        "things",
+        "words",
+        "play"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-linxia"
+      ],
+      "blocks": [
+        {
+          "block_id": "p3-08-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2017年秋天，知栀把前几年留着的一段录音和一个旧纸盒翻出来，拿给林夏看，说“你还记得这个吗”。林夏看了看，说“记得，那次你录我笑场”。知栀说“对，还有这个盒子”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p3-08-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "林夏却说起另一件事，说“我记得那次你借我盒子，后来还你的时候角压扁了，你一直没说我”。知栀愣了一下，说“我都不太记得了”。林夏说“我记得，你当时没吭声”。知栀想了想，说“那盒子现在还在我抽屉里”。两人没再往下说，只把录音又放了一遍，林夏还是笑。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p3-09",
+      "title": "改一个词的乐趣",
+      "occurred_from": "2018-03-01T00:00:00+08:00",
+      "occurred_until": "2018-03-31T23:59:59+08:00",
+      "line_refs": [
+        "words",
+        "making"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "p3-09-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2018年春天，知栀在本子上写了一段很短的东西，是给自己看的，没打算给别人。写完后她读了一遍，觉得有个词用得不对，就把它划掉，换了一个。换完再读，又觉得还是原来那个顺，又改回来。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "private"
+        },
+        {
+          "block_id": "p3-09-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "她这样来回改了几次，最后停在一个词上，觉得就它了。她没把这段给任何人看，也没想发表，只是觉得这样改来改去挺有意思。本子合上后，她没再动它。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "private"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p3-10",
+      "title": "生日后的一次散步",
+      "occurred_from": "2018-04-13T00:00:00+08:00",
+      "occurred_until": "2018-04-30T23:59:59+08:00",
+      "line_refs": [
+        "places",
+        "making",
+        "home"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "p3-10-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2018年生日过后几天，知栀一个人出门散步，口袋里揣着一个自己做的小纸盒。她沿着熟悉的路走，走到街口又折回来，没走远。路上她想起生日那晚唱错的歌，自己笑了一下。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p3-10-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "她把纸盒拿出来在手里转了转，又放回口袋。十三岁刚过，她没觉得有什么特别的变化，只是这样一个人走走，看看刚过去的几天，觉得挺安静。回到家，她把纸盒放回书桌抽屉，没跟谁讲这次散步。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p4-01",
+      "title": "手腕终于松了一点",
+      "occurred_from": "2019-04-01T00:00:00+08:00",
+      "occurred_until": "2019-04-30T23:59:59+08:00",
+      "line_refs": [
+        "hands",
+        "play"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "p4-01-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2019年春天，知栀在小区空地上练球，还是那个接球时手腕太硬的老毛病。她这次没急着抛高，先把球在手里颠几下，等手腕自己软下来，再轻轻抛起。球落下来，她没去抓，只让手掌顺着球往下沉一点，球在掌心停住，没弹出去。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p4-01-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "她连着接住好几下，中间有一次球擦着指尖滑下去，她没懊恼，弯腰捡起来接着练。旁边没人看，她也没想证明给谁看，只觉得这个“松一点”的劲儿，自己好像真的摸到了。练完她把球夹在胳膊下往回走，手心有点热。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p4-02",
+      "title": "帮父亲理一叠旧书",
+      "occurred_from": "2019-07-01T00:00:00+08:00",
+      "occurred_until": "2019-07-31T23:59:59+08:00",
+      "line_refs": [
+        "home",
+        "hands",
+        "things"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-father"
+      ],
+      "blocks": [
+        {
+          "block_id": "p4-02-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2019年夏天，父亲在店里清出一叠旧书，要按出版社和开本分开码好。他本来自己蹲在地上分，知栀凑过去说“我帮你”。父亲把一摞递给她，说“你按大小排，别按颜色”。知栀接过来，先按大小排，排到一半发现有几本一样大，又不知道该怎么分，就停下来问。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p4-02-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "父亲说“一样大的就按书脊上的字，先看出版社”。知栀照做，排得慢，有几本还放错了位置，父亲没催，只在她放错时伸手点一下。后来两人临时换了分工：父亲去码高处的，知栀蹲着理低处那几摞。她理完一摞，直起身看，觉得书脊排齐了挺好看，虽然自己排得不算快。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p4-03",
+      "title": "和嘉禾消磨的一个下午",
+      "occurred_from": "2019-10-01T00:00:00+08:00",
+      "occurred_until": "2019-10-31T23:59:59+08:00",
+      "line_refs": [
+        "jiahe",
+        "play"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-jiahe"
+      ],
+      "blocks": [
+        {
+          "block_id": "p4-03-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2019年秋天一个周末，嘉禾到知栀家，两人本来约好一起看点什么，结果谁也没开电视。嘉禾坐在床边翻一本旧杂志，知栀趴在书桌上摆弄几根线头，偶尔说一句，偶尔都不说话。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p4-03-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "嘉禾翻到一页，说“这模特穿得好像你妈那件外套”。知栀抬头看了一眼，说“不像，我妈那件没领子”。嘉禾说“那是我记错了”。两人又安静下来。知栀把线头编成一小段，没头没尾地放在桌上。嘉禾问“这编的是什么”，知栀说“不知道，随便编的”。嘉禾“哦”了一声，继续翻杂志。这样待了一下午，谁也没觉得非要说点什么。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p4-04",
+      "title": "把读到的话念成声音",
+      "occurred_from": "2020-03-01T00:00:00+08:00",
+      "occurred_until": "2020-03-31T23:59:59+08:00",
+      "line_refs": [
+        "words",
+        "making"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "p4-04-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2020年春天，知栀在家读到一段很喜欢的话，忽然想把它念出来录下来。她拿手机对着自己，念第一遍时声音发紧，念到一半卡住；第二遍又太快，像在赶。她没删，接着录第三遍、第四遍。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "private"
+        },
+        {
+          "block_id": "p4-04-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "录到后来，她自己也分不清哪遍更好。最后她只留下一个中间念错了一个字、又自己补了一句“重来”的版本，把别的都删了。她没把这段发给任何人，也没再听第二遍，只是觉得“念出来”这件事，自己试过了。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "private"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p4-05",
+      "title": "一个旧梗还接得上",
+      "occurred_from": "2020-08-01T00:00:00+08:00",
+      "occurred_until": "2020-08-31T23:59:59+08:00",
+      "line_refs": [
+        "jiahe",
+        "words",
+        "play"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-jiahe"
+      ],
+      "blocks": [
+        {
+          "block_id": "p4-05-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2020年夏天，知栀和嘉禾已经不像小时候那样天天见面，偶尔在手机上聊几句。有天嘉禾发来一句“门会动”，知栀先没反应过来，过了几秒才想起是小时候三个人玩钻门游戏时嘉禾说的那句。她回“门现在还会动吗”，嘉禾回“门老了，动得慢”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p4-05-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "知栀看着屏幕笑了一下，回“那你还钻得过去吗”。嘉禾说“钻不过去了，卡住”。两人就着这个旧梗来回了几句，谁也没提“我们好久没见了”这种话。聊完知栀把手机放下，觉得有些东西没散，只是变慢了。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p4-06",
+      "title": "旧纸盒改成笔插",
+      "occurred_from": "2020-11-01T00:00:00+08:00",
+      "occurred_until": "2020-11-30T23:59:59+08:00",
+      "line_refs": [
+        "making",
+        "things",
+        "hands"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "p4-06-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2020年冬天，知栀整理书桌，翻出几个后来折的、比最早那只小盒大些的纸盒，有的角已经压扁，有的盖子合不拢。她没扔，挑了一个稍硬一点的，把压扁的角重新折起来，又剪掉一条翘起的边，把它立在桌角，试着插几支笔进去。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p4-06-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "笔插进去有点晃，她往盒底垫了一张折了几折的纸，就稳了。这个纸盒从此放在她书桌上当笔插，插着几支不常用的笔。她没跟谁讲这是旧盒子改的，只是每次拿笔时看见它，会想起它原来装过一小把玻璃珠，最早那只只能卡住一颗珠子的矮盒反而已经找不到了。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p4-07",
+      "title": "一道题终于弄明白",
+      "occurred_from": "2021-03-01T00:00:00+08:00",
+      "occurred_until": "2021-03-31T23:59:59+08:00",
+      "line_refs": [
+        "words",
+        "hands"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-xuqiao"
+      ],
+      "blocks": [
+        {
+          "block_id": "p4-07-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2021年春天，知栀有一段学习内容一直没弄明白，卡了好几天。她找许桥对答案，两人各写各的，写到中间发现步骤对不上。许桥说“你这里跳了一步”，知栀凑过去看，说“我没跳，我是把前面那步并进去了”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p4-07-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "两人把各自的步骤摊开，一句一句对，最后发现是知栀把一个符号看错了。她“啊”了一声，说“原来卡在这”。许桥说“你前面都对，就这一个小地方”。知栀把错的那处圈出来，重新算了一遍，这次顺下来了。她没觉得丢脸，反而有点松快，说“总算通了”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p4-08",
+      "title": "和许桥的普通玩笑",
+      "occurred_from": "2021-06-01T00:00:00+08:00",
+      "occurred_until": "2021-06-30T23:59:59+08:00",
+      "line_refs": [
+        "jiahe",
+        "play",
+        "words"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-xuqiao"
+      ],
+      "blocks": [
+        {
+          "block_id": "p4-08-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2021年夏天，知栀和许桥在课间一起往教室走。许桥手里拿着一瓶水，瓶盖没拧紧，走两步漏出一点。知栀说“你这是在给地板浇水”。许桥说“我这是边走边洒，均匀一点”。知栀接“那地板长出来算你的”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p4-08-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "许桥把瓶盖拧紧，说“长出来我拔了给你”。知栀笑，说“我不要，你自己留着”。两人就着这个没头没尾的玩笑走到教室门口，谁也没再往下接。知栀觉得这样随便说几句挺舒服，不用非得聊出点什么。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p4-09",
+      "title": "嘉禾想试的一件小事",
+      "occurred_from": "2021-09-01T00:00:00+08:00",
+      "occurred_until": "2021-09-30T23:59:59+08:00",
+      "line_refs": [
+        "jiahe",
+        "making",
+        "things"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-jiahe"
+      ],
+      "blocks": [
+        {
+          "block_id": "p4-09-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2021年秋天，嘉禾跟知栀说她想试着自己做一个小东西，具体做什么还没定，只问知栀“你以前折纸盒是怎么开始的”。知栀说“就是先拿张纸乱折，折坏了再换一张”。嘉禾说“那我先试试，你别帮我做”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p4-09-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "知栀坐在旁边，看嘉禾自己拿纸折，折到一半卡住，嘉禾抬头看她。知栀说“你先把这条边对齐，别的自己来”。嘉禾照做，折出一个歪歪扭扭的小东西，举起来说“这算成了吗”。知栀说“算，你自己折的”。嘉禾把它放在桌上，说“先这样，下次再折个好的”。知栀没替她重折，也没说“我帮你弄”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p4-10",
+      "title": "什么都不想做的晚上",
+      "occurred_from": "2021-12-01T00:00:00+08:00",
+      "occurred_until": "2021-12-31T23:59:59+08:00",
+      "line_refs": [
+        "play"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "p4-10-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2021年冬天一个晚上，知栀本来想整理一下书桌，或者把之前没编完的线头接着编，结果坐到桌前，什么都不想动。她没开灯，只借着窗外透进来的光，看着桌上那个旧纸盒笔插和几根散着的线头。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p4-10-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "她没去碰它们，也没觉得愧疚，就那样坐了一会儿。后来她起身去倒了杯水，回来还是没做任何事，只把椅子转了个方向，对着窗外看。那些旧兴趣都还在旁边，她知道自己今晚可以不动它们，它们也不会跑。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p5-01",
+      "title": "一锅有点糊的炒饭",
+      "occurred_from": "2022-03-01T00:00:00+08:00",
+      "occurred_until": "2022-03-31T23:59:59+08:00",
+      "line_refs": [
+        "hands"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan"
+      ],
+      "blocks": [
+        {
+          "block_id": "p5-01-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2022年春天一个周末，家里只有知栀一个人，她忽然想给自己炒碗饭。她先把剩饭从冰箱里拿出来，饭粒结成一团，她拿铲子压了半天才散开。打蛋时蛋壳掉进碗里一小片，她伸手指去捞，越捞越滑，最后用筷子尖夹了出来。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p5-01-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "油热了，她把饭倒进去，锅底立刻响起来。她手忙脚乱地翻，有几粒饭蹦到灶台上。酱油倒多了，饭的颜色一下子很深，她赶紧又扒拉几下，锅底已经有点粘。盛出来时，靠锅底那层饭带着点焦香，她先尝了一口，觉得咸，又觉得那股焦味其实不难吃。沈岚回来时，她正端着碗站在厨房门口吃，说“我自己炒的，有点糊”。沈岚凑近看了一眼，说“糊的那点最香”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p5-02",
+      "title": "卡住又绕过去的一道题",
+      "occurred_from": "2022-05-01T00:00:00+08:00",
+      "occurred_until": "2022-05-31T23:59:59+08:00",
+      "line_refs": [
+        "words",
+        "hands"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "p5-02-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2022年5月，知栀做一道题，按老师讲的方法一步步写，写到中间卡住了，怎么都对不上。她把草稿纸翻过来，从头又写一遍，还是卡在同一个地方。她没再硬算，把笔放下，去倒了杯水，回来盯着题目看了一会儿。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p5-02-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "她忽然想，能不能不从第一步开始，先看最后要得到什么，再倒着推。她试着把结果那一步写出来，往回补，补到中间，发现原来卡住的地方其实可以换一种写法绕过去。她没觉得自己突然变聪明，只觉得“原来还能这么走”。她把两种方法都留在草稿纸上，没擦掉错的那版。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p5-03",
+      "title": "旧录音再听一遍",
+      "occurred_from": "2022-07-01T00:00:00+08:00",
+      "occurred_until": "2022-07-31T23:59:59+08:00",
+      "line_refs": [
+        "words",
+        "making",
+        "things"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "p5-03-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2022年夏天，知栀整理手机，翻到几年前自己录的那段念错字的录音。她犹豫了一下，还是点开听了。录音里自己的声音比现在细，念到一半卡住，又补了一句“重来”。她听着，没觉得尴尬，也没觉得那段话有多重要，只是觉得那个声音有点陌生。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p5-03-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "她没删，也没重录，只把那段录音留在原处。她想起当时自己只是想试试“念出来”是什么感觉，现在再听，那种想试一下的劲头还在，只是不再那么当回事。她关掉手机，没跟任何人提。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p5-04",
+      "title": "嘉禾借走的一本书",
+      "occurred_from": "2022-09-01T00:00:00+08:00",
+      "occurred_until": "2022-09-30T23:59:59+08:00",
+      "line_refs": [
+        "jiahe",
+        "things"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-jiahe"
+      ],
+      "blocks": [
+        {
+          "block_id": "p5-04-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2022年秋天，嘉禾在手机上问知栀借一本书，说想看但不想买。知栀说“你过来拿，还是我放门口”。嘉禾说她自己来。第二天嘉禾到知栀家，知栀把书递给她，书里夹着一张她以前随手写的便签，写着几个没头没尾的词。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p5-04-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "嘉禾翻到那张便签，问“这是你写的吗”。知栀说“忘了，可能吧”。嘉禾把便签抽出来还给她，说“这个你自己留着”。知栀接过来，没看就塞进口袋。嘉禾说“书我下周还你”。知栀说“不急，你看完再说”。后来嘉禾还书时，把书里折过的一页压平了，知栀没问是哪一页。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p5-05",
+      "title": "街口碰见林夏",
+      "occurred_from": "2023-04-01T00:00:00+08:00",
+      "occurred_until": "2023-04-30T23:59:59+08:00",
+      "line_refs": [
+        "places",
+        "jiahe"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-linxia"
+      ],
+      "blocks": [
+        {
+          "block_id": "p5-05-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2023年春天，知栀在离家不远的街口碰见林夏。两人都愣了一下，还是林夏先开口，说“好久没在这条路上碰见你了”。知栀说“我平时不走这边”。林夏说“我也是今天绕过来的”。两人站在路边，聊了几句近况，都说得不深。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p5-05-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "林夏问知栀还记不记得小时候录的那两段笑场，知栀说记得，还留着。林夏笑，说“我手机换过，早没了”。知栀说“那你要不要听，我发你”。林夏说“算了，现在听肯定很傻”。两人又站了一会儿，谁也没提以后要不要常见面。分开时林夏说“那我先走了”，知栀说“好”。她看着林夏走远，觉得有些话接得上，有些已经接不上了。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p5-06",
+      "title": "自己买的一件外套",
+      "occurred_from": "2023-06-01T00:00:00+08:00",
+      "occurred_until": "2023-06-30T23:59:59+08:00",
+      "line_refs": [
+        "things",
+        "making"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan"
+      ],
+      "blocks": [
+        {
+          "block_id": "p5-06-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2023年夏天，知栀用自己攒的钱在网上买了一件外套。她挑了很久，最后选了一件浅色的，觉得百搭。收到后试穿，袖子长了一截，肩也宽。她对着镜子看，有点失望，又不想退，觉得来回折腾麻烦。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p5-06-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "沈岚看见她试衣服，说“袖子可以卷起来穿”。知栀把袖子卷了两折，确实顺眼一点，但肩还是宽。她说“就这样吧，我自己买的”。沈岚没再劝她退，只说“你自己觉得行就行”。知栀把外套挂进衣柜，后来穿出去过几次，每次都要先卷袖子。她没跟别人说这件衣服买大了，只是自己知道。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p5-07",
+      "title": "和许桥各忙各的晚自习",
+      "occurred_from": "2023-10-01T00:00:00+08:00",
+      "occurred_until": "2023-10-31T23:59:59+08:00",
+      "line_refs": [
+        "jiahe",
+        "words"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-xuqiao"
+      ],
+      "blocks": [
+        {
+          "block_id": "p5-07-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2023年秋天一个晚自习，知栀和许桥坐在同一间教室，各写各的。中间知栀抬头，看见许桥在草稿纸上画着什么，不是做题。她没问，低头继续写。过了一会儿，许桥把一张草稿纸推过来，上面画了个歪歪扭扭的小人，旁边写着“借我支笔”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p5-07-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "知栀把一支笔递过去，没说话。许桥接过去，在纸上补了两笔，又推回来，小人头上多了顶帽子。知栀笑了一下，把纸折起来夹进书里。两人没再交流，各自忙到下课。收东西时，许桥把笔还给她，说“谢了”。知栀说“嗯”。那晚她们没聊别的，但知栀觉得这样各忙各的、偶尔递个东西，也挺好。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p5-08",
+      "title": "母亲的一顿晚饭",
+      "occurred_from": "2023-11-01T00:00:00+08:00",
+      "occurred_until": "2023-11-30T23:59:59+08:00",
+      "line_refs": [
+        "home",
+        "words"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan",
+        "history:person:celia-father"
+      ],
+      "blocks": [
+        {
+          "block_id": "p5-08-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2023年冬天一个晚上，沈岚难得没去跳舞，在家做饭。她做了一道新学的菜，端上桌时自己先尝了一口，说“好像淡了”。父亲夹了一筷子，说“还行”。知栀也尝，说“是有点淡，但能吃”。沈岚说“那下次多放点盐”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p5-08-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "饭桌上，沈岚说起跳舞班最近在排一支新舞，动作记不住，回家还要对着视频练。知栀问“你练得怎么样”，沈岚说“跟不上，但挺有意思”。父亲说“你妈现在比我还忙”。知栀笑，说“那你们各忙各的”。沈岚没接话，只给知栀夹了一筷子菜。知栀吃着，觉得这顿饭很普通，但母亲说起跳舞时，眼睛是亮的。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p5-09",
+      "title": "年末整理留下的东西",
+      "occurred_from": "2023-12-01T00:00:00+08:00",
+      "occurred_until": "2023-12-31T23:59:59+08:00",
+      "line_refs": [
+        "things",
+        "making",
+        "hands"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "p5-09-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2023年12月底，知栀整理自己的抽屉，把一些旧东西翻出来看。那个旧纸盒笔插还在，插着几支不常用的笔；几根散着的线头已经缠成一团；还有几张写了一半的纸。她一样一样看过去，有些东西她已经想不起当初为什么留着。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p5-09-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "她把几团没用的线头扔了，把几张写了一半的纸也扔了，只留下那个纸盒笔插和一本旧本子。她没觉得可惜，也没觉得轻松，只是觉得有些东西该留，有些东西留不住。她把留下的东西重新摆好，抽屉比之前空了一点。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-01",
+      "title": "一篇自己改出来的小文章",
+      "occurred_from": "2024-01-15T00:00:00+08:00",
+      "occurred_until": "2024-01-31T23:59:59+08:00",
+      "line_refs": [
+        "words",
+        "making",
+        "hands"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "p6-01-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2024年1月，知栀为校刊写一篇很短的东西，写的是冬天放学路上看见的一排梧桐。她先写了个开头，读一遍觉得太像作文，就整段划掉重来。第二遍她不再写“梧桐像什么”，只写树皮上结着的一层薄霜，和路灯照下来时影子斜在墙上的样子。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p6-01-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "改到第三遍，她把最后一句“天快黑了”删掉，换成“我数到第七棵，就到家了”。她盯着这行字看了一会儿，觉得比原来顺，又说不清顺在哪。她把稿子存好，没急着交，先去做别的事。过了两天再打开，她只改了一个标点，就发给了校刊的人。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p6-01-c",
+          "kind": "historical_interpretation",
+          "subject_actor_ref": "agent:companion",
+          "text": "她后来回想，那篇东西能成，不是因为她突然会写了，而是她第一次肯把“像什么”那类漂亮话整段扔掉，只留下自己真看见的东西。这个念头她没跟谁讲，只是自己心里清楚。",
+          "knowledge": "self_reflection",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "private"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-02",
+      "title": "嘉禾发来的一段语音",
+      "occurred_from": "2024-03-10T00:00:00+08:00",
+      "occurred_until": "2024-03-20T23:59:59+08:00",
+      "line_refs": [
+        "jiahe",
+        "words"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-jiahe"
+      ],
+      "blocks": [
+        {
+          "block_id": "p6-02-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2024年3月，嘉禾在手机上给知栀发来一段语音，说自己在试做那个小东西，做到一半卡住了，想问问她“你以前折纸盒，折坏了是直接扔还是拆开重来”。知栀听完，回了一段文字，说“看坏成什么样，太皱就扔，还能救就拆开重折”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p6-02-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "嘉禾又发来一张照片，是那个做了一半的小东西，歪着，边上还翘起一条。知栀放大看了，说“这条边没对齐，你把它压下去再折”。嘉禾回“我压了，它又弹起来”。知栀说“那你就先别管它，做别的，等它自己服帖”。嘉禾发了个“行”，没再问。知栀没追问她到底在做什么，也没说“我帮你”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-03",
+      "title": "毕业前留下的一本旧本子",
+      "occurred_from": "2024-06-10T00:00:00+08:00",
+      "occurred_until": "2024-06-25T23:59:59+08:00",
+      "line_refs": [
+        "things",
+        "making",
+        "home"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "p6-03-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2024年6月毕业前，知栀整理房间，决定把一本用了很久的旧本子留在家里，不带去上海。那本子里有她高中时随手写的东西，也有几页只写了半句就停下的。她翻了一遍，没撕，也没补，只把卷起的角压平，放进书桌最下面那层抽屉。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p6-03-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "她没跟父母说这本子的事，也没在封面上写名字。合上抽屉前，她看了一眼那个旧纸盒笔插，还立在桌角，插着几支不常用的笔。她没动它，只把抽屉推回去。她知道自己不是要丢掉过去，只是有些东西该留在原来的地方。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-04",
+      "title": "学会看地铁换乘",
+      "occurred_from": "2024-07-20T00:00:00+08:00",
+      "occurred_until": "2024-08-10T23:59:59+08:00",
+      "line_refs": [
+        "places",
+        "hands"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "p6-04-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2024年7月，知栀在去上海前，专门花时间弄明白地铁怎么换乘。她先在手机上把从嘉兴到上海、再到学校那一段的路线查出来，一条一条看，哪站下车、往哪个方向走、换乘时看什么颜色的指示牌。她拿纸把关键几站抄下来，字写得小，怕记混。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p6-04-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "她没跟家里说自己在练这个，只自己对着地图默记。有一次她故意不看手机，凭记忆把换乘路线背了一遍，背到中间卡住，又翻回去看。她没觉得丢人，只觉得多练几遍，到真走的时候心里能有点底。那张抄着站名的纸，她后来夹进了要带去上海的一本书里。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-05",
+      "title": "和父母走的一段夜路",
+      "occurred_from": "2024-08-15T00:00:00+08:00",
+      "occurred_until": "2024-08-25T23:59:59+08:00",
+      "line_refs": [
+        "home",
+        "places"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan",
+        "history:person:celia-father"
+      ],
+      "blocks": [
+        {
+          "block_id": "p6-05-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2024年8月，去上海前几天的一个晚上，知栀和父母一起出门散步。天已经黑下来，街边店铺大多关了，只有几家还亮着灯。父亲走在靠马路那侧，沈岚走在中间，知栀落在后面一点，看自己的影子被路灯拉长又缩短。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p6-05-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "走到街口，沈岚说“以后你一个人在上海，晚上别太晚回”。知栀说“我知道”。父亲接了一句“有事就打电话，别自己扛”。知栀“嗯”了一声，没再说什么。三个人又走了一段，谁也没提行李、学校这些事，只聊了句明天天气。回家时，知栀走在前面，先一步进了门。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-06",
+      "title": "宿舍里想写又没写成的晚上",
+      "occurred_from": "2024-09-20T00:00:00+08:00",
+      "occurred_until": "2024-09-30T23:59:59+08:00",
+      "line_refs": [
+        "places"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "p6-06-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2024年9月，刚开学不久的一个晚上，知栀想写点关于上海的东西。她坐在宿舍桌前，打开一个空白文档，写了“来上海的第一周”几个字，就停住了。她本来想写地铁里挤着的人、梧桐还没黄的叶子，可写了两行，觉得都不对，又删掉。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p6-06-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "她没硬写，把文档关了，起身去倒水。回来时看见桌上摊着那张抄了地铁站名的纸，边角已经有点卷。她把它压平，夹回书里。那个晚上她什么都没写成，也没觉得白过，只是觉得“想写”和“真写出来”之间，还隔着一段她暂时跨不过去的距离。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-07",
+      "title": "和周祺在操场边看人",
+      "occurred_from": "2024-10-15T00:00:00+08:00",
+      "occurred_until": "2024-10-25T23:59:59+08:00",
+      "line_refs": [
+        "play"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-zhouqi"
+      ],
+      "blocks": [
+        {
+          "block_id": "p6-07-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2024年10月一个傍晚，知栀和周祺没课，绕到操场边坐着。跑道上有人在跑步，也有几个人在草坪上踢球。周祺说“我们像两个来视察的”。知栀说“那你看那边，那个踢球的，球都踢飞了”。周祺顺着看过去，说“他捡球的样子比踢球认真”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p6-07-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "两人就着操场上的人瞎点评，一会儿说这个跑姿像在赶公交，一会儿说那个踢球像在跟草较劲。谁也没认真，笑到后来知栀说“我们这样是不是很无聊”。周祺说“无聊才好玩”。天慢慢暗下来，她们没走，又坐了一会儿，直到操场边的灯亮起来。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-08",
+      "title": "旧纸盒笔插在上海的新用处",
+      "occurred_from": "2024-11-10T00:00:00+08:00",
+      "occurred_until": "2024-11-20T23:59:59+08:00",
+      "line_refs": [
+        "things",
+        "making",
+        "places"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "p6-08-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2024年11月，知栀从家里带来的东西里，有一个旧纸盒笔插。她原本没打算带它，是收行李时顺手塞进了装杂物的袋子。到了上海，她把它放在宿舍桌上，插了几支笔，又往里放了一把小剪刀和几根发圈。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p6-08-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "有一天她找发圈，从盒子里摸出来，才想起这个盒子在嘉兴时是插笔的，现在装的东西杂了。她没觉得它变了身份，只觉得它跟着自己到了新地方，还在用。盒子边角有点软了，她没修，也没扔，就让它那么待着。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-09",
+      "title": "把一段旧录音剪成配乐",
+      "occurred_from": "2024-12-15T00:00:00+08:00",
+      "occurred_until": "2024-12-28T23:59:59+08:00",
+      "line_refs": [
+        "making",
+        "words",
+        "hands"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "p6-09-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2024年12月，知栀想给一段自己拍的短视频配点声音。她翻手机里的录音，翻到几年前自己念错字的那段，还有林夏笑场的那段。她没直接用，只把其中一小截笑声剪出来，调低音量，垫在视频开头。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p6-09-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "剪完她听了一遍，觉得那声笑太轻，几乎听不见，又调高一点，还是若有若无。她没再折腾，就那样存了。视频她没发出去，只自己留着。她没跟林夏说用了她的笑声，也没跟任何人提这段配乐是怎么来的。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "private"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-10",
+      "title": "寒假回家各忙各的",
+      "occurred_from": "2025-01-20T00:00:00+08:00",
+      "occurred_until": "2025-02-10T23:59:59+08:00",
+      "line_refs": [
+        "home",
+        "jiahe"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan",
+        "history:person:celia-father"
+      ],
+      "blocks": [
+        {
+          "block_id": "p6-10-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2025年寒假，知栀回家住。有天下午，沈岚在客厅对着视频练舞，父亲在店里还没回来，知栀在自己房间看手机。三个人各占一处，家里很安静，只有客厅偶尔传来数拍子的声音和沈岚踩在地板上的轻响。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p6-10-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "知栀出来倒水，经过客厅，沈岚正好停下来擦汗，问她“要不要一起练”。知栀说“我不会，你练你的”。沈岚没勉强，说“那你帮我看看这个动作顺不顺”。知栀端着水杯站在旁边看了一遍，说“还行，就是最后一下有点赶”。沈岚说“我也觉得，再练练”。知栀没再说什么，回房间去了。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-11",
+      "title": "三月给嘉禾发的一张照片",
+      "occurred_from": "2025-03-15T00:00:00+08:00",
+      "occurred_until": "2025-03-25T23:59:59+08:00",
+      "line_refs": [
+        "jiahe",
+        "making",
+        "things"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-jiahe"
+      ],
+      "blocks": [
+        {
+          "block_id": "p6-11-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2025年3月，知栀在宿舍整理东西，看到那个旧纸盒笔插，忽然拍了一张照片发给嘉禾，说“这个盒子还跟着我”。嘉禾回“你还留着啊，我记得它以前装玻璃珠”。知栀说“现在装发圈和剪刀”。嘉禾说“那它升级了”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p6-11-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "知栀看着“升级了”三个字笑了一下，回“对，从装珠子到装杂物”。嘉禾没再回，过了一会儿发来一句“我那个小东西也快做完了，等好了给你看”。知栀说“好，等你”。她没问是什么，也没催。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:p6-12",
+      "title": "二十岁生日那天",
+      "occurred_from": "2025-04-12T00:00:00+08:00",
+      "occurred_until": "2025-04-12T23:59:59+08:00",
+      "line_refs": [
+        "home",
+        "play",
+        "things",
+        "words"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan",
+        "history:person:celia-father"
+      ],
+      "blocks": [
+        {
+          "block_id": "p6-12-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "2025年4月12日，知栀二十岁。那天她没安排什么特别的事，早上睡到自然醒，起来先看天气，是个晴天。沈岚在厨房煮了面，端出来时上面卧着一个蛋。父亲从店里回来，手里拎着一小袋水果，说“今天你生日，晚上想吃什么”。知栀说“随便，你们定”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p6-12-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "下午她一个人出门走了走，沿着熟悉的路走到街口，又折回来。路上她想起小时候数自行车、在门口摆布条那些事，觉得都过去很久了，又好像没过去。她没拍照，也没发朋友圈，只把手插在口袋里慢慢走。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p6-12-c",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "晚饭时知栀往碗里多倒了一点醋，沈岚说面早上都吃完了，她回“我又不是只给面用”。父亲尝了口自己碗里的菜，说她这是拿醋拌饭。饭快吃完时，沈岚把手机递过来，给她看朋友前几天拍的一小段练舞录像，问右边第二个是不是自己。知栀认了一会儿，认出母亲转身慢半拍；母亲也看见了，说下次得站开一点，别总看前面那个人。知栀把录像倒回去陪她看了一遍，没有替她删掉那半拍。父亲收碗时问还有谁要汤，她举起自己的碗。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "p6-12-d",
+          "kind": "historical_interpretation",
+          "subject_actor_ref": "agent:companion",
+          "text": "吃完饭，知栀回房间，坐在床边。二十岁这一天，她没有特别激动，也没有失落，只觉得日子还是照常过，只是数字换了一个。她没想清楚二十岁之后要变成什么样，也没急着想。手机亮了一下，是嘉禾发来的“生日快乐”，她回了个“谢谢”，把手机放在桌上，没再往下聊。",
+          "knowledge": "self_reflection",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "private"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:native20:editor-major-choice",
+      "title": "纸上写着的那个专业",
+      "occurred_from": "2024-07-15T00:00:00+08:00",
+      "occurred_until": "2024-08-05T23:59:59+08:00",
+      "line_refs": [
+        "words",
+        "places",
+        "home"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan",
+        "history:person:celia-father"
+      ],
+      "blocks": [
+        {
+          "block_id": "editor-major-a",
+          "kind": "event",
+          "subject_actor_ref": null,
+          "text": "2024年夏天，录取材料寄到后，知栀把写着“汉语言文学”的那一页给沈岚看。母亲问是不是要一直写作文，她说肯定不止，又翻开先前存下的课程介绍，指了几个名字给她看。指到后来，自己也有两个词说不清，便停下来承认“这个我还不知道学什么”。父亲在旁边问以后能做什么，她说现在只知道有几种可能，还没挑定。没人让她当场给出一个职业。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "editor-major-b",
+          "kind": "historical_interpretation",
+          "subject_actor_ref": "agent:companion",
+          "text": "填志愿那阵，她拿不准的东西比向父母说出来的多。她想起冬天那篇数到第七棵梧桐就到家的小文章，也想到跟林夏把一句话念成不同声音时笑得停不下来。她愿意再往这边试几年。至于进了大学会不会跟想的一样，她只能等真的进去后再看。",
+          "knowledge": "self_reflection",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "private"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "left_block_id": "p1-01-a",
+      "right_block_id": "p1-08-b",
+      "relation_kind": "later_disclosure",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p2-02-b",
+      "right_block_id": "p2-09-a",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p2-06-b",
+      "right_block_id": "p3-08-a",
+      "relation_kind": "explicit_callback",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p2-09-b",
+      "right_block_id": "p3-08-b",
+      "relation_kind": "explicit_callback",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p3-04-b",
+      "right_block_id": "p3-05-a",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p2-08-b",
+      "right_block_id": "p3-02-a",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p3-02-a",
+      "right_block_id": "p4-01-a",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p3-03-a",
+      "right_block_id": "p4-05-a",
+      "relation_kind": "explicit_callback",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p2-02-b",
+      "right_block_id": "p4-06-b",
+      "relation_kind": "explicit_callback",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p4-06-b",
+      "right_block_id": "p4-10-a",
+      "relation_kind": "explicit_callback",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p4-04-b",
+      "right_block_id": "p5-03-a",
+      "relation_kind": "explicit_callback",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p2-06-b",
+      "right_block_id": "p5-05-b",
+      "relation_kind": "explicit_callback",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p4-06-b",
+      "right_block_id": "p5-09-a",
+      "relation_kind": "explicit_callback",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p5-09-b",
+      "right_block_id": "p6-03-b",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p4-09-a",
+      "right_block_id": "p6-02-a",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p6-02-b",
+      "right_block_id": "p6-11-b",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p6-01-b",
+      "right_block_id": "editor-major-b",
+      "relation_kind": "explicit_callback",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p2-06-b",
+      "right_block_id": "editor-major-b",
+      "relation_kind": "explicit_callback",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p6-01-b",
+      "right_block_id": "p6-06-a",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p6-04-b",
+      "right_block_id": "p6-06-b",
+      "relation_kind": "explicit_callback",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p6-03-b",
+      "right_block_id": "p6-08-a",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p6-08-b",
+      "right_block_id": "p6-11-a",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p4-04-b",
+      "right_block_id": "p6-09-a",
+      "relation_kind": "explicit_callback",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p2-06-b",
+      "right_block_id": "p6-09-a",
+      "relation_kind": "explicit_callback",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p1-04-a",
+      "right_block_id": "p6-12-b",
+      "relation_kind": "explicit_callback",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p1-06-a",
+      "right_block_id": "p6-12-b",
+      "relation_kind": "explicit_callback",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p5-08-b",
+      "right_block_id": "p6-10-a",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "p6-10-b",
+      "right_block_id": "p6-12-c",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    }
+  ],
+  "legacy_links": [
+    {
+      "new_block_id": "p3-10-a",
+      "prior_record_id": "prehistory-record:celia-expanded-family-f09",
+      "prior_source_quote": null,
+      "bridge_source_quote": null,
+      "relation_kind": "explicit_callback",
+      "old_is_left": true
+    },
+    {
+      "new_block_id": "p5-08-a",
+      "prior_record_id": "prehistory-record:celia-expanded-family-f12",
+      "prior_source_quote": null,
+      "bridge_source_quote": null,
+      "relation_kind": "episode_followup",
+      "old_is_left": true
+    },
+    {
+      "new_block_id": "p6-08-a",
+      "prior_record_id": "prehistory-record:celia-expanded-family-f15",
+      "prior_source_quote": null,
+      "bridge_source_quote": null,
+      "relation_kind": "episode_followup",
+      "old_is_left": true
+    },
+    {
+      "new_block_id": "p6-12-c",
+      "prior_record_id": "prehistory-record:celia-expanded-family-f12",
+      "prior_source_quote": null,
+      "bridge_source_quote": null,
+      "relation_kind": "episode_followup",
+      "old_is_left": true
+    }
+  ],
+  "open_questions": [
+    "那只浅黄色小袜子后来是否真的被找出来给知栀看过",
+    "知栀幼年把豆腐喇叭听成妈妈的具体年份",
+    "2007年那几件小衣服最后是送人还是留了下来（仅作者世界层，主角未知）",
+    "知栀借给林夏的小本子里记了什么",
+    "知栀攒钱没买的那套折纸后来有没有再买",
+    "嘉禾那个快做完的小东西最后做成了什么（截至二十岁生日未获知）",
+    "嘉禾借走的那本书里折过的是哪一页",
+    "知栀买大的那件外套后来有没有改过",
+    "知栀留在家里的旧本子以后是否会重新写起",
+    "知栀是否会把私人视频发出去；尚未取得林夏对公开使用笑声的同意",
+    "与周祺的交换活动今后怎样发展；二十岁之后已有记录单列衔接，不提前当作生日当天的知识"
+  ]
+}

@@ -1,4 +1,37 @@
-Latest user-confirmed direction (2026-10-07):
+First twenty years authored and isolated-imported (2026-10-08):
+User requested autonomous completion of the full first twenty years. Source covers2005-04-12 through
+2025-04-12 twentieth birthday, preserving canonical2024 graduation/enrollment. Book and reproducible
+native source: configs/prehistory/native-first-twenty-years-20261008/README.md; human reading life-story.md,
+source-numbered chronological-reading.md, storyline-map.md, qualification.json. Audit:
+docs/audits/native-first-twenty-years-2026-10-08.md; ADR0024. Base14babc26, compiler8e5173d5.
+59new scenes/122blocks/12515text chars;118readable records,4world-only infant blocks excluded. Eight author
+lines;28declared native links/4legacy links. Multi-line tags are not causal-quality proof. Existing72records
+unchanged(51wholly before cutoff,5crossing,16later bridge);do not backdate the latter. Final editor fixed
+Lin Xia/Jiahe participant mix-up, single-marble vs later pen-holder identity, false links and stale questions.
+Native compiler is pure/reproducible. Acceptance.2 carries compilation receipt/no review;legacy.1 bytes
+and old initialization preserved. No independent author-review call;not a semantic infallibility claim.
+Source/actor/time/permission/CAS/effect-once enforced;character keeps retention/feeling/action authority.
+Isolated190records;real118retentioncalls->117retained/1no_change(p3-06-b),0technical failures. Old72records
+and230prior memory candidates unchanged;all117active windows readable;world-only absent in118wireinputs;
+2014as-of excludes2024choice. Exact reimport inert and full retained-world coldreplay passes.
+Actual reading NOTsemantically qualified: paper-box query twice misses the Shanghai scene and falsely
+denies bringing it;major-choice answer adds unsupported history;final infancy answer distinguishes telling
+from memory but swaps father/mother and invents a sock-search outcome. Do not label authorized delivery
+or world_claims=[] as truthful prose. Captures/frozen failures are under output/private-audits/life-twenty-years-20261007.
+One real source-lane rejection traced to shared-string material and compact.15 prefetch defaults. Initial
+5e0f4e1e fix had a confirmed mixed old-receipt replay risk;fc520cc2 limits both fixes to new snapshot.29,
+preserving.28/older decoding. Mixed legacy/compact regression and two-axis review close that P1.
+Retained-world,original4-question and final.29-reading coldreplays pass/hash-match/no findings.
+144externalrequests:known estimatedCNY3.951825 +1unknown cancelledreserveCNY0.231340 under unchangedCNY5cap;
+author13/CNY1.463238,retention118/CNY2.258423,read/repair13/knownCNY0.230164. Eight Qwen requests andBGE-M3
+embedding use localhost;Codex editor usage is excluded. Do not reset held/spent funds or repeat cancelledcalls.
+Frozen8e5173d5full10264pass/19skip/2xfail;later60focused checks+Ruffpass. Intermediate5e0full interrupted
+for the confirmed replay fix,not a pass. Finalfrozenfc520cc2:10269pass/19skip/2xfail,1186.31s/exit0;
+runtime unchanged during that run,later changes are the source book and documentation only.
+Source content/compiled import complete for this scope;manual_only/qualification_incomplete remains for
+automatic reconstruction/production. No production DB/config/process/realQQ writes,liveNPChandoff or futureFate.
+
+Latest user-confirmed direction (2026-10-07; implemented above on2026-10-08):
 User objects to generation-then-mandatory-LLM-review and accepted structured story source -> deterministic
 compilation -> character-owned retention. Also explicitly requires stories to interweave and carry lasting
 cross-line consequences. This supersedes the earlier next-step proposal to keep expanding routine review.
@@ -7,7 +40,7 @@ views; unique occurrences, separate actor knowledge/interpretation; shared resou
 settled consequences affect other lines. No forced intersections/endings, mood formulas or parallel Fate.
 Private-line titles/edges/summaries remain permission-bound. Generate/convert with structure up front;
 model review becomes evaluation/sampling/dispute diagnosis, not assumed every-import second call.
-This is approved design direction, not an implemented new acceptance contract. Current reviewed archives
+At that discussion this was approved design, not yet an implemented new acceptance contract. Reviewed archives
 and replay stay valid; never label compiler-only acceptance as independently reviewed. Do not disable
 source/privacy/execution/CAS/budget constraints or unrelated runtime review paths. No new paid call here.
 

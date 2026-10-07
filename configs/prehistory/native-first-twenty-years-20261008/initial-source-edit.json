@@ -1,0 +1,17 @@
+{
+  "kind": "explicit_source_author_revision",
+  "model_calls": 0,
+  "prior_batch_hash": "0fce1336c9540f04f712003bc25ecde7dd07c839636563f519dff700a7d7cf14",
+  "reason": "The source declared March2014 as a follow-up to an accepted May2014 scene, with no explicit textual callback. Remove that optional edge; keep all scene prose, dates, identities and prior accepted history unchanged. This is a named author edit, not an independent review approval.",
+  "removed_relation_declarations": [
+    {
+      "bridge_source_quote": "知栀和林夏在空地上练一种简单的球类，把球往上抛再接住",
+      "new_block_id": "p2-08-b",
+      "old_is_left": true,
+      "prior_record_id": "prehistory-record:celia-expanded-growing-g02",
+      "prior_source_quote": "知栀和几名小区孩子在空地踢软球，球滚进花坛深处。",
+      "relation_kind": "episode_followup"
+    }
+  ],
+  "revised_source_hash": "a0cea42b2e18c5120529b7385f6901e538678671e6257ac024b3de1955a8ad45"
+}

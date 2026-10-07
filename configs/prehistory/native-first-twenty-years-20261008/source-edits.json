@@ -1,0 +1,460 @@
+{
+  "contract": "native-source-editor-notes.1",
+  "author_ref": "operator:codex-native-life-editor+model:deepseek-v4-pro",
+  "source_hash": "c522bbbe0e79b4ab9133078b57124d56ae50b5a3c1a563b43cb0bce2a0b6eb8c",
+  "edits": [
+    {
+      "block_id": "p6-12-c",
+      "before": "晚上一家人吃饭，沈岚做了几道知栀爱吃的菜，父亲开了一瓶饮料，说“二十了，自己在外头多照顾自己”。知栀说“知道”。沈岚问“明天还去帮嘉禾拍照吗”，知栀说“去，时间还没定”。父亲夹了块鱼给她，说“那早点睡”。知栀应了一声，低头吃饭。",
+      "after": "晚饭时知栀往碗里多倒了一点醋，沈岚说面早上都吃完了，她回“我又不是只给面用”。父亲尝了口自己碗里的菜，说她这是拿醋拌饭。饭快吃完时，沈岚把手机递过来，给她看朋友前几天拍的一小段练舞录像，问右边第二个是不是自己。知栀认了一会儿，认出母亲转身慢半拍；母亲也看见了，说下次得站开一点，别总看前面那个人。知栀把录像倒回去陪她看了一遍，没有替她删掉那半拍。父亲收碗时问还有谁要汤，她举起自己的碗。",
+      "reason": "Source-author rewrite: give this birthday its own scene. Do not duplicate or assign a precise birthday date to the accepted broad-April F18 photo-help conversation. The new dance-video conversation connects to the existing mother dance line without prescribing future feelings."
+    },
+    {
+      "removed_legacy_link": {
+        "new_block_id": "p6-03-a",
+        "prior_record_id": "prehistory-record:celia-expanded-growing-g16",
+        "prior_source_quote": null,
+        "bridge_source_quote": null,
+        "relation_kind": "episode_followup",
+        "old_is_left": true
+      },
+      "reason": "Not a valid explicit continuation: March box photo is unrelated to the later April Xuqiao message; birthday must not specialize F18; pre-graduation notebook sorting is not a follow-up to the later gate conversation."
+    },
+    {
+      "removed_legacy_link": {
+        "new_block_id": "p6-12-c",
+        "prior_record_id": "prehistory-record:celia-expanded-family-f18",
+        "prior_source_quote": null,
+        "bridge_source_quote": null,
+        "relation_kind": "shared_scene",
+        "old_is_left": true
+      },
+      "reason": "Not a valid explicit continuation: March box photo is unrelated to the later April Xuqiao message; birthday must not specialize F18; pre-graduation notebook sorting is not a follow-up to the later gate conversation."
+    },
+    {
+      "removed_legacy_link": {
+        "new_block_id": "p6-11-a",
+        "prior_record_id": "prehistory-record:celia-expanded-growing-g18",
+        "prior_source_quote": null,
+        "bridge_source_quote": null,
+        "relation_kind": "episode_followup",
+        "old_is_left": true
+      },
+      "reason": "Not a valid explicit continuation: March box photo is unrelated to the later April Xuqiao message; birthday must not specialize F18; pre-graduation notebook sorting is not a follow-up to the later gate conversation."
+    },
+    {
+      "scene": "event:native20:p3-08",
+      "before": {
+        "event_ref": "event:native20:p3-08",
+        "title": "对方记得的是另一件事",
+        "occurred_from": "2017-09-01T00:00:00+08:00",
+        "occurred_until": "2017-09-30T23:59:59+08:00",
+        "line_refs": [
+          "things",
+          "words",
+          "jiahe"
+        ],
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-jiahe"
+        ],
+        "blocks": [
+          {
+            "block_id": "p3-08-a",
+            "kind": "event",
+            "subject_actor_ref": "agent:companion",
+            "text": "2017年秋天，知栀把前几年留着的一段录音和一个旧纸盒翻出来，拿给嘉禾看，说“你还记得这个吗”。嘉禾看了看，说“记得，那次你录我笑场”。知栀说“对，还有这个盒子”。",
+            "knowledge": "experienced",
+            "informant_ref": null,
+            "known_from": null,
+            "known_until": null,
+            "privacy_class": "personal"
+          },
+          {
+            "block_id": "p3-08-b",
+            "kind": "event",
+            "subject_actor_ref": "agent:companion",
+            "text": "嘉禾却说起另一件事，说“我记得那次你借我盒子，后来还你的时候角压扁了，你一直没说我”。知栀愣了一下，说“我都不太记得了”。嘉禾说“我记得，你当时没吭声”。知栀想了想，说“那盒子现在还在我抽屉里”。两人没再往下说，只把录音又放了一遍，嘉禾还是笑。",
+            "knowledge": "experienced",
+            "informant_ref": null,
+            "known_from": null,
+            "known_until": null,
+            "privacy_class": "personal"
+          }
+        ]
+      },
+      "after": {
+        "event_ref": "event:native20:p3-08",
+        "title": "对方记得的是另一件事",
+        "occurred_from": "2017-09-01T00:00:00+08:00",
+        "occurred_until": "2017-09-30T23:59:59+08:00",
+        "line_refs": [
+          "things",
+          "words",
+          "play"
+        ],
+        "participant_refs": [
+          "history:person:celia-self",
+          "history:person:celia-linxia"
+        ],
+        "blocks": [
+          {
+            "block_id": "p3-08-a",
+            "kind": "event",
+            "subject_actor_ref": "agent:companion",
+            "text": "2017年秋天，知栀把前几年留着的一段录音和一个旧纸盒翻出来，拿给林夏看，说“你还记得这个吗”。林夏看了看，说“记得，那次你录我笑场”。知栀说“对，还有这个盒子”。",
+            "knowledge": "experienced",
+            "informant_ref": null,
+            "known_from": null,
+            "known_until": null,
+            "privacy_class": "personal"
+          },
+          {
+            "block_id": "p3-08-b",
+            "kind": "event",
+            "subject_actor_ref": "agent:companion",
+            "text": "林夏却说起另一件事，说“我记得那次你借我盒子，后来还你的时候角压扁了，你一直没说我”。知栀愣了一下，说“我都不太记得了”。林夏说“我记得，你当时没吭声”。知栀想了想，说“那盒子现在还在我抽屉里”。两人没再往下说，只把录音又放了一遍，林夏还是笑。",
+            "knowledge": "experienced",
+            "informant_ref": null,
+            "known_from": null,
+            "known_until": null,
+            "privacy_class": "personal"
+          }
+        ]
+      },
+      "reason": "Correct an actual participant mix-up: the captured recording and damaged borrowed boxes belonged to the Lin Xia scenes in 2013 and 2014, not Jiahe."
+    },
+    {
+      "block_id": "p4-06-a",
+      "before": "2020年冬天，知栀整理书桌，翻出几个以前折的纸盒，有的角已经压扁，有的盖子合不拢。她没扔，挑了一个稍硬一点的，把压扁的角重新折起来，又剪掉一条翘起的边，把它立在桌角，试着插几支笔进去。",
+      "after": "2020年冬天，知栀整理书桌，翻出几个后来折的、比最早那只小盒大些的纸盒，有的角已经压扁，有的盖子合不拢。她没扔，挑了一个稍硬一点的，把压扁的角重新折起来，又剪掉一条翘起的边，把它立在桌角，试着插几支笔进去。",
+      "reason": "Distinguish the later larger box from the first one-marble shallow box; object continuity must not silently enlarge the same object."
+    },
+    {
+      "block_id": "p4-06-b",
+      "before": "笔插进去有点晃，她往盒底垫了一张折了几折的纸，就稳了。这个纸盒从此放在她书桌上当笔插，插着几支不常用的笔。她没跟谁讲这是旧盒子改的，只是每次拿笔时看见它，会想起它原来是个装玻璃珠的小盒。",
+      "after": "笔插进去有点晃，她往盒底垫了一张折了几折的纸，就稳了。这个纸盒从此放在她书桌上当笔插，插着几支不常用的笔。她没跟谁讲这是旧盒子改的，只是每次拿笔时看见它，会想起它原来装过一小把玻璃珠，最早那只只能卡住一颗珠子的矮盒反而已经找不到了。",
+      "reason": "Distinguish the later larger box from the first one-marble shallow box; object continuity must not silently enlarge the same object."
+    },
+    {
+      "prior_native_links": [
+        {
+          "left_block_id": "p1-01-a",
+          "right_block_id": "p1-08-b",
+          "relation_kind": "later_disclosure",
+          "bridge_source_quote": "沈岚又讲起知栀小时候有只浅黄色的小袜子，洗过之后缩得很小，一直收在旧铁盒里。"
+        },
+        {
+          "left_block_id": "p1-03-a",
+          "right_block_id": "p1-08-b",
+          "relation_kind": "shared_scene",
+          "bridge_source_quote": "沈岚又讲起知栀小时候有只浅黄色的小袜子"
+        },
+        {
+          "left_block_id": "p2-02-b",
+          "right_block_id": "p2-09-a",
+          "relation_kind": "episode_followup",
+          "bridge_source_quote": "后来她把盒子放在书桌抽屉里"
+        },
+        {
+          "left_block_id": "p2-03-b",
+          "right_block_id": "p2-07-a",
+          "relation_kind": "episode_followup",
+          "bridge_source_quote": "两人都笑了，蹲下来把线重新描粗"
+        },
+        {
+          "left_block_id": "p2-06-b",
+          "right_block_id": "p2-09-a",
+          "relation_kind": "episode_followup",
+          "bridge_source_quote": "两人把两段都留着，谁也没真删"
+        },
+        {
+          "left_block_id": "p3-01-a",
+          "right_block_id": "p3-03-a",
+          "relation_kind": "episode_followup",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p3-05-a",
+          "right_block_id": "p3-08-a",
+          "relation_kind": "episode_followup",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p3-04-b",
+          "right_block_id": "p3-05-a",
+          "relation_kind": "episode_followup",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p3-09-a",
+          "right_block_id": "p3-10-a",
+          "relation_kind": "episode_followup",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p4-01-a",
+          "right_block_id": "p4-01-b",
+          "relation_kind": "shared_scene",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p4-02-a",
+          "right_block_id": "p4-02-b",
+          "relation_kind": "shared_scene",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p4-03-a",
+          "right_block_id": "p4-03-b",
+          "relation_kind": "shared_scene",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p4-04-a",
+          "right_block_id": "p4-04-b",
+          "relation_kind": "shared_scene",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p4-05-a",
+          "right_block_id": "p4-05-b",
+          "relation_kind": "shared_scene",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p4-06-a",
+          "right_block_id": "p4-06-b",
+          "relation_kind": "shared_scene",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p4-07-a",
+          "right_block_id": "p4-07-b",
+          "relation_kind": "shared_scene",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p4-08-a",
+          "right_block_id": "p4-08-b",
+          "relation_kind": "shared_scene",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p4-09-a",
+          "right_block_id": "p4-09-b",
+          "relation_kind": "shared_scene",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p4-10-a",
+          "right_block_id": "p4-10-b",
+          "relation_kind": "shared_scene",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p4-06-b",
+          "right_block_id": "p4-10-a",
+          "relation_kind": "explicit_callback",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p4-03-b",
+          "right_block_id": "p4-05-a",
+          "relation_kind": "episode_followup",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p5-03-a",
+          "right_block_id": "p5-05-b",
+          "relation_kind": "explicit_callback",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p5-04-b",
+          "right_block_id": "p5-09-a",
+          "relation_kind": "episode_followup",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p5-07-b",
+          "right_block_id": "p5-09-a",
+          "relation_kind": "episode_followup",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p6-01-b",
+          "right_block_id": "p6-06-a",
+          "relation_kind": "episode_followup",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p6-04-b",
+          "right_block_id": "p6-06-b",
+          "relation_kind": "explicit_callback",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p6-03-b",
+          "right_block_id": "p6-08-a",
+          "relation_kind": "episode_followup",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p6-02-b",
+          "right_block_id": "p6-11-b",
+          "relation_kind": "episode_followup",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p6-09-b",
+          "right_block_id": "p6-12-b",
+          "relation_kind": "explicit_callback",
+          "bridge_source_quote": null
+        },
+        {
+          "left_block_id": "p6-01-b",
+          "right_block_id": "editor-major-b",
+          "relation_kind": "explicit_callback",
+          "bridge_source_quote": null
+        }
+      ],
+      "prior_legacy_links": [
+        {
+          "new_block_id": "p1-06-b",
+          "prior_record_id": "prehistory-record:celia-expanded-family-f01",
+          "prior_source_quote": "厨房里那个白色计时器转起来会咔咔响。",
+          "bridge_source_quote": "父亲从旁边经过，一脚踩在布条上，没注意。",
+          "relation_kind": "shared_scene",
+          "old_is_left": true
+        },
+        {
+          "new_block_id": "p2-02-a",
+          "prior_record_id": "prehistory-record:celia-expanded-family-f02",
+          "prior_source_quote": "知栀拿指甲掐出一道口子，说这是船。",
+          "bridge_source_quote": "她没拆掉重做，把多出来的那条边往里折进去，压平",
+          "relation_kind": "episode_followup",
+          "old_is_left": true
+        },
+        {
+          "new_block_id": "p3-08-b",
+          "prior_record_id": "prehistory-record:celia-expanded-growing-g03",
+          "prior_source_quote": null,
+          "bridge_source_quote": null,
+          "relation_kind": "explicit_callback",
+          "old_is_left": true
+        },
+        {
+          "new_block_id": "p3-10-a",
+          "prior_record_id": "prehistory-record:celia-expanded-family-f09",
+          "prior_source_quote": null,
+          "bridge_source_quote": null,
+          "relation_kind": "explicit_callback",
+          "old_is_left": true
+        },
+        {
+          "new_block_id": "p4-06-a",
+          "prior_record_id": "prehistory-record:celia-expanded-growing-g06",
+          "prior_source_quote": null,
+          "bridge_source_quote": null,
+          "relation_kind": "episode_followup",
+          "old_is_left": true
+        },
+        {
+          "new_block_id": "p4-05-a",
+          "prior_record_id": "prehistory-record:celia-expanded-growing-g05",
+          "prior_source_quote": null,
+          "bridge_source_quote": null,
+          "relation_kind": "explicit_callback",
+          "old_is_left": true
+        },
+        {
+          "new_block_id": "p5-05-a",
+          "prior_record_id": "prehistory-record:celia-expanded-growing-g02",
+          "prior_source_quote": null,
+          "bridge_source_quote": null,
+          "relation_kind": "episode_followup",
+          "old_is_left": true
+        },
+        {
+          "new_block_id": "p5-08-a",
+          "prior_record_id": "prehistory-record:celia-expanded-family-f12",
+          "prior_source_quote": null,
+          "bridge_source_quote": null,
+          "relation_kind": "episode_followup",
+          "old_is_left": true
+        },
+        {
+          "new_block_id": "p6-08-a",
+          "prior_record_id": "prehistory-record:celia-expanded-family-f15",
+          "prior_source_quote": null,
+          "bridge_source_quote": null,
+          "relation_kind": "episode_followup",
+          "old_is_left": true
+        },
+        {
+          "new_block_id": "p6-12-c",
+          "prior_record_id": "prehistory-record:celia-expanded-family-f12",
+          "prior_source_quote": null,
+          "bridge_source_quote": null,
+          "relation_kind": "episode_followup",
+          "old_is_left": true
+        }
+      ],
+      "reason": "Replace unsupported callback/shared-scene declarations with actual recording, object, skill and relationship continuations; preserve existing source records rather than invent their missing participants."
+    },
+    {
+      "prior_open_questions": [
+        "那只浅黄色小袜子后来是否真的被找出来给知栀看过",
+        "知栀幼年把豆腐喇叭听成妈妈的具体年份",
+        "2007年那几件小衣服最后是送人还是留了下来",
+        "知栀数自行车时到底数到了几辆",
+        "林夏后来是否还留着那两段录音",
+        "知栀借给林夏的小本子里记了什么",
+        "知栀和罗嘉禾后来是否还保持来往",
+        "知栀攒钱没买的那套折纸后来有没有再买",
+        "嘉禾想试做的小东西后来做成了什么",
+        "知栀录的那段念错字的录音后来有没有再听过",
+        "嘉禾借走的那本书里折过的是哪一页",
+        "知栀买大的那件外套后来有没有改过",
+        "嘉禾那个快做完的小东西最后做成了什么",
+        "知栀二十岁生日后第二天帮嘉禾拍照的具体时间与内容"
+      ],
+      "after": [
+        "那只浅黄色小袜子后来是否真的被找出来给知栀看过",
+        "知栀幼年把豆腐喇叭听成妈妈的具体年份",
+        "2007年那几件小衣服最后是送人还是留了下来（仅作者世界层，主角未知）",
+        "知栀借给林夏的小本子里记了什么",
+        "知栀攒钱没买的那套折纸后来有没有再买",
+        "嘉禾那个快做完的小东西最后做成了什么（截至二十岁生日未获知）",
+        "嘉禾借走的那本书里折过的是哪一页",
+        "知栀买大的那件外套后来有没有改过",
+        "知栀留在家里的旧本子以后是否会重新写起",
+        "知栀是否会把私人视频发出去；尚未取得林夏对公开使用笑声的同意",
+        "与周祺的交换活动今后怎样发展；二十岁之后已有记录单列衔接，不提前当作生日当天的知识"
+      ],
+      "reason": "Remove questions already answered later in the source and the invalid birthday-plus-one photo appointment; retain actual unknowns without forcing outcomes."
+    },
+    {
+      "added_scene": "event:native20:editor-major-choice",
+      "reason": "Fill the personal choice behind the already fixed 2024 university/Chinese-literature enrollment, using prior authored writing and childhood sound experiences. No exam score, admission rule, repeat year or predetermined career is invented."
+    },
+    {
+      "single_line_scenes": {
+        "event:native20:p1-04": "play",
+        "event:native20:p1-05": "hands",
+        "event:native20:p2-04": "things",
+        "event:native20:p2-07": "play",
+        "event:native20:p3-06": "play",
+        "event:native20:p4-10": "play",
+        "event:native20:p5-01": "hands",
+        "event:native20:p6-06": "places",
+        "event:native20:p6-07": "play"
+      },
+      "reason": "Keep ordinary independent episodes instead of treating every thematic tag overlap as evidence of causal story weaving. Narrative prose unchanged."
+    }
+  ],
+  "other_edit_log": "output/private-audits/life-twenty-years-20261007/source-edit.json",
+  "enum_alias_normalizations": "kind=self_reflection with knowledge=self_reflection canonicalized to historical_interpretation; no prose/owner change",
+  "independent_model_review": false
+}
