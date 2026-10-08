@@ -699,19 +699,28 @@ class _RecallIndexCore:
                 }),
             }) if document.prehistory is not None and document.prehistory.story is not None else document,
                                    vector) for document, vector in eligible_rows)
-        lexical_scores = _corpus_lexical_scores(lexical_text, tuple(
-            _lexical_features(document.retrieval_text or document.text)
-            for document, _ in eligible_rows if not document.context_only
-        ))
+        search_rows = tuple(row for row in eligible_rows if not row[0].context_only)
+        # Reuse pure lexical work inside this exact eligibility snapshot; no
+        # cached authority, corpus frequency or ranking survives the query.
+        features_by_id = {
+            document.document_id: _lexical_features(document.retrieval_text or document.text)
+            for document, _ in search_rows
+        }
+        lexical_scores = _corpus_lexical_scores(
+            lexical_text, tuple(features_by_id[document.document_id] for document, _ in search_rows),
+        )
         ranked: list[tuple[int, str, RecallHit]] = []
         question_focus_scores: dict[str, int] = {}
         matched_candidate_ids: list[str] = []
-        search_rows = tuple(row for row in eligible_rows if not row[0].context_only)
         for (document, vector), lexical in zip(search_rows, lexical_scores, strict=True):
             dense = max(0, min(10_000, round(_cosine(query_vectors[0], vector) * 10_000)))
             question_focus = None
             if self.policy_version in {"world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17"} and document.prehistory is not None:
-                focus = max(0, min(10_000, round(_cosine(query_vectors[-1], vector) * 10_000)))
+                # Without a distinct current-question vector this is exactly
+                # the same dot product and rounding as dense above.
+                focus = dense if len(query_vectors) == 1 else max(
+                    0, min(10_000, round(_cosine(query_vectors[-1], vector) * 10_000)),
+                )
                 question_focus = focus if focus >= self._dense_match_threshold_bp else 0
                 if focus >= self._dense_match_threshold_bp:
                     question_focus_scores[document.document_id] = focus
@@ -774,33 +783,35 @@ class _RecallIndexCore:
         ranked_candidate_ids = tuple(document_id for _, document_id, _ in ranked)
         ranked_scores_bp = tuple(score for score, _, _ in ranked)
         selected: list[RecallHit] = []
+        selected_reading_bytes = 0
+        selected_result_bytes = 0
         reading_budget_skips: list[str] = []
         result_budget_skips: list[str] = []
 
         def add_if_within_budget(hit: RecallHit) -> bool:
+            nonlocal selected_reading_bytes, selected_result_bytes
             hit = self._result_hit(hit)
             if len(selected) >= query.limit:
                 return False
-            candidate = (*selected, hit)
-            if len(_canonical_json({"items": [
-                interior_recall_item(item.document, index_version=self._index_version)
-                for item in candidate
-            ]}).encode("utf-8")) > RECALL_MODEL_READING_MAX_BYTES:
+            # Canonical compact JSON is additive: each immutable item plus
+            # one comma per prior item, then the exact wrapper bytes. Reuse
+            # accepted-item sizes; preserve UTF-8, escaping and check order.
+            reading_bytes = len(_canonical_json(
+                interior_recall_item(hit.document, index_version=self._index_version)
+            ).encode("utf-8"))
+            if (len(b'{"items":[]}') + selected_reading_bytes + reading_bytes + len(selected)
+                    > RECALL_MODEL_READING_MAX_BYTES):
                 if diagnostics is not None:
                     reading_budget_skips.append(hit.document.document_id)
                 return False
-            if (
-                len(
-                    _canonical_json([item.model_dump(mode="json") for item in candidate]).encode(
-                        "utf-8"
-                    )
-                )
-                > RECALL_RESULT_MAX_BYTES
-            ):
+            result_bytes = len(_canonical_json(hit.model_dump(mode="json")).encode("utf-8"))
+            if len(b'[]') + selected_result_bytes + result_bytes + len(selected) > RECALL_RESULT_MAX_BYTES:
                 if diagnostics is not None:
                     result_budget_skips.append(hit.document.document_id)
                 return False
             selected.append(hit)
+            selected_reading_bytes += reading_bytes
+            selected_result_bytes += result_bytes
             return True
 
         # The first result keeps the fused ranking. Subsequent candidates
@@ -811,7 +822,7 @@ class _RecallIndexCore:
         query_spans = _lexical_feature_spans(lexical_text)
         groups_by_id = {
             hit.document.document_id: _matched_query_groups(
-                query_spans, _lexical_features(hit.document.retrieval_text or hit.document.text),
+                query_spans, features_by_id[hit.document.document_id],
             ) for _, _, hit in ranked
         }
         covered_spans: list[tuple[int, int]] = []
@@ -863,11 +874,18 @@ class _RecallIndexCore:
                     + int(bool(set(document.subject_refs) - seen_subjects)))
             return cue_count, axes
 
+        ordered_for_selection_count = -1
         while remaining and len(selected) < query.limit:
             if selected:
-                remaining.sort(key=lambda item: (
-                    -novelty(item[2])[0], -novelty(item[2])[1], -item[0], item[1],
-                ))
+                # Rejecting an oversized hit changes neither novelty nor its
+                # tie breakers. Removing a candidate preserves the remaining
+                # order; family promotion below also pops the promoted item.
+                # Reorder only when a newly accepted hit changes coverage.
+                if ordered_for_selection_count != len(selected):
+                    remaining.sort(key=lambda item: (
+                        -novelty(item[2])[0], -novelty(item[2])[1], -item[0], item[1],
+                    ))
+                    ordered_for_selection_count = len(selected)
                 for anchor in selected:
                     family = families.get(anchor.document.document_id)
                     if family is None or family in expanded_families:
