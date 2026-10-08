@@ -974,6 +974,40 @@ class _SQLiteCharacterInteriorTurnStore:
         )
 
 
+def read_completed_considerations(
+    *, path: str | Path, world_id: str, actor_ref: str, purposes: tuple[str, ...]
+):
+    """Read verified terminal bytes without creating a store or authoring a turn.
+
+    These remain coordination evidence. A domain must revalidate full lineage
+    before applying any choice; this seam also allows migrations to leave an
+    unfinished old choice alone instead of replacing it with defaults.
+    """
+    from .contracts import InnerDecision
+
+    connection = sqlite3.connect(Path(path).resolve().as_uri() + '?mode=ro', uri=True)
+    connection.row_factory = sqlite3.Row
+    try:
+        if not connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='world_v2_character_interior_turns'").fetchone():
+            return ()
+        results = []
+        for row in connection.execute(
+            "SELECT * FROM world_v2_character_interior_turns WHERE world_id=? AND actor_ref=? AND phase='consider' AND state='terminal' ORDER BY inner_turn_id",
+            (world_id, actor_ref),
+        ):
+            if row['purpose'] not in purposes:
+                continue
+            record = _SQLiteCharacterInteriorTurnStore._record(row)
+            _terminal_has_source(record, record.request.trigger_ref)  # checks both persisted hashes
+            result = InnerDecision.model_validate_json(record.terminal_result_json)
+            if result.actor_ref != actor_ref or result.inner_turn_id != record.request.inner_turn_id:
+                raise ValueError('completed consideration identity mismatch')
+            results.append(result)
+        return tuple(results)
+    finally:
+        connection.close()
+
+
 def open_sqlite_character_interior_turn_store(
     *, path: str | Path, world_id: str
 ) -> _SQLiteCharacterInteriorTurnStore:

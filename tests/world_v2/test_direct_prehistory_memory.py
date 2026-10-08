@@ -462,3 +462,60 @@ def test_initialization_reports_legacy_pending_without_overwriting_it(tmp_path):
         assert ledger.project().semantic_hash == before.semantic_hash
     finally:
         ledger.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("break_at", ["PrehistoryMemoryDecisionRecorded", "MemoryCandidateOpened"])
+@pytest.mark.parametrize("batched", [False, True])
+async def test_direct_initialization_leaves_unapplied_paid_legacy_choices_for_free_recovery(
+    tmp_path, monkeypatch, break_at, batched
+):
+    from test_prehistory_memory_runtime import Role, interior
+    from companion_daemon.world_v2.prehistory_memory_runtime import PrehistoryMemoryRuntime
+    from companion_daemon.world_v2.prehistory_memory_initialization import (
+        PrehistoryMemoryInitializer,
+    )
+
+    path = tmp_path / "legacy-choice.sqlite"
+    ledger = started_ledger(path)
+    from test_prehistory_memory_batch import BatchRole
+
+    role = BatchRole() if batched else Role()
+    character = interior(path, role)
+    legacy = PrehistoryMemoryRuntime(
+        ledger=ledger, owner_actor_ref=ACTOR, character_interior=character
+    )
+    original = ledger.commit
+
+    def interrupted(events, **kwargs):
+        if any(e.event_type == break_at for e in events):
+            raise OSError("fixture storage interruption")
+        return original(events, **kwargs)
+
+    try:
+        PrehistoryArchiveRuntime(ledger=ledger, owner_actor_ref=ACTOR).import_reviewed(
+            reviewed_archive(), created_at=START
+        )
+        monkeypatch.setattr(ledger, "commit", interrupted)
+        with pytest.raises(OSError):
+            if batched:
+                await legacy.advance_batch_once(allow_model_call=True, batch_size=1)
+            else:
+                await legacy.advance_once(allow_model_call=True)
+        monkeypatch.setattr(ledger, "commit", original)
+        assert len(role.calls) == 1 and not ledger.project().memory_candidates
+        initialize = PrehistoryMemoryInitializer(ledger=ledger, owner_actor_ref=ACTOR)
+        before = ledger.project()
+        result = initialize.advance_once()
+        assert result["status"] == "pending_existing" and result["existing_pending"] == 1
+        assert before.semantic_hash == ledger.project().semantic_hash
+        assert (await legacy.advance_once())["status"] == "retained"
+        assert len(role.calls) == 1
+        (candidate,) = ledger.project().memory_candidates
+        assert candidate.values.cue_kind == "identity"
+        assert initialize.advance_once()["status"] == "idle"
+        assert candidate == ledger.project().memory_candidates[0]
+        assert ledger.rebuild().semantic_hash == ledger.project().semantic_hash
+    finally:
+        character._turn_store.close()
+        ledger.close()

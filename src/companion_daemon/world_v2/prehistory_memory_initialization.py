@@ -132,6 +132,18 @@ class PrehistoryMemoryInitializer:
             raise ValueError("initial memory limit must be between 1 and 256")
         initialized, existing, inactive, pending, withheld = [], 0, 0, 0, 0
         with self.ledger.serialized_commit_sequence():
+            from .character_interior.turn_store import read_completed_considerations
+            from .prehistory_memory_decision import (
+                decision_event_id,
+                PrehistoryMemoryDecisionRecordedPayload,
+            )
+
+            completed = read_completed_considerations(
+                path=self.ledger.database_path,
+                world_id=self.ledger.world_id,
+                actor_ref=self.actor_ref,
+                purposes=("fact_memory_retention", "prehistory_memory_batch"),
+            )
             state = self.ledger.project()
             rows = tuple(r for r in state.prehistory_records if r.actor_ref == self.actor_ref)
             requested = set(record_refs) if record_refs is not None else None
@@ -159,6 +171,39 @@ class PrehistoryMemoryInitializer:
                         existing += 1
                     else:
                         inactive += 1
+                    continue
+                recorded = self.ledger.lookup_event_commit(
+                    decision_event_id(self.ledger.world_id, source)
+                )
+                legacy_pending = False
+                if recorded is not None:
+                    decision_event, _ = recorded
+                    decision = PrehistoryMemoryDecisionRecordedPayload.model_validate_json(
+                        decision_event.payload_json
+                    )
+                    if (
+                        decision_event.event_type != "PrehistoryMemoryDecisionRecorded"
+                        or decision.source_binding != source
+                    ):
+                        raise ValueError("legacy initialization source identity mismatch")
+                    legacy_pending = decision.status == "retain"
+                else:
+                    for result in completed:
+                        decision = result.decision
+                        if not isinstance(
+                            decision, dict
+                        ) or source.authority_event_ref not in decision.get("source_refs", ()):
+                            continue
+                        if decision.get("purpose") == "fact_memory_retention":
+                            legacy_pending = True
+                        elif decision.get("purpose") == "prehistory_memory_batch":
+                            legacy_pending |= any(
+                                item.get("source_id") == source.source_id
+                                for item in decision.get("payload", {}).get("choices", ())
+                                if isinstance(item, dict)
+                            )
+                if legacy_pending:
+                    pending += 1
                     continue
                 grant_id = initialization_event_id(self.ledger.world_id, source)
                 grant = self.ledger.lookup_event_commit(grant_id)

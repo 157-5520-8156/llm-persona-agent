@@ -867,6 +867,11 @@ class SQLiteWorldLedger:
             self._database_write_lock.release()
 
     @property
+    def database_path(self) -> Path:
+        """Location shared with independently owned technical sidecars."""
+        return self._database_path
+
+    @property
     def world_id(self) -> str:
         return self._world_id
 
