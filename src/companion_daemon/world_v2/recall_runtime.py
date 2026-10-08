@@ -356,7 +356,7 @@ class RecallCoordinator:
     ) -> None:
         self._index = index
         self._corpus = corpus or RecallCorpusCompiler(prehistory_parent_context=(
-            getattr(index, "policy_version", None) in {"world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15"}
+            getattr(index, "policy_version", None) in {"world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16"}
         ))
         self._semantic_embedding = semantic_embedding
         self._closed = False
@@ -1220,6 +1220,7 @@ class RecallCoordinator:
                     score_bp=hit.score_bp,
                     lexical_score_bp=hit.lexical_score_bp,
                     dense_score_bp=hit.dense_score_bp,
+                    question_focus_score_bp=hit.question_focus_score_bp,
                     temporal_score_bp=hit.temporal_score_bp,
                     structured_score_bp=hit.structured_score_bp,
                     accessibility_offset_bp=hit.accessibility_offset_bp,

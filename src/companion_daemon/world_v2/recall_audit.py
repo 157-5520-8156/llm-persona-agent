@@ -97,6 +97,8 @@ class RecallAuditHit(FrozenModel):
     score_bp: int = Field(ge=0, le=10_000)
     lexical_score_bp: int = Field(ge=0, le=10_000)
     dense_score_bp: int = Field(ge=0, le=10_000)
+    question_focus_score_bp: int | None = Field(default=None, ge=0, le=10_000,
+        exclude_if=lambda value: value is None)
     temporal_score_bp: int = Field(ge=0, le=10_000)
     structured_score_bp: int = Field(ge=0, le=10_000)
     accessibility_offset_bp: int = Field(ge=-500, le=500)

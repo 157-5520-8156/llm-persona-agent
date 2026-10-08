@@ -475,6 +475,8 @@ class RecallHit(FrozenModel):
     score_bp: int = Field(ge=0, le=10_000)
     lexical_score_bp: int = Field(ge=0, le=10_000)
     dense_score_bp: int = Field(ge=0, le=10_000)
+    question_focus_score_bp: int | None = Field(default=None, ge=0, le=10_000,
+        exclude_if=lambda value: value is None)
     temporal_score_bp: int = Field(ge=0, le=10_000)
     structured_score_bp: int = Field(ge=0, le=10_000)
     accessibility_offset_bp: int = Field(ge=-500, le=500)
@@ -603,7 +605,7 @@ class _RecallIndexCore:
             raise ValueError("recall dense match threshold is invalid")
         policy_version = RECALL_INDEX_POLICY_VERSION if policy_version is None else policy_version
         if not isinstance(policy_version, str) or policy_version not in {
-            RECALL_INDEX_POLICY_VERSION, "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15",
+            RECALL_INDEX_POLICY_VERSION, "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16",
         }:
             raise ValueError("unknown recall search policy")
         self._index_version = f"{policy_version}+embedding:{embedding.version}"
@@ -652,22 +654,30 @@ class _RecallIndexCore:
         if query.cursor != cursor:
             raise ValueError("recall query cursor does not match the sidecar cursor")
         embedding_failure = self._last_rebuild_embedding_failure
+        query_texts = (query.query_text,)
+        if (self.policy_version == "world-v2-recall-index.hybrid.16"
+                and query.lexical_text is not None and query.lexical_text != query.query_text
+                and any(document.prehistory is not None for document, _ in rows)):
+            # The broader attention cue can contain recent dialogue and
+            # impressions. Keep the exact current question as a second dense
+            # entry, without discarding the role's original retrieval cue.
+            query_texts += (query.lexical_text,)
         try:
             embed_query = getattr(self._embedding, "embed_query", None)
             query_vector_values = (
-                (embed_query(query.query_text),) if callable(embed_query)
-                else self._embedding.embed((query.query_text,))
+                tuple(embed_query(text) for text in query_texts) if callable(embed_query)
+                else self._embedding.embed(query_texts)
             )
         except RecallEmbeddingUnavailable as exc:
-            query_vector_values = ((0.0,) * self._embedding.dimensions,)
+            query_vector_values = tuple((0.0,) * self._embedding.dimensions for _ in query_texts)
             embedding_failure = str(exc)[:128] or "embedding_unavailable"
-        if len(query_vector_values) != 1:
+        if len(query_vector_values) != len(query_texts):
             raise ValueError("recall query embedding count is invalid")
-        query_vector = self._normalize_vector(query_vector_values[0])
+        query_vectors = tuple(self._normalize_vector(vector) for vector in query_vector_values)
         lexical_text = query.lexical_text or query.query_text
         eligible_rows = tuple((document, vector) for document, vector in rows
                               if self._eligible(document, query))
-        if self.policy_version == "world-v2-recall-index.hybrid.15" and query.story_window is None:
+        if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16"} and query.story_window is None:
             from .prehistory_story import compact_story_reading
             eligible_rows = tuple((document.model_copy(update={
                 "prehistory": document.prehistory.model_copy(update={
@@ -680,10 +690,17 @@ class _RecallIndexCore:
             for document, _ in eligible_rows if not document.context_only
         ))
         ranked: list[tuple[int, str, RecallHit]] = []
+        question_focus_scores: dict[str, int] = {}
         matched_candidate_ids: list[str] = []
         search_rows = tuple(row for row in eligible_rows if not row[0].context_only)
         for (document, vector), lexical in zip(search_rows, lexical_scores, strict=True):
-            dense = max(0, min(10_000, round(_cosine(query_vector, vector) * 10_000)))
+            dense = max(0, min(10_000, round(_cosine(query_vectors[0], vector) * 10_000)))
+            question_focus = None
+            if self.policy_version == "world-v2-recall-index.hybrid.16" and document.prehistory is not None:
+                focus = max(0, min(10_000, round(_cosine(query_vectors[-1], vector) * 10_000)))
+                question_focus = focus if focus >= self._dense_match_threshold_bp else 0
+                if focus >= self._dense_match_threshold_bp:
+                    question_focus_scores[document.document_id] = focus
             structured = (10_000 if query.story_window is not None
                           else _structured_score(query.link_refs, self._structured_refs(document)))
             temporal = _temporal_score(query, document)
@@ -697,7 +714,7 @@ class _RecallIndexCore:
             # lexical, dense and structured matches.
             if lexical > 0:
                 channels.append("lexical")
-            if dense >= self._dense_match_threshold_bp:
+            if dense >= self._dense_match_threshold_bp or question_focus:
                 channels.append("dense")
             if structured:
                 channels.append("structured")
@@ -720,7 +737,7 @@ class _RecallIndexCore:
                     10_000,
                     round(
                         lexical * 0.35
-                        + (dense * 0.35 if "dense" in channels else 0)
+                        + (dense * 0.35 if dense >= self._dense_match_threshold_bp else 0)
                         + structured * 0.20
                         + temporal * 0.10
                     ) + accessibility,
@@ -732,6 +749,7 @@ class _RecallIndexCore:
                 score_bp=score,
                 lexical_score_bp=lexical,
                 dense_score_bp=dense,
+                question_focus_score_bp=question_focus,
                 temporal_score_bp=temporal,
                 structured_score_bp=structured,
                 accessibility_offset_bp=accessibility,
@@ -811,7 +829,7 @@ class _RecallIndexCore:
             "world-v2-recall-index.hybrid.11",
             "world-v2-recall-index.hybrid.12",
             "world-v2-recall-index.hybrid.13",
-            "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15",
+            "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16",
         }:
             from .life_recall_windows import attempt_family
             families = {hit.document.document_id: attempt_family(hit.document)
@@ -866,18 +884,22 @@ class _RecallIndexCore:
         hits = tuple(selected)
         if (query.include_historical
                 and self._index_version.partition("+embedding:")[0] in {
-                    "world-v2-recall-index.hybrid.13", "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15"}):
+                    "world-v2-recall-index.hybrid.13", "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16"}):
             hits = self._add_linked_impression_context(
                 hits=hits, eligible_rows=eligible_rows, query=query,
             )
-        if hits and any(hit.document.prehistory is not None for hit in hits):
+        if hits and self.policy_version == "world-v2-recall-index.hybrid.16":
+            from .scene_recall import select_scene_context
+            hits = select_scene_context(hits=hits, ranked=ranked, eligible_rows=eligible_rows,
+                query=query, index_version=self._index_version, question_focus_scores=question_focus_scores)
+        elif hits and any(hit.document.prehistory is not None for hit in hits):
             hits = self._add_linked_prehistory_context(
                 hits=hits,
                 ranked=ranked,
                 eligible_rows=eligible_rows,
                 query=query,
             )
-        if self.policy_version in {"world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15"}:
+        if self.policy_version in {"world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16"}:
             hits = self._with_prehistory_parent_context(
                 hits=hits, eligible_rows=eligible_rows,
             )
@@ -1023,13 +1045,13 @@ class _RecallIndexCore:
         return tuple(expanded) if expanded else hits
 
     def _structured_refs(self, document: RecallDocument) -> tuple[str, ...]:
-        if self.policy_version == "world-v2-recall-index.hybrid.15" and document.prehistory is not None:
+        if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16"} and document.prehistory is not None:
             return tuple(sorted({*document.link_refs, *document.source_refs,
                                  document.source_item_ref, document.source_item_ref.split(":window:")[0]}))
         return document.link_refs
 
     def _result_hit(self, hit: RecallHit) -> RecallHit:
-        if self.policy_version == "world-v2-recall-index.hybrid.15" and hit.document.prehistory is not None:
+        if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16"} and hit.document.prehistory is not None:
             return hit.model_copy(update={"document": hit.document.model_copy(update={"retrieval_text": None})})
         return hit
 
@@ -1189,7 +1211,7 @@ class _RecallIndexCore:
             candidate = (*expanded, hit)
             reading_size = len(_canonical_json({"items": [
                 interior_recall_item(item.document, index_version=(self._index_version
-                    if self.policy_version == "world-v2-recall-index.hybrid.15" else "world-v2-recall-index.hybrid.12"))
+                    if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16"} else "world-v2-recall-index.hybrid.12"))
                 for item in candidate
             ]}).encode("utf-8"))
             result_size = len(_canonical_json([

@@ -36,6 +36,7 @@ from test_world_stimulus_life_intent import _http_result
 @pytest.mark.parametrize("tool_version,review_version,index_policy", [
     ("1", "1", "world-v2-recall-index.hybrid.7"),
     ("3", "8", "world-v2-recall-index.hybrid.8"),
+    ("3", "8", "world-v2-recall-index.hybrid.16"),
 ])
 @pytest.mark.parametrize("recall_mode", ["pull", "prefetch"])
 @pytest.mark.parametrize("correct_wrong_scope", [False, True, "always"])
@@ -44,7 +45,7 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
     # Produce authentic old-format traces/readings, then replay those saved
     # bytes under the current code. No trace hashes or shown fields are edited.
     monkeypatch.setattr(recall_index, "RECALL_INDEX_POLICY_VERSION", index_policy)
-    attributed = index_policy == "world-v2-recall-index.hybrid.8"
+    attributed = index_policy != "world-v2-recall-index.hybrid.7"
     config = _config()
     data = reviewed_archive().document.model_dump(mode="json")
     data.update(world_id=config.world_id, actor_ref=config.companion_actor_ref)

@@ -3707,7 +3707,7 @@ def build_sqlite_world_v2_turn_application(
         path=path,
         world_id=config.world_id,
         embedding=FeatureHashRecallEmbedding(),
-        policy_version=("world-v2-recall-index.hybrid.15" if config.recall_story_context else
+        policy_version=("world-v2-recall-index.hybrid.16" if config.recall_story_context else
                         "world-v2-recall-index.hybrid.14" if config.recall_parent_context else None),
     )
     cached_semantic_embedding = (
