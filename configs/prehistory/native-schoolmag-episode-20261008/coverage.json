@@ -1,0 +1,16 @@
+{
+  "source_hash": "6f8c63dda30b5c24febad5863a057506d197061cdcf32be944987a35d4891ac1",
+  "native_scenes": 16,
+  "new_records": 32,
+  "world_only_blocks": 1,
+  "existing_records_referenced_not_reimported": [
+    "prehistory-record:celia-first20-native-20261007.p6-01-a",
+    "prehistory-record:celia-first20-native-20261007.p6-01-b",
+    "prehistory-record:celia-first20-native-20261007.p6-01-c"
+  ],
+  "episodes": 2,
+  "remote_author_calls": 0,
+  "author": "Codex source author",
+  "not_current_behavior_instruction": true,
+  "not_independently_reviewed": true
+}

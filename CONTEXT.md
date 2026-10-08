@@ -1,6 +1,43 @@
-Next direction: time-dense life episodes (2026-10-08 user discussion):
+Dense historical episodes implemented and isolated-qualified at named seams (2026-10-08):
+User authorized completing the time-dense design and bounded high-school sample in one run. Baseb40be10e;
+implementation144340ab,compatibility/recovery1c88aec8,context-profile186620ab,overview73eee89c. Audit
+docs/audits/dense-life-episodes-2026-10-08.md; sample configs/prehistory/native-schoolmag-episode-20261008/.
+Source.2/compiler.2 persist episode refs/revisions/pinned predecessors and existing-record memberships.
+Protocol4 native authoring carries full prior draft and episode updates; old protocols preserve schemas.
+Actor-filtered opaque navigation;hybrid17 overview/detail pagination preserves6/11KB/22KB bounds. Titles
+and hidden/unretained members not exposed;legacy.1 members supported;public next brief preserves episodes.
+Overview reserves readable endpoints before middle under byte pressure;reader format unchanged.
+NewCharacterInterior purpose prehistory_memory_batch <=8sources/7200chars uses old Memory lifecycle,
+independent per-source choices,retentionreceipt.2 and existing source IDs. Missing item=technical incomplete;
+recorded/paid responses recover without new calls,source attempt ordinals persist;retry capability prevents
+cached empty batches. Public initializer batch_size(default1) and consider_calls(logical count,notHTTP).
+Sample2024-01-12..02-02:16scenes/32readable records/1world-only,2intersecting episodes. Old3January draft
+anchors referenced,not duplicated. Old190records/347candidates unchanged at import,total222records;
+reimport inert. Real32retained/0no_change. All35visible episode members read in9pages;past cutoff/title/
+world-only bounds verified. No newly established romance or liveNPC. Future live episode autogrouping/Fate
+not implemented by this historical pipeline. Free automatic reconstruction remains qualification_incomplete.
+Actual2chat sample:publication claim avoids received=printed;Xuqiao reply omits later renewed appointment,
+only initial incident presented,endswith'没处理'. Do not call this complete narrative coverage or force apology.
+Same6sources/same model parameters/import cursor:batch1call23787prompttokens/CNY0.029287 vs single6calls
+109975prompttokens/CNY0.116557 (~74.9%lower);bothretain6,weights not required identical;small sample only.
+Initialmissing-background-profile bug cost5actualrequests/CNY0.341573 for24sources;next reserve0.455366
+refused beforetransport with0.387212left. Registered existing memory_retention profile;remaining8done2calls/
+CNY0.051040. Initialone source-ref ordering correction retained. No successful old24 re-paid. Singlecontrol
+CNY0.116557;2chat/3calls CNY0.070176. Private same-provider comprehension2calls/CNY0.009532:full35sources recovers later appointment
+and shared exercise,auto6sources declares missing followup;relative-day wording still imprecise. Diagnostic only,
+no Worldwrite/dispatch/no production pass. Totalnew18emitted/CNY0.588878 +1pretransportbudgetrejection/0newunknown.
+Sharedledger166requests/knownCNY4.628753 +oldunknownreserve0.231340;remaining0.139907 under unchanged5cap.
+Codex authorship/development excluded;no extra remote sourceauthor call. Allpaidcaptured,do not reset funds.
+Finalretained-world and real-reading coldreplays pass/hash-match/no findings(152.00s/148.62s). Scoped90,
+wire305,profile34,overview32 pass(overlap). Firstfull1failed/4443passed interrupted forprofile fix;
+second6872passed/2xfail interrupted foroverview fix;neither final pass. Final frozen73eee89c full10308pass/19skip/2xfail,1228.97s/exit0;runtime/tests unchanged during run.
+Subsequent changes are source package documentation and audit only.
+Two-axis code review findings all closed;no productionDB/config/process/realQQ writes. Private evidence:
+output/private-audits/dense-life-episodes-20261008/. Remaining semantic deficits are not source import failures.
+
+Earlier time-dense episode discussion (historical implementation recorded above):
 User identifies missing sustained days/weeks-level school/relationship stories and asks to improve content,
-formation and import together. Design docs/design/time-dense-life-episodes-2026-10-08.md; not implemented.
+formation and import together. The design was proposed then; implementation and evidence are recorded above.
 First20 source covers periods, not full lived density. Native59scenes/122blocks:57date ranges7-31days,2under2;
 these are date precision, not event duration. Of28explicit native cross-scene edges,only1has<=31day minimum
 range gap;this excludes old72records and implicit/same-scene links. Old g07/g10 do contain several-day

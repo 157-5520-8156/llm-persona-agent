@@ -1,0 +1,31 @@
+# 梧桐短稿前后的二十二天
+
+先读 [episode-reading.md](episode-reading.md)。这段新增人生发生在2024年1月12日至2月2日：16个场景、32条主角可读记忆，另有1段不授予主角的作者世界层材料。校刊改稿、与许桥约时间、习题、书店夹子和饭桌问话共同构成一段连续生活。
+
+它引用前二十年源稿已有的梧桐短稿3条记录，不把同一次创作或交稿再存成新事件。两份阶段视图分别覆盖整个交稿期和同期与许桥的相处，共享发生而不复制事实。许桥仍是既有高中同学，未改成恋爱或前任关系。
+
+- `source.json`：原生源协议2，含有序阶段成员、发生时间、知情方式、明确关联与未决事项。
+- `authoring-context.json`：本次写作绑定的旧历史与生平；新具体日期由本次创作提供，旧记录日期精度不变。
+- `compiled-package.json`：编译器2可重复生成的导入包；没有伪造独立审核结果。
+- `coverage.json`：结构范围；计数不是语义正确率。
+- `qualification.json`：隔离导入、保留、费用和读取资格。
+
+编译不调用模型：
+
+```sh
+PYTHONPATH=src python scripts/compile_native_story.py compile \
+  --source configs/prehistory/native-schoolmag-episode-20261008/source.json \
+  --brief configs/prehistory/native-schoolmag-episode-20261008/authoring-context.json \
+  --archive-id prehistory-archive:celia-schoolmag-dense-20261008 \
+  --out-dir output/schoolmag-episode-compile
+```
+
+包绑定已经导入前二十年材料的原历史基线。切换World或历史发生变化时，应从目标库重新生成brief并核对新增内容；旧包不能直接覆盖另一份历史。导入只创建前史，角色保留另行执行。
+
+保留调用通过现有应用入口 `initialize_prehistory_once(allow_model_call=True, batch_size=6)`；省略batch_size仍走旧单条方式。每条来源独立选择，省略项是技术未完成，恢复不会重复支付已完成的选择。公共返回的 `consider_calls` 是逻辑调用数，供应商次数和费用以实际传输账本为准。
+
+读取采用显式开启故事上下文时的hybrid.17。普通检索命中会给出opaque阶段导航；CharacterRecallRequest可复制到 `episode_window`，选择 `overview` 或 `detail`，并用 `after_record_ref` 续读。概览提供部分原文来源，详细读取遵守原字节预算；缺失、遗忘和当时尚未知的成员不会由标题或摘要泄漏。
+
+32条新记忆已在隔离世界实际保留，旧190条历史不变；35份阶段成员可完整分页读取。实际问答中，收稿与刊出状态得到了区分，但另一题未覆盖后来与许桥改约的经过，不能宣称自动整段复述已完全合格。详见[验收记录](../../../docs/audits/dense-life-episodes-2026-10-08.md)。
+
+创作由本轮Codex直接完成，没有新增源作者远程调用；Codex会话费用不计入供应商实验账本。代码复查是工程检查，未增加日常生成后的独立模型审核步骤。生产与真实QQ未采用此包。

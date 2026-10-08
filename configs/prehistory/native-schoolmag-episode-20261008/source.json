@@ -1,0 +1,822 @@
+{
+  "contract": "native-story-source.2",
+  "episodes": [
+    {
+      "contract": "story-episode.1",
+      "episode_ref": "story-episode:celia-schoolmag-202401",
+      "title": "校刊改稿与交稿前后",
+      "revision": 1,
+      "record_refs": [
+        "prehistory-record:celia-schoolmag-dense-20261008.d01-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d01-b",
+        "prehistory-record:celia-schoolmag-dense-20261008.d02-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d02-b",
+        "prehistory-record:celia-schoolmag-dense-20261008.d03-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d03-b",
+        "prehistory-record:celia-schoolmag-dense-20261008.d04-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d04-b",
+        "prehistory-record:celia-schoolmag-dense-20261008.d05-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d05-b",
+        "prehistory-record:celia-schoolmag-dense-20261008.d06-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d06-b",
+        "prehistory-record:celia-schoolmag-dense-20261008.d07-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d07-b",
+        "prehistory-record:celia-schoolmag-dense-20261008.d08-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d08-b",
+        "prehistory-record:celia-schoolmag-dense-20261008.d09-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d09-b",
+        "prehistory-record:celia-schoolmag-dense-20261008.d10-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d10-b",
+        "prehistory-record:celia-schoolmag-dense-20261008.d11-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d11-b",
+        "prehistory-record:celia-schoolmag-dense-20261008.d12-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d12-b",
+        "prehistory-record:celia-first20-native-20261007.p6-01-a",
+        "prehistory-record:celia-first20-native-20261007.p6-01-b",
+        "prehistory-record:celia-first20-native-20261007.p6-01-c",
+        "prehistory-record:celia-schoolmag-dense-20261008.d13-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d13-b",
+        "prehistory-record:celia-schoolmag-dense-20261008.d14-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d14-b",
+        "prehistory-record:celia-schoolmag-dense-20261008.d15-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d15-b",
+        "prehistory-record:celia-schoolmag-dense-20261008.d16-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d16-b"
+      ]
+    },
+    {
+      "contract": "story-episode.1",
+      "episode_ref": "story-episode:celia-xuqiao-study-202401",
+      "title": "同一时期和许桥的日常来往",
+      "revision": 1,
+      "record_refs": [
+        "prehistory-record:celia-schoolmag-dense-20261008.d04-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d04-b",
+        "prehistory-record:celia-schoolmag-dense-20261008.d07-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d07-b",
+        "prehistory-record:celia-schoolmag-dense-20261008.d09-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d09-b",
+        "prehistory-record:celia-schoolmag-dense-20261008.d10-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d10-b",
+        "prehistory-record:celia-schoolmag-dense-20261008.d14-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d14-b",
+        "prehistory-record:celia-schoolmag-dense-20261008.d16-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d16-b"
+      ]
+    }
+  ],
+  "source_id": "celia-schoolmag-dense-20261008",
+  "title": "那篇梧桐短稿前后的二十二天",
+  "authored_at": "2026-10-08T05:01:37.951256Z",
+  "author_ref": "operator:codex-dense-episode-author",
+  "actor_ref": "agent:companion",
+  "knowledge_cutoff": "2025-04-12T23:59:59+08:00",
+  "entities": [
+    {
+      "entity_ref": "history:person:celia-schoolmag-peer",
+      "kind": "person",
+      "label": "校刊同学（本阶段收稿联系人，姓名未设定，未绑定运行NPC）"
+    }
+  ],
+  "storylines": [
+    {
+      "line_id": "words",
+      "title": "那篇短稿怎样离开书桌"
+    },
+    {
+      "line_id": "school",
+      "title": "题目和稿子共用的几页纸"
+    },
+    {
+      "line_id": "friendship",
+      "title": "和许桥约时间与等回应"
+    },
+    {
+      "line_id": "family",
+      "title": "书店夹子和饭桌问话"
+    },
+    {
+      "line_id": "ordinary",
+      "title": "事情之间的空白"
+    }
+  ],
+  "scenes": [
+    {
+      "event_ref": "event:dense-schoolmag:d01",
+      "title": "在月末之前找一件想写的事",
+      "occurred_from": "2024-01-12T00:00:00+08:00",
+      "occurred_until": "2024-01-12T23:59:59+08:00",
+      "line_refs": [
+        "words",
+        "school"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-schoolmag-peer"
+      ],
+      "blocks": [
+        {
+          "block_id": "d01-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "午休快结束时，校刊同学在门口问知栀，这个月有没有想交的小稿。知栀本来在扣饭盒，问非得现在定题目吗。对方说不用，写好了先发来，排哪一期还得一起看。她答应回去想想，铃响后把饭盒推进桌肚，没在本子上写题目。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "d01-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "下午她在习题空白处记了“回家路上”四个字。写完又拿书压住，觉得这算什么题目。放学时她还是照常走那条路，只在过路口前慢了几步，抬头看了一眼梧桐枝之间露出来的天。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:dense-schoolmag:d02",
+      "title": "书店里借来的夹子",
+      "occurred_from": "2024-01-13T00:00:00+08:00",
+      "occurred_until": "2024-01-13T23:59:59+08:00",
+      "line_refs": [
+        "family",
+        "words"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-father"
+      ],
+      "blocks": [
+        {
+          "block_id": "d02-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "周六父亲在书店后面的桌上理旧纸，知栀问有没有能写字的废纸。他递给她几张背面空白的纸，让她先看看正面，带着进货记号的留在桌上。她翻了一张，说怎么全都印得这么满，最后只挑走两张，顺手拿了一个长尾夹。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "d02-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "父亲等她快出门才问夹子是不是也拿走了。她举起来晃一下，说用完还你。他说那是夹待处理单子的，别和自己的纸一起扔。她把夹子咬开的口对着两张纸边试了一下，嫌它太紧，还是夹上了。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:dense-schoolmag:d03",
+      "title": "没有拍成的树皮",
+      "occurred_from": "2024-01-15T00:00:00+08:00",
+      "occurred_until": "2024-01-15T23:59:59+08:00",
+      "line_refs": [
+        "words",
+        "ordinary"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "d03-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "放学回家，知栀在一棵树旁停下，想用手机拍树皮上亮起来的一小块。屏幕里那块亮色比眼睛看见的平，旁边还挤进半辆车。她挪了两次，手被风吹得有点僵，最后只留了一张，没发给谁。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "d03-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "回家后她把照片放大，树皮的纹路糊在一起。她在纸上记了几个自己刚才看见的地方，没有照着照片描。沈岚喊吃饭时，她把手机扣在纸边，饭后回来发现自己已经不太记得当时为什么一定要拍那个角度。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:dense-schoolmag:d04",
+      "title": "先说了等一下",
+      "occurred_from": "2024-01-16T00:00:00+08:00",
+      "occurred_until": "2024-01-16T23:59:59+08:00",
+      "line_refs": [
+        "school",
+        "friendship"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-xuqiao"
+      ],
+      "blocks": [
+        {
+          "block_id": "d04-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "许桥课间拿着一道题过来，问午休能不能一起对后半段。知栀正看自己写的几行字，说等一下。许桥问等到什么时候，她说吃完饭吧。吃完饭她又想把一处不顺的地方改掉，等抬头看钟，午休已经过去一半。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "d04-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "许桥后来自己把题算了，拿给她看时只指了最后两行。知栀说不是约好一起吗，许桥说她等过了。知栀想解释自己没在玩，又觉得这句话讲出来也没用，把那张写着几行字的纸翻到背面，先看题。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:dense-schoolmag:d05",
+      "title": "饭桌上没接完的话",
+      "occurred_from": "2024-01-17T00:00:00+08:00",
+      "occurred_until": "2024-01-17T23:59:59+08:00",
+      "line_refs": [
+        "family",
+        "ordinary"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan",
+        "history:person:celia-father"
+      ],
+      "blocks": [
+        {
+          "block_id": "d05-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "晚饭时沈岚说第二天可能晚一点回家，让知栀别把洗好的饭盒留在水池边。知栀嘴里应着，手还在口袋里摸手机。父亲问她找什么，她说想记个词，刚才还记得，坐下来就没了。沈岚把饭盒推到她面前，说这个倒不用想。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "d05-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "饭后她真忘了把饭盒装进袋子，洗完脸才看见它还摆在桌角。她拎起来甩掉盖子上的水，溅到自己的袖口，气得“啧”了一声。那天没再写稿，睡前反而想起许桥纸上一个算错的位置，发消息问她是不是抄反了。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:dense-schoolmag:d06",
+      "title": "改稿纸夹在习题册里",
+      "occurred_from": "2024-01-18T00:00:00+08:00",
+      "occurred_until": "2024-01-18T23:59:59+08:00",
+      "line_refs": [
+        "words",
+        "school"
+      ],
+      "participant_refs": [
+        "history:person:celia-self"
+      ],
+      "blocks": [
+        {
+          "block_id": "d06-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "她把改稿用的纸夹进习题册，打算有空再拿出来。课堂上翻到那一页，长尾夹碰到桌面，响了一小声。她赶紧把夹子拆下来塞进口袋，纸却没夹牢，滑到脚边，被鞋尖压出一道印。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "d06-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "捡起来后她没有重抄，只把那道印旁边的字描深了一点。放学前她在口袋里摸到夹子，才想起父亲交代过用完要还。她把它重新夹到纸上，在最上面写了一个很小的“还”，怕过两天看不懂，又添了“店里”。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:dense-schoolmag:d07",
+      "title": "把约的时间说清楚",
+      "occurred_from": "2024-01-19T00:00:00+08:00",
+      "occurred_until": "2024-01-19T23:59:59+08:00",
+      "line_refs": [
+        "friendship",
+        "school"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-xuqiao"
+      ],
+      "blocks": [
+        {
+          "block_id": "d07-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "知栀第二天找到许桥，问放学前能不能再对一次那道题。她这次直接说最后一节课下课后，自己先把别的纸收好。许桥说可以，但她要赶着走，不会一直等。知栀说那就只看卡住的那一段。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "d07-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "两人站在桌旁对了几行，发现消息里说的那个位置确实抄反了。许桥把纸往她那边推，让她自己改。改完后许桥背上书包就走，知栀本来想拿稿子给她看，见她已经走到门口，又把手收回来，没叫住。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "d07-world",
+          "kind": "background",
+          "subject_actor_ref": null,
+          "text": "那天下午许桥另有自己的安排，没有向知栀解释细节。这份源稿不把她未说出的安排授予知栀。",
+          "knowledge": "world_only",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "private"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:dense-schoolmag:d08",
+      "title": "谁也没看稿的下午",
+      "occurred_from": "2024-01-20T00:00:00+08:00",
+      "occurred_until": "2024-01-20T23:59:59+08:00",
+      "line_refs": [
+        "family",
+        "ordinary"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-father"
+      ],
+      "blocks": [
+        {
+          "block_id": "d08-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "周六她在书店的折叠椅上坐了一阵，父亲叫她帮忙把一包纸袋分开。两张纸袋粘在一起，她扯得太快，把其中一张口沿扯破了。他让她把破的单独放，她偏要看看能不能从另一边折过去。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "d08-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "最后她把破口压进折边，袋子显得短了一截。父亲拿去装几张薄纸，说这样也行。她本想顺势说自己最近写了点东西，话到了嘴边，父亲又去找别的袋子，她就没讲。那个下午她没把稿子拿出来。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:dense-schoolmag:d09",
+      "title": "只给许桥看一小段",
+      "occurred_from": "2024-01-22T00:00:00+08:00",
+      "occurred_until": "2024-01-22T23:59:59+08:00",
+      "line_refs": [
+        "words",
+        "friendship"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-xuqiao"
+      ],
+      "blocks": [
+        {
+          "block_id": "d09-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "知栀午休时问许桥有没有空看一小段东西，先补了一句“不是让你帮我改”。许桥说那看什么，她说看看能不能看明白。她只把中间几行露出来，上下用手遮着。许桥读到路灯的地方，问这是不是她放学走的那条路。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "d09-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "她说是，又问会不会太平。许桥说自己能看出那地方，至于平不平她不知道。知栀听了有点不满足，嘴上说行吧。许桥伸手想往下翻，她把纸拿回来，说还没弄好。对方也没追着要，把习题册摊开了。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:dense-schoolmag:d10",
+      "title": "一张迟迟没还的纸",
+      "occurred_from": "2024-01-23T00:00:00+08:00",
+      "occurred_until": "2024-01-23T23:59:59+08:00",
+      "line_refs": [
+        "school",
+        "friendship"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-xuqiao"
+      ],
+      "blocks": [
+        {
+          "block_id": "d10-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "许桥后来借她习题册核对一个步骤，知栀忘了里面还夹着一张改稿纸。到家才想起来，她先发了个“你别把里面那张纸扔了”，发完觉得像在怀疑人家，又补“我还要用”。许桥隔了一会儿回说看见了，明天带来。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "d10-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "等回复的时候她把其他几页摆到桌上，发现少的那张并不是最新一版。她松了口气，又觉得自己这几条消息有点急。她没有再发一大段解释，只回了个好，把最新那页折起一个角，免得下次又认错。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:dense-schoolmag:d11",
+      "title": "没有附照片",
+      "occurred_from": "2024-01-24T00:00:00+08:00",
+      "occurred_until": "2024-01-24T23:59:59+08:00",
+      "line_refs": [
+        "words",
+        "school"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-schoolmag-peer"
+      ],
+      "blocks": [
+        {
+          "block_id": "d11-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "校刊同学问她短稿要不要附一张照片。知栀翻出前几天拍的树皮，刚点进发送框，又退出来看了一遍。照片里的车占了好大一块。她回说先不配图，对方说那就先发文字，版面还没定。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "d11-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "她没为了配图再跑一趟那条路，也没把那张照片删掉。那天晚上她给几个文件改名，一个写“新”，另一个又添“真的新”。看到这两个名字排在一起，她自己笑了一下，最后把日期加上，至少能分清先后。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:dense-schoolmag:d12",
+      "title": "夹子回了书店",
+      "occurred_from": "2024-01-25T00:00:00+08:00",
+      "occurred_until": "2024-01-25T23:59:59+08:00",
+      "line_refs": [
+        "family",
+        "words"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-father"
+      ],
+      "blocks": [
+        {
+          "block_id": "d12-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "她拿着长尾夹回书店，父亲正在找夹待处理单子的东西。知栀把夹子放到他手边，说还你。他说原来在你那儿，她说不是早就讲过。父亲没争，把几张单子理齐，夹上之后才问她纸够不够。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "d12-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "她说够，自己其实一直在改那几页。父亲问是不是学校要交的东西，她说校刊的小稿，未必用。父亲只说那也先写完。她不太想把稿子递过去让他看，就拿起桌上一张价签摆正，又放回原处。两人没继续谈稿子。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:dense-schoolmag:d13",
+      "title": "收到文件还不是刊出来",
+      "occurred_from": "2024-01-27T00:00:00+08:00",
+      "occurred_until": "2024-01-27T23:59:59+08:00",
+      "line_refs": [
+        "words",
+        "family"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-schoolmag-peer",
+        "history:person:shen-lan"
+      ],
+      "blocks": [
+        {
+          "block_id": "d13-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "早上知栀看手机，对话里还留着自己前一天发出去的稿件。校刊同学回了一句“收到了，排版还没弄”。她点开自己发出的文件扫了一眼，没有再撤回换版本。那篇写梧桐的小稿已经交出去了，其他怎样安排还没确定。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "d13-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "沈岚问她前几天一直改的东西怎么样了，她说交了。沈岚问那是不是很快能看见，她说还不知道，人家只是说收到。说完她把手机放在饭桌旁，夹了一筷子菜，过一会儿又拿起来看了看，没有新消息。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:dense-schoolmag:d14",
+      "title": "还回来的纸有一个折角",
+      "occurred_from": "2024-01-29T00:00:00+08:00",
+      "occurred_until": "2024-01-29T23:59:59+08:00",
+      "line_refs": [
+        "friendship",
+        "ordinary"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-xuqiao"
+      ],
+      "blocks": [
+        {
+          "block_id": "d14-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "许桥把夹在习题册里的纸还给她，说前两天收东西时又夹进自己的书里了。纸角折了一小块。知栀展开看，字都在，便说没事，反正不是最新那张。许桥问那还这么急着要，她说旧的也是我的，许桥笑了一下，把书抽回去。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "d14-b",
+          "kind": "historical_interpretation",
+          "subject_actor_ref": "agent:companion",
+          "text": "她把纸收进袋子，没把折角压平。那天她其实还想问许桥，上回只看几行到底觉得怎么样，但两人很快说到下一份作业，话题过去了。她当时有点在意自己没有得到更明确的回应，没有替许桥补出一个没说过的评价。",
+          "knowledge": "self_reflection",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "private"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:dense-schoolmag:d15",
+      "title": "暂时空出来的晚上",
+      "occurred_from": "2024-02-01T00:00:00+08:00",
+      "occurred_until": "2024-02-01T23:59:59+08:00",
+      "line_refs": [
+        "ordinary",
+        "family"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:shen-lan"
+      ],
+      "blocks": [
+        {
+          "block_id": "d15-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "晚上没有再改那篇稿子，知栀反而不知道先干什么。她把桌上的纸收成一叠，又抽出最上面的一张垫在杯子下面。沈岚经过时说别把字泡了，她看一眼，说这一面没写。杯底还是留下了一点水印。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "d15-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "她后来开了一小段视频，看到一半觉得没意思，又关掉了。手机里的校刊对话没有动静。她没有给同学发消息催，也没得出“写东西就该耐心等待”之类的道理，只是那晚懒得再围着一篇稿子转。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    },
+    {
+      "event_ref": "event:dense-schoolmag:d16",
+      "title": "还没排到的那一页",
+      "occurred_from": "2024-02-02T00:00:00+08:00",
+      "occurred_until": "2024-02-02T23:59:59+08:00",
+      "line_refs": [
+        "words",
+        "school",
+        "friendship"
+      ],
+      "participant_refs": [
+        "history:person:celia-self",
+        "history:person:celia-schoolmag-peer",
+        "history:person:celia-xuqiao"
+      ],
+      "blocks": [
+        {
+          "block_id": "d16-a",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "校刊同学发来一张正在调整的版面截图，问她标题旁边的署名是否按原样放。截图只截到上半页，看不见她那段正文。知栀回说名字没问题，问正文也是这页吗。对方说还在挪，定了再给她看。她把图片存下来，没有把它当作已经印出来的成品。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        },
+        {
+          "block_id": "d16-b",
+          "kind": "event",
+          "subject_actor_ref": "agent:companion",
+          "text": "许桥当晚发了一道题的照片过来，问她有没有算过。知栀把旧改稿纸翻到背面写了几行，拍给她，又补一句自己也没核完最后一步。纸正面还留着被划掉的句子。校刊的后续仍没确定，她们却已经在聊别的事了。",
+          "knowledge": "experienced",
+          "informant_ref": null,
+          "known_from": null,
+          "known_until": null,
+          "privacy_class": "personal"
+        }
+      ]
+    }
+  ],
+  "links": [
+    {
+      "left_block_id": "d01-b",
+      "right_block_id": "d03-a",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "d02-b",
+      "right_block_id": "d06-b",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "d04-b",
+      "right_block_id": "d07-a",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "d05-b",
+      "right_block_id": "d07-b",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "d07-b",
+      "right_block_id": "d09-a",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "d09-b",
+      "right_block_id": "d10-a",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "d10-b",
+      "right_block_id": "d14-a",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "d11-b",
+      "right_block_id": "d13-a",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "d12-b",
+      "right_block_id": "d13-b",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "d13-b",
+      "right_block_id": "d15-b",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "d15-b",
+      "right_block_id": "d16-a",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    },
+    {
+      "left_block_id": "d14-b",
+      "right_block_id": "d16-b",
+      "relation_kind": "episode_followup",
+      "bridge_source_quote": null
+    }
+  ],
+  "legacy_links": [
+    {
+      "new_block_id": "d13-a",
+      "prior_record_id": "prehistory-record:celia-first20-native-20261007.p6-01-b",
+      "prior_source_quote": null,
+      "bridge_source_quote": null,
+      "relation_kind": "explicit_callback",
+      "old_is_left": true
+    },
+    {
+      "new_block_id": "d09-a",
+      "prior_record_id": "prehistory-record:celia-first20-native-20261007.p6-01-a",
+      "prior_source_quote": null,
+      "bridge_source_quote": null,
+      "relation_kind": "explicit_callback",
+      "old_is_left": true
+    }
+  ],
+  "open_questions": [
+    "收稿与版面沟通已经发生；是否最终刊用、何时印出尚未成立。",
+    "许桥没有给出明确的完整稿件评价；不能替她补出喜欢或不喜欢。"
+  ]
+}
