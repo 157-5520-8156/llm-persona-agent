@@ -1,3 +1,22 @@
+Private rolling World outlook and central NPC execution implemented (2026-10-09):
+User clarified only protagonist independently deliberates; one World Author prewrites external
+conditions and attributed NPC utterances. Baseline9cb07f2b; feature27bd40fc; recoveryf219855b.
+Specs ADR0025 + docs/design/world-outlook-pilot-2026-10-08.md; three-thread example and audit
+ docs/audits/world-outlook-pilot-2026-10-09.md. WORLD_V2_LIFE_OUTLOOK_ENABLED defaultfalse.
+Private SQLite revisions/attempts/claims/receipts; existing LifeEcology wakes and OccurrenceContent
+execute frozen payloads. No NPC or fresh World Author call at script execution; protagonist choices,
+unanticipated consequences and memory keep existing paths. Expected script progress doesn't replan.
+Original author identity, per-ordinal before-call claims, unknown-result no-repurchase, same-prefix
+captured-response recovery, CAS and effect-once. Generic activator excludes outlook namespace even
+when disabled; own recovery checks conditions and cancels invalid unactivated intermediates.
+26 feature tests + final272 related regression pass;15 changedPythonRuff/compilepass. Both review axes
+closed: 2Spec +2Standards findings repaired. Offline public application fixture:1central authorcall,
+0NPCcalls,3occurrences, coldrepeat0newevents; replay/hashmatch.0realprovider/QQcalls, budgetsunchanged.
+Full suite:10356pass/19skip/2xfail/1dependencywarning,1201.96s/exit0. Started27bd40fc; recovery edits
+landed during run, so not final-commit frozen full evidence; final272regression covers affected modules.
+Manual_only/qualification_incomplete. Not fullNPCactions/offscreenlife/legacyNPCplan migration,
+realcharacterdialogue/memoryquality/multiweeknarrative or production qualification. No deployment.
+
 Local Recall redundant-work optimization implemented (2026-10-08):
 User requested local retrieval optimization after full vector prewarm. Baseline55b92f23;runtimea36e5a5e.
 Spec docs/design/recall-local-optimization-2026-10-08.md; audit docs/audits/recall-local-optimization-2026-10-08.md.
