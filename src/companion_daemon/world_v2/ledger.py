@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 import hashlib
@@ -469,6 +470,12 @@ class WorldLedger:
     @property
     def blocks_event_loop(self) -> bool:
         return False
+
+    @contextmanager
+    def serialized_commit_sequence(self):
+        """Same public coordination seam as SQLite, using the commit lock."""
+        with self._thread_lock:
+            yield
 
     def commit(
         self,

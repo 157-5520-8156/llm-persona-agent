@@ -757,6 +757,7 @@ class WorldV2TurnApplicationConfig:
     # New World requests only; persisted author requests retain their carrier.
     world_author_transport: Literal["auto", "json_object"] = "auto"
     world_author_cache_stable_prefix: bool = False
+    world_outlook_enabled: bool = False
     # Complete an already-selected, source-verified prehistory window within
     # the existing reading/receipt budgets. False retains the legacy windows.
     recall_parent_context: bool = True
@@ -847,6 +848,8 @@ class WorldV2TurnApplicationConfig:
     npc_ecology_enabled: bool = True
 
     def __post_init__(self) -> None:
+        if type(self.world_outlook_enabled) is not bool:
+            raise TypeError("world outlook enablement must be an explicit boolean")
         for name in (
             "world_id",
             "companion_actor_ref",
@@ -1053,6 +1056,7 @@ class WorldV2TurnApplication:
         self._recall_coordinator = recall_coordinator
         self._memory_index_maintenance = memory_index_maintenance
         self._owned_deliberations = owned_deliberations
+        self._life_ecology_inflight: set[asyncio.Future] = set()
         self._closed = False
         self._close_task: asyncio.Task[None] | None = None
         self._deferred_store_close_task: asyncio.Task[None] | None = None
@@ -2059,17 +2063,25 @@ class WorldV2TurnApplication:
         candidates from durable world evidence.
         """
 
+        if self._closed or self._close_task is not None:
+            return LifeEcologyRunResult(status="unavailable", reason_code="life_ecology.closing")
         if self._life_ecology is None:
             return LifeEcologyRunResult(
                 status="unavailable",
                 reason_code="life_ecology.not_configured",
             )
+        done = asyncio.get_running_loop().create_future()
+        self._life_ecology_inflight.add(done)
         try:
             return await self._life_ecology.advance_once(
                 wake_event_ref=wake_event_ref, trace_id=trace_id, correlation_id=correlation_id,
             )
         finally:
-            await self.prepare_memory_index()
+            try:
+                await self.prepare_memory_index()
+            finally:
+                self._life_ecology_inflight.discard(done)
+                done.set_result(None)
 
     def event_ecology_source_taxonomy(self) -> tuple[EcologySourceTaxon, ...]:
         """Expose source richness separately from visual declaration eligibility."""
@@ -2289,8 +2301,9 @@ class WorldV2TurnApplication:
             continuation_due = activity_continuation_due(
                 self._ledger, actor_ref=self._companion_actor_ref, projection=projection,
             )
+        outlook_due = getattr(self._life_ecology, "next_outlook_due", lambda: None)()
         candidates = tuple(
-            x for x in (due, day_open_due, reconsideration_due, continuation_due, *(item.due_at for item in pending))
+            x for x in (due, outlook_due, day_open_due, reconsideration_due, continuation_due, *(item.due_at for item in pending))
             if x is not None
         )
         now = projection.logical_time
@@ -2330,6 +2343,11 @@ class WorldV2TurnApplication:
         if isinstance(stored, PrivateImpressionDrainPolicy):
             return stored
         return PrivateImpressionDrainPolicy()
+
+    def world_outlook_health(self):
+        if self._life_ecology is None:
+            return {"status": "disabled"}
+        return self._life_ecology.outlook_health()
 
     async def memory_consolidation_next_due(self):
         return await self._turns.memory_consolidation_next_due()
@@ -3565,6 +3583,9 @@ class WorldV2TurnApplication:
         if self._closed:
             return
         self._closed = True
+        ecology = getattr(self, "_life_ecology", None)
+        if ecology is not None:
+            getattr(ecology, "close_outlook", lambda: None)()
         if self._memory_index_maintenance is not None:
             self._memory_index_maintenance.close()
         if self._recall_coordinator is not None:
@@ -3579,6 +3600,8 @@ class WorldV2TurnApplication:
     def close(self) -> None:
         """Close persistent stores for synchronous/offline composition users."""
 
+        if self._life_ecology_inflight:
+            raise RuntimeError("life ecology is running; await application.aclose()")
         self._close_stores()
 
     async def aclose(self) -> None:
@@ -3594,6 +3617,8 @@ class WorldV2TurnApplication:
         await asyncio.shield(close_task)
 
     async def _aclose_owned(self) -> None:
+        if self._life_ecology_inflight:
+            await asyncio.gather(*(asyncio.shield(f) for f in tuple(self._life_ecology_inflight)))
         if self._memory_index_maintenance is not None:
             await asyncio.to_thread(self._memory_index_maintenance.close)
         close_failures: tuple[BaseException, ...] = ()
@@ -3781,6 +3806,7 @@ def build_sqlite_world_v2_turn_application(
         config.world_id,
         (time.perf_counter() - build_started) * 1000,
     )
+    world_outlook = None
     try:
         if warm_semantic_recall:
             # Optional bootstrap work uses the same durable budget/cache as recall.
@@ -4516,15 +4542,43 @@ def build_sqlite_world_v2_turn_application(
                 open_life_requested
                 and config.life_ecology is not None
                 and config.npc_ecology_enabled
+                and not config.world_outlook_enabled
                 and npc_actor_model is not None
             )
             else None
         )
+        if config.world_outlook_enabled:
+            if not (
+                open_life_requested and config.life_ecology is not None
+                and life_seed_catalog is not None and media_ecology is not None
+            ):
+                raise ValueError("world outlook requires the existing open-life World Author")
+            from .world_outlook_runtime import WorldOutlookRuntime
+            from .world_outlook_store import SQLiteWorldOutlookStore
+            from .world_outlook_execution import WorldOutlookExecutor
+            from .npc_identity_view import npc_identity_views
+
+            world_outlook = WorldOutlookRuntime(
+                ledger=ledger,
+                store=SQLiteWorldOutlookStore(
+                    path=path, world_id=config.world_id, actor_ref=config.companion_actor_ref,
+                ),
+                author=life_world_author_model, actor_ref=config.companion_actor_ref,
+                npc_refs_reader=lambda state: tuple(
+                    v.npc_ref for v in npc_identity_views(state, content_store=life_content_store)
+                    if v.lifecycle_state == "active"
+                ),
+                executor=WorldOutlookExecutor(
+                    ledger=ledger, occurrence_content=occurrence_content,
+                    actor_ref=config.companion_actor_ref,
+                ),
+            )
         life_development = (
             LifeDevelopmentRuntime(
                 ledger=ledger,
                 content_store=life_content_store,
                 world_author=life_world_author_model,
+                world_outlook=world_outlook,
                 world_author_source_rewriter=life_world_author_source_rewriter,
                 world_author_transport=config.world_author_transport,
                 world_author_cache_stable_prefix=config.world_author_cache_stable_prefix,
@@ -4580,6 +4634,7 @@ def build_sqlite_world_v2_turn_application(
                 ),
                 actor=config.life_ecology.worker_actor,
                 background_budget_paused=config.background_budget_paused,
+                world_outlook=world_outlook,
             )
             if config.life_ecology is not None and media_ecology is not None
             else None
@@ -4660,6 +4715,8 @@ def build_sqlite_world_v2_turn_application(
             owned_deliberations=(chat_deliberation,),
         )
     except Exception:
+        if world_outlook is not None:
+            world_outlook.close()
         recall_index.close()
         recall_coordinator.close()
         life_content_store.close()

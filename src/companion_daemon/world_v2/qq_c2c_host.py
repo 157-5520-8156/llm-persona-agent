@@ -3349,6 +3349,7 @@ def build_qq_c2c_host(
     application = build_sqlite_world_v2_turn_application(
         path=Path(settings.database_path),
         config=WorldV2TurnApplicationConfig(
+            world_outlook_enabled=settings.world_v2_life_outlook_enabled,
             world_id=world_id,
             companion_actor_ref="agent:companion",
             reply_target=qq_c2c_target(recipient_id),

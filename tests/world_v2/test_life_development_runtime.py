@@ -2348,6 +2348,7 @@ def _runtime(
     novel_origin_critic: _SequenceModel | None = None,
     store: InMemoryImmutableLifeContentStore | None = None,
     location_capability: LifeDevelopmentLocationCapability | None = None,
+    world_outlook=None,
 ) -> tuple[LifeDevelopmentRuntime, InMemoryImmutableLifeContentStore]:
     content_store = store or InMemoryImmutableLifeContentStore()
     if source_closure_reviewer is None:
@@ -2377,6 +2378,7 @@ def _runtime(
                 location_capability=location_capability,
             ),
             owner_actor_ref=OWNER,
+            world_outlook=world_outlook,
             **runtime_kwargs,
         ),
         content_store,

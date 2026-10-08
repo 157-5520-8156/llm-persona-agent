@@ -455,6 +455,10 @@ class Settings(BaseSettings):
         default=False,
         alias="WORLD_V2_RECALL_SEMANTIC_ENABLED",
     )
+    world_v2_life_outlook_enabled: bool = Field(
+        default=False, alias="WORLD_V2_LIFE_OUTLOOK_ENABLED",
+        description="Enable the isolated-qualified private rolling world outlook in Life Ecology.",
+    )
     world_v2_recall_story_context: bool = Field(
         default=True, alias="WORLD_V2_RECALL_STORY_CONTEXT",
         description="Use bounded scene and episode reading consistently across user and test conversations.",

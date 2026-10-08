@@ -1282,6 +1282,7 @@ async def test_async_close_defers_shared_store_close_until_deliberation_is_quies
     app._recall_index = None  # noqa: SLF001
     app._memory_index_maintenance = None  # noqa: SLF001
     app._owned_deliberations = (_LingeringDeliberation(),)  # noqa: SLF001
+    app._life_ecology_inflight = set()  # noqa: SLF001
     app._closed = False  # noqa: SLF001
     app._close_task = None  # noqa: SLF001
     app._deferred_store_close_task = None  # noqa: SLF001

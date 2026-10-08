@@ -231,10 +231,12 @@ class LifeEcologyRuntime:
         availability: LifeEcologyAvailability,
         actor: str = "worker:life-ecology",
         background_budget_paused: Callable[[], bool] | None = None,
+        world_outlook=None,
     ) -> None:
         if not actor:
             raise ValueError("life ecology runtime requires an actor")
         self._ledger = ledger
+        self._world_outlook = world_outlook
         self._trigger_store = trigger_store
         self._media_followup = media_followup
         self._activity_followup = activity_followup
@@ -250,6 +252,18 @@ class LifeEcologyRuntime:
         # that already spent its own ceiling must not walk the lane list only
         # to have every provider call denied one by one.
         self._background_budget_paused = background_budget_paused
+
+    def outlook_health(self):
+        if self._world_outlook is None:
+            return {"status": "disabled"}
+        return self._world_outlook.health()
+
+    def next_outlook_due(self):
+        return self._world_outlook.next_due() if self._world_outlook is not None else None
+
+    def close_outlook(self):
+        if self._world_outlook is not None:
+            self._world_outlook.close()
 
     def background_budget_paused(self) -> bool:
         """Capacity for background opportunities, independent of character choice."""
@@ -543,6 +557,30 @@ class LifeEcologyRuntime:
                     activity_followup_status=activity_status,
                     aftermath_followup_status=aftermath_status,
                 )
+        outlook_node = None
+        if self._world_outlook is not None:
+            try:
+                self._world_outlook.reconcile_accepted_offers(wake_event_ref=wake_event_ref)
+                # Existing execution/settlement and causal NPC work keep priority.
+                if (
+                    development_due and completion_ref is None and active_attempt_ref is None
+                    and not npc_has_due_work and not npc_has_stimulus
+                ):
+                    prepare = getattr(self._life_development_followup, "prepare_outlook_once", None)
+                    if callable(prepare):
+                        await prepare(wake_event_ref=wake_event_ref)
+                ready = self._world_outlook.ready()
+                outlook_node = min(
+                    ready, key=lambda n: (n["opens_at"], n["opportunity_id"]), default=None,
+                )
+                if outlook_node is not None:
+                    development_due = True
+
+            except Exception as exc:
+                self._world_outlook.record_failure(exc)
+                _LOG.warning("world outlook unavailable: %s", type(exc).__name__)
+                outlook_node = None
+
         async def advance_due_development():
             nonlocal life_development_status, life_development_failure_code
             try:
@@ -556,6 +594,14 @@ class LifeEcologyRuntime:
                         execution_event_ref=active_attempt_ref, wake_event_ref=wake_event_ref,
                         trace_id=trace_id, correlation_id=correlation_id,
                     )
+                elif self._world_outlook is not None:
+                    if outlook_node is None:
+                        return None
+                    development_result = self._world_outlook.execute_offer(
+                        outlook_node, wake_event_ref=wake_event_ref,
+                    )
+                    if development_result is None:
+                        return None
                 else:
                     development_result = await self._life_development_followup.advance_once(
                         wake_event_ref=wake_event_ref,
@@ -666,6 +712,7 @@ class LifeEcologyRuntime:
         # taken" starved NPC of every ambient consideration.
         if (
             self._npc_initiative_followup is not None
+            and self._world_outlook is None
             and (development_due or npc_has_due_work or npc_has_stimulus)
             and activity_status != "transitioned"
             and life_development_status

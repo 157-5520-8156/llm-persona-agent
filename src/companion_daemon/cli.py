@@ -97,6 +97,7 @@ async def run_simulation(text: str, fake: bool, *, thinking: bool = False) -> No
     app = build_sqlite_world_v2_turn_application(
         path=settings.database_path,
         config=WorldV2TurnApplicationConfig(
+            world_outlook_enabled=settings.world_v2_life_outlook_enabled,
             world_id=f"world:companion-v2:{settings.primary_user_id}",
             companion_actor_ref="agent:companion",
             reply_target=f"user:{settings.primary_user_id}",

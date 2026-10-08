@@ -1777,6 +1777,7 @@ class LifeDevelopmentRuntime:
         capability_manifest_compiler: LifeDevelopmentCapabilityManifestCompiler,
         owner_actor_ref: str,
         novel_origin_critic: LifeDevelopmentModel | None = None,
+        world_outlook=None,
         actor: str = "worker:world-v2:life-development",
     ) -> None:
         if not owner_actor_ref or not actor:
@@ -1789,6 +1790,7 @@ class LifeDevelopmentRuntime:
                 raise TypeError("explicit World author JSON transport requires complete_json")
         self._ledger = ledger
         self._store = content_store
+        self._world_outlook = world_outlook
         self._world_author = world_author
         self._world_author_transport = world_author_transport
         if type(world_author_cache_stable_prefix) is not bool:
@@ -1852,6 +1854,29 @@ class LifeDevelopmentRuntime:
             )
             if self._novel_origin_critic is not None
             else "unavailable:life-novel-origin"
+        )
+
+    async def prepare_outlook_once(self, *, wake_event_ref: str):
+        if self._world_outlook is None:
+            return {"status": "disabled"}
+        state = self._ledger.project()
+        if not self._world_outlook.view(projection=state)["needs_revision"]:
+            return {"status": "unchanged"}
+        located = self._ledger.lookup_event_commit(wake_event_ref)
+        if located is None or located[0].event_type != "ClockAdvanced":
+            return {"status": "rejected", "failure_code": "outlook_requires_committed_clock"}
+        pinned = self._compile_pinned(projection=state, wake=located[0])
+        if isinstance(pinned, LifeDevelopmentResult):
+            return {"status": "technical_failure", "failure_code": pinned.reason_code}
+        _capsule, _cursor_value, context, manifest = pinned
+        profile = background_context_profile_for_purpose(
+            "world_consequence_draft"
+            if manifest.outcome_contract == "world-consequence.2"
+            else "life_development_draft"
+        )
+        return await self._world_outlook.refresh(
+            projection=state,
+            context=slice_background_capsule_context(context, profile), manifest=manifest,
         )
 
     def _resolve_occasion_draw(
@@ -6567,6 +6592,15 @@ class LifeDevelopmentRuntime:
                         "occasion_mode": occasion_mode,
                         "pinned_world_context": pinned_context,
                         "recent_life_texture": compile_recent_life_texture(pinned_context),
+                        **(
+                            {
+                                "private_world_outlook": self._world_outlook.advisory(
+                                    projection=self._ledger.project_at(manifest.pinned_cursor)
+                                ),
+                                "outlook_authority": "private draft only; never use as a factual source or prescribe protagonist choices",
+                            }
+                            if self._world_outlook is not None else {}
+                        ),
                         **(
                             {
                                 "pressure_surfaces": pressure_surfaces,
