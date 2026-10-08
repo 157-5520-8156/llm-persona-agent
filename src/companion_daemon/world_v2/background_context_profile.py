@@ -307,6 +307,7 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
         purposes=frozenset(
             {
                 "fact_memory_retention",
+                "prehistory_memory_batch",
                 "experience_memory_retention",
                 "memory_withdrawal_review",
             }

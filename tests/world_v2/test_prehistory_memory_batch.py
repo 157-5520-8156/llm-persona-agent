@@ -139,6 +139,8 @@ async def test_public_batch_initializer_uses_real_role_tool_transport(tmp_path, 
         material = json.loads(body['messages'][-1]['content'])
         capability=material['capability_manifest']
         assert material['inner_turn']['purpose'] == 'prehistory_memory_batch'
+        assert material['background_context_profile']['profile_id'] == 'memory_retention'
+        assert len(capability['payload']['items']) == 7
         assert body['tool_choice']['function']['name'] == 'character_role_prehistory_memory_batch_v1'
         choices=[{'source_id':item['source_id'],'retention':{'retain':False}}
                  for item in capability['payload']['items']]
