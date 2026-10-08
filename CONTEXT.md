@@ -1,3 +1,20 @@
+Next direction: time-dense life episodes (2026-10-08 user discussion):
+User identifies missing sustained days/weeks-level school/relationship stories and asks to improve content,
+formation and import together. Design docs/design/time-dense-life-episodes-2026-10-08.md; not implemented.
+First20 source covers periods, not full lived density. Native59scenes/122blocks:57date ranges7-31days,2under2;
+these are date precision, not event duration. Of28explicit native cross-scene edges,only1has<=31day minimum
+range gap;this excludes old72records and implicit/same-scene links. Old g07/g10 do contain several-day
+processes compressed into one record. Existing Xuqiao source does not establish romantic/ex relationship.
+Proposed bounded pilot:2-3week high-school school-magazine process anchored to existing2024January p6-01,
+with about12-18scenes, shared daily/study/family context. No canon rewrite or predetermined reaction/outcome.
+Reuse native compiler and World/Memory; add actor-filtered episode views and explicit process/acquisition
+coordinates. Existing events referenced once; detail additions/source-derived subdivisions must not create
+new occurrence IDs for duplicate facts. Dense import needs bounded per-item role choices in batched
+retention, not forced all-retain; current path makes one call perrecord (prior118). Compare actual costs,
+choice/read quality, failures and resumability before scale. Future views derive from settled events;
+future authored possibilities are not facts. Same-call generation correctness stays open, independently.
+This discussion changed design docs only;0new provider calls,0history/runtime/production changes.
+
 Scene-level multi-entry Recall implemented; retelling still incomplete (2026-10-08):
 User accepted scene-level reading and a correct-evidence contrast. Base a1b446b8; implementation b56e322d,
 review fixes 513c4308. Spec docs/design/scene-recall-qualification-2026-10-08.md; audit
