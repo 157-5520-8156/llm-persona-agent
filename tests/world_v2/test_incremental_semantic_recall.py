@@ -195,3 +195,60 @@ def test_new_runtime_life_uses_same_incremental_index_and_exact_source_bindings(
     expected = next(d for d in new if d.document_id == hit.document.document_id)
     assert hit.document == expected
     assert hit.document.settled_life is not None
+
+
+def test_background_preparation_health_is_nonblocking_and_close_stops_next_batch(tmp_path):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from types import SimpleNamespace
+    from companion_daemon.world_v2.memory_index_maintenance import MemoryIndexMaintenance
+
+    entered, release = threading.Event(), threading.Event()
+
+    class Paused(CountingEmbedding):
+        def embed(self, texts):
+            self.calls.append(texts)
+            entered.set()
+            assert release.wait(2)
+            return tuple((1.0, 0.0, 0.0) for _ in texts)
+
+    provider = Paused()
+    cache = SQLiteCachedRecallEmbedding(
+        path=tmp_path / "vectors.sqlite", world_id="test", delegate=provider
+    )
+    index = IncrementalSemanticRecallIndex(cache)
+    base = _documents()[0]
+    docs = tuple(
+        base.model_copy(update={"document_id": f"recall:test:{i}", "text": f"different {i}"})
+        for i in range(65)
+    )
+    snapshot = local_snapshot(docs)
+
+    class Ledger:
+        def project(self):
+            return SimpleNamespace(**CURSOR.model_dump())
+
+    def prepare():
+        index.prepare(snapshot)
+        return index.health()
+
+    maintenance = MemoryIndexMaintenance(ledger=Ledger(), prepare=prepare, cancel=index.close)
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        work = executor.submit(maintenance.advance_once)
+        assert entered.wait(1)
+        try:
+            assert executor.submit(index.health).result(timeout=0.25)["status"] == "preparing"
+            assert executor.submit(maintenance.health).result(timeout=0.25)["status"] == "preparing"
+            assert (
+                executor.submit(cache.health_snapshot).result(timeout=0.25)["provider_busy"] is True
+            )
+            # Cancel semantic batches before joining maintenance close.
+            index.close()
+            close = executor.submit(maintenance.close)
+        finally:
+            release.set()
+        assert work.result(timeout=2)["status"] == "degraded"
+        close.result(timeout=2)
+        assert len(provider.calls) == 1
+        assert maintenance.advance_once()["status"] == "closed"
+    cache.close()

@@ -1427,6 +1427,7 @@ class IncrementalSemanticRecallIndex:
     def __init__(self, embedding: RecallEmbedding) -> None:
         self._embedding = embedding
         self._identity = (embedding.version, embedding.dimensions)
+        self._closing = threading.Event()
         self._guard = threading.RLock()
         self._vectors: OrderedDict[str, tuple[float, ...]] = OrderedDict()
         self._snapshots: OrderedDict[RecallIndexSnapshot, RecallIndexSnapshot] = OrderedDict()
@@ -1434,16 +1435,26 @@ class IncrementalSemanticRecallIndex:
         self._reused = 0
         self._last_report: dict[str, object] = {"status": "unprepared"}
 
+    def close(self) -> None:
+        """Stop after the in-flight provider batch; its owner joins active calls."""
+        self._closing.set()
+
     def health(self) -> dict[str, object]:
-        with self._guard:
-            return {**self._last_report, "prepared_snapshots": self._prepared,
-                    "reused_snapshots": self._reused,
-                    "resident_vectors": len(self._vectors)}
+        # Reports are replaced atomically, never mutated after publication.
+        # Monitoring must not acquire the provider/normalization lock.
+        return {**self._last_report, "prepared_snapshots": self._prepared,
+                "reused_snapshots": self._reused,
+                "resident_vectors": len(self._vectors)}
+
+    def _check_open(self) -> None:
+        if self._closing.is_set():
+            raise RecallEmbeddingUnavailable("semantic_index_closed")
 
     def prepare(
         self, snapshot: RecallIndexSnapshot, *, query_texts: tuple[str, ...] = (),
     ) -> tuple[RecallIndexSnapshot, tuple[tuple[float, ...], ...]]:
         with self._guard:
+            self._check_open()
             if self._identity != (self._embedding.version, self._embedding.dimensions):
                 raise ValueError("semantic adapter identity changed; construct a new index")
             prepared = self._snapshots.get(snapshot)
@@ -1454,15 +1465,19 @@ class IncrementalSemanticRecallIndex:
             # Bounded batches persist completed progress in SQLite even if a
             # later batch fails. Cold small queries still use one round-trip.
             core = _RecallIndexCore(embedding=self._embedding, policy_version=snapshot.policy_version)
+            self._last_report = {"status": "preparing", "cursor": snapshot.cursor.model_dump(),
+                                 "documents": len(documents), "pending_texts": len(missing)}
             try:
                 remaining = missing
                 while len(remaining) > 64:
+                    self._check_open()
                     batch, remaining = remaining[:64], remaining[64:]
                     values = self._embedding.embed(batch)
                     if len(values) != len(batch):
                         raise ValueError("semantic preparation vector count mismatch")
                     normalized = tuple(core._normalize_vector(v) for v in values)
                     self._vectors.update(zip(batch, normalized, strict=True))
+                self._check_open()
                 batch = (*remaining, *query_texts)
                 values = self._embedding.embed(batch) if batch else ()
                 if len(values) != len(batch):
@@ -1470,6 +1485,7 @@ class IncrementalSemanticRecallIndex:
                 normalized = tuple(core._normalize_vector(v) for v in values[:len(remaining)])
                 self._vectors.update(zip(remaining, normalized, strict=True))
                 query_vectors = tuple(values[len(remaining):])
+                self._check_open()
                 # Validate queries too, without changing their precision before
                 # the existing balanced-attention normalization is applied.
                 for v in query_vectors:

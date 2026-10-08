@@ -606,6 +606,11 @@ class RecallCoordinator:
                 ),
             )
 
+    def cancel_index_preparation(self) -> None:
+        """Stop future semantic preparation batches during application shutdown."""
+        if self._semantic_index is not None:
+            self._semantic_index.close()
+
     def prepare_semantic(self, *, expected_cursor: RecallCursor,
                          trigger_ref: str | None = None) -> dict[str, object]:
         """Prepare source vectors ahead of a query; never authors or recalls."""
@@ -1715,6 +1720,7 @@ class RecallCoordinator:
             return self._contexts.get((cursor, None))
 
     def close(self) -> None:
+        self.cancel_index_preparation()
         with self._active_recall_guard:
             if self._closed:
                 return

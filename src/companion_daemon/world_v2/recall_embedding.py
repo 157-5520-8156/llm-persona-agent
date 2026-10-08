@@ -234,6 +234,7 @@ class SQLiteCachedRecallEmbedding:
             getattr(delegate, "dense_match_threshold_bp", 5_500)
         )
         self._delegate = delegate
+        self._last_health: dict[str, object] = {"enabled": True, "embedding_version": self.version}
         self._world_id = world_id
         self._lock = RLock()
         self._write_lock = sqlite_write_lock(path)
@@ -562,6 +563,18 @@ class SQLiteCachedRecallEmbedding:
             self._connection.commit()
 
     def health_snapshot(self) -> dict[str, object]:
+        # Dashboard reads must not wait behind a write-time embedding batch.
+        # A busy report may be stale, explicitly marked; never guess zero usage.
+        if not self._lock.acquire(blocking=False):
+            return {**self._last_health, "provider_busy": True, "usage_snapshot_stale": True}
+        try:
+            result = self._health_snapshot_locked()
+            self._last_health = result
+            return result
+        finally:
+            self._lock.release()
+
+    def _health_snapshot_locked(self) -> dict[str, object]:
         now = datetime.now(UTC)
         day = now.date().isoformat()
         month = day[:7]

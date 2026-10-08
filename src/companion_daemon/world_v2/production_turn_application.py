@@ -3930,7 +3930,8 @@ def build_sqlite_world_v2_turn_application(
         )
         memory_index_maintenance = (
             MemoryIndexMaintenance(ledger=ledger,
-                prepare=lambda: capsules.prepare_memory_index(actor_ref=config.companion_actor_ref))
+                prepare=lambda: capsules.prepare_memory_index(actor_ref=config.companion_actor_ref),
+                cancel=recall_coordinator.cancel_index_preparation)
             if cached_semantic_embedding is not None else None
         )
         if memory_index_maintenance is not None:

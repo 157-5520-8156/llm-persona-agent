@@ -22,6 +22,7 @@ class MemoryIndexMaintenance:
     def __init__(self, *, ledger: LedgerPort, prepare: Callable[[], dict[str, object]]) -> None:
         self._ledger = ledger
         self._prepare = prepare
+        self._cancel = cancel
         self._lock = threading.RLock()
         self._closing = threading.Event()
         self._cursor: dict[str, int] | None = None
@@ -30,13 +31,15 @@ class MemoryIndexMaintenance:
 
     def close(self) -> None:
         self._closing.set()
+        if self._cancel is not None:
+            self._cancel()
         # Let an already-started read/provider batch finish before its stores close.
         with self._lock:
             pass
 
     def health(self) -> dict[str, object]:
-        with self._lock:
-            return dict(self._report)
+        # Copy an immutable published report without waiting for provider I/O.
+        return dict(self._report)
 
     def advance_once(self, *, force: bool = False) -> dict[str, object]:
         with self._lock:
@@ -53,6 +56,7 @@ class MemoryIndexMaintenance:
             if not force and time.monotonic() < self._retry_at:
                 return {**self._report, "retry_pending": True, "target_cursor": target}
             started = time.perf_counter()
+            self._report = {"status": "preparing", "cursor": self._cursor, "target_cursor": target}
             try:
                 report = self._prepare()
                 if report.get("status") == "ready":
