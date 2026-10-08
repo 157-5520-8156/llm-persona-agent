@@ -21,6 +21,7 @@ from .character_prehistory import (
 from .prehistory_story import PrehistoryStoryStructure, StoryMaterialBlock, PrehistoryStoryRelation, StoryLinkEvidence, StoryRelationKind
 from .prehistory_authoring import PrehistoryAuthoringBrief
 from .story_import import bind_context_from_brief
+from .story_episode import StoryEpisode, validate_episode_basis
 
 
 class NativeStoryLine(FrozenModel):
@@ -103,7 +104,8 @@ class NativeLegacyLink(FrozenModel):
 
 
 class NativeStorySource(FrozenModel):
-    contract: Literal['native-story-source.1'] = 'native-story-source.1'
+    contract: Literal['native-story-source.1', 'native-story-source.2'] = 'native-story-source.1'
+    episodes: tuple[StoryEpisode, ...] = Field(default=(), max_length=32, exclude_if=lambda v: not v)
     source_id: str = Field(pattern=r'^[a-z0-9][a-z0-9._-]*$', max_length=80)
     title: str = Field(min_length=1, max_length=200)
     authored_at: datetime
@@ -119,6 +121,8 @@ class NativeStorySource(FrozenModel):
 
     @model_validator(mode='after')
     def identities_and_knowledge_are_explicit(self):
+        if self.episodes and self.contract != 'native-story-source.2':
+            raise ValueError('episode source requires native story version 2')
         for refs in ([s.event_ref for s in self.scenes], [line.line_id for line in self.storylines],
                      [b.block_id for s in self.scenes for b in s.blocks], [e.entity_ref for e in self.entities]):
             if len(refs) != len(set(refs)):
@@ -150,6 +154,7 @@ class NativeStorySource(FrozenModel):
 
 class NativeStoryBatch(FrozenModel):
     """A source author's bounded addition; host binds identity and provenance."""
+    episodes: tuple[StoryEpisode, ...] = Field(default=(), max_length=8, exclude_if=lambda v: not v)
     entities: tuple[HistoricalEntity, ...] = Field(max_length=16)
     scenes: tuple[NativeStoryScene, ...] = Field(min_length=1, max_length=20)
     links: tuple[NativeStoryLink, ...] = Field(max_length=64)
@@ -289,16 +294,17 @@ def _compile_document(source, brief, archive_id):
             right_record_id=endpoints[1][0], right_block_id=endpoints[1][1], right_source_quote=endpoints[1][2],
             relation_kind=edge.relation_kind, bridge_source_quote=edge.bridge_source_quote or by_block[edge.new_block_id].text,
             rationale='Relation declared in the native source graph; exact endpoint excerpts identify sources, not an independent entailment verdict.'))
+    validate_episode_basis(source.episodes, (e for a in brief.accepted_archives for e in a.episodes))
     document = PrehistoryArchiveDocument(contract='character-prehistory-archive.2', archive_id=archive_id,
         world_id=brief.world_id, actor_ref=source.actor_ref, source_artifact_ref=source_ref,
-        entities=tuple(sorted(entities.values(), key=lambda e: e.entity_ref)),
+        entities=tuple(sorted(entities.values(), key=lambda e: e.entity_ref)), episodes=source.episodes,
         records=tuple(sorted(records.values(), key=lambda r: r.record_id)))
     return bind_context_from_brief(document, brief, cross_story_links=tuple(cross))
 
 
 def compile_native_story(source, *, brief, archive_id):
     document = _compile_document(source, brief, archive_id)
-    receipt = PrehistoryCompilationReceipt(manifest_hash=digest(document.manifest()),
+    receipt = PrehistoryCompilationReceipt(compiler_version=('native-story-compiler.2' if source.contract == 'native-story-source.2' else 'native-story-compiler.1'), manifest_hash=digest(document.manifest()),
         source_hash=digest(source), context_hash=digest(brief), source_authored_at=source.authored_at,
         source_json=source.model_dump_json(), context_json=brief.model_dump_json())
     return CompiledPrehistoryArchive(document=document, compilation=receipt)
@@ -310,6 +316,9 @@ def validate_compilation(manifest, receipt):
     brief = PrehistoryAuthoringBrief.model_validate_json(receipt.context_json)
     if (digest(source), digest(brief), source.authored_at) != (receipt.source_hash, receipt.context_hash, receipt.source_authored_at):
         raise ValueError('compilation source or context differs from its pinned content')
+    expected_version = 'native-story-compiler.2' if source.contract == 'native-story-source.2' else 'native-story-compiler.1'
+    if receipt.compiler_version != expected_version:
+        raise ValueError('native compiler version differs from its source contract')
     document = _compile_document(source, brief, manifest.archive_id)
     if document.manifest() != manifest or digest(manifest) != receipt.manifest_hash:
         raise ValueError('compilation cannot reproduce its exact archive manifest')

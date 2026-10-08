@@ -27,6 +27,7 @@ def bind_import_context(document: PrehistoryArchiveDocument, *, accepted_archive
     own = {record.record_id for record in document.records}
     for edge in cross_story_links:
         referenced.update({edge.left_record_id, edge.right_record_id} - own)
+    referenced.update(ref for episode in document.episodes for ref in episode.record_refs if ref not in own)
     if referenced - prior.keys():
         raise ValueError("story import references an unknown prior record")
     resolved_matches = []
@@ -57,8 +58,13 @@ def bind_import_context(document: PrehistoryArchiveDocument, *, accepted_archive
 
 
 def validate_import_basis(manifest, *, state):
+    from .story_episode import validate_episode_basis
+    validate_episode_basis(manifest.episodes, (e for a in state.prehistory_archives
+        if a.manifest.actor_ref == manifest.actor_ref for e in a.manifest.episodes))
     context = manifest.import_context
     if context is None:
+        if manifest.episodes:
+            raise ValueError('episode import requires its pinned history context')
         return
     actual = tuple(sorted((PrehistoryArchiveBasisPin(
         archive_id=a.manifest.archive_id, manifest_hash=digest(a.manifest),
@@ -113,6 +119,10 @@ def validate_context_document(document):
         raise ValueError("story prior record is outside its actor or history basis")
     events = {b.event_ref for record in document.records for b in record.story.blocks}
     used = set()
+    for episode in document.episodes:
+        if set(episode.record_refs) - (own.keys() | prior.keys()):
+            raise ValueError("episode references an unknown record")
+        used.update(set(episode.record_refs) & prior.keys())
     for match in context.event_matches:
         target = prior.get(match.prior_record_id)
         if match.event_ref not in events or target is None or target.record.story is None or (
@@ -175,7 +185,7 @@ def validate_complete_import(manifest, records):
         contract="character-prehistory-archive.3", archive_id=manifest.archive_id,
         world_id=manifest.world_id, actor_ref=manifest.actor_ref,
         source_artifact_ref=manifest.source_artifact_ref, import_context=manifest.import_context,
-        entities=manifest.entities, records=records,
+        entities=manifest.entities, records=records, episodes=manifest.episodes,
     )
 
 

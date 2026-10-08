@@ -16,6 +16,7 @@ from pydantic import Field, model_validator
 
 from .schema_core import FrozenModel, PrivacyClass, canonicalize_json_value
 from .prehistory_story import PrehistoryStoryStructure, StoryRelationKind
+from .story_episode import StoryEpisode
 
 _HASH = r"^[0-9a-f]{64}$"
 _ENTITY = r"^history:(person|place|object|group):[a-z0-9][a-z0-9._-]*$"
@@ -171,6 +172,7 @@ class PrehistoryArchiveManifest(FrozenModel):
     actor_ref: str = Field(min_length=1, max_length=256)
     source_artifact_ref: str = Field(min_length=1, max_length=512)
     import_context: PrehistoryImportContext | None = Field(default=None, exclude_if=lambda v: v is None)
+    episodes: tuple[StoryEpisode, ...] = Field(default=(), max_length=32, exclude_if=lambda v: not v)
     entities: tuple[HistoricalEntity, ...] = Field(default=(), max_length=256)
     records: tuple[PrehistoryRecordPin, ...] = Field(min_length=1, max_length=256)
 
@@ -179,6 +181,8 @@ class PrehistoryArchiveManifest(FrozenModel):
         for refs in (tuple(x.entity_ref for x in self.entities), tuple(x.record_id for x in self.records)):
             if tuple(sorted(set(refs))) != refs:
                 raise ValueError("prehistory manifest identities must be unique and sorted")
+        if len({e.episode_ref for e in self.episodes}) != len(self.episodes):
+            raise ValueError("episode references must be unique in one archive")
         return self
 
 
@@ -189,13 +193,14 @@ class PrehistoryArchiveDocument(FrozenModel):
     actor_ref: str
     source_artifact_ref: str
     import_context: PrehistoryImportContext | None = Field(default=None, exclude_if=lambda v: v is None)
+    episodes: tuple[StoryEpisode, ...] = Field(default=(), max_length=32, exclude_if=lambda v: not v)
     entities: tuple[HistoricalEntity, ...] = Field(default=(), max_length=256)
     records: tuple[PrehistoryRecord, ...] = Field(min_length=1, max_length=256)
 
     def manifest(self) -> PrehistoryArchiveManifest:
         return PrehistoryArchiveManifest(
             archive_id=self.archive_id, world_id=self.world_id, actor_ref=self.actor_ref,
-            source_artifact_ref=self.source_artifact_ref, import_context=self.import_context,
+            source_artifact_ref=self.source_artifact_ref, import_context=self.import_context, episodes=self.episodes,
             entities=tuple(sorted(self.entities, key=lambda x: x.entity_ref)),
             records=tuple(PrehistoryRecordPin(record_id=x.record_id, record_hash=digest(x))
                           for x in sorted(self.records, key=lambda x: x.record_id)),
@@ -278,7 +283,7 @@ class ReviewedPrehistoryArchive(FrozenModel):
 
 class PrehistoryCompilationReceipt(FrozenModel):
     contract: Literal['prehistory-compilation-receipt.1'] = 'prehistory-compilation-receipt.1'
-    compiler_version: Literal['native-story-compiler.1'] = 'native-story-compiler.1'
+    compiler_version: Literal['native-story-compiler.1', 'native-story-compiler.2'] = 'native-story-compiler.1'
     manifest_hash: str = Field(pattern=_HASH)
     source_hash: str = Field(pattern=_HASH)
     context_hash: str = Field(pattern=_HASH)

@@ -45,7 +45,15 @@ def merge_native_batch(header, previous, batch):
         if entity.entity_ref in entities and entities[entity.entity_ref] != entity:
             raise ValueError('batch changed a previously authored identity')
         entities[entity.entity_ref] = entity
+    episodes = {e.episode_ref: e for e in previous.episodes} if previous else {}
+    for episode in batch.episodes:
+        old = episodes.get(episode.episode_ref)
+        if old is not None and (episode.revision != old.revision or episode.predecessor_hash != old.predecessor_hash
+                or tuple(ref for ref in episode.record_refs if ref in old.record_refs) != old.record_refs):
+            raise ValueError('native continuation cannot rewrite an already authored episode prefix')
+        episodes[episode.episode_ref] = episode
     return NativeStorySource.model_validate_json(json.dumps({**header,
+        **({'episodes': [e.model_dump(mode='json') for e in episodes.values()]} if episodes else {}),
         'entities': [e.model_dump(mode='json') for e in entities.values()],
         'scenes': [s.model_dump(mode='json') for s in (*(previous.scenes if previous else ()), *batch.scenes)],
         'links': [e.model_dump(mode='json') for e in (*(previous.links if previous else ()), *batch.links)],
@@ -79,7 +87,11 @@ async def author_native_story(*, plan, brief, run_dir: Path, budget: StoryImport
         directory = run_dir / phase['prefix']
         start, end = datetime.fromisoformat(phase['start']), datetime.fromisoformat(phase['end'])
         history = [r for a in brief.accepted_archives for r in a.records]
+        protocol = plan.get('protocol_version', 2)
         schema = NativeStoryBatch.model_json_schema()
+        if protocol < 4:
+            schema['properties'].pop('episodes', None)
+            schema.get('$defs', {}).pop('StoryEpisode', None)
         schema['$defs']['NativeStoryBlock']['properties']['subject_actor_ref'] = {
             'enum': [brief.actor_ref, None], 'description': 'Only the bound reader actor ID or null; historical person IDs are not actor IDs.'}
         previous_index = None if source is None else {
@@ -116,6 +128,14 @@ async def author_native_story(*, plan, brief, run_dir: Path, budget: StoryImport
                 '为避免重复抄写，bridge_source_quote与prior_source_quote请填null，编译器会绑定准确原文。'
                 '不要为了增加边数制造没有叙事依据的联系。'
             )
+        if protocol >= 4:
+            packet['instruction'] += (
+                '本协议支持时间密集的阶段故事。episodes返回本阶段已写成员的完整有序引用，不能引用尚未创作的记录。'
+                '记录引用用prehistory-record:<header.source_id>.<block_id>；已有发生只引用原record_id，不改ID重写。'
+                'episode标题仅供作者，角色导航不会看到；不要用标题代替具体可知经历。'
+                'previous_native_source包含此前完整前缀；连续承接已发生过程、已知条件和未决事项，允许停顿和普通生活。'
+                '本批对前缀阶段成员只增补，不删除或改变既有成员相对顺序；已接受阶段的修订必须带准确predecessor_hash。')
+            packet['previous_native_source'] = source.model_dump(mode='json') if source else None
         if len(json.dumps(packet, ensure_ascii=False).encode()) > 480000:
             raise ValueError('native source authoring exceeds complete evidence budget')
         def validate(raw, **_):

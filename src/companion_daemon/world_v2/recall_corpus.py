@@ -402,6 +402,11 @@ class RecallCorpusCompiler:
                         immutable_hash=historical.archive_payload_hash,
                     ),
                 )
+                bindings = tuple(dict.fromkeys((*bindings, *(RecallSourceBinding(
+                    source_kind="committed_event", authority_type="CharacterPrehistoryArchiveAccepted",
+                    ref=member.authority.event_ref, source_world_revision=member.authority.world_revision,
+                    immutable_hash=member.authority.payload_hash,
+                ) for member in historical.episodes))))
                 if historical.story is not None:
                     bindings = tuple(dict.fromkeys((*bindings, *(RecallSourceBinding(
                         source_kind="committed_event", authority_type="CharacterPrehistoryArchiveAccepted",

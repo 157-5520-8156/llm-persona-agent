@@ -28,6 +28,7 @@ _EXPERIENCE_MEMORY_PURPOSE = "experience_memory_retention"
 _WITHDRAWAL_PURPOSE = "memory_withdrawal_review"
 
 _PAYLOAD_CONTRACTS = {
+    "prehistory_memory_batch": "character-interior-prehistory-memory-batch.1",
     "memory_consolidation": "character-interior-memory-consolidation.1",
     _FACT_MEMORY_PURPOSE: "character-interior-fact-memory-retention.1",
     _EXPERIENCE_MEMORY_PURPOSE: "character-interior-experience-memory-retention.1",

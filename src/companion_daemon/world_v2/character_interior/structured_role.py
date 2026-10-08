@@ -955,6 +955,11 @@ def _validate_qq_attachment_perception_payload(
     raise ValueError("attachment perception must be no_op or select exactly one offered token")
 
 
+def _validate_prehistory_batch_payload(payload, offered_tokens):
+    from ..prehistory_memory_batch import validate_batch_payload
+    validate_batch_payload(payload, offered_tokens)
+
+
 def _validate_memory_retention_payload(
     payload: Mapping[str, object],
     _offered_tokens: frozenset[str],
@@ -1264,6 +1269,11 @@ _BUILTIN_CONTRACTS = (
         decision_required=True,
         proposals_allowed=False,
         validator=_validate_outcome_selection_payload,
+    ),
+    PurposeDecisionContract(
+        purpose="prehistory_memory_batch", payload_contract="character-interior-prehistory-memory-batch.1",
+        capability_kind="prehistory_memory_batch", offered_token_fields=("source_ids",),
+        decision_required=True, proposals_allowed=False, validator=_validate_prehistory_batch_payload,
     ),
     PurposeDecisionContract(
         purpose="fact_memory_retention",
@@ -1757,6 +1767,7 @@ class StructuredCharacterRoleFaculty:
             "life_development_choice",
             "expression_reconsideration",
             "fact_memory_retention",
+            "prehistory_memory_batch",
             "experience_memory_retention",
             "memory_withdrawal_review",
             "memory_consolidation",
@@ -1834,6 +1845,10 @@ class StructuredCharacterRoleFaculty:
                     source_refs=manifest.source_refs,
                     recall_allowed=not request.recall_completed,
                 )
+            if request.purpose == "prehistory_memory_batch":
+                from ..prehistory_memory_batch import batch_tool_contract
+                return batch_tool_contract(capability_payload=manifest.payload, source_refs=manifest.source_refs,
+                    recall_allowed=not request.recall_completed)
             if request.purpose in {
                 "fact_memory_retention",
                 "experience_memory_retention",
@@ -2416,7 +2431,7 @@ class StructuredCharacterRoleFaculty:
             manifest = request.capability_manifest
             if (
                 manifest is not None
-                and (request.purpose in {"fact_memory_retention", "experience_memory_retention", "memory_withdrawal_review", "memory_consolidation"}
+                and (request.purpose in {"fact_memory_retention", "prehistory_memory_batch", "experience_memory_retention", "memory_withdrawal_review", "memory_consolidation"}
                      or (request.purpose == "activity_lifecycle_choice"
                          and manifest.payload.get("self_directed_intent") is not None))
                 and tuple(result.decision.source_refs) != manifest.source_refs

@@ -356,7 +356,7 @@ class RecallCoordinator:
     ) -> None:
         self._index = index
         self._corpus = corpus or RecallCorpusCompiler(prehistory_parent_context=(
-            getattr(index, "policy_version", None) in {"world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16"}
+            getattr(index, "policy_version", None) in {"world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17"}
         ))
         self._semantic_embedding = semantic_embedding
         self._closed = False
@@ -1561,6 +1561,7 @@ class RecallCoordinator:
             occurred_to=request.occurred_to,
             knowledge_as_of=request.knowledge_as_of,
             story_window=request.story_window,
+            episode_window=request.episode_window,
             link_refs=request.link_refs,
             memory_kinds=request.memory_kinds,
             include_historical=request.include_historical,
@@ -1583,7 +1584,7 @@ class RecallCoordinator:
                 for document in documents if not document.context_only
             )
             needs_question_vector = (
-                context.snapshot.policy_version == "world-v2-recall-index.hybrid.16"
+                context.snapshot.policy_version in {"world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17"}
                 and any(document.prehistory is not None for document in documents)
             )
             focus = (request.lexical_text if (focused_attention or needs_question_vector) and request.lexical_text

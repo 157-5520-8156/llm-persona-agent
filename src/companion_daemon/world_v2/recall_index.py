@@ -25,6 +25,7 @@ from .fact_observation_value_lookup import resolve_observation_fact_value
 from .prehistory_memory_source import PrehistoryMemoryReading
 from .recall_model_reading import RECALL_INDEX_POLICY_VERSION, interior_recall_item
 from .prehistory_story import StoryWindowRequest
+from .story_episode import EpisodeWindowRequest
 from .schema_core import FrozenModel, PrivacyClass
 from .sqlite_coordination import configure_shared_sqlite_connection, sqlite_write_lock
 
@@ -286,6 +287,11 @@ class RecallDocument(FrozenModel):
                 ref=scope.archive_event_ref, source_world_revision=scope.archive_world_revision,
                 immutable_hash=scope.archive_payload_hash,
             )}
+            archive_proofs.update(RecallSourceBinding(
+                source_kind="committed_event", authority_type="CharacterPrehistoryArchiveAccepted",
+                ref=member.authority.event_ref, source_world_revision=member.authority.world_revision,
+                immutable_hash=member.authority.payload_hash,
+            ) for member in scope.episodes)
             if scope.story is not None:
                 archive_proofs.update(RecallSourceBinding(
                     source_kind="committed_event", authority_type="CharacterPrehistoryArchiveAccepted",
@@ -429,6 +435,8 @@ class RecallQuery(FrozenModel):
     subject_refs: tuple[str, ...] = Field(min_length=1, max_length=8)
     viewer_privacy_ceiling: PrivacyClass
     at: datetime
+    episode_window: EpisodeWindowRequest | None = Field(default=None, exclude_if=lambda v: v is None,
+        description="Read returned episode navigation: overview samples sources; detail follows process order with after_record_ref pagination.")
     story_window: StoryWindowRequest | None = Field(
         default=None, exclude_if=lambda value: value is None,
         description="Continue reading one exact retained story window using returned coordinates.",
@@ -447,6 +455,8 @@ class RecallQuery(FrozenModel):
 
     @model_validator(mode="after")
     def query_is_canonical(self) -> Self:
+        if self.story_window is not None and self.episode_window is not None:
+            raise ValueError("choose either a record window or an episode window")
         if self.subject_refs != tuple(sorted(set(self.subject_refs))):
             raise ValueError("recall query subjects must be sorted and unique")
         if self.link_refs != tuple(sorted(set(self.link_refs))):
@@ -605,7 +615,7 @@ class _RecallIndexCore:
             raise ValueError("recall dense match threshold is invalid")
         policy_version = RECALL_INDEX_POLICY_VERSION if policy_version is None else policy_version
         if not isinstance(policy_version, str) or policy_version not in {
-            RECALL_INDEX_POLICY_VERSION, "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16",
+            RECALL_INDEX_POLICY_VERSION, "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17",
         }:
             raise ValueError("unknown recall search policy")
         self._index_version = f"{policy_version}+embedding:{embedding.version}"
@@ -651,11 +661,13 @@ class _RecallIndexCore:
         rows: tuple[tuple[RecallDocument, tuple[float, ...]], ...],
         diagnostics: list[RecallSearchDiagnostic] | None = None,
     ) -> RecallResult:
+        if query.episode_window is not None and self.policy_version != "world-v2-recall-index.hybrid.17":
+            raise ValueError("episode reading requires recall policy 17")
         if query.cursor != cursor:
             raise ValueError("recall query cursor does not match the sidecar cursor")
         embedding_failure = self._last_rebuild_embedding_failure
         query_texts = (query.query_text,)
-        if (self.policy_version == "world-v2-recall-index.hybrid.16"
+        if (self.policy_version in {"world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17"}
                 and query.lexical_text is not None and query.lexical_text != query.query_text
                 and any(document.prehistory is not None for document, _ in rows)):
             # The broader attention cue can contain recent dialogue and
@@ -677,7 +689,7 @@ class _RecallIndexCore:
         lexical_text = query.lexical_text or query.query_text
         eligible_rows = tuple((document, vector) for document, vector in rows
                               if self._eligible(document, query))
-        if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16"} and query.story_window is None:
+        if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17"} and query.story_window is None:
             from .prehistory_story import compact_story_reading
             eligible_rows = tuple((document.model_copy(update={
                 "prehistory": document.prehistory.model_copy(update={
@@ -696,12 +708,12 @@ class _RecallIndexCore:
         for (document, vector), lexical in zip(search_rows, lexical_scores, strict=True):
             dense = max(0, min(10_000, round(_cosine(query_vectors[0], vector) * 10_000)))
             question_focus = None
-            if self.policy_version == "world-v2-recall-index.hybrid.16" and document.prehistory is not None:
+            if self.policy_version in {"world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17"} and document.prehistory is not None:
                 focus = max(0, min(10_000, round(_cosine(query_vectors[-1], vector) * 10_000)))
                 question_focus = focus if focus >= self._dense_match_threshold_bp else 0
                 if focus >= self._dense_match_threshold_bp:
                     question_focus_scores[document.document_id] = focus
-            structured = (10_000 if query.story_window is not None
+            structured = (10_000 if query.story_window is not None or query.episode_window is not None
                           else _structured_score(query.link_refs, self._structured_refs(document)))
             temporal = _temporal_score(query, document)
             channels: list[Literal["lexical", "dense", "temporal", "structured"]] = []
@@ -829,7 +841,7 @@ class _RecallIndexCore:
             "world-v2-recall-index.hybrid.11",
             "world-v2-recall-index.hybrid.12",
             "world-v2-recall-index.hybrid.13",
-            "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16",
+            "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17",
         }:
             from .life_recall_windows import attempt_family
             families = {hit.document.document_id: attempt_family(hit.document)
@@ -884,11 +896,11 @@ class _RecallIndexCore:
         hits = tuple(selected)
         if (query.include_historical
                 and self._index_version.partition("+embedding:")[0] in {
-                    "world-v2-recall-index.hybrid.13", "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16"}):
+                    "world-v2-recall-index.hybrid.13", "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17"}):
             hits = self._add_linked_impression_context(
                 hits=hits, eligible_rows=eligible_rows, query=query,
             )
-        if hits and self.policy_version == "world-v2-recall-index.hybrid.16":
+        if hits and self.policy_version in {"world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17"}:
             from .scene_recall import select_scene_context
             hits = select_scene_context(hits=hits, ranked=ranked, eligible_rows=eligible_rows,
                 query=query, index_version=self._index_version, question_focus_scores=question_focus_scores)
@@ -899,10 +911,14 @@ class _RecallIndexCore:
                 eligible_rows=eligible_rows,
                 query=query,
             )
-        if self.policy_version in {"world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16"}:
+        if self.policy_version in {"world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17"}:
             hits = self._with_prehistory_parent_context(
                 hits=hits, eligible_rows=eligible_rows,
             )
+        if query.episode_window is not None:
+            from .story_episode import select_episode_page
+            hits = select_episode_page(eligible_rows=eligible_rows, ranked=ranked,
+                request=query.episode_window, limit=query.limit, index_version=self._index_version)
         # A byte-limited view can retain coordinates of another eligible
         # scene for a later pull. This never names a hidden/forgotten/future
         # endpoint, nor supplies its unpresented text as claim evidence.
@@ -920,7 +936,8 @@ class _RecallIndexCore:
                 return hit
             reading = restrict_story_reading(document.prehistory, visible_records)
             archive_refs = {reading.archive_event_ref, *(edge.authority.event_ref
-                for edge in reading.story.relations if edge.authority is not None)}
+                for edge in reading.story.relations if edge.authority is not None),
+                *(m.authority.event_ref for m in reading.episodes)}
             bindings = tuple(b for b in document.source_bindings
                 if b.authority_type != "CharacterPrehistoryArchiveAccepted" or b.ref in archive_refs)
             return hit.model_copy(update={"document": document.model_copy(update={
@@ -1045,13 +1062,13 @@ class _RecallIndexCore:
         return tuple(expanded) if expanded else hits
 
     def _structured_refs(self, document: RecallDocument) -> tuple[str, ...]:
-        if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16"} and document.prehistory is not None:
+        if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17"} and document.prehistory is not None:
             return tuple(sorted({*document.link_refs, *document.source_refs,
                                  document.source_item_ref, document.source_item_ref.split(":window:")[0]}))
         return document.link_refs
 
     def _result_hit(self, hit: RecallHit) -> RecallHit:
-        if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16"} and hit.document.prehistory is not None:
+        if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17"} and hit.document.prehistory is not None:
             return hit.model_copy(update={"document": hit.document.model_copy(update={"retrieval_text": None})})
         return hit
 
@@ -1211,7 +1228,7 @@ class _RecallIndexCore:
             candidate = (*expanded, hit)
             reading_size = len(_canonical_json({"items": [
                 interior_recall_item(item.document, index_version=(self._index_version
-                    if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16"} else "world-v2-recall-index.hybrid.12"))
+                    if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17"} else "world-v2-recall-index.hybrid.12"))
                 for item in candidate
             ]}).encode("utf-8"))
             result_size = len(_canonical_json([
@@ -1288,6 +1305,9 @@ class _RecallIndexCore:
     @staticmethod
     def _eligible(document: RecallDocument, query: RecallQuery) -> bool:
         if document.actor_ref != query.actor_ref:
+            return False
+        if query.episode_window is not None and (document.prehistory is None or not any(
+                m.episode_ref == query.episode_window.episode_ref for m in document.prehistory.episodes)):
             return False
         story = document.prehistory.story if document.prehistory is not None else None
         if query.knowledge_as_of is not None:

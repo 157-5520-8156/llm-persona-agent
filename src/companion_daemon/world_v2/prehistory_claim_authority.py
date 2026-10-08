@@ -235,6 +235,8 @@ def _visible_prehistory_claim_bindings(
             )
             expected_archives = {(historical.archive_event_ref, historical.archive_world_revision,
                                   historical.archive_payload_hash)}
+            expected_archives.update((member.authority.event_ref, member.authority.world_revision,
+                                      member.authority.payload_hash) for member in historical.episodes)
             if historical.story is not None:
                 expected_archives.update((edge.authority.event_ref, edge.authority.world_revision,
                                           edge.authority.payload_hash)

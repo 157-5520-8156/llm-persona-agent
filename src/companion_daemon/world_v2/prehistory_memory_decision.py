@@ -44,17 +44,24 @@ def initialization_opportunity(*, world_id, row, archive, cursor):
     )
 
 
-def retention_draft(result, opportunity):
+def retention_draft(result, opportunity, source_id=None):
+    if opportunity.purpose == "prehistory_memory_batch":
+        from .prehistory_memory_batch import batch_drafts
+        choices = batch_drafts(result, opportunity)
+        if source_id not in choices:
+            from .fact_memory_draft import FactMemoryDraftTechnicalFailure
+            raise FactMemoryDraftTechnicalFailure("prehistory_batch.item_missing")
+        return choices[source_id]
     return _materialize_memory_retention(result=result, opportunity=opportunity, purpose=_FACT_MEMORY_PURPOSE)
 
 
-def retention_model_result(result, opportunity):
-    draft = retention_draft(result, opportunity)
+def retention_model_result(result, opportunity, source_id=None):
+    draft = retention_draft(result, opportunity, source_id)
     return recorded_character_interior_model_result(
-        result, purpose=_FACT_MEMORY_PURPOSE, subject_ref=opportunity.opportunity_ref,
+        result, purpose=opportunity.purpose, subject_ref=opportunity.opportunity_ref,
         trigger_ref=opportunity.trigger_ref, capability_ref=opportunity.capability_manifest.capability_ref,
         route_tier="flash", route_reason_code="prehistory_memory.initialization",
-        router_version="prehistory-memory-retention.1",
+        router_version=("prehistory-memory-retention.2" if opportunity.purpose == "prehistory_memory_batch" else "prehistory-memory-retention.1"),
         proposal_hash="sha256:" + digest(draft.model_dump(mode="json") if draft is not None else {"retain": False}),
     )
 
@@ -66,7 +73,7 @@ def decision_event_id(world_id, source, *, failure_ordinal=None):
 
 
 class PrehistoryMemoryDecisionRecordedPayload(FrozenModel):
-    contract: Literal["prehistory-memory-retention.1"] = "prehistory-memory-retention.1"
+    contract: Literal["prehistory-memory-retention.1", "prehistory-memory-retention.2"] = "prehistory-memory-retention.1"
     source_binding: MemorySourceBinding
     opportunity: InteriorOpportunity
     attempt_ordinal: int = Field(ge=1, le=3)
@@ -79,6 +86,8 @@ class PrehistoryMemoryDecisionRecordedPayload(FrozenModel):
 
     @model_validator(mode="after")
     def choice_and_technical_failure_are_distinct(self):
+        if (self.contract == "prehistory-memory-retention.2") != (self.opportunity.purpose == "prehistory_memory_batch"):
+            raise ValueError("historical memory version differs from its opportunity")
         if self.source_binding.source_kind != "prehistory":
             raise ValueError("prehistory retention requires historical source authority")
         if self.recorded_at.tzinfo is None or self.recorded_at < self.opportunity.logical_time:
@@ -93,10 +102,10 @@ class PrehistoryMemoryDecisionRecordedPayload(FrozenModel):
             if (self.result.actor_ref != self.opportunity.actor_ref or self.result.cursor != self.opportunity.cursor
                 or self.result.opportunity_ref != self.opportunity.opportunity_ref):
                 raise ValueError("prehistory retention role identity differs from the offered opportunity")
-            draft = retention_draft(self.result, self.opportunity)
+            draft = retention_draft(self.result, self.opportunity, self.source_binding.source_id)
             if (draft is not None) != (self.status == "retain"):
                 raise ValueError("prehistory retention status differs from the character decision")
-            if self.character_interior_model_result != retention_model_result(self.result, self.opportunity):
+            if self.character_interior_model_result != retention_model_result(self.result, self.opportunity, self.source_binding.source_id):
                 raise ValueError("prehistory retention lost its exact character author audit")
         return self
 
@@ -107,8 +116,15 @@ def reduce_prehistory_memory_decision(state, event):
         payload.source_binding, records=state.prehistory_records, archives=state.prehistory_archives,
         committed_events=state.committed_world_event_refs,
     )
-    expected = initialization_opportunity(world_id=event.world_id, row=row, archive=archive,
-                                           cursor=payload.opportunity.cursor)
+    if payload.contract == "prehistory-memory-retention.2":
+        from .prehistory_memory_batch import batch_opportunity_from_refs
+        expected = batch_opportunity_from_refs(world_id=event.world_id, projection=state,
+            source_refs=payload.opportunity.source_refs, cursor=payload.opportunity.cursor)
+        if payload.source_binding.source_id not in expected.capability_manifest.payload['source_ids']:
+            raise ValueError('batch decision does not include this source')
+    else:
+        expected = initialization_opportunity(world_id=event.world_id, row=row, archive=archive,
+                                               cursor=payload.opportunity.cursor)
     if (
         event.actor != ACTOR or event.source != SOURCE or event.logical_time != state.logical_time
         or event.created_at < payload.recorded_at or event.logical_time != payload.recorded_at

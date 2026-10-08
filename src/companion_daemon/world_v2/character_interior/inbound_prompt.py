@@ -137,6 +137,7 @@ def _current_slim_recall_instruction() -> str:
         "recall_request必填query_text；可选lexical_text、带时区的occurred_from/occurred_to、"
         "link_refs（已有引用）、memory_kinds（episodic/semantic/reflective）、"
         "story_window（复制读取材料给出的next坐标；或用可读related_record_refs中的ID作record_ref、start=0继续读关联场景）、"
+        "episode_window（复制episode_navigation中的overview、detail或detail_after_this坐标；概览是部分来源，不是完整历史）、"
         "knowledge_as_of（带时区，仅读取该时点已完整获知的结构化前史，非重置整份当前情境）、"
         "include_historical（布尔）、limit（1..8）。引用和种类是集合，宿主会去重并规范顺序；"
         "不写query、intent、target_scopes、max_items等未提供字段。"

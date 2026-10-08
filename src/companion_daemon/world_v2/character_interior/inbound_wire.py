@@ -11058,6 +11058,7 @@ _RECALL_CHOICE_FIELDS = frozenset(
         "occurred_to",
         "knowledge_as_of",
         "story_window",
+        "episode_window",
         "link_refs",
         "memory_kinds",
         "include_historical",
@@ -11203,6 +11204,12 @@ def parse_character_recall_request(
             if isinstance(window, dict) and isinstance(window.get("record_ref"), str):
                 recall_value["story_window"] = {**window,
                     "record_ref": source_ref_aliases.expand(window["record_ref"])}
+            field = "episode_window"
+            episode = recall_value.get("episode_window")
+            if isinstance(episode, dict):
+                recall_value["episode_window"] = {key: source_ref_aliases.expand(val)
+                    if key in {"episode_ref", "after_record_ref"} and isinstance(val, str) else val
+                    for key, val in episode.items()}
         except ValueError:
             raise RecallChoiceValidationError(
                 code="recall_choice.invalid_value", field_path=f"recall_request.{field}",

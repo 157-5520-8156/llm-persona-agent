@@ -18,6 +18,7 @@ from .recall_index import (
     recall_result_hash,
 )
 from .prehistory_story import StoryWindowRequest
+from .story_episode import EpisodeWindowRequest
 from .schema_core import FrozenModel
 
 
@@ -61,6 +62,8 @@ class CharacterRecallRequest(FrozenModel):
         max_length=MAX_RECALL_QUERY_CHARACTERS,
         exclude_if=lambda value: value is None,
     )
+    episode_window: EpisodeWindowRequest | None = Field(default=None, exclude_if=lambda v: v is None,
+        description="Read returned episode navigation: overview samples sources; detail follows process order with after_record_ref pagination.")
     story_window: StoryWindowRequest | None = Field(
         default=None, exclude_if=lambda value: value is None,
         description="Continue reading one exact retained story window using returned coordinates.",
@@ -78,6 +81,8 @@ class CharacterRecallRequest(FrozenModel):
 
     @model_validator(mode="after")
     def filters_are_canonical(self) -> Self:
+        if self.story_window is not None and self.episode_window is not None:
+            raise ValueError("choose either a record window or an episode window")
         if self.link_refs != tuple(sorted(set(self.link_refs))):
             raise ValueError("recall request links must be sorted and unique")
         if self.memory_kinds != tuple(sorted(set(self.memory_kinds))):
@@ -179,6 +184,7 @@ class RecallAuditTrace(FrozenModel):
             or self.request.occurred_to != self.query.occurred_to
             or self.request.knowledge_as_of != self.query.knowledge_as_of
             or self.request.story_window != self.query.story_window
+            or self.request.episode_window != self.query.episode_window
             or self.request.link_refs != self.query.link_refs
             or self.request.memory_kinds != self.query.memory_kinds
             or self.request.include_historical != self.query.include_historical

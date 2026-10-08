@@ -36,9 +36,30 @@ class PrehistoryMemoryRuntime:
         payload = PrehistoryMemoryDecisionRecordedPayload.model_validate_json(event.payload_json)
         if event.event_type != EVENT_TYPE or payload.source_binding != source:
             raise ValueError("prehistory retention durable decision identity mismatch")
-        if payload.opportunity != self._opportunity(source):
+        if payload.opportunity != self._expected_opportunity(source, payload.opportunity):
             raise ValueError("prehistory retention no longer binds its exact import commit cursor")
         return payload
+
+    def _expected_opportunity(self, source, opportunity):
+        if opportunity.purpose == "prehistory_memory_batch":
+            from .prehistory_memory_batch import batch_opportunity_from_refs
+            located = self.ledger.lookup_event_commit(source.authority_event_ref)
+            if located is None:
+                raise ValueError("batch source import is missing")
+            _, commit = located
+            cursor = ProjectionCursor(world_revision=commit.world_revision,
+                deliberation_revision=commit.deliberation_revision, ledger_sequence=commit.ledger_sequence)
+            if cursor != opportunity.cursor:
+                raise ValueError("batch source import cursor differs from the recorded opportunity")
+            return batch_opportunity_from_refs(world_id=self.ledger.world_id,
+                projection=self.ledger.project_at(cursor), source_refs=opportunity.source_refs, cursor=cursor)
+        return self._opportunity(source)
+
+    async def advance_batch_once(self, *, allow_model_call=False, batch_size=6):
+        """One bounded role call, independent item decisions, same durable source effects."""
+        from .prehistory_memory_batch_runtime import advance_batch
+        async with self._lock:
+            return await advance_batch(self, allow_model_call=allow_model_call, batch_size=batch_size)
 
     def _opportunity(self, source):
         found = self.ledger.lookup_event_commit(source.authority_event_ref)
@@ -88,8 +109,10 @@ class PrehistoryMemoryRuntime:
                                  if (value := self._recorded(source, ordinal)) is not None)
                 if tuple(item.attempt_ordinal for item in failures) != tuple(range(1, len(failures) + 1)):
                     raise ValueError("prehistory retention retry audit has a missing predecessor")
-                opportunity = self._opportunity(source)
-                result = self._recovered(source, opportunity)
+                from .prehistory_memory_batch_runtime import recovered_batch
+                recovered = recovered_batch(self, source)
+                opportunity = recovered[1] if recovered else self._opportunity(source)
+                result = recovered[0] if recovered else self._recovered(source, opportunity)
                 ordinal = len(failures) + 1
                 if result is None:
                     if ordinal > 3:
@@ -105,8 +128,8 @@ class PrehistoryMemoryRuntime:
                 # A paid terminal can still be materialized after retry exhaustion.
                 ordinal = min(ordinal, 3)
                 try:
-                    draft = retention_draft(result, opportunity)
-                    audit = retention_model_result(result, opportunity)
+                    draft = retention_draft(result, opportunity, source.source_id)
+                    audit = retention_model_result(result, opportunity, source.source_id)
                 except (FactMemoryDraftTechnicalFailure, ValueError) as exc:
                     code = getattr(exc, "failure_code", "prehistory_memory.invalid_role_lineage")
                     self._record(source, opportunity, ordinal, status="technical_failure", failure_code=code)
@@ -118,7 +141,7 @@ class PrehistoryMemoryRuntime:
             return {"status": pending_status}
 
     def _record(self, source, opportunity, ordinal, *, status, result=None, audit=None, failure_code=None):
-        if opportunity != self._opportunity(source):
+        if opportunity != self._expected_opportunity(source, opportunity):
             raise ValueError("prehistory retention must use its exact import commit snapshot")
         with self.ledger.serialized_commit_sequence():
             existing = self._recorded(source, ordinal if status == "technical_failure" else None)
@@ -127,6 +150,7 @@ class PrehistoryMemoryRuntime:
             projection = self.ledger.project()
             now = projection.logical_time
             payload = PrehistoryMemoryDecisionRecordedPayload(
+                contract=("prehistory-memory-retention.2" if opportunity.purpose == "prehistory_memory_batch" else "prehistory-memory-retention.1"),
                 source_binding=source, opportunity=opportunity, attempt_ordinal=ordinal, status=status,
                 recorded_at=now, result=result, character_interior_model_result=audit, failure_code=failure_code,
                 next_retry_at=(now + timedelta(seconds=(30, 120)[ordinal - 1])
@@ -163,7 +187,7 @@ class PrehistoryMemoryRuntime:
             candidate_id = "memory:prehistory:" + digest(source)
             if existing is not None and existing.candidate_id != candidate_id:
                 raise ValueError("prehistory source already has another pending memory identity")
-            draft = retention_draft(payload.result, payload.opportunity)
+            draft = retention_draft(payload.result, payload.opportunity, source.source_id)
             now = projection.logical_time
             before = existing
             for revision, status, operation in ((1, "pending", "open"), (2, "active", "accept")):

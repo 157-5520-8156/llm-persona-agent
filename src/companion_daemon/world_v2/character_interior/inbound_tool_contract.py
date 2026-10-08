@@ -676,7 +676,7 @@ def _legacy_recall_provider_schema() -> dict[str, object]:
     Legacy strict envelopes must not acquire required nullable siblings.
     """
     schema = _provider_schema(CharacterRecallRequest)
-    for field in ("knowledge_as_of", "story_window"):
+    for field in ("knowledge_as_of", "story_window", "episode_window"):
         schema["properties"].pop(field)
     return schema
 

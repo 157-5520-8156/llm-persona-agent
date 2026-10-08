@@ -162,7 +162,7 @@ class _LedgerCapsuleInteriorProjection:
         if (
             isinstance(subject, InteriorOpportunity)
             and subject.capability_manifest is not None
-            and subject.capability_manifest.payload.get("source_kind") == "character_prehistory"
+            and subject.capability_manifest.payload.get("source_kind") in {"character_prehistory", "character_prehistory_batch"}
         ):
             # Initialization deliberately retains the complete import snapshot
             # across earlier retention writes. Only the exact durable import
@@ -182,8 +182,13 @@ class _LedgerCapsuleInteriorProjection:
             _, commit = found
             imported_cursor = ProjectionCursor(world_revision=commit.world_revision,
                 deliberation_revision=commit.deliberation_revision, ledger_sequence=commit.ledger_sequence)
-            expected = initialization_opportunity(world_id=self.ledger.world_id,
-                row=row, archive=archive, cursor=imported_cursor)
+            if subject.purpose == "prehistory_memory_batch":
+                from ..prehistory_memory_batch import batch_opportunity_from_refs
+                expected = batch_opportunity_from_refs(world_id=self.ledger.world_id, projection=projection,
+                    source_refs=subject.source_refs, cursor=imported_cursor)
+            else:
+                expected = initialization_opportunity(world_id=self.ledger.world_id,
+                    row=row, archive=archive, cursor=imported_cursor)
             if subject != expected:
                 raise ValueError("prehistory initialization must bind its exact import opportunity")
             # Returns source-bound bytes, never a new action/deliberation

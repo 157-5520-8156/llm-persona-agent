@@ -1064,7 +1064,7 @@ class WorldV2TurnApplication:
         self._last_character_outcome = outcome.status
         return outcome
 
-    async def initialize_prehistory_once(self, *, allow_model_call: bool = False):
+    async def initialize_prehistory_once(self, *, allow_model_call: bool = False, batch_size: int = 1):
         """Initialize one imported memory through the existing character model.
 
         The host explicitly enables new calls for setup. Ordinary background
@@ -1079,6 +1079,8 @@ class WorldV2TurnApplication:
                 ledger=self._ledger, owner_actor_ref=self._companion_actor_ref,
                 character_interior=self._character_interior,
             )
+        if batch_size != 1:
+            return await self._prehistory_memory.advance_batch_once(allow_model_call=allow_model_call, batch_size=batch_size)
         return await self._prehistory_memory.advance_once(allow_model_call=allow_model_call)
 
     async def cancel_superseded_expression_streams(self, current_trigger_ref: str) -> None:
@@ -3707,7 +3709,7 @@ def build_sqlite_world_v2_turn_application(
         path=path,
         world_id=config.world_id,
         embedding=FeatureHashRecallEmbedding(),
-        policy_version=("world-v2-recall-index.hybrid.16" if config.recall_story_context else
+        policy_version=("world-v2-recall-index.hybrid.17" if config.recall_story_context else
                         "world-v2-recall-index.hybrid.14" if config.recall_parent_context else None),
     )
     cached_semantic_embedding = (
