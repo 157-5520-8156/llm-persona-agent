@@ -1,3 +1,20 @@
+Local Recall redundant-work optimization implemented (2026-10-08):
+User requested local retrieval optimization after full vector prewarm. Baseline55b92f23;runtimea36e5a5e.
+Spec docs/design/recall-local-optimization-2026-10-08.md; audit docs/audits/recall-local-optimization-2026-10-08.md.
+Onlyrecall_index searchcompute changed:rerank onlywhen selectedsetchanges (family promotionstillperiteration);
+reuse lexicalfeatures withincurrent eligiblequery;exact additivecanonicalJSONUTF8 budgets;reuse dense dot
+product forsinglequeryvector focus. Nochangedranking/filters/sourcechecks/budgets/embedding/rolebehavior;
+noANN, no crossquery lexical/authoritycache. New4publicbudgettests forlarge-rejectiontail andescapedUTF8limits.
+Frozenoldimplementation+sameactual1628docs/1613searchable cachedBGE:36fullcases,132synthetic,12dual-query/link
+cases allResult+Diagnosticidentical. Alternating6queries*5runs oldmedians350.1-891.2ms ->204.9-287.6ms;
+40.6-68.6%less time. PublicRecallCoordinator0.356/.254/.339s whiletestsrun,hashesmatchprior;0provider/token
+increment. Memorytracedquery peak31.3->33.9MiB (+2.6MiB/8.3%),nolongtermcache. Notendtoend/chatquality.
+Source39900eventbyteshashunchanged;cached1864vectors/40483933bytes;daily460491tokensunchanged.
+207focusedpass,Ruff/compilepass,Standards/Spec reviewsclosed(no findings;Specindependent5tests).
+Fullsuite frozena36e5a5e:10336passed/19skipped/2xfailed/1dependencywarning,1322.08s/exit0. Laterdocs-only.
+Private output/private-audits/recall-local-optimization-20261008/ containsbaseline/candidate/paired/equality,
+publicinterfaceprofile,memoryprobe,andlogs. No productionconfig/process/QQchanges.
+
 Full memory vector preparation completed after explicit cap authorization (2026-10-08):
 Latest user removed the separate250000daily embedding token cap. Main.env now explicitly sets daily
 WORLD_V2_RECALL_EMBEDDING_DAILY_TOKEN_BUDGET=2000000, equal to unchanged monthly2000000, so onlymonthly
