@@ -62,9 +62,17 @@ def draft_value(wake, *, parent=None):
                 "after_opportunities": [],
             }
             for name, threads, text in [
-                ("notice", ["books", "friends"], "考虑发布外部筹备信息，不假定任何人参加。"),
-                ("calendar", ["study"], "考虑可用时间发生的外部变化。"),
-                ("materials", ["books", "study"], "材料整理可以与另一项已有安排共享物件。"),
+                (
+                    "notice",
+                    ["books", "friends"],
+                    "社区发布周六下午旧书交换的公告，摊位报名尚未截止。",
+                ),
+                ("calendar", ["study"], "图书馆通知：周六自习区检修，开放时间改为傍晚六点以后。"),
+                (
+                    "materials",
+                    ["books", "study"],
+                    "旧书交换主办方新增学习资料专区，接受未填写的练习册和参考书。",
+                ),
             ]
         ],
     }
@@ -372,8 +380,19 @@ async def test_central_npc_statement_executes_without_any_npc_or_world_model(tmp
             actor_ref="actor:companion",
         ),
     )
+    from companion_daemon.world_v2.life_development_draft import LifeDevelopmentNpcCapability
+
     manifest = SimpleNamespace(
-        npc_capabilities=(SimpleNamespace(npc_ref="npc:lin", lifecycle_state="active"),),
+        npc_capabilities=(
+            LifeDevelopmentNpcCapability(
+                npc_ref="npc:lin",
+                lifecycle_state="active",
+                identity_content_ref="identity:lin",
+                identity_summary="林，已有共同活动记录的熟人。",
+                identity_payload_hash="a" * 64,
+                authority_refs=("clock-life",),
+            ),
+        ),
         anchor_refs=("clock-life",),
     )
     try:
@@ -385,6 +404,8 @@ async def test_central_npc_statement_executes_without_any_npc_or_world_model(tmp
         result = runtime.execute_offer(node, wake_event_ref="clock-life")
         assert result.status == "occurrence_committed"
         assert npc_model.calls == [] and world_model.calls == [] and len(planner.calls) == 1
+        packet = json.loads(planner.calls[0][-1]["content"])
+        assert packet["npc_capabilities"][0]["identity_summary"].startswith("林")
         assert ledger.project().npcs == before.npcs
         occurrence = next(
             o for o in ledger.project().world_occurrences if o.occurrence_id == result.occurrence_id
@@ -827,3 +848,244 @@ async def test_async_shutdown_waits_for_central_author_and_its_ecology_continuat
     await asyncio.wait_for(task, 5)
     await asyncio.wait_for(closing, 5)
     assert len(author.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_provider_budget_failure_is_recorded_once_without_fake_execution(tmp_path):
+    ledger, wake, store, author, runtime = setup(
+        tmp_path, lambda w: [RuntimeError("budget_denied")]
+    )
+    try:
+        before = ledger.project()
+        for _ in range(2):
+            result = await runtime.refresh(
+                projection=before,
+                context={},
+                manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
+            )
+            assert result["status"] == "technical_failure"
+        assert len(author.calls) == 1
+        assert ledger.project() == before
+        assert store.offers() == () and store.head() is None
+    finally:
+        runtime.close()
+
+
+def test_private_npc_script_cannot_be_authored_with_weaker_visibility():
+    from test_npc_ecology import _runtime as npc_runtime, _actor
+    from companion_daemon.world_v2.world_outlook import source_catalog, validate_draft
+
+    ledger, _, _, _, _ = npc_runtime(_actor("no_op"), {"decision": "no_op"})
+    state = ledger.project()
+    value = draft_value(SimpleNamespace(event_id="clock-life"))
+    value.update(
+        world_id=ledger.world_id,
+        review_at=(state.logical_time + timedelta(days=1)).isoformat(),
+        horizon_end=(state.logical_time + timedelta(days=21)).isoformat(),
+    )
+    value["opportunities"] = [value["opportunities"][0]]
+    node = value["opportunities"][0]
+    node.update(
+        lane="npc",
+        npc_ref="npc:lin",
+        opens_at=state.logical_time.isoformat(),
+        closes_at=(state.logical_time + timedelta(days=7)).isoformat(),
+    )
+    node["execution"].update(kind="npc_statement", privacy_class="public")
+    draft = WorldOutlookDraft.model_validate_json(json.dumps(value))
+    with pytest.raises(ValueError, match="weakens source privacy"):
+        validate_draft(
+            draft,
+            projection=state,
+            actor_ref=OWNER,
+            parent_revision=None,
+            basis_refs=("clock-life",),
+            npc_refs=("npc:lin",),
+            sources=source_catalog(state, actor_ref=OWNER, npc_refs=("npc:lin",)),
+        )
+
+
+@pytest.mark.asyncio
+async def test_saved_author_result_resumes_install_after_crash_without_rebilling(
+    tmp_path, monkeypatch
+):
+    class Crash(BaseException):
+        pass
+
+    ledger, wake, store, author, runtime = setup(
+        tmp_path, lambda w: [{"decision": "revise", "draft": draft_value(w)}]
+    )
+    original = store.install
+
+    def crash_install(*args, **kwargs):
+        raise Crash()
+
+    try:
+        monkeypatch.setattr(store, "install", crash_install)
+        with pytest.raises(Crash):
+            await runtime.refresh(
+                projection=ledger.project(),
+                context={},
+                manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
+            )
+        monkeypatch.setattr(store, "install", original)
+        store.close()
+        runtime.store = SQLiteWorldOutlookStore(
+            path=tmp_path / "outlook.sqlite", world_id=WORLD_ID, actor_ref=OWNER
+        )
+        result = await runtime.refresh(
+            projection=ledger.project(),
+            context={},
+            manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
+        )
+        assert result["status"] == "ready"
+        assert len(author.calls) == 1
+        assert runtime.store.head() is not None
+        assert len(ledger.project().world_occurrences) == 0
+    finally:
+        runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_ecology_cannot_activate_expired_script_after_interrupted_delivery(
+    tmp_path, monkeypatch
+):
+    from test_life_ecology_runtime import _Media, _TriggerStore
+    from companion_daemon.world_v2.life_ecology_runtime import (
+        LifeEcologyRuntime,
+        LifeEcologyAvailability,
+    )
+
+    class Crash(BaseException):
+        pass
+
+    def outputs(w):
+        draft = draft_value(w)
+        draft["opportunities"][0]["closes_at"] = (NOW + timedelta(minutes=5)).isoformat()
+        return [{"decision": "revise", "draft": draft}]
+
+    ledger, wake, store, author, runtime = setup(tmp_path, outputs)
+    install_executor(ledger, runtime)
+    original = ledger.commit_at_cursor
+
+    def crash_activation(events, **kwargs):
+        if events[0].event_type == "WorldOccurrenceActivated":
+            raise Crash()
+        return original(events, **kwargs)
+
+    try:
+        await runtime.refresh(
+            projection=ledger.project(),
+            context={},
+            manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
+        )
+        node = runtime.ready()[0]
+        monkeypatch.setattr(ledger, "commit_at_cursor", crash_activation)
+        with pytest.raises(Crash):
+            runtime.execute_offer(node, wake_event_ref=wake.event_id)
+        monkeypatch.setattr(ledger, "commit_at_cursor", original)
+        later = _seed_clock(
+            ledger,
+            event_id="clock:expired",
+            logical_time=NOW + timedelta(minutes=10),
+            logical_time_from=NOW,
+        )
+        ecology = LifeEcologyRuntime(
+            ledger=ledger,
+            trigger_store=_TriggerStore(),
+            media_followup=_Media(),
+            availability=LifeEcologyAvailability(state="installed_and_active"),
+            world_outlook=runtime,
+        )
+        await ecology.advance_once(
+            wake_event_ref=later.event_id, trace_id="expired", correlation_id="expired"
+        )
+        assert all(o.status != "active" for o in ledger.project().world_occurrences)
+        assert not store.offers()[0]["payload"]["effect_refs"]
+        assert (
+            next(
+                n
+                for n in runtime.view()["opportunities"]
+                if n["opportunity_id"] == node["opportunity_id"]
+            )["state"]
+            == "expired"
+        )
+        assert len(author.calls) == 1
+    finally:
+        runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_unknown_correction_outcome_is_not_sent_again_after_restart(tmp_path):
+    class Crash(BaseException):
+        pass
+
+    ledger, wake, store, author, runtime = setup(
+        tmp_path, lambda w: [{"decision": "revise", "draft": {}}]
+    )
+    original = author.complete
+
+    async def crash_on_correction(messages, **kwargs):
+        if len(author.calls) == 1:
+            author.calls.append(messages)
+            raise Crash()
+        return await original(messages, **kwargs)
+
+    author.complete = crash_on_correction
+    try:
+        with pytest.raises(Crash):
+            await runtime.refresh(
+                projection=ledger.project(),
+                context={},
+                manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
+            )
+        store.close()
+        runtime.store = SQLiteWorldOutlookStore(
+            path=tmp_path / "outlook.sqlite", world_id=WORLD_ID, actor_ref=OWNER
+        )
+        result = await runtime.refresh(
+            projection=ledger.project(),
+            context={},
+            manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
+        )
+        assert result["failure_code"] == "outlook_author_outcome_unknown"
+        assert len(author.calls) == 2 and runtime.store.head() is None
+    finally:
+        runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_recovered_author_response_keeps_original_model_identity(tmp_path, monkeypatch):
+    class Crash(BaseException):
+        pass
+
+    ledger, wake, store, author, runtime = setup(
+        tmp_path, lambda w: [{"decision": "revise", "draft": draft_value(w)}]
+    )
+
+    def crash_install(*args, **kwargs):
+        raise Crash()
+
+    original = store.install
+    try:
+        monkeypatch.setattr(store, "install", crash_install)
+        with pytest.raises(Crash):
+            await runtime.refresh(
+                projection=ledger.project(),
+                context={},
+                manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
+            )
+        monkeypatch.setattr(store, "install", original)
+        replacement = Author([])
+        replacement.model = "fixture:new-author-never-called"
+        runtime.author = replacement
+        result = await runtime.refresh(
+            projection=ledger.project(),
+            context={},
+            manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
+        )
+        assert result["status"] == "ready"
+        assert store.head()[2]["model"] == author.model
+        assert len(author.calls) == 1 and replacement.calls == []
+    finally:
+        runtime.close()

@@ -146,6 +146,21 @@ class SQLiteWorldOutlookStore:
             {"state": s, "payload": json.loads(p), "operation_ref": op} for s, p, op in rows
         )
 
+    def attempts(self, operation_id: str):
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT ordinal,payload,payload_hash FROM world_outlook_attempts "
+                "WHERE world_id=? AND actor_ref=? AND operation_id=? ORDER BY ordinal",
+                (*self._scope(), operation_id),
+            ).fetchall()
+        result = {}
+        for ordinal, encoded, expected in rows:
+            payload = json.loads(encoded)
+            if digest(payload) != expected:
+                raise ValueError("outlook attempt content binding mismatch")
+            result[ordinal] = payload
+        return result
+
     def revisions(self):
         with self._lock:
             rows = self._db.execute(

@@ -1055,6 +1055,12 @@ class LifeEcologyRuntime:
         )
         activated = 0
         for occurrence in getattr(projection, "world_occurrences", ()):
+            # A central script may be between its commit and activation after
+            # a crash. Only its own executor can recheck the authored window
+            # and conditions; the generic activator has no such authority.
+            # Keep this exclusion even when the outlook feature is disabled.
+            if occurrence.occurrence_id.startswith("occurrence:world-outlook:"):
+                continue
             if occurrence.status != "committed" or occurrence.time_window is None:
                 continue
             if occurrence.time_window.opens_at > logical_time:

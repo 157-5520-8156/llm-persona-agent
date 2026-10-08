@@ -210,6 +210,12 @@ class WorldOutlookRuntime:
         )
         view = self.view(projection=projection, npc_refs=npc_refs)
         if not view["needs_revision"]:
+            head = self.store.head()
+            operation = self.store.operation(head[2]["operation_ref"])
+            if operation and operation["state"] == "running":
+                self.store.finish(
+                    head[2]["operation_ref"], state="accepted", payload={"revision": head[0]}
+                )
             self._health = {"status": "ready", "revision": view["revision"]}
             return {"status": "unchanged", "revision": view["revision"]}
         sources = self._catalog(projection, npc_refs)
@@ -228,11 +234,28 @@ class WorldOutlookRuntime:
             }
         )
         op = "refresh:" + input_key
+        configured_model = str(getattr(self.author, "model", type(self.author).__name__))
+        cached_attempts = {}
         if not self.store.claim(
-            op, kind="refresh", payload={"input_key": input_key, "cursor": cursor_of(projection)}
+            op,
+            kind="refresh",
+            payload={
+                "input_key": input_key,
+                "cursor": cursor_of(projection),
+                "model": configured_model,
+            },
         ):
             saved = self.store.operation(op)
-            return {"status": saved["state"], "operation_ref": op}
+            if saved["state"] != "running":
+                return {"status": saved["state"], "operation_ref": op}
+            if saved["payload"]["cursor"] != cursor_of(projection):
+                self.store.finish(op, state="stale", payload={"cursor": saved["payload"]["cursor"]})
+                return {"status": "stale", "operation_ref": op}
+            cached_attempts = self.store.attempts(op)
+            if not cached_attempts:
+                # Unknown/in-flight provider outcome must not be billed twice.
+                return {"status": "running", "operation_ref": op}
+        original_model = self.store.operation(op)["payload"]["model"]
         packet = {
             "contract": "world-outlook-request.1",
             "world_id": projection.world_id,
@@ -244,6 +267,27 @@ class WorldOutlookRuntime:
             "basis_refs": list(manifest.anchor_refs),
             "condition_sources": [v.model_dump(mode="json") for v in sources.values()],
             "available_npc_refs": list(npc_refs),
+            "npc_capabilities": [
+                c.model_dump(mode="json")
+                for c in manifest.npc_capabilities
+                if c.npc_ref in npc_refs
+            ],
+            "plan_schedules": [
+                p.model_dump(
+                    mode="json",
+                    include={
+                        "plan_id",
+                        "owner_actor_ref",
+                        "status",
+                        "activity_kind",
+                        "scheduled_window",
+                        "location_ref",
+                        "participant_refs",
+                    },
+                )
+                for p in projection.plans
+                if p.plan_id in sources and p.status in {"planned", "active", "paused"}
+            ],
             "draft_schema": WorldOutlookDraft.model_json_schema(),
         }
         messages = [
@@ -259,10 +303,33 @@ class WorldOutlookRuntime:
         for ordinal in range(2):
             raw = None
             try:
-                with model_call_scope(
-                    "life_development_draft", action_id=f"world-outlook:{input_key}:{ordinal}"
-                ):
-                    raw = await complete_json_object(self.author, messages, temperature=0.3)
+                if ordinal in cached_attempts:
+                    cached = cached_attempts[ordinal]
+                    if cached["status"] == "technical_failure":
+                        break
+                    messages, raw = cached["messages"], cached["raw"]
+                else:
+                    if configured_model != original_model:
+                        raise ValueError("outlook original author changed before correction")
+                    call_ref = f"{op}:author:{ordinal}"
+                    if not self.store.claim(
+                        call_ref,
+                        kind="author_call",
+                        payload={
+                            "model": original_model,
+                            "request_hash": digest(messages),
+                        },
+                    ):
+                        self._health = {
+                            "status": "running",
+                            "operation_ref": op,
+                            "failure_code": "outlook_author_outcome_unknown",
+                        }
+                        return self.health()
+                    with model_call_scope(
+                        "life_development_draft", action_id=f"world-outlook:{input_key}:{ordinal}"
+                    ):
+                        raw = await complete_json_object(self.author, messages, temperature=0.3)
                 obj = json.loads(raw)
                 if (
                     isinstance(obj, dict)
@@ -302,7 +369,7 @@ class WorldOutlookRuntime:
                 )
                 self._validate_offered_nodes(candidate)
             except (ValueError, TypeError) as exc:
-                self.store.attempt(
+                self._record_attempt(
                     op,
                     ordinal=ordinal,
                     payload={
@@ -325,7 +392,7 @@ class WorldOutlookRuntime:
                     continue
                 break
             except Exception as exc:
-                self.store.attempt(
+                self._record_attempt(
                     op,
                     ordinal=ordinal,
                     payload={
@@ -336,7 +403,7 @@ class WorldOutlookRuntime:
                     },
                 )
                 break
-            self.store.attempt(
+            self._record_attempt(
                 op, ordinal=ordinal, payload={"messages": messages, "raw": raw, "status": "valid"}
             )
             draft = candidate
@@ -357,7 +424,7 @@ class WorldOutlookRuntime:
                     draft,
                     evidence={
                         "operation_ref": op,
-                        "model": str(getattr(self.author, "model", type(self.author).__name__)),
+                        "model": original_model,
                         "request_hash": digest(messages),
                         "response_hash": digest(raw),
                         "cursor": cursor_of(projection),
@@ -377,6 +444,13 @@ class WorldOutlookRuntime:
             return self.health()
         self._health = {"status": "ready", "revision": revision}
         return self.health()
+
+    def _record_attempt(self, operation_ref, *, ordinal, payload):
+        payload = {**payload, "model": self.store.operation(operation_ref)["payload"]["model"]}
+        self.store.attempt(operation_ref, ordinal=ordinal, payload=payload)
+        call_ref = f"{operation_ref}:author:{ordinal}"
+        if self.store.operation(call_ref) is not None:
+            self.store.finish(call_ref, state="captured", payload={"attempt_hash": digest(payload)})
 
     def _validate_offered_nodes(self, draft):
         previous = {
@@ -479,6 +553,13 @@ class WorldOutlookRuntime:
         if self._executor is None:
             return 0
         recovered = 0
+        with self.ledger.serialized_commit_sequence():
+            current = {n["opportunity_id"]: n for n in self.view()["opportunities"]}
+            for offer in self.store.offers():
+                node = offer["payload"]["node"]
+                visible = current.get(node["opportunity_id"])
+                if visible is None or visible["state"] in {"expired", "invalidated"}:
+                    self._executor.cancel_pending(node=node, wake_event_ref=wake_event_ref)
         for offer in self.store.offers():
             if offer["state"] != "running":
                 continue

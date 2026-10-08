@@ -229,10 +229,10 @@ def opportunity_states(draft, *, now, sources, offered, produced, invalidated=()
         node = nodes[key]
         if key in offered:
             state = "considered"
-        elif key in invalidated:
-            state = "invalidated"
         elif now >= node.closes_at:
             state = "expired"
+        elif key in invalidated:
+            state = "invalidated"
         else:
             state = "ready" if now >= node.opens_at else "waiting"
             for condition in node.conditions:

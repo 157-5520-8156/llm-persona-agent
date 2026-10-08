@@ -12,7 +12,7 @@ from types import SimpleNamespace
 
 from .event_identity import domain_idempotency_key
 from .life_content_store import life_content_payload_hash
-from .life_events import WorldOccurrenceActivatedPayload
+from .life_events import WorldOccurrenceActivatedPayload, WorldOccurrenceTerminalPayload
 from .occurrence_content_coordinator import OccurrenceContentCommitRequest, OutcomeCandidateContent
 from .schemas import DueWindow, EvidenceRef, ProjectionCursor, WorldEvent, WorldOccurrenceProjection
 from .world_consequence_contract import WorldConsequenceV2
@@ -28,6 +28,63 @@ class WorldOutlookExecutor:
         if occurrence_content.ledger is not ledger:
             raise ValueError("outlook executor must use the same World")
         self._ledger, self._content, self._owner = ledger, occurrence_content, actor_ref
+
+    def cancel_pending(self, *, node, wake_event_ref):
+        """Retire an unactivated intermediate write whose conditions no longer hold."""
+        with self._ledger.serialized_commit_sequence():
+            state = self._ledger.project()
+            ref = occurrence_ref(state.world_id, self._owner, node["opportunity_id"])
+            occurrence = next((o for o in state.world_occurrences if o.occurrence_id == ref), None)
+            if occurrence is None or occurrence.status != "committed":
+                return
+            located = self._ledger.lookup_event_commit(wake_event_ref)
+            if located is None or located[0].event_type != "ClockAdvanced":
+                raise ValueError("outlook cleanup requires a committed clock")
+            wake = located[0]
+            payload = WorldOccurrenceTerminalPayload(
+                change_id="cancel:" + ref,
+                transition_id="cancel:" + ref,
+                expected_entity_revision=occurrence.entity_revision,
+                occurrence_id=ref,
+                effective_at=state.logical_time,
+                reason_ref=wake.event_id,
+                evidence_refs=(
+                    EvidenceRef(
+                        ref_id=wake.event_id,
+                        evidence_type="committed_world_event",
+                        claim_purpose="life_transition",
+                        source_world_revision=located[1].world_revision,
+                        immutable_hash=wake.payload_hash,
+                    ),
+                ),
+                policy_refs=("policy:world-outlook.1",),
+            ).model_dump(mode="json")
+            event = WorldEvent.from_payload(
+                schema_version="world-v2.1",
+                event_id="event:cancel:" + ref,
+                world_id=state.world_id,
+                event_type="WorldOccurrenceCancelled",
+                logical_time=state.logical_time,
+                created_at=state.logical_time,
+                actor="worker:world-outlook",
+                source="world-outlook-execution.1",
+                trace_id="trace:" + ref,
+                causation_id=wake.event_id,
+                correlation_id=ref,
+                idempotency_key=domain_idempotency_key(
+                    event_type="WorldOccurrenceCancelled", world_id=state.world_id, payload=payload
+                ),
+                payload=payload,
+            )
+            self._ledger.commit_at_cursor(
+                (event,),
+                expected_cursor=ProjectionCursor(
+                    **{
+                        k: getattr(state, k)
+                        for k in ("world_revision", "deliberation_revision", "ledger_sequence")
+                    }
+                ),
+            )
 
     def recover(self, *, node):
         ref = occurrence_ref(self._ledger.world_id, self._owner, node["opportunity_id"])
