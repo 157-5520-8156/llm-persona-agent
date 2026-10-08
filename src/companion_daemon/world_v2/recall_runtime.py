@@ -1582,14 +1582,18 @@ class RecallCoordinator:
                 document.retrieval_text or document.text
                 for document in documents if not document.context_only
             )
-            focus = (request.lexical_text if focused_attention and request.lexical_text
+            needs_question_vector = (
+                context.snapshot.policy_version == "world-v2-recall-index.hybrid.16"
+                and any(document.prehistory is not None for document in documents)
+            )
+            focus = (request.lexical_text if (focused_attention or needs_question_vector) and request.lexical_text
                      and request.lexical_text != request.query_text else None)
             batch_texts = (*document_texts, query.query_text, *((focus,) if focus else ()))
             batch_vectors = self._semantic_embedding.embed(batch_texts)
             if len(batch_vectors) != len(batch_texts):
                 raise ValueError("semantic attention batch count is invalid")
             focused_query = None
-            if focus is not None:
+            if focused_attention and focus is not None:
                 vectors = (batch_vectors[-2], batch_vectors[-1])
                 normalized = []
                 for vector in vectors:

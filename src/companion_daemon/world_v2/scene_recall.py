@@ -57,11 +57,13 @@ def select_scene_context(*, hits, ranked, eligible_rows, query, index_version, q
                     related[ref].add(other)
                     related[other].add(ref)
 
-    def best_hit(ref):
+    def best_hit(ref, *, question_focused=False):
         documents = by_record[ref]
         matches = [ranked_hits[d.document_id] for d in documents if d.document_id in ranked_hits]
         if matches:
-            return min(matches, key=lambda h: positions[h.document.document_id])
+            return min(matches, key=lambda h: (
+                -question_focus_scores.get(h.document.document_id, 0) if question_focused else 0,
+                positions[h.document.document_id]))
         document = min(documents, key=lambda d: (d.source_window_start or 0, d.document_id))
         return RecallHit(document=document, match_channels=('structured',), score_bp=0,
             lexical_score_bp=0, dense_score_bp=0, temporal_score_bp=0,
@@ -121,7 +123,7 @@ def select_scene_context(*, hits, ranked, eligible_rows, query, index_version, q
             continue
         novel = sum(not any(left < old_right and old_left < right for old_left, old_right, _ in covered)
                     for left, right, _ in _matched_query_groups(spans, scene_features(key)))
-        representative = min((best_hit(ref) for ref in refs),
+        representative = min((best_hit(ref, question_focused=True) for ref in refs),
             key=lambda hit: (-question_focus_scores.get(hit.document.document_id, 0),
                              positions.get(hit.document.document_id, len(ranked)), hit.document.document_id))
         focused.append((focus, novel, representative))
@@ -195,7 +197,7 @@ def select_scene_context(*, hits, ranked, eligible_rows, query, index_version, q
     represented = _matched_query_groups(spans, represented_features)
     candidates = []
     for key in graph_scenes:
-        representative = min((best_hit(ref) for ref in groups[key]), key=lambda hit: (
+        representative = min((best_hit(ref, question_focused=True) for ref in groups[key]), key=lambda hit: (
             -question_focus_scores.get(hit.document.document_id, 0),
             positions.get(hit.document.document_id, len(ranked)), hit.document.document_id))
         focus = question_focus_scores.get(representative.document.document_id, 0)

@@ -81,6 +81,50 @@ class _PrimaryContextEmbedding:
                      (0., 0., 1.) for text in texts)
 
 
+@pytest.mark.parametrize('policy', ['world-v2-recall-index.hybrid.15', 'world-v2-recall-index.hybrid.16'])
+def test_character_pull_pins_the_question_vector_in_one_semantic_batch(tmp_path, policy):
+    from companion_daemon.world_v2.recall_index import FeatureHashRecallEmbedding
+    from companion_daemon.world_v2.recall_runtime import RecallCoordinator, verify_trusted_recall_trace
+    from companion_daemon.world_v2.recall_audit import CharacterRecallRequest
+    from test_character_prehistory import ACTOR
+
+    class RecordingEmbedding(_PrimaryContextEmbedding):
+        def __init__(self):
+            self.calls = []
+
+        def embed(self, texts):
+            self.calls.append(tuple(texts))
+            return super().embed(texts)
+
+    ledger = started_ledger(tmp_path / 'semantic-pull.sqlite')
+    coordinator = None
+    try:
+        _active_rows(ledger, _two_lines())
+        query = _query(ledger)
+        index = InMemoryRecallIndex(embedding=FeatureHashRecallEmbedding(), policy_version=policy)
+        index.rebuild(cursor=query.cursor, documents=_corpus(ledger, _read(ledger)))
+        semantic = RecordingEmbedding()
+        coordinator = RecallCoordinator.from_built_index(index=index, cursor=query.cursor,
+            actor_ref=ACTOR, subject_refs=(ACTOR,), logical_time=query.at,
+            semantic_embedding=semantic, trigger_ref='fixture:semantic-pull')
+        audit = verify_trusted_recall_trace(coordinator.recall(
+            request=CharacterRecallRequest(query_text='背景甲', lexical_text='细节乙', limit=2),
+            accessibility_seed='fixture:semantic-pull', expected_cursor=query.cursor,
+            trigger_ref='fixture:semantic-pull'))
+        assert audit.embedding_status == 'used'
+        assert audit.embedding_version == semantic.version  # Pull does not average the main cue.
+        assert len(semantic.calls) == 1
+        assert '背景甲' in semantic.calls[0]
+        assert ('细节乙' in semantic.calls[0]) is policy.endswith('.16')
+        if policy.endswith('.16'):
+            assert audit.hits[0].document.source_item_ref == 'prehistory-record:scene-entry-0'
+            assert any(h.document.source_item_ref == 'prehistory-record:scene-entry-6' for h in audit.hits)
+    finally:
+        if coordinator:
+            coordinator.close()
+        ledger.close()
+
+
 def test_question_focus_adds_an_entry_without_replacing_the_original_attention_anchor(tmp_path):
     ledger = started_ledger(tmp_path / 'preserve-primary.sqlite')
     try:
@@ -107,6 +151,38 @@ def test_literal_question_is_not_lost_inside_the_broader_attention_cue(tmp_path)
         index.rebuild(cursor=query.cursor, documents=_corpus(ledger, _read(ledger)))
         refs = {h.document.source_item_ref for h in index.search(query).hits}
         assert {'prehistory-record:scene-entry-0', 'prehistory-record:scene-entry-6'} <= refs
+    finally:
+        ledger.close()
+
+
+def test_question_entry_returns_the_matching_tail_of_a_long_retained_record(tmp_path):
+    class WindowEmbedding(_PrimaryContextEmbedding):
+        def embed(self, texts):
+            return tuple((1., 0., 0.) if text == '背景甲' or '背景开头' in text else
+                         (.6, 0., .8) if '风筝' in text else
+                         (0., 1., 0.) if text == '细节乙' or '问题结尾' in text else
+                         (0., 0., 1.) for text in texts)
+
+    archive = _two_lines()
+    long_record = archive.document.records[-1].model_copy(update={
+        'statement': '背景开头。' + '无关细节。' * 220 + '问题结尾：那个笔插跟她到了杭州。'})
+    document = archive.document.model_copy(update={'records': (*archive.document.records[:-1], long_record)})
+    archive = ReviewedPrehistoryArchive(document=document,
+        review=archive.review.model_copy(update={'manifest_hash': digest(document.manifest())}))
+    ledger = started_ledger(tmp_path / 'long-question-window.sqlite')
+    try:
+        active = _active_rows(ledger, archive)
+        query = _query(ledger).model_copy(update={'query_text': '背景甲', 'lexical_text': '细节乙',
+            'limit': 2, 'link_refs': (active['prehistory-record:scene-entry-0'].candidate_id,)})
+        index = InMemoryRecallIndex(embedding=WindowEmbedding(),
+                                   policy_version='world-v2-recall-index.hybrid.16')
+        index.rebuild(cursor=query.cursor, documents=_corpus(ledger, _read(ledger)))
+        result = index.search(query)
+        assert result.hits[0].document.source_item_ref == 'prehistory-record:scene-entry-0'
+        target = next(h for h in result.hits if h.document.source_item_ref.startswith('prehistory-record:scene-entry-6'))
+        assert '问题结尾：那个笔插跟她到了杭州。' in target.document.text
+        assert target.document.source_window_start > 0
+        assert target.document.source_bindings
     finally:
         ledger.close()
 
