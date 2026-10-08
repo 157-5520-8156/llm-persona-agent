@@ -81,5 +81,17 @@
   "production_writes": 0,
   "qq_delivery": false,
   "natural_dialogue_retelling": "not_evaluated",
-  "superseded_attempt": "Early semantic-ID installation interrupted before qualification and retained as evidence."
+  "superseded_attempt": "Early semantic-ID installation interrupted before qualification and retained as evidence.",
+  "preservation": {
+    "all_old_ids_present": true,
+    "old_record_values_match": 222,
+    "old_candidate_values_match": 381,
+    "semantic_hash": "db5d4e2d85fba52419251823378ca2cb00a9fc857d0208f6fa53b1b0e1cb2be1"
+  },
+  "artifact_reviews": {
+    "commit": "52574f6a",
+    "standards": "no_actionable_findings",
+    "spec": "no_confirmed_findings",
+    "scope": "source_structure_tools_and_evidence_not_full_narrative_semantic_certification"
+  }
 }

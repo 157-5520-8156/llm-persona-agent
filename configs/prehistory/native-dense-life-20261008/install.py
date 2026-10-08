@@ -128,6 +128,8 @@ def install(*, packages: Path, source: Path, database: Path, report: Path):
             )
             write(report / "progress.json", progress)
         after = ledger.project()
+        assert baseline["records"].keys() <= {r.record.record_id for r in after.prehistory_records}
+        assert baseline["candidates"].keys() <= {c.candidate_id for c in after.memory_candidates}
         assert all(
             digest(r) == baseline["records"][r.record.record_id]
             for r in after.prehistory_records
