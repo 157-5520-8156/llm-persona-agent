@@ -1,3 +1,30 @@
+Unified incremental memory index implemented; complete BGE prewarm budget-blocked (2026-10-08):
+User authorized import-time vector preparation, incremental source updates and reuse in chat, shared by
+future life/social memory. Base68f1ad93; runtime6732006f plus shutdown fixes4d576d5d/b62c47b4.
+Design docs/design/incremental-memory-index-2026-10-08.md; audit docs/audits/incremental-memory-index-2026-10-08.md.
+Reuse existing RecallCorpusCompiler for prehistory, Experience/WorldLife, old dialogue, facts and private
+understandings. New IncrementalSemanticRecallIndex keeps immutable rows by exact Context; vectors keyed
+by exact retrieval text within one provider/version/dimension; current actor/privacy/source/time metadata
+always rebinds. Query-only embeddings on warm calls; no repeated full semantic index materialization.
+Startup after history initialization, background drain and life completion prepare via same trusted resolver.
+No new LLM semantic extractor/reviewer, retention override, ANN, source formatting or ranking change.
+Maintenance cursor, status and retry observable; 64-item batches persist progress in existing SQLite cache.
+Health reads don't wait for provider locks; cached usage marked stale while busy. Shutdown stops new batches,
+then waits current read/provider work before stores close. Spec P2 health/close issue fixed with65-doc fixture.
+Private output/private-audits/incremental-memory-index-20261008/world.sqlite copies dense-life accepted-world.
+All1037new history sources compile into unified corpus:1628docs,1613searchable. REAL PREWARM INCOMPLETE:
+inherited198911daily estimated tokens ->242113 then next batch refused at250000cap;746cached docs,
+170new-life docs cached,867pending. Do not reset/increase budget or claim all1259memory records are warm.
+Four warm-subset queries,5repeats,20/20exact full-result equality;746docsubset medians old245.69-353.98ms,
+prepared141.49-230.34ms (~30.9-42.4%reduction). Not full-corpus/cold/chat-quality qualification.
+5new local BGE HTTP calls incl4document batches+1query batch;43376estimatedtokens/CNY.006246144delta;
+current daily242287/CNY.034889328.0DeepSeek author/retain/chat calls;Codex costs excluded. Original event
+cursor39895/hashdb5d4e2d85fba52419251823378ca2cb00a9fc857d0208f6fa53b1b0e1cb2be1 unchanged.
+CLI scripts/prepare_world_memory_index.py resumes same DB without --clone afterbudgetrecovers.
+Core69pass afterfix;earlier recall210pass. Full frozenb62c47b4:10332pass/19skip/2xfail,1268.25s/exit0;
+1dependency deprecation warning. Both review axes closed;all changedPythonRuff/compilepass. Laterdocs-only.
+No productionDB/config/process/QQ updates; no natural dialogue semantic qualification.
+
 Dense first-twenty corpus completed and directly installed in isolation (2026-10-08):
 User requested time-clustered diversity across the first20years before more retrieval/performance work.
 Base d211d6bc; runtime support9afceb6e. Sources/tools/readers in configs/prehistory/native-dense-life-20261008/;
