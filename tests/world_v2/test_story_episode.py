@@ -232,3 +232,37 @@ def test_episode_detail_includes_retained_legacy_record_without_story_structure(
         assert {h.document.source_item_ref for h in index.search(query).hits}==set(raw['episodes'][0]['record_refs'])
     finally:
         ledger.close()
+
+
+def test_bounded_episode_overview_keeps_both_ends_of_the_readable_period(tmp_path):
+    from test_prehistory_memory_source import _choice, _read, _corpus
+    from companion_daemon.world_v2.prehistory_memory_source import prehistory_memory_binding
+    from companion_daemon.world_v2.recall_index import InMemoryRecallIndex,FeatureHashRecallEmbedding,RecallQuery
+    from test_prehistory_story_recall import _query
+    raw=episode_source()
+    scene=raw['scenes'][0]
+    raw['scenes']=[{**scene,'event_ref':f'event:overview-{i}',
+        'occurred_from':f'2015-05-{i+1:02d}T00:00:00Z','occurred_until':f'2015-05-{i+1:02d}T23:59:59Z',
+        'blocks':[{**scene['blocks'][0],'block_id':f'item-{i}','text':f'第{i+1}天。'+'她把那张纸放回书里。'*24}]} for i in range(12)]
+    refs=[f'prehistory-record:fixture-native.item-{i}' for i in range(12)]
+    raw['episodes']=[{**raw['episodes'][0],'episode_ref':f'story-episode:view-{i}','record_refs':refs} for i in range(3)]
+    ledger=started_ledger(tmp_path/'overview-budget.sqlite')
+    try:
+        package=compile_native_story(NativeStorySource.model_validate_json(json.dumps(raw)),
+            brief=authoring_brief(),archive_id='prehistory-archive:overview-budget')
+        rows=PrehistoryArchiveRuntime(ledger=ledger,owner_actor_ref=ACTOR).import_compiled(package,created_at=START)
+        for row in rows:
+            source=prehistory_memory_binding(row)
+            pending=_choice(ledger,source,candidate_id='memory:'+row.record.record_id)
+            _choice(ledger,source,before=pending,status='active',candidate_id=pending.candidate_id)
+        docs=_corpus(ledger,_read(ledger))
+        query=RecallQuery.model_validate_json(json.dumps({**_query(ledger).model_dump(mode='json'),
+            'episode_window':{'episode_ref':docs[0].prehistory.episodes[0].episode_ref,'mode':'overview'}}))
+        index=InMemoryRecallIndex(embedding=FeatureHashRecallEmbedding(),policy_version='world-v2-recall-index.hybrid.17')
+        index.rebuild(cursor=query.cursor,documents=docs)
+        result=index.search(query)
+        selected=[h.document.source_item_ref for h in result.hits]
+        assert selected[0]==refs[0] and selected[-1]==refs[-1]
+        assert len(selected)<6  # actual byte bound, rather than a record-count-only fixture
+    finally:
+        ledger.close()

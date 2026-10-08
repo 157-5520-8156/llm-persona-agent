@@ -113,6 +113,10 @@ def select_episode_page(*, eligible_rows, ranked, request, limit, index_version)
         # that intermediate events did not happen.
         indices = [round(i * (len(ordered)-1) / (count-1)) for i in range(count)] if count > 1 else [0]
         ordered = [ordered[i] for i in indices]
+    if request.mode == 'overview' and len(ordered) > 1:
+        # Reserve readable temporal extent before filling the middle. A byte
+        # limit must not turn an overview into only the beginning of a period.
+        ordered = [ordered[0], ordered[-1], *ordered[1:-1]]
     selected = []
     for ref in ordered:
         document = records[ref][1].model_copy(update={'retrieval_text': None})
@@ -124,8 +128,12 @@ def select_episode_page(*, eligible_rows, ranked, request, limit, index_version)
         if len(_canonical_json({'items': [interior_recall_item(h.document, index_version=index_version)
                 for h in candidate]}).encode()) > RECALL_STORY_MODEL_READING_MAX_BYTES or len(
                 _canonical_json([h.model_dump(mode='json') for h in candidate]).encode()) > RECALL_STORY_RESULT_MAX_BYTES:
+            if request.mode == 'overview':
+                continue
             break  # Detail pagination must not silently skip the next source.
         selected.append(hit)
         if len(selected) >= count:
             break
+    if request.mode == 'overview':
+        selected.sort(key=lambda h: records[h.document.source_item_ref.split(':window:')[0]][0])
     return tuple(selected)
