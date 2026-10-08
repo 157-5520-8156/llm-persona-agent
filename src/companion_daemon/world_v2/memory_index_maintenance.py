@@ -19,7 +19,13 @@ _LOG = logging.getLogger(__name__)
 
 
 class MemoryIndexMaintenance:
-    def __init__(self, *, ledger: LedgerPort, prepare: Callable[[], dict[str, object]]) -> None:
+    def __init__(
+        self,
+        *,
+        ledger: LedgerPort,
+        prepare: Callable[[], dict[str, object]],
+        cancel: Callable[[], None] | None = None,
+    ) -> None:
         self._ledger = ledger
         self._prepare = prepare
         self._cancel = cancel
