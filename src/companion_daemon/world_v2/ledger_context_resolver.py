@@ -1947,14 +1947,35 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             return {account_id: None for account_id in accounts}
         return result
 
+    def prepare_recall_index(self, *, actor_ref: str) -> dict[str, object]:
+        """Resolve the ordinary source corpus without a model, turn or query.
+
+        The maintenance identity is a read handle only; it is never committed
+        as an event. Provider work happens after releasing the resolver guard.
+        """
+        if self._recall is None:
+            return {"status": "disabled"}
+        from .context_resolver import query_from_projection
+        with self._resolve_guard:
+            projection = self._ledger.project()
+            query = query_from_projection(projection, actor_ref=actor_ref,
+                trigger_ref="recall-index:maintenance")
+            self._resolve_pinned(query, recall_only=True)
+        return self._recall.prepare_semantic(
+            expected_cursor=RecallCursor(**query.cursor.model_dump()),
+            trigger_ref=query.trigger_ref,
+        )
+
     def resolve(self, query: ContextCompileQuery) -> ResolvedContextResult:
         # Compilers with different presentation budgets share this resolver.
         # Coalesce concurrent builds as well as sequential ones, so one pinned
         # recall prefetch is not cancelled/restarted by a sibling consumer.
         with self._resolve_guard:
-            return self._resolve_pinned(query)
+            result = self._resolve_pinned(query)
+            assert result is not None
+            return result
 
-    def _resolve_pinned(self, query: ContextCompileQuery) -> ResolvedContextResult:
+    def _resolve_pinned(self, query: ContextCompileQuery, *, recall_only: bool = False) -> ResolvedContextResult | None:
         started = time.perf_counter()
         self._resolve_calls += 1
         head = self._ledger.project()
@@ -1966,7 +1987,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             raise ValueError("historical Context resolution requires an indexed projection reader")
         query_hash = context_query_hash(query)
         cached = self._resolved_context_cache.get(query_hash)
-        if cached is not None:
+        if cached is not None and not recall_only:
             self._resolve_cache_hits += 1
             self._resolved_context_cache.pop(query_hash)
             self._resolved_context_cache[query_hash] = cached
@@ -2546,6 +2567,8 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                         update={"authority_bindings": recall_authority}
                     ),
                 )
+                if recall_only:
+                    return None
                 trigger_dialogue = next(
                     (
                         item

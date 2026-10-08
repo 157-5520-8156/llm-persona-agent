@@ -793,8 +793,7 @@ def test_semantic_embedding_serves_automatic_attention_and_character_pull() -> N
         trigger_ref="trigger:semantic-on-pull",
     )
 
-    assert "泡茶工具" in semantic.embedded_texts
-    assert "她上周买了一个白色盖碗。" in semantic.embedded_texts
+    assert semantic.embedded_texts == ["泡茶工具"]
 
 
 @pytest.mark.asyncio

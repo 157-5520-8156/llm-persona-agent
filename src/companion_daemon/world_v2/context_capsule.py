@@ -3009,6 +3009,13 @@ class ContextCapsuleCompiler:
         """
         return ContextCapsuleCompiler(resolver=self._resolver, policy=policy)
 
+    def prepare_memory_index(self, *, actor_ref: str) -> dict[str, object]:
+        """Prepare the same authorized memory corpus used by ordinary turns."""
+        prepare = getattr(self._resolver, "prepare_recall_index", None)
+        if not callable(prepare):
+            raise TypeError("Context resolver does not support memory index preparation")
+        return prepare(actor_ref=actor_ref)
+
     def performance_counters(self) -> ContextCompilerPerformanceCounters:
         return ContextCompilerPerformanceCounters(
             compile_calls=self._compile_calls,

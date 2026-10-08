@@ -29,7 +29,7 @@ from .recall_audit import (
     paired_recall_transition_hash,
 )
 from .recall_index import (
-    InMemoryRecallIndex,
+    IncrementalSemanticRecallIndex,
     RecallCursor,
     RecallEmbedding,
     RecallEmbeddingUnavailable,
@@ -359,6 +359,8 @@ class RecallCoordinator:
             getattr(index, "policy_version", None) in {"world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17"}
         ))
         self._semantic_embedding = semantic_embedding
+        self._semantic_index = (IncrementalSemanticRecallIndex(semantic_embedding)
+                                if semantic_embedding is not None else None)
         self._closed = False
         self._active_recall_guard = threading.Lock()
         self._active_recalls = 0
@@ -485,6 +487,8 @@ class RecallCoordinator:
         with self._context_guard:
             hot_context_ready = self._context_key is not None
         prefetch = {
+            "index_preparation": (self._semantic_index.health() if self._semantic_index is not None
+                                  else {"status": "disabled"}),
             "last_prefetch_status": health.status,
             "last_prefetch_failure_code": health.failure_code,
             "last_prefetch_hit_count": health.hit_count,
@@ -601,6 +605,21 @@ class RecallCoordinator:
                     paired_predecessor_cursor=predecessor,
                 ),
             )
+
+    def prepare_semantic(self, *, expected_cursor: RecallCursor,
+                         trigger_ref: str | None = None) -> dict[str, object]:
+        """Prepare source vectors ahead of a query; never authors or recalls."""
+        if self._semantic_index is None:
+            return {"status": "disabled"}
+        self._begin_recall()
+        try:
+            context = self._context_for(expected_cursor, trigger_ref=trigger_ref)
+            if context is None:
+                raise ValueError("semantic preparation requires the exact pinned Context")
+            self._semantic_index.prepare(context.snapshot)
+            return self._semantic_index.health()
+        finally:
+            self._end_recall()
 
     def prefetch(
         self,
@@ -1571,28 +1590,18 @@ class RecallCoordinator:
         if not semantic or self._semantic_embedding is None:
             return context.snapshot.search(query)
         try:
-            # A cold corpus used to spend one provider round-trip embedding
-            # documents during rebuild and a second embedding the query during
-            # search. The bounded first-pass join would therefore publish the
-            # lexical fallback even when the completed semantic result had a
-            # valid hit. Freeze documents and query in one provider batch, then
-            # replay those exact vectors through the unchanged eligibility,
-            # ranking, source-binding, and audit path.
             documents = context.snapshot.documents
-            document_texts = tuple(
-                document.retrieval_text or document.text
-                for document in documents if not document.context_only
-            )
             needs_question_vector = (
                 context.snapshot.policy_version in {"world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17"}
                 and any(document.prehistory is not None for document in documents)
             )
             focus = (request.lexical_text if (focused_attention or needs_question_vector) and request.lexical_text
                      and request.lexical_text != request.query_text else None)
-            batch_texts = (*document_texts, query.query_text, *((focus,) if focus else ()))
-            batch_vectors = self._semantic_embedding.embed(batch_texts)
-            if len(batch_vectors) != len(batch_texts):
-                raise ValueError("semantic attention batch count is invalid")
+            query_texts = (query.query_text, *((focus,) if focus else ()))
+            assert self._semantic_index is not None
+            prepared, batch_vectors = self._semantic_index.prepare(
+                context.snapshot, query_texts=query_texts,
+            )
             focused_query = None
             if focused_attention and focus is not None:
                 vectors = (batch_vectors[-2], batch_vectors[-1])
@@ -1606,20 +1615,10 @@ class RecallCoordinator:
                 focused_query = (query.query_text, tuple(
                     (a + b) / 2 for a, b in zip(*normalized, strict=True)
                 ))
-            semantic_index = InMemoryRecallIndex(
-                embedding=_PinnedBatchRecallEmbedding(
-                    source=self._semantic_embedding,
-                    texts=batch_texts,
-                    vectors=batch_vectors,
-                    focused_query=focused_query,
-                ),
-                policy_version=context.snapshot.policy_version,
-            )
-            semantic_index.rebuild(
-                cursor=context.snapshot.cursor,
-                documents=documents,
-            )
-            return semantic_index.search(query)
+            return prepared.with_query_embedding(_PinnedBatchRecallEmbedding(
+                source=self._semantic_embedding, texts=query_texts,
+                vectors=batch_vectors, focused_query=focused_query,
+            )).search(query)
         except (RecallEmbeddingUnavailable, ValueError) as exc:
             # Embedding is an accessibility channel, not factual authority and
             # not a prerequisite for speaking. A provider/contract failure

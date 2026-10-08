@@ -134,6 +134,7 @@ from .recall_index import (
     RecallEmbedding,
     SQLiteRecallIndex,
 )
+from .memory_index_maintenance import MemoryIndexMaintenance
 from .recall_embedding import SQLiteCachedRecallEmbedding, warm_semantic_recall_embedding
 from .recall_runtime import RecallCoordinator
 from .media_evidence_snapshot import MediaEvidenceSnapshotCompiler
@@ -976,6 +977,7 @@ class WorldV2TurnApplication:
         prehistory_initialization_mode: str = "direct",
         recall_index: SQLiteRecallIndex | None = None,
         recall_coordinator: RecallCoordinator | None = None,
+        memory_index_maintenance: MemoryIndexMaintenance | None = None,
         owned_deliberations: tuple[_AsyncCloseable, ...] = (),
     ) -> None:
         if not companion_actor_ref:
@@ -1049,6 +1051,7 @@ class WorldV2TurnApplication:
         self._reviewed_npc_identity_summaries = reviewed_npc_identity_summaries or {}
         self._recall_index = recall_index
         self._recall_coordinator = recall_coordinator
+        self._memory_index_maintenance = memory_index_maintenance
         self._owned_deliberations = owned_deliberations
         self._closed = False
         self._close_task: asyncio.Task[None] | None = None
@@ -1069,6 +1072,14 @@ class WorldV2TurnApplication:
         self._last_character_outcome = outcome.status
         return outcome
 
+    async def prepare_memory_index(self, *, force: bool = False) -> dict[str, object]:
+        """Prepare accepted life, social and historical sources off the event loop."""
+        if self._closed:
+            raise RuntimeError("World application is closed")
+        if self._memory_index_maintenance is None:
+            return {"status": "disabled"}
+        return await asyncio.to_thread(self._memory_index_maintenance.advance_once, force=force)
+
     async def initialize_prehistory_once(self, *, allow_model_call: bool = False, batch_size: int = 1, mode: str | None = None):
         """Install initial memory directly unless character selection is explicit.
 
@@ -1082,7 +1093,9 @@ class WorldV2TurnApplication:
             raise ValueError("invalid prehistory initialization mode or batch size")
         if mode == "direct":
             from .prehistory_memory_initialization import PrehistoryMemoryInitializer
-            return PrehistoryMemoryInitializer(ledger=self._ledger, owner_actor_ref=self._companion_actor_ref).advance_once(limit=batch_size)
+            result = PrehistoryMemoryInitializer(ledger=self._ledger, owner_actor_ref=self._companion_actor_ref).advance_once(limit=batch_size)
+            await self.prepare_memory_index()
+            return result
         if mode == "archive_only":
             return {"status": "archive_only", "mode": mode, "model_calls": 0}
         if self._prehistory_memory is None:
@@ -2051,11 +2064,12 @@ class WorldV2TurnApplication:
                 status="unavailable",
                 reason_code="life_ecology.not_configured",
             )
-        return await self._life_ecology.advance_once(
-            wake_event_ref=wake_event_ref,
-            trace_id=trace_id,
-            correlation_id=correlation_id,
-        )
+        try:
+            return await self._life_ecology.advance_once(
+                wake_event_ref=wake_event_ref, trace_id=trace_id, correlation_id=correlation_id,
+            )
+        finally:
+            await self.prepare_memory_index()
 
     def event_ecology_source_taxonomy(self) -> tuple[EcologySourceTaxon, ...]:
         """Expose source richness separately from visual declaration eligibility."""
@@ -2206,7 +2220,10 @@ class WorldV2TurnApplication:
         """Run one separately scheduled mental-state or memory work unit."""
 
         await self._turns.reconcile_response_expectation_assessment()
-        return await self._turns.drain_background_once()
+        try:
+            return await self._turns.drain_background_once()
+        finally:
+            await self.prepare_memory_index()
 
     async def current_logical_time(self) -> datetime | None:
         """Return the current durable logical clock through the application seam.
@@ -3193,7 +3210,9 @@ class WorldV2TurnApplication:
 
         if self._recall_coordinator is None:
             return {"enabled": False}
-        return dict(self._recall_coordinator.semantic_health())
+        return {**self._recall_coordinator.semantic_health(),
+            "maintenance": (self._memory_index_maintenance.health()
+                            if self._memory_index_maintenance is not None else {"status": "disabled"})}
 
     async def dashboard_home_snapshot(
         self,
@@ -3546,6 +3565,8 @@ class WorldV2TurnApplication:
         if self._closed:
             return
         self._closed = True
+        if self._memory_index_maintenance is not None:
+            self._memory_index_maintenance.close()
         if self._recall_coordinator is not None:
             self._recall_coordinator.close()
         if self._recall_index is not None:
@@ -3573,6 +3594,8 @@ class WorldV2TurnApplication:
         await asyncio.shield(close_task)
 
     async def _aclose_owned(self) -> None:
+        if self._memory_index_maintenance is not None:
+            await asyncio.to_thread(self._memory_index_maintenance.close)
         close_failures: tuple[BaseException, ...] = ()
         if self._owned_deliberations:
             results = await asyncio.gather(
@@ -3905,6 +3928,13 @@ def build_sqlite_world_v2_turn_application(
                 else None
             ),
         )
+        memory_index_maintenance = (
+            MemoryIndexMaintenance(ledger=ledger,
+                prepare=lambda: capsules.prepare_memory_index(actor_ref=config.companion_actor_ref))
+            if cached_semantic_embedding is not None else None
+        )
+        if memory_index_maintenance is not None:
+            memory_index_maintenance.advance_once()
         # Both lanes read the same pinned sources. Share resolution (including
         # the recall snapshot/prefetch), while keeping their budgets independent.
         chat_capsules = capsules.with_policy(
@@ -4625,6 +4655,7 @@ def build_sqlite_world_v2_turn_application(
             ),
             recall_index=recall_index,
             recall_coordinator=recall_coordinator,
+            memory_index_maintenance=memory_index_maintenance,
             owned_deliberations=(chat_deliberation,),
         )
     except Exception:

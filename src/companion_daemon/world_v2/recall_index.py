@@ -8,7 +8,9 @@ they never change validity, authorize an Action, or recommend behaviour.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from datetime import datetime
+import threading
 from functools import lru_cache
 import hashlib
 import json
@@ -1389,6 +1391,15 @@ class RecallIndexSnapshot:
             rows=self._rows,
         )
 
+    def with_query_embedding(self, embedding: RecallEmbedding) -> "RecallIndexSnapshot":
+        """Reuse immutable document rows with a query-only embedding adapter."""
+        if embedding.dimensions != self._core._embedding.dimensions:
+            raise ValueError("query embedding dimensions differ from prepared index")
+        return RecallIndexSnapshot(
+            core=_RecallIndexCore(embedding=embedding, policy_version=self.policy_version),
+            cursor=self.cursor, rows=self._rows,
+        )
+
     def search_with_diagnostics(
         self, query: RecallQuery,
     ) -> tuple[RecallResult, RecallSearchDiagnostic]:
@@ -1403,6 +1414,94 @@ class RecallIndexSnapshot:
         if len(diagnostic) != 1:
             raise RuntimeError("recall diagnostic capture did not produce one stage trace")
         return result, diagnostic[0]
+
+
+class IncrementalSemanticRecallIndex:
+    """Prepared semantic rows over exact, freshly authorized Context snapshots.
+
+    Reuses arithmetic and text vectors only. Membership, metadata and source
+    bindings always come from the supplied immutable snapshot. The persistent
+    embedding adapter owns restart recovery, budget and provider identity.
+    """
+
+    def __init__(self, embedding: RecallEmbedding) -> None:
+        self._embedding = embedding
+        self._identity = (embedding.version, embedding.dimensions)
+        self._guard = threading.RLock()
+        self._vectors: OrderedDict[str, tuple[float, ...]] = OrderedDict()
+        self._snapshots: OrderedDict[RecallIndexSnapshot, RecallIndexSnapshot] = OrderedDict()
+        self._prepared = 0
+        self._reused = 0
+        self._last_report: dict[str, object] = {"status": "unprepared"}
+
+    def health(self) -> dict[str, object]:
+        with self._guard:
+            return {**self._last_report, "prepared_snapshots": self._prepared,
+                    "reused_snapshots": self._reused,
+                    "resident_vectors": len(self._vectors)}
+
+    def prepare(
+        self, snapshot: RecallIndexSnapshot, *, query_texts: tuple[str, ...] = (),
+    ) -> tuple[RecallIndexSnapshot, tuple[tuple[float, ...], ...]]:
+        with self._guard:
+            if self._identity != (self._embedding.version, self._embedding.dimensions):
+                raise ValueError("semantic adapter identity changed; construct a new index")
+            prepared = self._snapshots.get(snapshot)
+            documents = snapshot.documents
+            texts = tuple(dict.fromkeys(d.retrieval_text or d.text for d in documents
+                                        if not d.context_only))
+            missing = tuple(t for t in texts if t not in self._vectors) if prepared is None else ()
+            # Bounded batches persist completed progress in SQLite even if a
+            # later batch fails. Cold small queries still use one round-trip.
+            core = _RecallIndexCore(embedding=self._embedding, policy_version=snapshot.policy_version)
+            try:
+                remaining = missing
+                while len(remaining) > 64:
+                    batch, remaining = remaining[:64], remaining[64:]
+                    values = self._embedding.embed(batch)
+                    if len(values) != len(batch):
+                        raise ValueError("semantic preparation vector count mismatch")
+                    normalized = tuple(core._normalize_vector(v) for v in values)
+                    self._vectors.update(zip(batch, normalized, strict=True))
+                batch = (*remaining, *query_texts)
+                values = self._embedding.embed(batch) if batch else ()
+                if len(values) != len(batch):
+                    raise ValueError("semantic preparation vector count mismatch")
+                normalized = tuple(core._normalize_vector(v) for v in values[:len(remaining)])
+                self._vectors.update(zip(remaining, normalized, strict=True))
+                query_vectors = tuple(values[len(remaining):])
+                # Validate queries too, without changing their precision before
+                # the existing balanced-attention normalization is applied.
+                for v in query_vectors:
+                    core._normalize_vector(v)
+                if prepared is None:
+                    empty = (0.0,) * self._embedding.dimensions
+                    rows = tuple((d, empty if d.context_only else self._vectors[d.retrieval_text or d.text])
+                                 for d in sorted(documents, key=lambda d: d.document_id))
+                    prepared = RecallIndexSnapshot(core=core, cursor=snapshot.cursor, rows=rows)
+                    self._snapshots[snapshot] = prepared
+                    self._prepared += 1
+                    while len(self._snapshots) > 16:
+                        self._snapshots.popitem(last=False)
+                else:
+                    self._snapshots.move_to_end(snapshot)
+                    self._reused += 1
+                self._last_report = {"status": "ready", "cursor": snapshot.cursor.model_dump(),
+                    "documents": len(documents), "unique_texts": len(texts),
+                    "prepared_texts": len(missing), "reused_texts": len(texts) - len(missing),
+                    "embedding_version": self._embedding.version, "failure_code": None}
+                return prepared, query_vectors
+            except Exception as exc:
+                self._last_report = {"status": "degraded", "cursor": snapshot.cursor.model_dump(),
+                    "documents": len(documents), "failure_code": (str(exc)[:128]
+                    if isinstance(exc, RecallEmbeddingUnavailable) else type(exc).__name__)}
+                raise
+            finally:
+                # Bound cache memory independently of model dimension. Pinned
+                # snapshots can retain their own rows until their Context dies.
+                limit = min(8192, max(128, 64_000_000 // (32 * self._embedding.dimensions)))
+                while len(self._vectors) > limit:
+                    self._vectors.popitem(last=False)
 
 
 class InMemoryRecallIndex(_RecallIndexCore):
