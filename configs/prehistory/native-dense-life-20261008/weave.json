@@ -1,0 +1,1585 @@
+{
+  "contract": "authored-life-weave.1",
+  "edges": [
+    {
+      "left": "cousin-week.01",
+      "right": "summer-tv.01",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "visiting.06",
+      "right": "dance-night.03",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "cartoon-queue.04",
+      "right": "spoiled-ending.02",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "class-petition.04",
+      "right": "read-aloud.07",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "three-friends.01",
+      "right": "picnic.03",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "classroom-duty.04",
+      "right": "last-primary.03",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "camera-face.07",
+      "right": "old-classmate.04",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "winter-group.03",
+      "right": "group-work-campus.08",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "old-map.01",
+      "right": "old-map.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "summer-tv.05",
+      "right": "staying-home.05",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "shared-screen.05",
+      "right": "back-desks.04",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "online-mute.04",
+      "right": "back-desks.01",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "online-mute.05",
+      "right": "back-desks.07",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "relay-after.01",
+      "right": "relay-after.07",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "sprain.05",
+      "right": "relay-after.05",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "book-shift.03",
+      "right": "empty-summer.05",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "book-shift.05",
+      "right": "summer-task.06",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "book-delivery.01",
+      "right": "short-job.03",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "fathers-gift.03",
+      "right": "clothes-alteration.04",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "birthday-week.02",
+      "right": "nineteen-week.07",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "choosing-subjects.01",
+      "right": "choices-summer.01",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "entrance-days.04",
+      "right": "exam-june.01",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "wet-shoes.02",
+      "right": "rainy-shift.07",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "first-club.03",
+      "right": "first-club.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "first-club.06",
+      "right": "movie-first.01",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "movie-first.05",
+      "right": "movie-first.07",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "movie-first.07",
+      "right": "becoming-couple.01",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "becoming-couple.01",
+      "right": "becoming-couple.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "becoming-couple.04",
+      "right": "parting.04",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "becoming-couple.07",
+      "right": "december-borrowing.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "deadlines-and-date.01",
+      "right": "deadlines-and-date.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "deadlines-and-date.03",
+      "right": "deadlines-and-date.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "deadlines-and-date.01",
+      "right": "group-work-campus.03",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "deadlines-and-date.07",
+      "right": "home-calls.07",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "december-borrowing.01",
+      "right": "december-borrowing.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "december-borrowing.04",
+      "right": "romance-retry.04",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "december-borrowing.06",
+      "right": "before-twenty.05",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "home-calls.04",
+      "right": "romance-retry.02",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "home-calls.06",
+      "right": "home-calls.08",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "romance-retry.04",
+      "right": "parting.05",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "romance-retry.02",
+      "right": "parting.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "romance-retry.08",
+      "right": "parting.01",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "parting.03",
+      "right": "parting.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "parting.03",
+      "right": "parting.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "parting.03",
+      "right": "spring-several-lines.03",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "parting.03",
+      "right": "before-twenty.05",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-everyday-01",
+      "right": "dumpling-leftovers.01",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-first20-native-20261007.p2-04-a",
+      "right": "shoes-return.06",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-expanded-family-f06",
+      "right": "bicycle-turn.01",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-expanded-family-f04",
+      "right": "fathers-gift.01",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-expanded-family-f07",
+      "right": "family-tv.05",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-expanded-family-f09",
+      "right": "birthday-week.04",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-expanded-family-f11",
+      "right": "receipts-again.01",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-expanded-family-f12",
+      "right": "dance-night.01",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-expanded-family-f01",
+      "right": "dance-night.07",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-first20-native-20261007.p3-03-a",
+      "right": "three-friends.05",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-first20-native-20261007.p4-02-a",
+      "right": "book-shift.01",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-first20-native-20261007.p4-07-a",
+      "right": "listening-practice.04",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-expanded-growing-g10",
+      "right": "after-february.01",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-expanded-growing-g11",
+      "right": "warm-water.05",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-expanded-growing-g08",
+      "right": "relay-after.01",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-first20-native-20261007.p1-07-a",
+      "right": "night-walks.02",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-first20-native-20261007.p3-07-b",
+      "right": "fathers-gift.07",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-first20-native-20261007.p5-02-b",
+      "right": "senior-year.04",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-expanded-growing-g13",
+      "right": "winter-distance.05",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-expanded-growing-g16",
+      "right": "choices-summer.04",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-schoolmag-dense-20261008.d04-a",
+      "right": "holiday-papers.05",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-schoolmag-dense-20261008.d07-a",
+      "right": "holiday-papers.05",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-expanded-university-u04",
+      "right": "becoming-couple.05",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-expanded-university-u05",
+      "right": "december-borrowing.03",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-expanded-growing-g17",
+      "right": "december-borrowing.07",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-first20-native-20261007.p6-03-a",
+      "right": "first-finals.08",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-first20-native-20261007.p6-09-b",
+      "right": "spring-several-lines.04",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-expanded-university-u08",
+      "right": "spring-several-lines.05",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-first20-native-20261007.p6-11-a",
+      "right": "spring-several-lines.06",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-first20-native-20261007.p6-11-b",
+      "right": "spring-several-lines.07",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-first20-native-20261007.p5-06-a",
+      "right": "before-twenty.03",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-first20-native-20261007.p2-06-a",
+      "right": "old-phone.07",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-schoolmag-dense-20261008.d04-a",
+      "right": "deadlines-and-date.03",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-schoolmag-dense-20261008.d07-a",
+      "right": "romance-retry.07",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-expanded-growing-g10",
+      "right": "after-february.05",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-expanded-family-f11",
+      "right": "winter-chores.02",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "coat-hook.01",
+      "right": "coat-hook.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "coat-hook.04",
+      "right": "coat-hook.08",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "beans.01",
+      "right": "beans.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "beans.02",
+      "right": "beans.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "beans.06",
+      "right": "beans.07",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "lunch-box.01",
+      "right": "lunch-box.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "lunch-box.05",
+      "right": "lunch-box.07",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "missed-party.01",
+      "right": "missed-party.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "missed-party.04",
+      "right": "missed-party.07",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "market-list.06",
+      "right": "market-list.07",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "market-list.07",
+      "right": "market-list.08",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "loose-tooth.01",
+      "right": "loose-tooth.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "loose-tooth.04",
+      "right": "loose-tooth.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "loose-tooth.06",
+      "right": "loose-tooth.07",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "marble-track.01",
+      "right": "marble-track.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "marble-track.04",
+      "right": "marble-track.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "marble-track.05",
+      "right": "marble-track.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "scarf.01",
+      "right": "scarf.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "scarf.05",
+      "right": "scarf.08",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "rope.01",
+      "right": "rope.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "rope.04",
+      "right": "rope.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "summer-pool.01",
+      "right": "summer-pool.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "summer-pool.04",
+      "right": "summer-pool.07",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "first-schoolbag.03",
+      "right": "first-schoolbag.08",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "sticker-money.01",
+      "right": "sticker-money.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "sticker-money.02",
+      "right": "sticker-money.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "sticker-money.04",
+      "right": "sticker-money.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "library-card.01",
+      "right": "library-card.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "library-card.04",
+      "right": "library-card.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "class-petition.01",
+      "right": "class-petition.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "class-petition.05",
+      "right": "class-petition.08",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "summer-homework.01",
+      "right": "summer-homework.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "summer-homework.03",
+      "right": "summer-homework.08",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "dentist.01",
+      "right": "dentist.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "dentist.02",
+      "right": "dentist.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "rumor.01",
+      "right": "rumor.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "rumor.04",
+      "right": "rumor.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "rumor.05",
+      "right": "rumor.08",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "allowance-cinema.01",
+      "right": "allowance-cinema.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "allowance-cinema.04",
+      "right": "allowance-cinema.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "wet-shoes.01",
+      "right": "wet-shoes.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "wet-shoes.02",
+      "right": "wet-shoes.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "class-newspaper.01",
+      "right": "class-newspaper.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "class-newspaper.02",
+      "right": "class-newspaper.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "class-newspaper.03",
+      "right": "class-newspaper.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "class-newspaper.06",
+      "right": "class-newspaper.07",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "shopping-bag.01",
+      "right": "shopping-bag.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "shopping-bag.02",
+      "right": "shopping-bag.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "autumn-trip.01",
+      "right": "autumn-trip.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "autumn-trip.04",
+      "right": "autumn-trip.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "autumn-trip.05",
+      "right": "autumn-trip.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "book-delivery.01",
+      "right": "book-delivery.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "book-delivery.02",
+      "right": "book-delivery.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "sports-day-bench.01",
+      "right": "sports-day-bench.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "sports-day-bench.04",
+      "right": "sports-day-bench.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "camera-face.01",
+      "right": "camera-face.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "camera-face.02",
+      "right": "camera-face.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "camera-face.04",
+      "right": "camera-face.07",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "summer-tv.01",
+      "right": "summer-tv.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "summer-tv.04",
+      "right": "summer-tv.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "summer-tv.05",
+      "right": "summer-tv.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "classroom-duty.02",
+      "right": "classroom-duty.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "classroom-duty.03",
+      "right": "classroom-duty.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "holiday-rules.01",
+      "right": "holiday-rules.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "holiday-rules.04",
+      "right": "holiday-rules.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "read-aloud.01",
+      "right": "read-aloud.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "read-aloud.03",
+      "right": "read-aloud.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "read-aloud.04",
+      "right": "read-aloud.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "bicycle-turn.01",
+      "right": "bicycle-turn.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "bicycle-turn.02",
+      "right": "bicycle-turn.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "science-table.01",
+      "right": "science-table.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "science-table.02",
+      "right": "science-table.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "three-friends.01",
+      "right": "three-friends.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "three-friends.03",
+      "right": "three-friends.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "three-friends.04",
+      "right": "three-friends.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "errand.01",
+      "right": "errand.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "errand.02",
+      "right": "errand.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "errand.03",
+      "right": "errand.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "changing-clothes.01",
+      "right": "changing-clothes.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "changing-clothes.04",
+      "right": "changing-clothes.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "speaking-team.01",
+      "right": "speaking-team.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "speaking-team.02",
+      "right": "speaking-team.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "first-period.01",
+      "right": "first-period.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "first-period.02",
+      "right": "first-period.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "new-groups.01",
+      "right": "new-groups.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "new-groups.04",
+      "right": "new-groups.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "fathers-gift.01",
+      "right": "fathers-gift.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "fathers-gift.02",
+      "right": "fathers-gift.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "fathers-gift.04",
+      "right": "fathers-gift.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "lost-book.01",
+      "right": "lost-book.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "lost-book.03",
+      "right": "lost-book.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "lost-book.05",
+      "right": "lost-book.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "first-performance.01",
+      "right": "first-performance.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "first-performance.02",
+      "right": "first-performance.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "first-performance.05",
+      "right": "first-performance.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "spoiled-ending.01",
+      "right": "spoiled-ending.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "spoiled-ending.03",
+      "right": "spoiled-ending.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "picnic.01",
+      "right": "picnic.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "picnic.03",
+      "right": "picnic.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "picnic.04",
+      "right": "picnic.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "shared-screen.01",
+      "right": "shared-screen.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "shared-screen.02",
+      "right": "shared-screen.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "shared-screen.03",
+      "right": "shared-screen.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "sprain.01",
+      "right": "sprain.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "sprain.02",
+      "right": "sprain.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "book-shift.01",
+      "right": "book-shift.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "book-shift.03",
+      "right": "book-shift.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "book-shift.05",
+      "right": "book-shift.07",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "winter-group.01",
+      "right": "winter-group.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "winter-group.03",
+      "right": "winter-group.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "winter-group.04",
+      "right": "winter-group.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "online-mute.01",
+      "right": "online-mute.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "online-mute.04",
+      "right": "online-mute.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "late-sleep.01",
+      "right": "late-sleep.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "late-sleep.02",
+      "right": "late-sleep.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "extra-class.01",
+      "right": "extra-class.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "extra-class.02",
+      "right": "extra-class.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "xuqiao-oranges.01",
+      "right": "xuqiao-oranges.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "xuqiao-oranges.04",
+      "right": "xuqiao-oranges.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "receipts-again.01",
+      "right": "receipts-again.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "receipts-again.03",
+      "right": "receipts-again.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "listening-practice.01",
+      "right": "listening-practice.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "listening-practice.02",
+      "right": "listening-practice.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "entrance-days.01",
+      "right": "entrance-days.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "entrance-days.04",
+      "right": "entrance-days.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "entrance-days.05",
+      "right": "entrance-days.08",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "after-february.01",
+      "right": "after-february.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "after-february.02",
+      "right": "after-february.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "after-february.07",
+      "right": "after-february.08",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "choosing-subjects.01",
+      "right": "choosing-subjects.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "choosing-subjects.03",
+      "right": "choosing-subjects.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "choosing-subjects.04",
+      "right": "choosing-subjects.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "clothes-alteration.01",
+      "right": "clothes-alteration.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "clothes-alteration.03",
+      "right": "clothes-alteration.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "club-queue.01",
+      "right": "club-queue.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "club-queue.02",
+      "right": "club-queue.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "club-queue.03",
+      "right": "club-queue.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "mock-score.01",
+      "right": "mock-score.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "mock-score.03",
+      "right": "mock-score.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "mock-score.04",
+      "right": "mock-score.07",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "shoes-return.01",
+      "right": "shoes-return.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "shoes-return.02",
+      "right": "shoes-return.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "shoes-return.04",
+      "right": "shoes-return.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "old-classmate.01",
+      "right": "old-classmate.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "old-classmate.03",
+      "right": "old-classmate.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "summer-task.01",
+      "right": "summer-task.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "summer-task.02",
+      "right": "summer-task.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "tiny-video.01",
+      "right": "tiny-video.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "tiny-video.02",
+      "right": "tiny-video.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "tiny-video.04",
+      "right": "tiny-video.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "holiday-papers.01",
+      "right": "holiday-papers.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "holiday-papers.02",
+      "right": "holiday-papers.08",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "exam-june.01",
+      "right": "exam-june.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "exam-june.03",
+      "right": "exam-june.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "exam-june.06",
+      "right": "exam-june.07",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "choices-summer.01",
+      "right": "choices-summer.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "choices-summer.03",
+      "right": "choices-summer.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "short-job.01",
+      "right": "short-job.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "short-job.03",
+      "right": "short-job.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "dorm-laundry.01",
+      "right": "dorm-laundry.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "dorm-laundry.04",
+      "right": "dorm-laundry.07",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "first-club.01",
+      "right": "first-club.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "first-club.04",
+      "right": "first-club.07",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "movie-first.01",
+      "right": "movie-first.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "movie-first.03",
+      "right": "movie-first.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "becoming-couple.01",
+      "right": "becoming-couple.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "becoming-couple.03",
+      "right": "becoming-couple.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "deadlines-and-date.01",
+      "right": "deadlines-and-date.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "deadlines-and-date.02",
+      "right": "deadlines-and-date.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "deadlines-and-date.05",
+      "right": "deadlines-and-date.07",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "group-work-campus.01",
+      "right": "group-work-campus.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "group-work-campus.02",
+      "right": "group-work-campus.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "group-work-campus.04",
+      "right": "group-work-campus.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "first-finals.01",
+      "right": "first-finals.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "first-finals.06",
+      "right": "first-finals.08",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "home-calls.01",
+      "right": "home-calls.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "home-calls.03",
+      "right": "home-calls.04",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "home-calls.04",
+      "right": "home-calls.07",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "romance-retry.01",
+      "right": "romance-retry.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "romance-retry.02",
+      "right": "romance-retry.06",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "parting.01",
+      "right": "parting.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "parting.02",
+      "right": "parting.03",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "parting.03",
+      "right": "parting.05",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "parting.06",
+      "right": "parting.08",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "before-twenty.01",
+      "right": "before-twenty.02",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "before-twenty.02",
+      "right": "before-twenty.07",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "before-twenty.07",
+      "right": "before-twenty.08",
+      "kind": "episode_followup"
+    },
+    {
+      "left": "new-groups.04",
+      "right": "old-classmate.01",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "read-aloud.01",
+      "right": "old-classmate.01",
+      "kind": "explicit_callback"
+    },
+    {
+      "left": "prehistory-record:celia-first20-native-20261007.p2-06-a",
+      "right": "tiny-video.03",
+      "kind": "explicit_callback"
+    }
+  ],
+  "legacy_members": {
+    "home": [
+      "prehistory-record:celia-expanded-family-f01",
+      "prehistory-record:celia-expanded-family-f05",
+      "prehistory-record:celia-expanded-family-f12",
+      "prehistory-record:celia-expanded-family-f14",
+      "prehistory-record:celia-expanded-family-f15",
+      "prehistory-record:celia-expanded-family-f09",
+      "prehistory-record:celia-first20-native-20261007.p6-12-c"
+    ],
+    "body": [
+      "prehistory-record:celia-expanded-family-f06",
+      "prehistory-record:celia-first20-native-20261007.p2-08-a",
+      "prehistory-record:celia-first20-native-20261007.p4-01-a"
+    ],
+    "belonging": [
+      "prehistory-record:celia-expanded-growing-g06",
+      "prehistory-record:celia-expanded-growing-g07",
+      "prehistory-record:celia-expanded-growing-g10",
+      "prehistory-record:celia-expanded-growing-g16",
+      "prehistory-record:celia-expanded-university-u01"
+    ],
+    "making": [
+      "prehistory-record:celia-first20-native-20261007.p2-02-a",
+      "prehistory-record:celia-first20-native-20261007.p2-06-a",
+      "prehistory-record:celia-first20-native-20261007.p4-06-a",
+      "prehistory-record:celia-first20-native-20261007.p6-01-a",
+      "prehistory-record:celia-first20-native-20261007.p6-09-a"
+    ],
+    "money": [
+      "prehistory-record:celia-expanded-growing-g03",
+      "prehistory-record:celia-expanded-growing-g04",
+      "prehistory-record:celia-expanded-university-u05",
+      "prehistory-record:celia-expanded-university-u06"
+    ],
+    "places": [
+      "prehistory-record:celia-first20-native-20261007.p1-07-a",
+      "prehistory-record:celia-first20-native-20261007.p6-04-a",
+      "prehistory-record:celia-expanded-university-u02"
+    ],
+    "learning": [
+      "prehistory-record:celia-first20-native-20261007.p4-07-a",
+      "prehistory-record:celia-first20-native-20261007.p5-02-a",
+      "prehistory-record:celia-first20-native-20261007.editor-major-a"
+    ],
+    "romance": []
+  },
+  "episode_legacy_members": {
+    "birthday-week": [
+      {
+        "after": 3,
+        "record_ref": "prehistory-record:celia-expanded-family-f09"
+      }
+    ]
+  },
+  "story_arcs": {
+    "mother-own-time": {
+      "title": "母亲不是只在家里等她：从小时候等大人到二十岁生日看舞蹈录像",
+      "members": [
+        "visiting.06",
+        "prehistory-record:celia-expanded-family-f11",
+        "receipts-again.01",
+        "prehistory-record:celia-expanded-family-f12",
+        "dance-night.01",
+        "dance-night.04",
+        "winter-chores.06",
+        "prehistory-record:celia-expanded-family-f14",
+        "prehistory-record:celia-expanded-family-f15",
+        "first-finals.07",
+        "home-calls.02",
+        "home-calls.08",
+        "prehistory-record:celia-first20-native-20261007.p6-12-c"
+      ]
+    },
+    "work-and-money": {
+      "title": "从纸钱小摊、父亲书店到第一次临时帮工",
+      "members": [
+        "market-list.06",
+        "sticker-money.01",
+        "prehistory-record:celia-expanded-family-f05",
+        "book-delivery.01",
+        "scarf-stall.05",
+        "prehistory-record:celia-expanded-growing-g04",
+        "fathers-gift.02",
+        "book-shift.03",
+        "book-shift.05",
+        "summer-task.05",
+        "short-job.03",
+        "short-job.06",
+        "short-job.08",
+        "prehistory-record:celia-expanded-university-u05",
+        "prehistory-record:celia-expanded-university-u06",
+        "spring-several-lines.05"
+      ]
+    },
+    "xuqiao-years": {
+      "title": "许桥：靠近、共同做事、不坦率、改约和离校后的联系",
+      "members": [
+        "xuqiao-oranges.03",
+        "prehistory-record:celia-first20-native-20261007.p4-07-a",
+        "prehistory-record:celia-expanded-growing-g07",
+        "prehistory-record:celia-expanded-growing-g09",
+        "school-mag-desk.07",
+        "prehistory-record:celia-expanded-growing-g10",
+        "after-february.04",
+        "prehistory-record:celia-expanded-growing-g13",
+        "winter-distance.05",
+        "prehistory-record:celia-schoolmag-dense-20261008.d04-a",
+        "prehistory-record:celia-schoolmag-dense-20261008.d07-a",
+        "holiday-papers.05",
+        "prehistory-record:celia-expanded-growing-g14",
+        "prehistory-record:celia-expanded-growing-g15",
+        "prehistory-record:celia-expanded-growing-g16",
+        "choices-summer.04",
+        "prehistory-record:celia-expanded-growing-g17",
+        "december-borrowing.07"
+      ]
+    },
+    "linxia-voices": {
+      "title": "林夏：一起玩的童年，隔开后的问候与未公开的笑声",
+      "members": [
+        "rope.04",
+        "prehistory-record:celia-first20-native-20261007.p2-06-a",
+        "prehistory-record:celia-first20-native-20261007.p2-09-a",
+        "three-friends.01",
+        "three-friends.06",
+        "prehistory-record:celia-first20-native-20261007.p3-08-a",
+        "old-phone.07",
+        "picnic.04",
+        "empty-summer.03",
+        "prehistory-record:celia-first20-native-20261007.p5-05-a",
+        "tiny-video.03",
+        "prehistory-record:celia-first20-native-20261007.p6-09-a",
+        "spring-several-lines.04"
+      ]
+    },
+    "jiahe-separate": {
+      "title": "嘉禾：三个人的游戏、不同的日程和没给看完的作品",
+      "members": [
+        "spring-orienteering.01",
+        "prehistory-record:celia-first20-native-20261007.p3-01-a",
+        "prehistory-record:celia-first20-native-20261007.p3-03-a",
+        "three-friends.04",
+        "prehistory-record:celia-first20-native-20261007.p4-03-a",
+        "picnic.03",
+        "prehistory-record:celia-first20-native-20261007.p4-05-a",
+        "empty-summer.06",
+        "prehistory-record:celia-first20-native-20261007.p4-09-a",
+        "night-walks.05",
+        "prehistory-record:celia-first20-native-20261007.p6-02-a",
+        "prehistory-record:celia-first20-native-20261007.p6-11-b",
+        "spring-several-lines.07"
+      ]
+    },
+    "hezhen-distance": {
+      "title": "贺真：同桌、竞争、换组与多年后再见",
+      "members": [
+        "first-schoolbag.02",
+        "class-petition.05",
+        "camera-face.02",
+        "camera-face.07",
+        "read-aloud.06",
+        "speaking-team.06",
+        "new-groups.04",
+        "new-groups.06",
+        "last-primary.04",
+        "last-primary.07",
+        "old-classmate.03",
+        "old-classmate.04",
+        "old-classmate.06",
+        "nineteen-week.06"
+      ]
+    },
+    "sound-and-draft": {
+      "title": "声音和文字：被听见、想被选上、做不成与私人留存",
+      "members": [
+        "little-stage.07",
+        "prehistory-record:celia-first20-native-20261007.p2-05-a",
+        "class-petition.05",
+        "prehistory-record:celia-first20-native-20261007.p2-06-a",
+        "read-aloud.01",
+        "read-aloud.06",
+        "first-performance.06",
+        "prehistory-record:celia-first20-native-20261007.p4-04-a",
+        "prehistory-record:celia-first20-native-20261007.p5-03-a",
+        "tiny-video.04",
+        "prehistory-record:celia-first20-native-20261007.p6-01-a",
+        "prehistory-record:celia-first20-native-20261007.p6-01-b",
+        "prehistory-record:celia-expanded-university-u04",
+        "becoming-couple.05",
+        "prehistory-record:celia-first20-native-20261007.p6-09-a",
+        "group-work-campus.08"
+      ]
+    },
+    "chengyu-relationship": {
+      "title": "程屿：成年后的一段相识、恋爱、相处尝试与分开",
+      "members": [
+        "first-club.02",
+        "first-club.06",
+        "movie-first.01",
+        "movie-first.07",
+        "becoming-couple.01",
+        "becoming-couple.03",
+        "deadlines-and-date.01",
+        "deadlines-and-date.03",
+        "deadlines-and-date.05",
+        "december-borrowing.06",
+        "home-calls.01",
+        "home-calls.04",
+        "home-calls.07",
+        "romance-retry.02",
+        "romance-retry.06",
+        "parting.02",
+        "parting.03",
+        "parting.05",
+        "parting.06",
+        "before-twenty.05"
+      ]
+    }
+  }
+}

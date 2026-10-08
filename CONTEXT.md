@@ -1,3 +1,31 @@
+Dense first-twenty corpus completed and directly installed in isolation (2026-10-08):
+User requested time-clustered diversity across the first20years before more retrieval/performance work.
+Base d211d6bc; runtime support9afceb6e. Sources/tools/readers in configs/prehistory/native-dense-life-20261008/;
+audit docs/audits/dense-twenty-year-life-2026-10-08.md. 136episodes (128experienced/8early reported family),
+1064scenes,1037new readable records (1024experienced,8told,5private interpretations),32world-onlyexcluded,
+58307body characters. Raw density covers1043authored days; not a scientific equivalence to human memory.
+Old222records preserved; total1259. Strict birth2005-04-12 through20thbirthday2025-04-12:1238records;
+5old ranges cross birthday and16later retained separately,never redated. 210native+62cross-archive links
+(37into original records),5same-scene event/reflection links;8broad life views+8specific long stories.
+Shared nodes,not duplicated occurrences. Xuqiao remains friend. New fictional adult partner Chengyu,
+born2004,ECNU GIS entered2023:dating2024-10-28,split2025-03-14. No liveNPC or current-user behavior grant.
+Opaque stable scene/block/record IDs avoid private-title/outcome hints. Earlier semantic-ID adoption was
+interrupted and retained in private adoption/;do not use it. FINAL packages are private .../corpus/,not
+final/release/opaque/candidate directories;corpus-reproduced23files byte-identical. Baseline context pins
+all prior sources; package receipts retain full material. build.py hash is included in input manifest.
+FINAL DB:output/private-audits/dense-life-twenty-years-20261008/accepted-world/world.sqlite;
+old222records/381candidates unchanged;new1037active,total1418candidates;repeat public install inert.
+Cursor31592->39895,8303new events,0new ModelResult/role retention decisions. Source match1037/1037.
+Public explicit Memory+Recall verifies all152new/shared views in360pages,full text,world-only/foreign-actor/
+pre-acquisition guards. Cold replay passes/hashmatches/no findings (verification203.92s including31.72s
+public reading). This is data/read/replay proof,NOT natural conversation semantic qualification.
+Direct install1054.97s afterledgeropen;not chat latency. Supplier requestsunchanged166/spent4.628753/
+unknownreserve.231340/remaining.139907 under5cap;0new external author/retain/chat calls. Codex costs excluded.
+Actual corpus found JSON known-date parsing issue and1Mcontext receipt cap. Strict JSON date fix retains
+Python/timezone/date boundaries;offline context4Mcharacters/deployment8MB with old model/Recall limits.
+Scoped36 and frozen-runtime9afceb6e full10325pass/19skip/2xfail1178.97s/exit0. Runtime code reviewed clean.
+Data scripts and narrative evolved after runtime freeze;no additional runtime changes. No production orQQ.
+
 Initial history now installs directly; normal-chat qualification boundary (2026-10-08):
 User explicitly approved default direct implantation and rejected provider-only gold-material retellings
 as substitutes for ordinary user conversations. Implementation79297b13/recovery76cdfdbd; spec

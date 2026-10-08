@@ -1,0 +1,177 @@
+{
+  "contract": "dense-life-corpus.1",
+  "groups": [
+    {
+      "group": "a",
+      "years": [
+        "2005",
+        "2010"
+      ],
+      "scenes": 136,
+      "records": 104,
+      "episodes": 20,
+      "long_views": 6,
+      "published_named_arcs": [],
+      "world_only": 32,
+      "source_hash": "123a0adfc5ded80e8db01567fbe0ee78a6f197a24f2fc6cd0a09621c21162425",
+      "manifest_hash": "e0f5592062a43fa3f3bae638f3e33d37741d448549abd4c4d2467a96d6213f8f",
+      "context_chars": 373025,
+      "package_bytes": 1056296,
+      "native_edges": 11,
+      "cross_archive_edges": 0
+    },
+    {
+      "group": "b",
+      "years": [
+        "2011",
+        "2013"
+      ],
+      "scenes": 144,
+      "records": 144,
+      "episodes": 18,
+      "long_views": 7,
+      "published_named_arcs": [],
+      "world_only": 0,
+      "source_hash": "5c186767c4f134659c16d213710449380bed0d9bd94c79c4e1e113091251526d",
+      "manifest_hash": "831eea0b7192a2441d97fc96733bf3d4d614da42ddb577c346fa35799749f1ad",
+      "context_chars": 570113,
+      "package_bytes": 1515354,
+      "native_edges": 29,
+      "cross_archive_edges": 0
+    },
+    {
+      "group": "c",
+      "years": [
+        "2014",
+        "2016"
+      ],
+      "scenes": 192,
+      "records": 192,
+      "episodes": 24,
+      "long_views": 7,
+      "published_named_arcs": [],
+      "world_only": 0,
+      "source_hash": "ff378c15c6f92e7769192759d78615460a55d39c595194ad42a24c0479e382bf",
+      "manifest_hash": "607304559447bb0384db026391cbc1ff9625415829b23a1d7b124391d6e4a789",
+      "context_chars": 870902,
+      "package_bytes": 2147714,
+      "native_edges": 38,
+      "cross_archive_edges": 5
+    },
+    {
+      "group": "d",
+      "years": [
+        "2017",
+        "2019"
+      ],
+      "scenes": 192,
+      "records": 192,
+      "episodes": 24,
+      "long_views": 7,
+      "published_named_arcs": [],
+      "world_only": 0,
+      "source_hash": "9dce9bae19a87d33a0e11495beb89d36683d527e4a4902a4edd59afd284eb638",
+      "manifest_hash": "19f5ffd4d3e2bf75d57678075361ca880009652f047601b3dae2771076feb58d",
+      "context_chars": 1278960,
+      "package_bytes": 2780075,
+      "native_edges": 33,
+      "cross_archive_edges": 9
+    },
+    {
+      "group": "e",
+      "years": [
+        "2020",
+        "2022"
+      ],
+      "scenes": 192,
+      "records": 192,
+      "episodes": 24,
+      "long_views": 7,
+      "published_named_arcs": [],
+      "world_only": 0,
+      "source_hash": "ae79c4501dbc788f3e25f384dc0d6293f4554e8aa409ec703f0ebcc115b30e76",
+      "manifest_hash": "254558cd61c55a188a1f32f9e659c95ac1f5b9e4f56d0623b68e2f79c7c6a873",
+      "context_chars": 1728678,
+      "package_bytes": 3475513,
+      "native_edges": 30,
+      "cross_archive_edges": 17
+    },
+    {
+      "group": "f",
+      "years": [
+        "2023",
+        "2024"
+      ],
+      "scenes": 160,
+      "records": 161,
+      "episodes": 20,
+      "long_views": 11,
+      "published_named_arcs": [
+        "hezhen-distance",
+        "sound-and-draft",
+        "xuqiao-years"
+      ],
+      "world_only": 0,
+      "source_hash": "d4847840fb5852834ab6b2ed982d4433ce915def908186497cd6958d40286217",
+      "manifest_hash": "795841929a393bebf2d65f227acc8e09601e19160e386a6d7d8c656666e6aeb1",
+      "context_chars": 2223760,
+      "package_bytes": 4258380,
+      "native_edges": 46,
+      "cross_archive_edges": 20
+    },
+    {
+      "group": "g",
+      "years": [
+        "2025",
+        "2025"
+      ],
+      "scenes": 48,
+      "records": 52,
+      "episodes": 6,
+      "long_views": 13,
+      "published_named_arcs": [
+        "chengyu-relationship",
+        "hezhen-distance",
+        "jiahe-separate",
+        "linxia-voices",
+        "mother-own-time",
+        "sound-and-draft",
+        "work-and-money",
+        "xuqiao-years"
+      ],
+      "world_only": 0,
+      "source_hash": "202fd72872c8478aa2bb34940cc9dddbb3ef7b0215e1668adb114e41171ba568",
+      "manifest_hash": "ac60318842c6f37245b1b1109cf3482c2f6696da9b0ccec279003995b9c8388f",
+      "context_chars": 2782392,
+      "package_bytes": 4801581,
+      "native_edges": 23,
+      "cross_archive_edges": 11
+    }
+  ],
+  "model_calls": 0,
+  "authorship": "Codex-authored fictional source; no independent provider review",
+  "input_sha256": {
+    "authoring/2005-2008.md": "b6c4a4150bf080612e02519ce9a933c744224f361fad695c84ca79e118f352fb",
+    "authoring/2009.md": "d7f5695011f0a3bd078c6d249c094f96ba827eb2ea3f78e15ad4e2db1d8975be",
+    "authoring/2010.md": "be0c7064a67678530901319c9e2690a307794e875aca559c1ca68592002b4298",
+    "authoring/2011.md": "0c851eea537deebf6f98277af0a58be7e4170b21fd49c2cf987d4c1993c85b5a",
+    "authoring/2012.md": "117a72d484f453ddc187e179a9dc8a9b2c041d158f1858872094c89b08524064",
+    "authoring/2013.md": "8cf173e96eda657886a9234e706f61287af3cdb5f937db37191a07504cffe4ab",
+    "authoring/2014.md": "17f282bfd1591f6c45516e362d22a962c14d6ca9bc14700d38760bb126260807",
+    "authoring/2015.md": "62fa5ef79e4f3f28411f49134dcc0bc92824c2164692791a8554571032c13f82",
+    "authoring/2016.md": "4e748134cd2a63a10fabcddfef58f4f21212ad34195d1753afa8da1ec08da10a",
+    "authoring/2017.md": "e5f6f747f3172bceaec37f566e0633e7a3221a5a29831a89a8ea4a2b986aa3a9",
+    "authoring/2018.md": "e6132c3d818bc75b6d9db0a352d71a8336dfcd3428e0d9573a6f5f9919b394e1",
+    "authoring/2019.md": "c8b96967592e372da9b41acc333e03b64bf1ef418d7465fb124436cde8440458",
+    "authoring/2020.md": "68be0021ba80066d3c77b9f39a02ebabee0beb68fde0dd8572c701cfddfb2870",
+    "authoring/2021.md": "1244e24b32c4a11129eb01bd064c7571932c1e1f991b6e5a25690dc495d0c86d",
+    "authoring/2022.md": "915415753e08d808a05d88f906cd1d796fc4d823ab8bfe1445b2add6fd693cab",
+    "authoring/2023.md": "016e33274965b752aca5ace145ed2d3e745eef7490766b9e2f5b5c057be5a0e5",
+    "authoring/2024.md": "e211c36c84c10d86400e9bca8b9a3fc4cd0af5d77d3f029b5cf46447529edbee",
+    "authoring/2025.md": "d768339aea37cab1d04b61e64c47d0cf5d72d5e56f334a843bb5e87190d2bd0b",
+    "base-context.json": "06debb28e6e735bbd125bb2e292104cffadad688a5b2aca61275f06330a48fb7",
+    "entities.json": "b298dd94833350813996e0fe98d57879343b9fcd84938874245bc33f3b522255",
+    "weave.json": "065892a67f0e612499df90d9177e6137b3ff9c495ff1cde623a70abafc7f6cf4",
+    "build.py": "8e9cb807590def2904ad50ed33455dccec480275d5c1e8f0721566ecbd8c12ad"
+  }
+}

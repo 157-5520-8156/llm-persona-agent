@@ -1,0 +1,85 @@
+{
+  "contract": "dense-life-qualification.1",
+  "scope": "source_compilation_direct_adoption_public_reading_and_replay_only",
+  "runtime_commit": "9afceb6e",
+  "reproduction": {
+    "identical": true,
+    "files": 23,
+    "opaque_scene_and_block_identities": true,
+    "model_calls": 0
+  },
+  "installation": {
+    "contract": "dense-life-installation.1",
+    "book_hash": "11e7e7229303e9109ce44ab65a2646ec6e335c61357719b8a3c39dc3e7fdfc05",
+    "baseline_records_preserved": 222,
+    "baseline_candidates_preserved": 381,
+    "new_records": 1037,
+    "new_active": 1037,
+    "new_inactive_preserved": 0,
+    "total_records": 1259,
+    "total_candidates": 1418,
+    "exact_reinstallation_inert": true,
+    "before_cursor": 31592,
+    "after_cursor": 39895,
+    "semantic_hash": "db5d4e2d85fba52419251823378ca2cb00a9fc857d0208f6fa53b1b0e1cb2be1",
+    "seconds": 1054.9657415420515,
+    "model_calls": 0,
+    "production_writes": 0,
+    "automatic_retelling": "not_evaluated"
+  },
+  "reading": {
+    "scope": "public_explicit_memory_and_episode_reading_not_natural_dialogue",
+    "new_records_exactly_readable": 1037,
+    "source_texts_complete": true,
+    "world_only_absent": 32,
+    "foreign_actor_prehistory_empty": true,
+    "reported_acquisition_boundary_verified": true,
+    "new_or_shared_views": 152,
+    "detail_pages": 360,
+    "model_calls": 0,
+    "seconds_before_replay": 31.722431874950416
+  },
+  "exact_source_match": {
+    "exact_frozen_records": 1037,
+    "all_source_values_match": true,
+    "semantic_hash": "db5d4e2d85fba52419251823378ca2cb00a9fc857d0208f6fa53b1b0e1cb2be1"
+  },
+  "replay": {
+    "passed": true,
+    "hash_matches": true,
+    "findings": [],
+    "seconds": 203.92458737490233,
+    "model_calls": 0,
+    "semantic_hash": "db5d4e2d85fba52419251823378ca2cb00a9fc857d0208f6fa53b1b0e1cb2be1",
+    "ledger_sequence": 39895
+  },
+  "cost": {
+    "new_event_counts": {
+      "AcceptanceRecorded": 2074,
+      "CharacterPrehistoryArchiveAccepted": 7,
+      "CharacterPrehistoryRecordImported": 1037,
+      "MemoryCandidateAccepted": 1037,
+      "MemoryCandidateOpened": 1037,
+      "PrehistoryMemoryInitializationRecorded": 1037,
+      "ProposalRecorded": 2074
+    },
+    "new_model_results": 0,
+    "new_character_retention_decisions": 0,
+    "supplier_requests_total": 166,
+    "known_spent_cny": 4.628753,
+    "unknown_reserve_cny": 0.23134,
+    "new_supplier_requests": 0,
+    "scope": "external supplier ledger; Codex authoring costs excluded"
+  },
+  "tests": {
+    "runtime_passed": 10325,
+    "skipped": 19,
+    "xfailed": 2,
+    "seconds": 1178.97,
+    "exit_code": 0
+  },
+  "production_writes": 0,
+  "qq_delivery": false,
+  "natural_dialogue_retelling": "not_evaluated",
+  "superseded_attempt": "Early semantic-ID installation interrupted before qualification and retained as evidence."
+}
