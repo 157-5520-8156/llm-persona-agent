@@ -42,6 +42,8 @@ PYTHONPATH=src python scripts/compile_native_story.py compile \
 
 自动复述尚未通过语义验收：纸盒问题有检索遗漏与无据否定；相册问题曾遇到来源连接错误，修复后仍出现说话者归属和未知结局的改写。源稿完成与自动复述完全可靠是不同结果，运行资格仍为 `manual_only / qualification_incomplete`。完整证据见[验收记录](../../../docs/audits/native-first-twenty-years-2026-10-08.md)。
 
+随后完成的[场景读取与复述对照](../../../docs/audits/scene-recall-and-retelling-2026-10-08.md)已改善上述检索和父母说话归属问题，但仍有无据的数量、当前状态及“最早记忆”判断；正确证据下也未全部消失。源稿与117条保留结果未重做。本轮新增4次远程调用，已知估算CNY0.088050；`qualification.json` 保留首次导入验收时的费用快照，最新累计费用见后续对照记录。
+
 ## 创作与费用口径
 
 来源作者为专用调试供应商的 `deepseek-v4-pro` 与本轮Codex源稿编辑，使用冻结历史分六段创作。首轮Flash不合格稿、结构修正、未通过的连接修正和预算拒绝均保留；未把失败调用隐藏为成功，也没有追加独立模型复审流水线。

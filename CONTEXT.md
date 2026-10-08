@@ -1,3 +1,34 @@
+Scene-level multi-entry Recall implemented; retelling still incomplete (2026-10-08):
+User accepted scene-level reading and a correct-evidence contrast. Base a1b446b8; implementation b56e322d,
+review fixes 513c4308. Spec docs/design/scene-recall-qualification-2026-10-08.md; audit
+docs/audits/scene-recall-and-retelling-2026-10-08.md. Opt-in recall_story_context now selects hybrid.16;
+ordinary default and historical .15/older readers/receipts remain unchanged. Group by actor+authenticated
+occurrence+knowledge interval; preserve main attention and question-focused entry, complete core scenes,
+then bounded 3-hop/64-record endpoint discovery. Still <=6 records/11KB reading/22KB result. Ineligible,
+forgotten and future-known bridge nodes cannot restore records. Missing continuation is not negative fact.
+No new routine chat/reviewer call; separate question vector shares the semantic batch. Both pull and
+prefetch supported; only prefetch retains balanced main-vector averaging. Focused entries select the actual
+matching long-record window. Two review P2s (missing pull vector/wrong long window) reproduced and closed.
+Frozen real Coordinator/BGE-M3 contrast: original3 queries key pieces3/8 ->8/8;8development variants6/15 ->15/15;
+4other development probes6/6 ->6/6. These variants informed changes, not untouched holdouts. Four additional
+post-freeze untouched retrieval probes7/10 ->10/10 (3/4 ->4/4 complete);no runtime changes after selection. Surviving corpus
+reconstruction is not restoration of every historical index row; old fourth failed turn lacks complete trace.
+Two actual isolated turns presented hybrid.16 semantic sources in initial HTTP input. Paper box now reaches
+Shanghai story; infancy preserves father/mother attribution and sock's unresolved promise. Still unsupported
+current/only-one claims and false earliest-memory-at13. Exact-prompt correct-source substitutions (provider-only,
+not accepted World receipts) leave box quantity/location overclaims; one infancy sample has no old target errors.
+Do not call complete source evidence, filled world_claims, or authorized delivery semantic success. Next is
+same-call evidence-bound composition and controlled correctness checks, not routine independent LLM review.
+No reimport/retention: both copied31,306-event prefixes unchanged;4world-only blocks absent; original source SHA
+760510c8982d0a0476d8a959a41baef9af43b3293ebb2eaefc938000999f9394 unchanged. New runtime coldreplays both pass,
+hash-match/no findings. 73focused checks/Ruff pass; frozen513c4308 full10293pass/19skip/2xfail,1214.87s/exit0.
+Runtime/tests unchanged during full run;later edits are documentation only. Existing1test-client deprecation warning.
+New4remote calls knownCNY0.088050;ledger148requests/knownCNY4.039875 +old1unknownreserveCNY0.231340;
+remainingCNY0.728785 under unchangedCNY5cap/CNY2batch. No new unknown calls. BGE-M3/2Qwen requests localhost,
+Codex development excluded. Capture first text9.09s/8.51s;notQQ/performance qualification. No production changes.
+manual_only / qualification_incomplete remains for automatic whole-life reconstruction. Private evidence:
+output/private-audits/story-scene-recall-20261008/. No more paid repetition without a distinct hypothesis.
+
 First twenty years authored and isolated-imported (2026-10-08):
 User requested autonomous completion of the full first twenty years. Source covers2005-04-12 through
 2025-04-12 twentieth birthday, preserving canonical2024 graduation/enrollment. Book and reproducible
