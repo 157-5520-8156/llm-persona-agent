@@ -61,7 +61,7 @@ def brief_from_database(*, database, profile_path, world_id, actor_ref, born_at,
                       else "character-prehistory-archive.2" if any(r.story is not None for r in accepted_records)
                       else "character-prehistory-archive.1"), archive_id=archive_id, world_id=world_id,
             actor_ref=actor_ref, source_artifact_ref=manifest.source_artifact_ref, import_context=manifest.import_context,
-            entities=manifest.entities, records=accepted_records,
+            entities=manifest.entities, records=accepted_records, episodes=manifest.episodes,
         )
         if document.manifest() != manifest:
             raise ValueError("accepted history differs from its committed manifest")

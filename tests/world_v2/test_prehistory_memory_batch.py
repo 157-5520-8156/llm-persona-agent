@@ -157,3 +157,100 @@ async def test_public_batch_initializer_uses_real_role_tool_transport(tmp_path, 
     finally:
         await app.aclose()
         await model.aclose()
+
+
+@pytest.mark.asyncio
+async def test_empty_batch_reply_does_not_pin_all_future_retries_to_empty_result(tmp_path):
+    from datetime import timedelta
+    from test_life_projection import commit, event
+    class EmptyOnce(BatchRole):
+        async def consider(self, request):
+            response=await super().consider(request)
+            if len(self.calls)==1:
+                response['decision']['payload']['choices']=[]
+            return response
+    path=tmp_path/'empty.sqlite'
+    ledger=started_ledger(path)
+    PrehistoryArchiveRuntime(ledger=ledger,owner_actor_ref=ACTOR).import_reviewed(_two_lines(),created_at=START)
+    role=EmptyOnce()
+    character=interior(path,role)
+    runtime=PrehistoryMemoryRuntime(ledger=ledger,owner_actor_ref=ACTOR,character_interior=character)
+    try:
+        assert (await runtime.advance_batch_once(batch_size=7,allow_model_call=True))['technical_failures']==7
+        later=START+timedelta(seconds=30)
+        commit(ledger,[event('empty-batch-clock','ClockAdvanced',{
+            'logical_time_from':START.isoformat(),'logical_time_to':later.isoformat()},at=later)])
+        outcome=await runtime.advance_batch_once(batch_size=7,allow_model_call=True)
+        assert len(role.calls)==2
+        assert (outcome['retained'],outcome['no_change'],outcome['technical_failures'])==(6,1,0)
+    finally:
+        character._turn_store.close()
+        ledger.close()
+
+
+@pytest.mark.asyncio
+async def test_retry_success_recovery_preserves_each_sources_attempt_ordinal(tmp_path, monkeypatch):
+    import json
+    from datetime import timedelta
+    from test_life_projection import commit, event
+    from companion_daemon.world_v2.prehistory_memory_decision import decision_event_id, PrehistoryMemoryDecisionRecordedPayload
+    from companion_daemon.world_v2.prehistory_memory_source import prehistory_memory_binding
+    class EmptyOnce(BatchRole):
+        async def consider(self, request):
+            result=await super().consider(request)
+            if len(self.calls)==1:
+                result['decision']['payload']['choices']=[]
+            return result
+    path=tmp_path/'recover-retry.sqlite'
+    ledger=started_ledger(path)
+    rows=PrehistoryArchiveRuntime(ledger=ledger,owner_actor_ref=ACTOR).import_reviewed(_two_lines(),created_at=START)
+    role=EmptyOnce()
+    character=interior(path,role)
+    runtime=PrehistoryMemoryRuntime(ledger=ledger,owner_actor_ref=ACTOR,character_interior=character)
+    original_commit=ledger.commit
+    def fail_success(events, **kwargs):
+        if any(e.event_type=='PrehistoryMemoryDecisionRecorded' and json.loads(e.payload_json)['status']!='technical_failure' for e in events):
+            raise OSError('fixture storage failed after paid retry')
+        return original_commit(events,**kwargs)
+    try:
+        await runtime.advance_batch_once(batch_size=7,allow_model_call=True)
+        later=START+timedelta(seconds=30)
+        commit(ledger,[event('retry-clock','ClockAdvanced',{'logical_time_from':START.isoformat(),
+            'logical_time_to':later.isoformat()},at=later)])
+        monkeypatch.setattr(ledger,'commit',fail_success)
+        with pytest.raises(OSError):
+            await runtime.advance_batch_once(batch_size=7,allow_model_call=True)
+        monkeypatch.setattr(ledger,'commit',original_commit)
+        assert (await runtime.advance_batch_once(batch_size=7))['status']=='recovered'
+        assert len(role.calls)==2
+        for row in rows:
+            source=prehistory_memory_binding(row)
+            recorded,_=ledger.lookup_event_commit(decision_event_id(ledger.world_id,source))
+            payload=PrehistoryMemoryDecisionRecordedPayload.model_validate_json(recorded.payload_json)
+            assert payload.attempt_ordinal==2
+    finally:
+        character._turn_store.close()
+        ledger.close()
+
+
+@pytest.mark.asyncio
+async def test_batch_reports_logical_considerations_without_claiming_provider_call_count(tmp_path):
+    class Corrected(BatchRole):
+        async def consider(self, request):
+            result=await super().consider(request)
+            if len(self.calls)==1:
+                result['status']='invalid_status'
+            return result
+    path=tmp_path/'correction-count.sqlite'
+    ledger=started_ledger(path)
+    PrehistoryArchiveRuntime(ledger=ledger,owner_actor_ref=ACTOR).import_reviewed(_two_lines(),created_at=START)
+    role=Corrected()
+    character=interior(path,role)
+    runtime=PrehistoryMemoryRuntime(ledger=ledger,owner_actor_ref=ACTOR,character_interior=character)
+    try:
+        result=await runtime.advance_batch_once(batch_size=7,allow_model_call=True)
+        assert result['status']=='completed' and len(role.calls)==2
+        assert result['consider_calls']==1 and 'model_calls' not in result
+    finally:
+        character._turn_store.close()
+        ledger.close()

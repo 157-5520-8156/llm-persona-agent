@@ -52,7 +52,8 @@ class PrehistoryMemoryRuntime:
             if cursor != opportunity.cursor:
                 raise ValueError("batch source import cursor differs from the recorded opportunity")
             return batch_opportunity_from_refs(world_id=self.ledger.world_id,
-                projection=self.ledger.project_at(cursor), source_refs=opportunity.source_refs, cursor=cursor)
+                projection=self.ledger.project_at(cursor), source_refs=opportunity.source_refs, cursor=cursor,
+                attempt_ordinal=opportunity.capability_manifest.payload["attempt_ordinal"])
         return self._opportunity(source)
 
     async def advance_batch_once(self, *, allow_model_call=False, batch_size=6):

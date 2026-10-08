@@ -411,7 +411,7 @@ class MemoryRetrievalCompiler:
                 excerpt.prehistory.model_copy(update={"episodes": memberships.get(excerpt.source_id, ())}),
                 visible_records, record_id=excerpt.source_id,
                 cross_story_relations=cross_story_relations,
-            )}) if excerpt.prehistory is not None and excerpt.prehistory.story is not None else excerpt
+            )}) if excerpt.prehistory is not None else excerpt
             for excerpt in item.source_excerpts
         )}) for item in items]
         return MemoryRetrievalResult(items=tuple(items), suppressions=tuple(suppressions))

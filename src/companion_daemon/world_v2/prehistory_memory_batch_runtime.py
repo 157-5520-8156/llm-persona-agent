@@ -13,8 +13,12 @@ def recovered_batch(runtime, source):
     found = []
     for result in results:
         projection = runtime.ledger.project_at(result.cursor)
-        opportunity = batch_opportunity_from_refs(world_id=runtime.ledger.world_id, projection=projection,
-            source_refs=tuple(result.decision['source_refs']), cursor=result.cursor)
+        opportunities = (batch_opportunity_from_refs(world_id=runtime.ledger.world_id, projection=projection,
+            source_refs=tuple(result.decision['source_refs']), cursor=result.cursor, attempt_ordinal=i) for i in (1,2,3))
+        opportunity = next((op for op in opportunities if op.capability_manifest.payload_hash ==
+            result.decision['capability_payload_hash']), None)
+        if opportunity is None:
+            raise ValueError('recovered batch has an unknown attempt capability')
         if result.opportunity_ref != opportunity.opportunity_ref:
             raise ValueError('recovered batch differs from its original opportunity')
         if source.source_id in batch_drafts(result, opportunity):
@@ -22,6 +26,13 @@ def recovered_batch(runtime, source):
     if len(found) > 1:
         raise ValueError('historical source has multiple completed batch choices')
     return found[0] if found else None
+
+
+def _source_failures(runtime, source):
+    failures = tuple(value for i in range(1, 4) if (value := runtime._recorded(source, i)) is not None)
+    if tuple(p.attempt_ordinal for p in failures) != tuple(range(1, len(failures)+1)):
+        raise ValueError('historical retry audit has a missing predecessor')
+    return failures
 
 
 async def advance_batch(runtime, *, allow_model_call, batch_size):
@@ -38,11 +49,13 @@ async def advance_batch(runtime, *, allow_model_call, batch_size):
         if recorded is not None:
             recovery_count += int(runtime._apply(recorded) is not None)
             continue
+        failures = _source_failures(runtime, source)
+        ordinal = min(len(failures) + 1, 3)
         recovered = recovered_batch(runtime, source)
         if recovered is not None:
             result, opportunity = recovered
             drafts = batch_drafts(result, opportunity)
-            payload = runtime._record(source, opportunity, 1,
+            payload = runtime._record(source, opportunity, ordinal,
                 status='retain' if drafts[source.source_id] is not None else 'no_change', result=result,
                 audit=retention_model_result(result, opportunity, source.source_id))
             runtime._apply(payload)
@@ -54,15 +67,12 @@ async def advance_batch(runtime, *, allow_model_call, batch_size):
         if old is not None:
             from .prehistory_memory_decision import retention_draft
             draft = retention_draft(old, old_opportunity)
-            payload = runtime._record(source, old_opportunity, 1,
+            payload = runtime._record(source, old_opportunity, ordinal,
                 status='retain' if draft is not None else 'no_change', result=old,
                 audit=retention_model_result(old, old_opportunity))
             runtime._apply(payload)
             recovery_count += 1
             continue
-        failures = tuple(value for i in range(1, 4) if (value := runtime._recorded(source, i)) is not None)
-        if tuple(p.attempt_ordinal for p in failures) != tuple(range(1, len(failures)+1)):
-            raise ValueError('historical retry audit has a missing predecessor')
         if len(failures) == 3:
             status = 'retry_exhausted'
             continue
@@ -75,11 +85,11 @@ async def advance_batch(runtime, *, allow_model_call, batch_size):
         pending.append((row, source, len(failures)+1))
         text_characters += len(row.record.statement)
     if recovery_count:
-        return {'status': 'recovered', 'recovered': recovery_count, 'model_calls': 0}
+        return {'status': 'recovered', 'recovered': recovery_count, 'consider_calls': 0}
     if not pending:
-        return {'status': status, 'model_calls': 0}
+        return {'status': status, 'consider_calls': 0}
     if not allow_model_call:
-        return {'status': 'model_call_disabled', 'model_calls': 0}
+        return {'status': 'model_call_disabled', 'consider_calls': 0}
     first = pending[0][0]
     located = runtime.ledger.lookup_event_commit(first.accepted_event_ref)
     _, commit = located
@@ -88,7 +98,7 @@ async def advance_batch(runtime, *, allow_model_call, batch_size):
     pinned = runtime.ledger.project_at(cursor)
     archive = next(a for a in pinned.prehistory_archives if a.manifest.archive_id == first.archive_id)
     opportunity = batch_opportunity(world_id=runtime.ledger.world_id, rows=tuple(r for r, _, _ in pending),
-        archive=archive, cursor=cursor)
+        archive=archive, cursor=cursor, attempt_ordinal=max(ordinal for _, _, ordinal in pending))
     result = await runtime.interior.consider(opportunity)
     try:
         drafts = batch_drafts(result, opportunity)
@@ -108,4 +118,4 @@ async def advance_batch(runtime, *, allow_model_call, batch_size):
         runtime._apply(payload)
         counts['retained' if payload.status == 'retain' else 'no_change'] += 1
     return {'status': 'partial_failure' if counts['technical_failures'] else 'completed',
-        'sources': [source.source_id for _, source, _ in pending], 'model_calls': 1, **counts}
+        'sources': [source.source_id for _, source, _ in pending], 'consider_calls': 1, **counts}

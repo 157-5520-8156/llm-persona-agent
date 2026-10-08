@@ -119,7 +119,8 @@ def reduce_prehistory_memory_decision(state, event):
     if payload.contract == "prehistory-memory-retention.2":
         from .prehistory_memory_batch import batch_opportunity_from_refs
         expected = batch_opportunity_from_refs(world_id=event.world_id, projection=state,
-            source_refs=payload.opportunity.source_refs, cursor=payload.opportunity.cursor)
+            source_refs=payload.opportunity.source_refs, cursor=payload.opportunity.cursor,
+            attempt_ordinal=payload.opportunity.capability_manifest.payload["attempt_ordinal"])
         if payload.source_binding.source_id not in expected.capability_manifest.payload['source_ids']:
             raise ValueError('batch decision does not include this source')
     else:

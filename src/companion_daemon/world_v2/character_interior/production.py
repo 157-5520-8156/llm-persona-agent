@@ -185,7 +185,8 @@ class _LedgerCapsuleInteriorProjection:
             if subject.purpose == "prehistory_memory_batch":
                 from ..prehistory_memory_batch import batch_opportunity_from_refs
                 expected = batch_opportunity_from_refs(world_id=self.ledger.world_id, projection=projection,
-                    source_refs=subject.source_refs, cursor=imported_cursor)
+                    source_refs=subject.source_refs, cursor=imported_cursor,
+                    attempt_ordinal=subject.capability_manifest.payload["attempt_ordinal"])
             else:
                 expected = initialization_opportunity(world_id=self.ledger.world_id,
                     row=row, archive=archive, cursor=imported_cursor)

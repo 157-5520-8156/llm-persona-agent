@@ -183,3 +183,52 @@ def test_episode_revision_links_old_memory_without_reimport_and_pins_new_authori
             runtime.import_compiled(stale,created_at=START)
     finally:
         ledger.close()
+
+
+def test_public_next_authoring_brief_preserves_imported_episode_manifest(tmp_path):
+    from pathlib import Path
+    from prepare_character_prehistory import brief_from_database
+    ledger=started_ledger(tmp_path/'next-brief.sqlite')
+    try:
+        package=compile_native_story(NativeStorySource.model_validate_json(json.dumps(episode_source())),
+            brief=authoring_brief(),archive_id='prehistory-archive:episode-first')
+        PrehistoryArchiveRuntime(ledger=ledger,owner_actor_ref=ACTOR).import_compiled(package,created_at=START)
+        next_brief=brief_from_database(database=tmp_path/'next-brief.sqlite',
+            profile_path=Path(__file__).resolve().parents[2]/'configs/character.yaml',
+            world_id=ledger.world_id,actor_ref=ACTOR,born_at=authoring_brief().born_at,
+            author_ref='operator:next-episode',source_ref='fixture:next-episode')
+        assert next_brief.accepted_archives[0].manifest()==package.document.manifest()
+    finally:
+        ledger.close()
+
+
+def test_episode_detail_includes_retained_legacy_record_without_story_structure(tmp_path):
+    from test_character_prehistory import reviewed_archive
+    from test_prehistory_memory_source import _choice, _read, _corpus
+    from companion_daemon.world_v2.prehistory_memory_source import prehistory_memory_binding
+    from companion_daemon.world_v2.recall_index import InMemoryRecallIndex, FeatureHashRecallEmbedding, RecallQuery
+    from test_prehistory_story_recall import _query
+    legacy=reviewed_archive()
+    old_ref=legacy.document.records[0].record_id
+    raw=episode_source()
+    raw['episodes'][0]['record_refs'].insert(0,old_ref)
+    package=compile_native_story(NativeStorySource.model_validate_json(json.dumps(raw)),
+        brief=authoring_brief().model_copy(update={'accepted_archives':(legacy.document,)}),
+        archive_id='prehistory-archive:mixed-episode')
+    ledger=started_ledger(tmp_path/'legacy-episode.sqlite')
+    try:
+        runtime=PrehistoryArchiveRuntime(ledger=ledger,owner_actor_ref=ACTOR)
+        rows=(*runtime.import_reviewed(legacy,created_at=START),*runtime.import_compiled(package,created_at=START))
+        for row in rows:
+            source=prehistory_memory_binding(row)
+            pending=_choice(ledger,source,candidate_id='memory:'+row.record.record_id)
+            _choice(ledger,source,before=pending,status='active',candidate_id=pending.candidate_id)
+        docs=_corpus(ledger,_read(ledger))
+        new=next(d for d in docs if d.source_item_ref!=old_ref)
+        query=RecallQuery.model_validate_json(json.dumps({**_query(ledger).model_dump(mode='json'),
+            'episode_window':{'episode_ref':new.prehistory.episodes[0].episode_ref,'mode':'detail'}}))
+        index=InMemoryRecallIndex(embedding=FeatureHashRecallEmbedding(),policy_version='world-v2-recall-index.hybrid.17')
+        index.rebuild(cursor=query.cursor,documents=docs)
+        assert {h.document.source_item_ref for h in index.search(query).hits}==set(raw['episodes'][0]['record_refs'])
+    finally:
+        ledger.close()

@@ -13,7 +13,9 @@ MAX_BATCH_SIZE = 8
 MAX_BATCH_TEXT_CHARACTERS = 7200
 
 
-def batch_opportunity(*, world_id, rows, archive, cursor):
+def batch_opportunity(*, world_id, rows, archive, cursor, attempt_ordinal=1):
+    if type(attempt_ordinal) is not int or not 1 <= attempt_ordinal <= 3:
+        raise ValueError("historical batch retry ordinal is invalid")
     rows = tuple(sorted(rows, key=lambda r: r.record.record_id))
     if not 1 <= len(rows) <= MAX_BATCH_SIZE or len({r.record.record_id for r in rows}) != len(rows):
         raise ValueError('historical batch must contain distinct bounded sources')
@@ -26,6 +28,8 @@ def batch_opportunity(*, world_id, rows, archive, cursor):
     source_refs = tuple(sorted({archive.accepted_event_ref, *(r.accepted_event_ref for r in rows)}))
     capability = {
         'source_kind': 'character_prehistory_batch',
+        'attempt_ordinal': attempt_ordinal,
+        'retry_context': 'Previous initialization did not complete these sources; make explicit independent choices.' if attempt_ordinal > 1 else None,
         'source_ids': [r.record.record_id for r in rows],
         'items': [{'source_id': r.record.record_id, 'verified_source_text': r.record.statement,
             'prehistory': prehistory_memory_reading(r, archive, initialization_snapshot=True).model_dump(mode='json')}
@@ -42,7 +46,7 @@ def batch_opportunity(*, world_id, rows, archive, cursor):
             source_refs=source_refs), capability_payload=capability)
 
 
-def batch_opportunity_from_refs(*, world_id, projection, source_refs, cursor):
+def batch_opportunity_from_refs(*, world_id, projection, source_refs, cursor, attempt_ordinal=1):
     rows = tuple(r for r in projection.prehistory_records if r.accepted_event_ref in source_refs)
     if not rows:
         raise ValueError('historical batch has no accepted records')
@@ -50,7 +54,7 @@ def batch_opportunity_from_refs(*, world_id, projection, source_refs, cursor):
     if archive is None or any(r.archive_id == rows[0].archive_id and r.accepted_world_revision > cursor.world_revision
                               for r in projection.prehistory_records):
         raise ValueError('historical batch requires a complete import snapshot')
-    opportunity = batch_opportunity(world_id=world_id, rows=rows, archive=archive, cursor=cursor)
+    opportunity = batch_opportunity(world_id=world_id, rows=rows, archive=archive, cursor=cursor, attempt_ordinal=attempt_ordinal)
     if opportunity.source_refs != tuple(source_refs):
         raise ValueError('historical batch source closure differs from its import')
     return opportunity
