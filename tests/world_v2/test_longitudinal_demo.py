@@ -24,6 +24,8 @@ def archive_for(primary_user_id):
 
 @pytest.mark.asyncio
 async def test_setup_memory_and_authenticated_preview_share_one_owner(tmp_path, monkeypatch):
+    # This test exercises the explicitly selected legacy paid-retention setup.
+    monkeypatch.setenv("WORLD_V2_PREHISTORY_INITIALIZATION_MODE", "character_select")
     monkeypatch.setenv("DEEPSEEK_DEBUG_API_KEY", "fixture-debug-key")
     monkeypatch.setenv("DEEPSEEK_CHARACTER_THINKING_ENABLED", "false")
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")

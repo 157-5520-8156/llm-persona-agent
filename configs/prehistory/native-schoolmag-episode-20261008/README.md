@@ -20,12 +20,14 @@ PYTHONPATH=src python scripts/compile_native_story.py compile \
   --out-dir output/schoolmag-episode-compile
 ```
 
-包绑定已经导入前二十年材料的原历史基线。切换World或历史发生变化时，应从目标库重新生成brief并核对新增内容；旧包不能直接覆盖另一份历史。导入只创建前史，角色保留另行执行。
+包绑定已经导入前二十年材料的原历史基线。切换World或历史发生变化时，应从目标库重新生成brief并核对新增内容；旧包不能直接覆盖另一份历史。`compile_native_story.py import` 现在默认同时建立可读初始记忆，0次模型保留调用。需要只存档时显式指定 `--memory-mode archive_only`；底层 `import_compiled` 仍只接纳档案。
 
-保留调用通过现有应用入口 `initialize_prehistory_once(allow_model_call=True, batch_size=6)`；省略batch_size仍走旧单条方式。每条来源独立选择，省略项是技术未完成，恢复不会重复支付已完成的选择。公共返回的 `consider_calls` 是逻辑调用数，供应商次数和费用以实际传输账本为准。
+应用启动与 `initialize_prehistory_once()` 默认采用direct，不再让角色决定初始人生是否曾经发生或是否有资格被检索。显式配置 `WORLD_V2_PREHISTORY_INITIALIZATION_MODE=character_select` 才启用旧保留实验；该模式的 `consider_calls` 是逻辑调用数，供应商次数和费用仍以传输账本为准。既有已遗忘/拒绝的记忆不会因重新安装而恢复。
 
-读取采用显式开启故事上下文时的hybrid.17。普通检索命中会给出opaque阶段导航；CharacterRecallRequest可复制到 `episode_window`，选择 `overview` 或 `detail`，并用 `after_record_ref` 续读。概览提供部分原文来源，详细读取遵守原字节预算；缺失、遗忘和当时尚未知的成员不会由标题或摘要泄漏。
+普通聊天、QQ capture、HTTP与驱动器共同读取 `WORLD_V2_RECALL_STORY_CONTEXT`，默认true，对应hybrid.17；显式false保留旧策略。普通检索命中会给出opaque阶段导航；CharacterRecallRequest可复制到 `episode_window`，选择 `overview` 或 `detail`，并用 `after_record_ref` 续读。概览提供部分原文来源，详细读取遵守原字节预算；缺失、遗忘和当时尚未知的成员不会由标题或摘要泄漏。
 
-32条新记忆已在隔离世界实际保留，旧190条历史不变；35份阶段成员可完整分页读取。实际问答中，收稿与刊出状态得到了区分，但另一题未覆盖后来与许桥改约的经过，不能宣称自动整段复述已完全合格。详见[验收记录](../../../docs/audits/dense-life-episodes-2026-10-08.md)。
+此前32条新记忆已在隔离世界通过旧模式实际保留，旧190条历史不变；35份阶段成员可完整分页读取。实际问答中，收稿与刊出状态得到了区分，但另一题未覆盖后来与许桥改约的经过，不能宣称自动整段复述已完全合格。详见[验收记录](../../../docs/audits/dense-life-episodes-2026-10-08.md)。
 
 创作由本轮Codex直接完成，没有新增源作者远程调用；Codex会话费用不计入供应商实验账本。代码复查是工程检查，未增加日常生成后的独立模型审核步骤。生产与真实QQ未采用此包。
+
+默认直接植入与普通聊天配置对齐的后续证据见[2026-10-08后续记录](../../../docs/audits/direct-memory-and-chat-parity-2026-10-08.md)。私下完整材料理解探针始终只算诊断，不能代替用户入口验收。

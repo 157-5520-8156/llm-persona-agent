@@ -1,3 +1,35 @@
+Initial history now installs directly; normal-chat qualification boundary (2026-10-08):
+User explicitly approved default direct implantation and rejected provider-only gold-material retellings
+as substitutes for ordinary user conversations. Implementation79297b13/recovery76cdfdbd; spec
+ docs/design/direct-memory-initialization-and-chat-parity-2026-10-08.md; audit
+ docs/audits/direct-memory-and-chat-parity-2026-10-08.md.
+Default public installation/compile CLI/application startup activate exact actor-owned sources with0model
+calls. Archive admission remains separate; source/knowledge/privacy constraints apply. Neutral equal5000
+retrieval defaults explicitly carry initialization_defaults_not_character_judgment and exact audit grant;
+no invented ModelResult or role retain/reviewer receipt. Existing active/inactive memory is preserved;
+forgotten/rejected not revived; foreign legacy pending is reported without overwrite; own partial installs
+recover. Completed legacy retain before Memory (World audit or paid single/batch terminal cache) now
+reports pending_existing without overriding its original draft; old workflow can recover for free. Batch
+missing choices do not block unrelated direct sources. Legacy selection requires explicit character_select;
+archive_only leaves sources uninstalled.
+Configured deployments accept reviewed or deterministic compiled packages with matching World/actor.
+Found an actual parity gap: private reading harness enabled story context but ordinary chat default did not.
+All user builders now resolve Settings WORLD_V2_RECALL_STORY_CONTEXT(defaulttrue); false preserves old
+strategy. Driver no longer disables configured semantic embedding by default. Normal CLI supports explicit
+--env-file(s); transcript stamps effective memory policy, model and settings paths. Driver stamps overrides.
+Old real retellings used normal ingress/actions with CaptureDelivery but different overrides; private
+comprehension used provider-only prompts and remains diagnostic. No prior semantic failure is upgraded.
+CLI HTTP-fixture test proves user-text-only -> direct installation -> automatic Recall -> normal reply/
+receipt/replay wiring, not live language quality. New normal CLI preflight on copied222-record world uses
+main.env+production-text-policy.env without story/budget overrides: required reserve0.225634 exceeds
+remaining0.139907.0external model calls; shared166request/4.628753spent/0.231340unknown reserve unchanged.
+Do not lower reservations, increase cap or substitute a short gold prompt to manufacture acceptance.
+Independent cold replay at76cdfdbd passes/hash-matches/0findings in137.78s for31,592events.
+Full runtime-frozen run:10321pass/2fail/19skip/2xfail,1228.96s/exit1. Both failed fixtures assumed old
+initialization defaults; pinned archive_only and character_select explicitly without changing runtime.
+Final affected files+direct suite39pass. Do not describe initial full run as green; all findings recovered.
+Runtime-qualified live automatic retelling remains incomplete; realQQ/productionDB/config/process untouched.
+
 Dense historical episodes implemented and isolated-qualified at named seams (2026-10-08):
 User authorized completing the time-dense design and bounded high-school sample in one run. Baseb40be10e;
 implementation144340ab,compatibility/recovery1c88aec8,context-profile186620ab,overview73eee89c. Audit

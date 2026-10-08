@@ -190,7 +190,7 @@ def test_replay_requires_reviewed_importer_and_exact_reviewed_record(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_application_import_and_owner_counts_do_not_expose_archive_as_memory(tmp_path):
+async def test_explicit_archive_only_import_and_owner_counts_do_not_expose_archive_as_memory(tmp_path):
     import httpx
     from companion_daemon.llm import DeepSeekChatModel
     import test_world_stimulus_life_intent as shared
@@ -203,7 +203,7 @@ async def test_application_import_and_owner_counts_do_not_expose_archive_as_memo
     model = DeepSeekChatModel("offline-fixture", "https://fixture.invalid", "deepseek-v4-flash",
                              thinking_enabled=False, transport=httpx.MockTransport(provider))
     path = tmp_path / "app.sqlite"
-    app = shared._build(path, model, reviewed_prehistory=archive)
+    app = shared._build(path, model, reviewed_prehistory=archive, prehistory_initialization_mode="archive_only")
     try:
         before = app.export_replay_evidence().projection
         assert len(before.prehistory_records) == 1 and before.memory_candidates == ()
@@ -223,7 +223,7 @@ async def test_application_import_and_owner_counts_do_not_expose_archive_as_memo
         assert archive.document.records[0].statement not in json.dumps(provider.requests, ensure_ascii=False)
         before = app.export_replay_evidence().projection
         app.close()
-        app = shared._build(path, model, reviewed_prehistory=archive)
+        app = shared._build(path, model, reviewed_prehistory=archive, prehistory_initialization_mode="archive_only")
         assert app.export_replay_evidence().projection == before
     finally:
         app.close()
