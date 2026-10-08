@@ -257,7 +257,7 @@ async def test_public_application_initialization_reaches_existing_provider_seam(
                 "salience": salience().model_dump(mode="json", exclude={"matrix_digest", "matrix_version"})}}})
     model = DeepSeekChatModel("offline-fixture", "https://fixture.invalid", "deepseek-v4-flash",
         thinking_enabled=False, transport=httpx.MockTransport(provider))
-    app = shared._build(tmp_path / "public.sqlite", model, reviewed_prehistory=archive)
+    app = shared._build(tmp_path / "public.sqlite", model, reviewed_prehistory=archive, prehistory_initialization_mode="character_select")
     try:
         assert (await app.initialize_prehistory_once())["status"] == "model_call_disabled"
         assert not requests

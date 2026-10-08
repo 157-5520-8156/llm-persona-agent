@@ -122,7 +122,7 @@ class MemoryRetrievalItem(FrozenModel):
     # the actual candidate times; otherwise capsule recency silently scores 0.
     updated_at: datetime | None = Field(default=None, exclude_if=lambda v: v is None)
     reviewed_at: datetime | None = Field(default=None, exclude_if=lambda v: v is None)
-    assessment_scope: Literal["memory_salience_not_current_goal_or_obligation"] | None = Field(
+    assessment_scope: Literal["memory_salience_not_current_goal_or_obligation", "initialization_defaults_not_character_judgment"] | None = Field(
         default=None, exclude_if=lambda v: v is None,
     )
 
@@ -321,6 +321,7 @@ class MemoryRetrievalCompiler:
                 except ValueError:
                     continue
                 historical_by_identity[observation.observation_id] = item
+        from .prehistory_memory_initialization import is_unassessed_initial_memory
         for candidate in candidates:
             decision = decisions[candidate.candidate_id]
             if not decision.eligible:
@@ -390,7 +391,8 @@ class MemoryRetrievalCompiler:
                     truncated=any(item.truncated for item in excerpts),
                     updated_at=_material_updated_at(candidate, projection.memory_candidate_transitions),
                     reviewed_at=candidate.values.reviewed_at,
-                    assessment_scope="memory_salience_not_current_goal_or_obligation",
+                    assessment_scope=("initialization_defaults_not_character_judgment" if is_unassessed_initial_memory(candidate, ledger=self._ledger)
+                                      else "memory_salience_not_current_goal_or_obligation"),
                 )
             )
         from .prehistory_memory_source import restrict_story_reading

@@ -23,7 +23,7 @@ from typing import Any, Awaitable, Callable, Coroutine, Literal, Mapping, TypeVa
 
 if TYPE_CHECKING:
     from .character_interior.life_source_review import LifeSourceReviewer
-    from .character_prehistory import ReviewedPrehistoryArchive
+    from .character_prehistory import CompiledPrehistoryArchive, ReviewedPrehistoryArchive
 
 from companion_daemon.config import Settings
 from companion_daemon.qq_delivery import QQDelivery
@@ -2156,19 +2156,22 @@ class QQC2CHost:
         )
         return await asyncio.shield(task)
 
-    async def initialize_prehistory_once(self, *, allow_model_call: bool = False):
+    def memory_runtime_profile(self):
+        return self._host.memory_runtime_profile()
+
+    async def initialize_prehistory_once(self, *, allow_model_call: bool = False, batch_size: int = 1, mode: str | None = None):
         """Explicit owned setup, never an automatic background model call."""
         self._require_open()
         task = self._start_owned_scheduler_lane_task(
-            self._initialize_prehistory_admitted(allow_model_call=allow_model_call),
+            self._initialize_prehistory_admitted(allow_model_call=allow_model_call, batch_size=batch_size, mode=mode),
             name="qq-c2c-owned-scheduler-lane:prehistory-initialization",
         )
         return await asyncio.shield(task)
 
-    async def _initialize_prehistory_admitted(self, *, allow_model_call: bool):
+    async def _initialize_prehistory_admitted(self, *, allow_model_call: bool, batch_size: int = 1, mode: str | None = None):
         async with self._scheduled_work_lock:
             return await self._host.initialize_prehistory_once(
-                allow_model_call=allow_model_call,
+                allow_model_call=allow_model_call, batch_size=batch_size, mode=mode,
             )
 
     async def _drain_admitted(
@@ -3147,7 +3150,7 @@ def build_qq_c2c_host(
     world_author_transport: Literal["auto", "json_object"] = "auto",
     world_author_cache_stable_prefix: bool = False,
     recall_parent_context: bool | None = None,
-    recall_story_context: bool = False,
+    recall_story_context: bool | None = None,
     source_closure_model: ChatCompletionModel | None = None,
     visible_source_review_required: bool = False,
     visible_source_review_model: ChatCompletionModel | None = None,
@@ -3157,7 +3160,7 @@ def build_qq_c2c_host(
     visible_source_review_version: str = "1",
     life_source_closure_model: ChatCompletionModel | None = None,
     life_source_reviewer: LifeSourceReviewer | None = None,
-    reviewed_prehistory: ReviewedPrehistoryArchive | None = None,
+    reviewed_prehistory: ReviewedPrehistoryArchive | CompiledPrehistoryArchive | None = None,
     candidate_external_proposition_inventory_model: ChatCompletionModel | None = None,
     delivery: QQC2CDelivery | None = None,
     media_transport: MediaProviderTransport | None = None,
@@ -3376,7 +3379,8 @@ def build_qq_c2c_host(
             visible_source_review_required=visible_source_review_required,
             world_author_transport=world_author_transport,
             world_author_cache_stable_prefix=world_author_cache_stable_prefix,
-            recall_story_context=recall_story_context,
+            recall_story_context=(settings.world_v2_recall_story_context if recall_story_context is None else recall_story_context),
+            prehistory_initialization_mode=settings.world_v2_prehistory_initialization_mode,
             recall_parent_context=(settings.world_v2_recall_parent_context
                                    if recall_parent_context is None else recall_parent_context),
             recorded_cadence_mode=getattr(settings, "world_v2_recorded_cadence_mode", "off"),

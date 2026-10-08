@@ -254,6 +254,7 @@ from .experience_memory_decision import (
     experience_memory_decision_identity,
 )
 from .prehistory_memory_decision import reduce_prehistory_memory_decision
+from .prehistory_memory_initialization import reduce_initialization
 from .commitment_events import (
     COMMITMENT_ACCEPTED_PAYLOAD_MODELS,
     CommitmentAuthorizedMutationPayload,
@@ -15548,6 +15549,7 @@ _EVENTS = {
             RevisionClass.DELIBERATION,
             _experience_memory_decision_recorded,
         ),
+        EventDefinition("PrehistoryMemoryInitializationRecorded", RevisionClass.DELIBERATION, reduce_initialization),
         EventDefinition("PrehistoryMemoryDecisionRecorded", RevisionClass.DELIBERATION,
                         reduce_prehistory_memory_decision),
         EventDefinition(

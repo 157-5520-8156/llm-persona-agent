@@ -163,7 +163,7 @@ from .life_development_runtime import (
     LifeDevelopmentRuntime,
 )
 from .life_aftermath_runtime import LifeAftermathRuntime
-from .character_prehistory import ReviewedPrehistoryArchive
+from .character_prehistory import CompiledPrehistoryArchive, ReviewedPrehistoryArchive
 from .biographical_lifecycle import BiographicalLifecycleCatalog
 from .biographical_lifecycle_runtime import BiographicalLifecycleRuntime
 from .biographical_timeline_authority import (
@@ -796,8 +796,9 @@ class WorldV2TurnApplicationConfig:
     # CharacterInterior author at an exact ledger cursor.
     character_memory_enabled: bool = True
     memory_consolidation_enabled: bool = False
-    # Explicit operator-reviewed initialization input; never a role draft.
-    reviewed_prehistory: ReviewedPrehistoryArchive | None = None
+    # Explicit operator-authorized history (reviewed or source-compiled); never a role draft.
+    reviewed_prehistory: ReviewedPrehistoryArchive | CompiledPrehistoryArchive | None = None
+    prehistory_initialization_mode: Literal["direct", "character_select", "archive_only"] = "direct"
     outcome_worker_owner: str = "worker:world-v2:outcome"
     expression_reconsideration_owner: str = "worker:world-v2:expression-reconsideration"
     social_action_worker_owner: str = "worker:world-v2:social-action"
@@ -880,6 +881,8 @@ class WorldV2TurnApplicationConfig:
             raise ValueError("reply recovery policy must not be empty")
         if self.world_author_transport not in {"auto", "json_object"}:
             raise ValueError("world author transport must be auto or json_object")
+        if self.prehistory_initialization_mode not in {"direct", "character_select", "archive_only"}:
+            raise ValueError("unsupported prehistory initialization mode")
         if type(self.recall_story_context) is not bool:
             raise ValueError("Recall story context flag must be boolean")
         if type(self.recall_parent_context) is not bool:
@@ -970,6 +973,7 @@ class WorldV2TurnApplication:
         trace_environment: TraceEnvironment,
         social_initiative_policy: SocialInitiativePolicy,
         reviewed_npc_identity_summaries: dict[str, str] | None = None,
+        prehistory_initialization_mode: str = "direct",
         recall_index: SQLiteRecallIndex | None = None,
         recall_coordinator: RecallCoordinator | None = None,
         owned_deliberations: tuple[_AsyncCloseable, ...] = (),
@@ -981,6 +985,7 @@ class WorldV2TurnApplication:
         self._companion_actor_ref = companion_actor_ref
         self._ledger = ledger
         self._prehistory_memory = None
+        self._prehistory_initialization_mode = prehistory_initialization_mode
         self._life_content_store = life_content_store
         self._expression_payload_store = expression_payload_store
         self._media_payload_store = media_payload_store
@@ -1064,14 +1069,22 @@ class WorldV2TurnApplication:
         self._last_character_outcome = outcome.status
         return outcome
 
-    async def initialize_prehistory_once(self, *, allow_model_call: bool = False, batch_size: int = 1):
-        """Initialize one imported memory through the existing character model.
+    async def initialize_prehistory_once(self, *, allow_model_call: bool = False, batch_size: int = 1, mode: str | None = None):
+        """Install initial memory directly unless character selection is explicit.
 
-        The host explicitly enables new calls for setup. Ordinary background
-        ticks do not launch initialization, and recovery can run without new calls.
+        A direct grant never calls a model or changes later forgetting. Legacy
+        selection remains available with mode=character_select for comparison.
         """
         if self._closed:
             raise RuntimeError("World application is closed")
+        mode = self._prehistory_initialization_mode if mode is None else mode
+        if mode not in {"direct", "character_select", "archive_only"} or type(batch_size) is not int or not 1 <= batch_size <= 256:
+            raise ValueError("invalid prehistory initialization mode or batch size")
+        if mode == "direct":
+            from .prehistory_memory_initialization import PrehistoryMemoryInitializer
+            return PrehistoryMemoryInitializer(ledger=self._ledger, owner_actor_ref=self._companion_actor_ref).advance_once(limit=batch_size)
+        if mode == "archive_only":
+            return {"status": "archive_only", "mode": mode, "model_calls": 0}
         if self._prehistory_memory is None:
             from .prehistory_memory_runtime import PrehistoryMemoryRuntime
 
@@ -1082,6 +1095,15 @@ class WorldV2TurnApplication:
         if batch_size != 1:
             return await self._prehistory_memory.advance_batch_once(allow_model_call=allow_model_call, batch_size=batch_size)
         return await self._prehistory_memory.advance_once(allow_model_call=allow_model_call)
+
+    def memory_runtime_profile(self) -> dict[str, object]:
+        """Effective, non-secret memory configuration used by this conversation owner."""
+        health = self.dashboard_semantic_recall_health()
+        return {"contract": "conversation-memory-profile.1",
+            "initialization_mode": self._prehistory_initialization_mode,
+            "recall_policy": self._recall_index.policy_version if self._recall_index is not None else None,
+            "semantic_embedding_enabled": health.get("enabled", False),
+            "embedding_version": health.get("embedding_version")}
 
     async def cancel_superseded_expression_streams(self, current_trigger_ref: str) -> None:
         """Drop only process-local, not-yet-visible units for newer ingress."""
@@ -3817,9 +3839,23 @@ def build_sqlite_world_v2_turn_application(
         if config.reviewed_prehistory is not None:
             from .character_prehistory_runtime import PrehistoryArchiveRuntime
 
-            PrehistoryArchiveRuntime(ledger=ledger, owner_actor_ref=config.companion_actor_ref).import_reviewed(
+            history = PrehistoryArchiveRuntime(ledger=ledger, owner_actor_ref=config.companion_actor_ref)
+            install = (history.install_compiled if isinstance(config.reviewed_prehistory, CompiledPrehistoryArchive)
+                       else history.install_reviewed)
+            install(
                 config.reviewed_prehistory, created_at=now,
+                memory_mode="direct" if config.prehistory_initialization_mode == "direct" else "archive_only",
             )
+        if config.prehistory_initialization_mode == "direct":
+            from .prehistory_memory_initialization import PrehistoryMemoryInitializer
+            initializer = PrehistoryMemoryInitializer(ledger=ledger, owner_actor_ref=config.companion_actor_ref)
+            while True:
+                initialization = initializer.advance_once(limit=256)
+                if initialization['status'] != 'initialized':
+                    if initialization['existing_pending']:
+                        _LOG.warning("prehistory initialization has existing unfinished candidates count=%s",
+                                     initialization['existing_pending'])
+                    break
         _LOG.warning(
             "world v2 application bootstrap ready world=%s duration_ms=%.1f",
             config.world_id,
@@ -4526,6 +4562,7 @@ def build_sqlite_world_v2_turn_application(
             ),
             character_interior=character_interior,
             companion_actor_ref=config.companion_actor_ref,
+            prehistory_initialization_mode=config.prehistory_initialization_mode,
             ledger=ledger,
             life_content_store=life_content_store,
             expression_payload_store=expression_payload_store,

@@ -23,6 +23,7 @@ def main(argv=None):
     importing = commands.add_parser('import')
     for flag in ('package', 'database', 'actor-ref'):
         importing.add_argument('--' + flag, required=True)
+    importing.add_argument('--memory-mode', choices=('direct','archive_only'), default='direct')
     args = parser.parse_args(argv)
     if args.command == 'compile':
         source = NativeStorySource.model_validate_json(Path(args.source).read_text())
@@ -45,11 +46,12 @@ def main(argv=None):
         ledger = SQLiteWorldLedger(path=Path(args.database), world_id=package.document.world_id)
         try:
             before = ledger.project().ledger_sequence
-            rows = PrehistoryArchiveRuntime(ledger=ledger, owner_actor_ref=args.actor_ref).import_compiled(
-                package, created_at=datetime.now(UTC))
+            installation = PrehistoryArchiveRuntime(ledger=ledger, owner_actor_ref=args.actor_ref).install_compiled(
+                package, created_at=datetime.now(UTC), memory_mode=args.memory_mode)
+            rows = installation.records
             print(json.dumps({'status': 'imported', 'records': len(rows),
                 'events_added': ledger.project().ledger_sequence - before,
-                'retention_choices': 0, 'model_calls': 0}, ensure_ascii=False))
+                'retention_choices': 0, 'model_calls': 0, 'memory_initialization': installation.memory_initialization}, ensure_ascii=False))
         finally:
             ledger.close()
 

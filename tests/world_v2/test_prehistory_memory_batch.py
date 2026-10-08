@@ -149,7 +149,7 @@ async def test_public_batch_initializer_uses_real_role_tool_transport(tmp_path, 
             'decision':{'source_refs':capability['source_refs'],'payload':{'choices':choices}}})
     model=DeepSeekChatModel('offline-fixture','https://fixture.invalid','deepseek-v4-flash',
         thinking_enabled=False,transport=httpx.MockTransport(provider))
-    app=shared._build(tmp_path/'public.sqlite',model,reviewed_prehistory=archive)
+    app=shared._build(tmp_path/'public.sqlite',model,reviewed_prehistory=archive,prehistory_initialization_mode="character_select")
     try:
         result=await app.initialize_prehistory_once(batch_size=7,allow_model_call=True)
         assert result['no_change']==7 and result['technical_failures']==0, result

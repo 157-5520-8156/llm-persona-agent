@@ -46,7 +46,7 @@ async def test_actual_core_recall_supplies_presented_history_to_review_and_cold_
     # bytes under the current code. No trace hashes or shown fields are edited.
     monkeypatch.setattr(recall_index, "RECALL_INDEX_POLICY_VERSION", index_policy)
     attributed = index_policy != "world-v2-recall-index.hybrid.7"
-    config = _config()
+    config = replace(_config(), prehistory_initialization_mode="character_select")
     data = reviewed_archive().document.model_dump(mode="json")
     data.update(world_id=config.world_id, actor_ref=config.companion_actor_ref)
     # Both records share the original import cursor. Accepting the first must

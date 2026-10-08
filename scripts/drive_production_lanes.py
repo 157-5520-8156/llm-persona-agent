@@ -541,6 +541,8 @@ class DriveSession:
     clock: datetime
     journey_clock: object | None = None
     images_generated: int = 0
+    driver_reply_override: bool = False
+    configuration_overrides: dict = field(default_factory=dict)
     notes: list[str] = field(default_factory=list)
 
     async def logical_time(self) -> datetime:
@@ -654,7 +656,15 @@ class DriveSession:
         await self.drain(actions=8, background=background_units)
         completed = time.perf_counter()
         text_times = self.delivery.text_capture_times[text_before:]
+        profile_reader = getattr(self.host, "memory_runtime_profile", None)
         return {
+            "evaluation_scope": "isolated_application_dialogue",
+            "entrypoint": "QQC2CHost.inbound_text",
+            "input_mode": "user_text_only",
+            "driver_reply_override": self.driver_reply_override,
+            "semantic_quality": "not_evaluated",
+            "memory_runtime_profile": profile_reader() if callable(profile_reader) else None,
+            "configuration_overrides": self.configuration_overrides,
             "status": getattr(result, "status", None),
             "action_id": getattr(result, "action_id", None),
             "visible": self.delivery.sent[before:],
@@ -700,10 +710,10 @@ async def open_session(
     visible_source_review_version: str | None = None,
     primary_user_id: str | None = None,
     journey_clock=None,
-    use_configured_recall_embedding: bool = False,
+    use_configured_recall_embedding: bool = True,
     world_author_cache_stable_prefix: bool = False,
     recall_parent_context: bool | None = None,
-    recall_story_context: bool = False,
+    recall_story_context: bool | None = None,
 ) -> DriveSession:
     from companion_daemon.config import Settings
     from companion_daemon.llm import DeepSeekChatModel
@@ -807,6 +817,11 @@ async def open_session(
         host=host,
         clock=datetime.now(UTC),
         journey_clock=journey_clock,
+        driver_reply_override=inbound_payload is not None,
+        configuration_overrides={"visible_review_version": visible_source_review_version,
+            "recall_story_context": recall_story_context, "recall_parent_context": recall_parent_context,
+            "configured_embedding_requested": use_configured_recall_embedding,
+            "media_enabled": enable_media, "external_perception_mode": "off"},
     )
     await session.logical_time()
     return session

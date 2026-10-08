@@ -901,6 +901,8 @@ def build_http_v2_capture_host(
             reply_target=f"user:{primary_user_id}",
             action_pump_owner="pump:http-v2-capture",
             recall_parent_context=settings.world_v2_recall_parent_context,
+            recall_story_context=settings.world_v2_recall_story_context,
+            prehistory_initialization_mode=settings.world_v2_prehistory_initialization_mode,
             expression_episode_mode=settings.world_v2_expression_episode_mode,
             expression_capabilities=PRODUCTION_TEXT_ONLY_EXPRESSION_CAPABILITIES,
             life_ecology=LifeEcologyComposition.production_v1(),

@@ -102,6 +102,8 @@ async def run_simulation(text: str, fake: bool, *, thinking: bool = False) -> No
             reply_target=f"user:{settings.primary_user_id}",
             action_pump_owner="pump:companion-simulator-v2",
             recall_parent_context=settings.world_v2_recall_parent_context,
+            recall_story_context=settings.world_v2_recall_story_context,
+            prehistory_initialization_mode=settings.world_v2_prehistory_initialization_mode,
             expression_capabilities=PRODUCTION_TEXT_ONLY_EXPRESSION_CAPABILITIES,
             life_ecology=LifeEcologyComposition.production_v1(),
         ),

@@ -455,6 +455,13 @@ class Settings(BaseSettings):
         default=False,
         alias="WORLD_V2_RECALL_SEMANTIC_ENABLED",
     )
+    world_v2_recall_story_context: bool = Field(
+        default=True, alias="WORLD_V2_RECALL_STORY_CONTEXT",
+        description="Use bounded scene and episode reading consistently across user and test conversations.",
+    )
+    world_v2_prehistory_initialization_mode: Literal["direct", "character_select", "archive_only"] = Field(
+        default="direct", alias="WORLD_V2_PREHISTORY_INITIALIZATION_MODE",
+    )
     world_v2_recall_parent_context: bool = Field(
         default=True,
         alias="WORLD_V2_RECALL_PARENT_CONTEXT",

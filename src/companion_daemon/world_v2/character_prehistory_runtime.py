@@ -1,13 +1,20 @@
-"""Atomic reviewed import; history remains separate from remembered material."""
+"""Atomic history admission and source-bound initial-memory installation."""
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from .schema_core import canonicalize_json_value
 
 from .character_prehistory import (
     IMPORT_ACTOR, SOURCE, COMPILED_SOURCE, PrehistoryArchiveAcceptedPayload, PrehistoryRecordImportedPayload,
     ReviewedPrehistoryArchive, CompiledPrehistoryArchive, digest, prehistory_event_id, validate_story_boundary,
 )
+
+
+@dataclass(frozen=True, slots=True)
+class PrehistoryInstallation:
+    records: tuple
+    memory_initialization: dict
 
 
 class PrehistoryArchiveRuntime:
@@ -22,6 +29,27 @@ class PrehistoryArchiveRuntime:
     def import_compiled(self, archive: CompiledPrehistoryArchive, *, created_at):
         archive = CompiledPrehistoryArchive.model_validate_json(archive.model_dump_json())
         return self._import(archive, created_at=created_at)
+
+    def install_compiled(self, archive, *, created_at, memory_mode="direct"):
+        """User-facing installation; raw import_compiled remains archive admission."""
+        return self._install(archive, created_at=created_at, memory_mode=memory_mode)
+
+    def install_reviewed(self, archive, *, created_at, memory_mode="direct"):
+        return self._install(archive, created_at=created_at, memory_mode=memory_mode)
+
+    def _install(self, archive, *, created_at, memory_mode):
+        if memory_mode not in {"direct", "archive_only"}:
+            raise ValueError("installation memory_mode must be direct or archive_only")
+        rows = (self.import_compiled(archive, created_at=created_at) if isinstance(archive, CompiledPrehistoryArchive)
+                else self.import_reviewed(archive, created_at=created_at))
+        report = {"status": "archive_only", "mode": memory_mode, "initialized": 0, "model_calls": 0}
+        if memory_mode == "direct":
+            from .prehistory_memory_initialization import PrehistoryMemoryInitializer
+            report = PrehistoryMemoryInitializer(ledger=self.ledger, owner_actor_ref=self.owner_actor_ref).advance_once(
+                limit=256, record_refs=tuple(row.record.record_id for row in rows))
+            if report['existing_pending']:
+                raise ValueError('initialization contains a legacy pending candidate; recover its original workflow')
+        return PrehistoryInstallation(records=rows, memory_initialization=report)
 
     def _import(self, archive, *, created_at):
         """Accept operator-authorized reviewed history or compiled native source.

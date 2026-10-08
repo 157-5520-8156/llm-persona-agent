@@ -249,9 +249,11 @@ async def _run(args: argparse.Namespace) -> None:
     background_units = int(getattr(args, "background_units", 0))
     disable_recall_embedding = bool(getattr(args, "disable_recall_embedding", False))
     delivery = ConsoleDelivery()
+    env_files = getattr(args, "env_file", None)
     settings = Settings(
         database_path=database,
         PRIMARY_USER_ID=args.primary_user_id,
+        **({"_env_file": tuple(env_files)} if env_files else {}),
     )
     started = time.perf_counter()
     try:
@@ -294,6 +296,11 @@ async def _run(args: argparse.Namespace) -> None:
                     "base_url": settings.deepseek_base_url,
                 },
                 "recall_embedding_disabled": disable_recall_embedding,
+                "memory_runtime_profile": host.memory_runtime_profile(),
+                "settings_files": env_files or [Path(".env")],
+                "evaluation_scope": "user_conversation_entrypoint",
+                "input_mode": "user_text_only",
+                "semantic_quality": "not_evaluated",
                 "background_units": background_units,
             }
         )
@@ -488,6 +495,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument("--clone", type=Path)
+    parser.add_argument("--env-file", type=Path, action="append", help="Explicit shared settings file(s), in precedence order; defaults to .env.")
     parser.add_argument("--primary-user-id", default="geoff")
     parser.add_argument("--recipient-id", default="world-v2-console-user")
     parser.add_argument("--burst-message", action="append", default=[])

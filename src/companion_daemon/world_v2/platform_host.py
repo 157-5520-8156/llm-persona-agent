@@ -259,10 +259,13 @@ class WorldV2PlatformHost:
 
         return await self._application.delivered_text_character_count(action_id)
 
-    async def initialize_prehistory_once(self, *, allow_model_call: bool = False):
+    def memory_runtime_profile(self):
+        return self._application.memory_runtime_profile()
+
+    async def initialize_prehistory_once(self, *, allow_model_call: bool = False, batch_size: int = 1, mode: str | None = None):
         """Explicit setup of one imported memory through the existing character."""
         return await self._application.initialize_prehistory_once(
-            allow_model_call=allow_model_call,
+            allow_model_call=allow_model_call, batch_size=batch_size, mode=mode,
         )
 
     def dashboard_character_interior_health(self) -> dict[str, object]:

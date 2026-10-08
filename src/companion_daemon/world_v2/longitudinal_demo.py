@@ -126,7 +126,7 @@ class LongitudinalDemoSetup:
                 self.remaining_steps -= 1
                 outcome = await owner.initialize_prehistory_once(allow_model_call=True)
                 outcomes.append(outcome)
-                if outcome["status"] not in {"retained", "no_change"}:
+                if outcome["status"] not in {"retained", "no_change", "initialized"}:
                     break
         return {
             "prehistory_initialization": outcomes,
