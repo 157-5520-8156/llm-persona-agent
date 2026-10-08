@@ -5,13 +5,15 @@ declarations under existing history/actor/time authority, retaining world-only p
 """
 from __future__ import annotations
 
+import json
+
 from datetime import datetime, timedelta
 from functools import lru_cache
 from itertools import pairwise
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from pydantic import Field, model_validator
+from pydantic import Field, TypeAdapter, ValidationInfo, field_validator, model_validator
 
 from .schema_core import FrozenModel, PrivacyClass
 from .character_prehistory import (
@@ -48,6 +50,16 @@ class NativeStoryBlock(FrozenModel):
         # mode. No prose classification and no widening of actor ownership.
         if isinstance(value, dict) and value.get('kind') == value.get('knowledge') == 'self_reflection':
             return {**value, 'kind': 'historical_interpretation'}
+        return value
+
+    @field_validator('known_from', 'known_until', mode='before')
+    @classmethod
+    def acquisition_json_datetime(cls, value, info: ValidationInfo):
+        # The alias before-validator exposes a Python dictionary to the strict
+        # nullable datetime union. Restore only JSON's documented datetime
+        # parsing; Python-mode strings and timezone/boundary checks stay strict.
+        if info.mode == 'json' and isinstance(value, str):
+            return TypeAdapter(datetime).validate_json(json.dumps(value), strict=True)
         return value
 
     @model_validator(mode='after')

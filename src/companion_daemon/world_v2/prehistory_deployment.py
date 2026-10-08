@@ -7,6 +7,9 @@ from .character_prehistory import CompiledPrehistoryArchive, ReviewedPrehistoryA
 
 PrehistoryPackage = ReviewedPrehistoryArchive | CompiledPrehistoryArchive
 
+# Offline source/context receipts, independent of unchanged model-input budgets.
+MAX_PREHISTORY_PACKAGE_BYTES = 8_000_000
+
 
 def configured_prehistory(*, path: Path | None, supplied: PrehistoryPackage | None,
                          world_id: str, actor_ref: str) -> PrehistoryPackage | None:
@@ -14,8 +17,8 @@ def configured_prehistory(*, path: Path | None, supplied: PrehistoryPackage | No
         archive = supplied
     else:
         with Path(path).open("rb") as stream:
-            raw = stream.read(2_000_001)
-        if len(raw) > 2_000_000:
+            raw = stream.read(MAX_PREHISTORY_PACKAGE_BYTES + 1)
+        if len(raw) > MAX_PREHISTORY_PACKAGE_BYTES:
             raise ValueError("prehistory package exceeds deployment size limit")
         archive = TypeAdapter(PrehistoryPackage).validate_json(raw)
         if supplied is not None and supplied != archive:

@@ -144,3 +144,40 @@ def test_native_story_reaches_public_memory_without_world_only_prose(tmp_path):
         assert ledger.rebuild().semantic_hash == ledger.project().semantic_hash
     finally:
         ledger.close()
+
+
+def test_reported_history_roundtrips_explicit_acquisition_dates():
+    from companion_daemon.world_v2.native_story import NativeStorySource, compile_native_story
+    from companion_daemon.world_v2.character_prehistory import CompiledPrehistoryArchive
+    raw = source_value()
+    raw['entities'] = [{'entity_ref':'history:person:informant','kind':'person','label':'讲述往事的父亲'}]
+    block = raw['scenes'][0]['blocks'][0]
+    block.update(knowledge='told',informant_ref='history:person:informant',
+        known_from='2019-06-01T00:00:00+08:00',known_until='2019-06-01T23:59:59+08:00',
+        text='父亲在2019年6月讲起2015年她把纸船放进水盆的事，她自己没有这段清楚的回忆。')
+    source = NativeStorySource.model_validate_json(json.dumps(raw))
+    package = compile_native_story(source,brief=authoring_brief(),archive_id='prehistory-archive:reported-acquisition')
+    record, = package.document.records
+    assert record.occurred_from.isoformat()=='2019-06-01T00:00:00+08:00'
+    assert record.story.blocks[0].occurred_from.year==2015
+    assert '不是本人亲历证明' in record.statement
+    assert CompiledPrehistoryArchive.model_validate_json(package.model_dump_json())==package
+
+
+def test_large_frozen_history_compiles_and_loads_without_provider_or_source_loss(tmp_path):
+    from companion_daemon.world_v2.native_story import NativeStorySource, compile_native_story
+    from companion_daemon.world_v2.prehistory_deployment import configured_prehistory
+    source = NativeStorySource.model_validate_json(json.dumps(source_value()))
+    brief = authoring_brief()
+    # A larger immutable authoring basis must not be truncated to make a package
+    # fit. This padding tests storage limits, not narrative richness or quality.
+    annotation = '验' * 1_050_000
+    brief = brief.model_copy(update={'profile':{**brief.profile,'source_notes':annotation}})
+    package = compile_native_story(source,brief=brief,archive_id='prehistory-archive:large-frozen-history')
+    path=tmp_path/'large-compiled.json'
+    path.write_text(package.model_dump_json())
+    assert path.stat().st_size > 2_000_000
+    loaded=configured_prehistory(path=path,supplied=None,world_id=brief.world_id,actor_ref=ACTOR)
+    assert loaded == package
+    assert json.loads(loaded.compilation.context_json)['profile']['source_notes']==annotation
+    assert loaded.document.records[0].story.blocks[0].text==source.scenes[0].blocks[0].text

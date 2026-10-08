@@ -289,7 +289,9 @@ class PrehistoryCompilationReceipt(FrozenModel):
     context_hash: str = Field(pattern=_HASH)
     source_authored_at: datetime
     source_json: str = Field(min_length=1, max_length=1_000_000)
-    context_json: str = Field(min_length=1, max_length=1_000_000)
+    # Frozen history grows across bounded source shards; never truncate its pins
+    # or original records to fit a provider prompt. This is an offline receipt.
+    context_json: str = Field(min_length=1, max_length=4_000_000)
 
 
 class CompiledPrehistoryArchive(FrozenModel):

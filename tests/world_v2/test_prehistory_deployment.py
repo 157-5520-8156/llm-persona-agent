@@ -1,7 +1,7 @@
 import json
 import pytest
 from companion_daemon.config import Settings
-from companion_daemon.world_v2.prehistory_deployment import configured_prehistory
+from companion_daemon.world_v2.prehistory_deployment import configured_prehistory, MAX_PREHISTORY_PACKAGE_BYTES
 from test_character_prehistory import reviewed_archive, WORLD_ID, ACTOR
 
 
@@ -25,5 +25,5 @@ def test_draft_without_review_and_oversized_input_are_not_importable(tmp_path):
     path=tmp_path/'input.json';args=dict(supplied=None,world_id=WORLD_ID,actor_ref=ACTOR)
     path.write_text(reviewed_archive().document.model_dump_json())
     with pytest.raises(ValueError):configured_prehistory(path=path,**args)
-    path.write_bytes(b' '*2_000_001)
+    path.write_bytes(b' '*(MAX_PREHISTORY_PACKAGE_BYTES + 1))
     with pytest.raises(ValueError,match='size limit'):configured_prehistory(path=path,**args)
