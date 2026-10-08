@@ -57,7 +57,7 @@ PYTHONPATH=src python configs/prehistory/native-dense-life-20261008/verify.py \
 
 本版实际采用库：`output/private-audits/dense-life-twenty-years-20261008/accepted-world/world.sqlite`。新1,037条全部active；旧222条记录和381个候选的哈希保持不变。重复安装不增加事件。152个含新记录的视图经360页公共读取全部可达；世界层、其他actor、转述获知时间与原文完整度均已验证；39,895事件的冷回放hash一致、无findings。
 
-后续的向量准备已在同源副本 `output/private-audits/incremental-memory-index-20261008/world.sqlite` 开始，详见[统一索引与恢复记录](../../../docs/audits/incremental-memory-index-2026-10-08.md)。该库保留已计算的向量，但仍有867个检索文档因当日额度不足而待计算；不要将“源稿已植入”视为“整库向量已预热”。可用 `scripts/prepare_world_memory_index.py` 在预算恢复后继续同一副本。
+后续的向量准备已在同源副本 `output/private-audits/incremental-memory-index-20261008/world.sqlite` 开始，详见[统一索引与恢复记录](../../../docs/audits/incremental-memory-index-2026-10-08.md)。经用户授权取消独立日token限制后，该库的1,613个可搜索文档均已准备向量，重启与重复查询没有新增嵌入用量，详见[完整预热记录](../../../docs/audits/full-memory-prewarm-2026-10-08.md)。新增来源可用 `scripts/prepare_world_memory_index.py` 在同一副本增量准备；自然对话能力仍需另行验收。
 
 后续普通聊天应优先从这个保留向量进度的副本再克隆，使用现有 `scripts/chat_with_world_v2.py --clone ... --database ...`，显式加载与实际使用一致的设置文件。只输入用户问题，材料由系统检索。首次创建副本才传`--clone`，继续已有会话时不再克隆。人生数据增补本轮没有直接给DeepSeek喂整本书做“通过”判断；其后的索引机制验证另行记录，未解除自然对话资格边界。
 

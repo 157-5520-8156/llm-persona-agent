@@ -39,7 +39,10 @@ def _decoded_vector(vector_json: str, dimensions: int) -> tuple[float, ...]:
     if not _is_numeric_vector(value) or len(value) != dimensions:
         raise ValueError("cached semantic recall vector is invalid")
     return tuple(float(item) for item in value)
-_MAX_CACHED_VECTOR_BYTES_TOTAL = 32 * 1024 * 1024
+# The current 1,613-document BGE-M3 corpus alone needs ~34 MiB of JSON
+# vectors. Keep it resident across restarts instead of evicting/re-embedding
+# part of the active corpus; retain finite byte and row bounds.
+_MAX_CACHED_VECTOR_BYTES_TOTAL = 64 * 1024 * 1024
 _TRANSIENT_FAILURE_CODE = "semantic recall provider unavailable"
 
 

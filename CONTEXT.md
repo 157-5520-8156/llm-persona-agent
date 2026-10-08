@@ -1,3 +1,21 @@
+Full memory vector preparation completed after explicit cap authorization (2026-10-08):
+Latest user removed the separate250000daily embedding token cap. Main.env now explicitly sets daily
+WORLD_V2_RECALL_EMBEDDING_DAILY_TOKEN_BUDGET=2000000, equal to unchanged monthly2000000, so onlymonthly
+token bound adds a constraint. DailyCNY.10/monthlyCNY1.0 unchanged;ledgernotreset;productionnotrestarted.
+This authorization supersedes earlier notes forbidding raising this embedding daily limit ONLY;DeepSeek
+experiment budgets unchanged. Current worktree cache bytebound32MiB->64MiB,8192rowbound retained:
+active1613searchdocs/1590uniquetexts alone need~34MiB,otherwise restartwouldevict/recompute currentvectors.
+Same private incremental-memory-index-20261008/world.sqlite nowhasall1613vectors,missing0;1037newhistory
+records all represented. Currentcache1864rows/40483933bytes. Resume52.50s;23localBGEcalls(21docbatches+2query),
+218204estimatedtokens/CNY.031421376delta;daily460491/CNY.066310704.0DeepSeek/QQcalls;original39895cursor/hash
+unchanged. Independentrestartprepare11.71s +3queries adds0tokens. Provider-forbidden full-corpus preparation
+and queries succeed:only19/24charquery passesembeddingadapter;4hits/590or691charsmemorytext returned.
+Rawfullquerytimings2.13/1.06/2.27s;restart1.17/.54/1.36s;preparedproviderforbidden1.00/.40/.95s.
+Profile:local repeated diversitysort/budgetpacking +scoring,not re-embedding full life. Futurelossless
+sorting/index optimization remains separate;no naturalchatsemanticpass.37focusedpass/Ruffpass;previous
+b62c47b4full10332passnotrerunforcapacityconstant. Audit docs/audits/full-memory-prewarm-2026-10-08.md;
+private output/private-audits/full-memory-prewarm-20261008/ has resumed/reopened/repeat-proof/profile.
+
 Unified incremental memory index implemented; complete BGE prewarm budget-blocked (2026-10-08):
 User authorized import-time vector preparation, incremental source updates and reuse in chat, shared by
 future life/social memory. Base68f1ad93; runtime6732006f plus shutdown fixes4d576d5d/b62c47b4.
