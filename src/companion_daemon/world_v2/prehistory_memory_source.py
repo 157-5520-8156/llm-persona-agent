@@ -106,6 +106,24 @@ def resolve_prehistory_memory_source(
     archives: tuple[PrehistoryArchiveProjection, ...],
     committed_events: tuple[CommittedWorldEventRef, ...],
 ) -> tuple[PrehistoryRecordProjection, PrehistoryArchiveProjection]:
+    from .context_read_scope import memoized_projection_read
+    return memoized_projection_read(
+        kind="prehistory_source_proof", owners=(binding,),
+        matching_fields={"prehistory_records": records, "prehistory_archives": archives,
+                         "committed_world_event_refs": committed_events},
+        compute=lambda: _resolve_prehistory_memory_source(
+            binding, records=records, archives=archives, committed_events=committed_events,
+        ),
+    )
+
+
+def _resolve_prehistory_memory_source(
+    binding: MemorySourceBinding,
+    *,
+    records: tuple[PrehistoryRecordProjection, ...],
+    archives: tuple[PrehistoryArchiveProjection, ...],
+    committed_events: tuple[CommittedWorldEventRef, ...],
+) -> tuple[PrehistoryRecordProjection, PrehistoryArchiveProjection]:
     """Require the reviewed manifest and its exact separately committed record."""
     row = lookup_first(records, "record.record_id", binding.source_id)
     if row is None or binding != prehistory_memory_binding(row):

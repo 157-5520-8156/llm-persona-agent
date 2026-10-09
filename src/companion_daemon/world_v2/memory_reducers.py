@@ -744,6 +744,44 @@ def evaluate_memory_retrieval(
     viewer_privacy_ceiling: PrivacyClass,
     _resolved_prehistory: dict | None = None,
 ) -> tuple[MemoryRetrievalDecision, ...]:
+    from .context_read_scope import has_projection_read_scope, memoized_projection_read
+    matching_fields = dict(
+        facts=facts, fact_transitions=fact_history, experiences=experiences,
+        experience_transitions=experience_history, threads=threads, thread_transitions=thread_history,
+        committed_world_event_refs=committed_events, prehistory_records=prehistory_records,
+        prehistory_archives=prehistory_archives,
+    )
+    authority = dict(
+        facts=facts, fact_history=fact_history, experiences=experiences,
+        experience_history=experience_history, threads=threads, thread_history=thread_history,
+        committed_events=committed_events, prehistory_records=prehistory_records,
+        prehistory_archives=prehistory_archives, viewer_privacy_ceiling=viewer_privacy_ceiling,
+        _resolved_prehistory=_resolved_prehistory,
+    )
+    if not has_projection_read_scope(matching_fields):
+        return _evaluate_memory_retrieval(candidates, **authority)
+    return tuple(memoized_projection_read(
+        matching_fields=matching_fields, kind="memory_candidate_qualification", owners=(candidate,),
+        parameters=(viewer_privacy_ceiling,),
+        compute=lambda candidate=candidate: _evaluate_memory_retrieval((candidate,), **authority)[0],
+    ) for candidate in candidates)
+
+
+def _evaluate_memory_retrieval(
+    candidates: tuple[MemoryCandidateProjection, ...],
+    *,
+    facts: tuple[FactProjection, ...],
+    fact_history: tuple[FactTransitionProjection, ...],
+    experiences: tuple[object, ...],
+    experience_history: tuple[ExperienceTransitionProjection, ...],
+    threads: tuple[ThreadProjection, ...],
+    thread_history: tuple[ThreadTransitionProjection, ...],
+    committed_events: tuple[CommittedWorldEventRef, ...],
+    prehistory_records: tuple[PrehistoryRecordProjection, ...] = (),
+    prehistory_archives: tuple[PrehistoryArchiveProjection, ...] = (),
+    viewer_privacy_ceiling: PrivacyClass,
+    _resolved_prehistory: dict | None = None,
+) -> tuple[MemoryRetrievalDecision, ...]:
     decisions: list[MemoryRetrievalDecision] = []
     for candidate in candidates:
         reasons: list[str] = []

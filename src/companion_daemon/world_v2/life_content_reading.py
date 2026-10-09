@@ -211,6 +211,23 @@ def read_character_life_experience_content(
     user_channel_limited_content_refs: frozenset[str] = frozenset(),
 ) -> LifeContentReading:
     """Read the exact .2 composite; failure never falls back to raw summary JSON."""
+    from .context_read_scope import memoized_context_read
+    material = memoized_context_read(
+        store=store, projection=projection, kind="life_experience_material", owners=(experience,),
+        parameters=(actor_ref, viewer_privacy_ceiling, user_channel_limited_content_refs),
+        compute=lambda: _read_character_life_experience_material(
+            store=store, projection=projection, experience=experience, actor_ref=actor_ref,
+            viewer_privacy_ceiling=viewer_privacy_ceiling,
+            user_channel_limited_content_refs=user_channel_limited_content_refs,
+        ),
+    )
+    return material.bounded(max_characters)
+
+
+def _read_character_life_experience_material(
+    *, store, projection, experience, actor_ref, viewer_privacy_ceiling,
+    user_channel_limited_content_refs,
+):
     from .character_life_experience_contract import validate_character_life_experience_summary
     from .character_life_experience_runtime import validate_character_life_experience_binding
 
@@ -292,4 +309,4 @@ def read_character_life_experience_content(
             source_event_ref=response.response_event_ref,
             actor_ref=response.actor_ref, response_text=response.response_text,
         ),
-    ).bounded(max_characters)
+    )

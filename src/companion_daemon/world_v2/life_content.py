@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import Field, model_validator
 
+from .context_read_scope import memoized_context_read
 from .life_content_store import ImmutableLifeContentStore
 from .life_content_reading import (
     CharacterResponseReading, LifeContentReading, WorldConsequenceReading,
@@ -183,10 +184,38 @@ class LifeContentCompiler:
         projection: LedgerProjection,
         user_channel_limited_content_refs: frozenset[str] = frozenset(),
     ) -> LifeContentResult:
+        return memoized_context_read(
+            store=self._store, projection=projection, kind="life_content_view", owners=(self,),
+            parameters=(cursor.world_revision, cursor.deliberation_revision, cursor.ledger_sequence,
+                        actor_ref, viewer_privacy_ceiling,
+                        None if budget is None else (budget.max_item_characters, budget.max_total_characters),
+                        user_channel_limited_content_refs),
+            compute=lambda: self._compile(
+                cursor=cursor, actor_ref=actor_ref, viewer_privacy_ceiling=viewer_privacy_ceiling,
+                budget=budget, projection=projection,
+                user_channel_limited_content_refs=user_channel_limited_content_refs,
+            ),
+        )
+
+    def _compile(self, *, cursor, actor_ref, viewer_privacy_ceiling, budget, projection,
+                 user_channel_limited_content_refs):
+        rows = memoized_context_read(
+            store=self._store, projection=projection, kind="life_content_materials", owners=(self,),
+            parameters=(cursor.world_revision, cursor.deliberation_revision, cursor.ledger_sequence,
+                        actor_ref, viewer_privacy_ceiling, user_channel_limited_content_refs),
+            compute=lambda: self._collect_materials(
+                cursor=cursor, actor_ref=actor_ref, viewer_privacy_ceiling=viewer_privacy_ceiling,
+                projection=projection, user_channel_limited_content_refs=user_channel_limited_content_refs,
+            ),
+        )
+        return self._present_materials(rows, budget)
+
+    def _collect_materials(self, *, cursor, actor_ref, viewer_privacy_ceiling, projection,
+                           user_channel_limited_content_refs):
         # None is for local recall-corpus construction only. Presentation
         # truncation must not delete older source documents before retrieval.
         # All source, participant, privacy and hash checks below still apply.
-        item_characters = budget.max_item_characters if budget is not None else None
+        item_characters = None
         if (
             projection.world_revision != cursor.world_revision
             or projection.deliberation_revision != cursor.deliberation_revision
@@ -464,6 +493,10 @@ class LifeContentCompiler:
                     ),
                 )
             )
+        return tuple(candidate_rows)
+
+    @staticmethod
+    def _present_materials(candidate_rows, budget):
         remaining = budget.max_total_characters if budget is not None else None
         settled: list[LifeContentExcerpt] = []
         experiences_out: list[RecentExperienceContextItem] = []
@@ -472,6 +505,21 @@ class LifeContentCompiler:
             if suppression is not None:
                 suppressions.append(suppression)
             elif item is not None:
+                if budget is not None:
+                    original = item.content if isinstance(item, RecentExperienceContextItem) else item
+                    try:
+                        bounded = original.bounded(budget.max_item_characters)
+                    except ValueError:
+                        # Item clipping precedes the shared total budget, as
+                        # it did when each view reread its sources separately.
+                        suppressions.append(LifeContentSuppression(
+                            content_id=original.content_id,
+                            source_entity_id=original.source_entity_id,
+                            reason="structured_content_unavailable",
+                        ))
+                        continue
+                    item = (item.model_copy(update={"content": bounded})
+                            if isinstance(item, RecentExperienceContextItem) else bounded)
                 if remaining is not None and remaining <= 0:
                     content_id = (
                         item.content.content_id

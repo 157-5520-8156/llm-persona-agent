@@ -14,12 +14,17 @@ lived-world content or a visibility descriptor.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from collections import OrderedDict
 from dataclasses import dataclass
+from pathlib import Path
+from sys import getsizeof
 import hashlib
 import sqlite3
-from threading import RLock
+from threading import RLock, get_ident
 from typing import Literal, Protocol
 
+from .context_read_scope import current_content_snapshot
 from .sqlite_coordination import configure_shared_sqlite_connection, sqlite_write_lock
 
 
@@ -126,6 +131,41 @@ class ImmutableLifeContentStore(Protocol):
     def read_exact(self, *, content_ref: str) -> StoredLifeContent | None: ...
 
 
+class _LifeContentSnapshot:
+    """Read-only lease; the provider reads from an actual fixed snapshot."""
+    def __init__(self, read):
+        self._read = read
+        self._owner = get_ident()
+        self._closed = False
+        self._values = OrderedDict()
+        self._bytes = 0
+
+    def read_exact(self, *, content_ref):
+        if self._closed or get_ident() != self._owner:
+            raise RuntimeError("life content snapshot is closed or belongs to another thread")
+        if content_ref in self._values:
+            value, _ = self._values[content_ref]
+            self._values.move_to_end(content_ref)
+            return value
+        value = self._read(content_ref)
+        weight = getsizeof(content_ref) + 128
+        if value is not None:
+            weight += getsizeof(value.text) + getsizeof(value.content_payload_hash) + getsizeof(value.content_kind)
+        if weight <= 16 * 1024 * 1024:
+            self._values[content_ref] = (value, weight)
+            self._bytes += weight
+            while len(self._values) > 2048 or self._bytes > 16 * 1024 * 1024:
+                _, (_, old_weight) = self._values.popitem(last=False)
+                self._bytes -= old_weight
+        return value
+
+    def close(self):
+        self._closed = True
+        self._values.clear()
+        self._bytes = 0
+        self._read = None
+
+
 class InMemoryImmutableLifeContentStore:
     """Thread-safe adapter used by interface-level compiler tests."""
 
@@ -141,7 +181,20 @@ class InMemoryImmutableLifeContentStore:
             else:
                 _accept_existing_or_raise(existing, record)
 
+    @contextmanager
+    def read_snapshot(self):
+        with self._lock:
+            records = dict(self._records)
+        snapshot = _LifeContentSnapshot(records.get)
+        try:
+            yield snapshot
+        finally:
+            snapshot.close()
+
     def read_exact(self, *, content_ref: str) -> StoredLifeContent | None:
+        snapshot = current_content_snapshot(self)
+        if snapshot is not None:
+            return snapshot.read_exact(content_ref=content_ref)
         with self._lock:
             return self._records.get(content_ref)
 
@@ -153,6 +206,7 @@ class SQLiteImmutableLifeContentStore:
         if not path or not world_id:
             raise ValueError("life content SQLite store needs path and world id")
         self._world_id = world_id
+        self._closed = False
         self._lock = RLock()
         self._database_write_lock = sqlite_write_lock(path)
         # Autocommit: an implicit DML transaction on a shared-file sidecar
@@ -160,6 +214,8 @@ class SQLiteImmutableLifeContentStore:
         # commit pins the WAL's checkpoint/reset point for the process
         # lifetime.  Single-statement writes need no transaction here.
         self._connection = sqlite3.connect(path, isolation_level=None, check_same_thread=False)
+        self._path = next(row[2] for row in self._connection.execute("PRAGMA database_list")
+                          if row[1] == "main") or ":memory:"
         with self._database_write_lock:
             self._connection.execute("PRAGMA foreign_keys = ON")
             configure_shared_sqlite_connection(self._connection)
@@ -179,6 +235,7 @@ class SQLiteImmutableLifeContentStore:
 
     def close(self) -> None:
         with self._lock:
+            self._closed = True
             self._connection.close()
 
     def put_if_absent(self, record: StoredLifeContent) -> None:
@@ -216,7 +273,51 @@ class SQLiteImmutableLifeContentStore:
             )
             self._connection.commit()
 
+    @contextmanager
+    def read_snapshot(self):
+        # A separate connection keeps this lease read-only and does not pin
+        # the shared writer's transaction or route a write through old state.
+        with self._lock:
+            if self._closed:
+                raise sqlite3.ProgrammingError("Cannot operate on a closed database.")
+        if self._path == ":memory:":
+            connection = sqlite3.connect(":memory:", isolation_level=None)
+            with self._lock:
+                self._connection.backup(connection)
+        else:
+            connection = sqlite3.connect(
+                Path(self._path).resolve().as_uri() + "?mode=ro", uri=True,
+                isolation_level=None,
+            )
+        snapshot = None
+        try:
+            connection.execute("PRAGMA query_only = ON")
+            connection.execute("BEGIN")
+            # BEGIN alone is deferred; this SELECT fixes the database image.
+            connection.execute("SELECT 1 FROM world_v2_life_content WHERE world_id=? LIMIT 1",
+                               (self._world_id,)).fetchone()
+            def read(ref):
+                row = connection.execute(
+                    "SELECT content_kind, content_payload_hash, text FROM world_v2_life_content "
+                    "WHERE world_id=? AND content_ref=?", (self._world_id, ref),
+                ).fetchone()
+                return None if row is None else StoredLifeContent(
+                    content_ref=ref, content_kind=row[0], content_payload_hash=row[1], text=row[2],
+                )
+            snapshot = _LifeContentSnapshot(read)
+            yield snapshot
+        finally:
+            if snapshot is not None:
+                snapshot.close()
+            try:
+                connection.rollback()
+            finally:
+                connection.close()
+
     def read_exact(self, *, content_ref: str) -> StoredLifeContent | None:
+        snapshot = current_content_snapshot(self)
+        if snapshot is not None:
+            return snapshot.read_exact(content_ref=content_ref)
         with self._lock:
             row = self._connection.execute(
                 """

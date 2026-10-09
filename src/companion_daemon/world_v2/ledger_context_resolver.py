@@ -86,6 +86,7 @@ from .context_resolver import (
 from .ledger import LedgerPort
 from .memory_retrieval import MemoryRetrievalCompiler, MemoryRetrievalItem
 from .immutable_value_cache import immutable_value_cache
+from .context_read_scope import context_read_scope
 from .memory_understanding import MemoryUnderstandingReader
 from .later_expression_freshness import queued_later_facts
 from .life_content import LifeContentCompiler, collect_user_channel_limited_content_refs, RecentExperienceContextItem
@@ -2007,6 +2008,13 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         projection = self._ledger.project_at(query.cursor)
         self._validate_projection(query, projection)
         scope = self._scope_for_query(query, projection)
+        with context_read_scope(self._life_content_store, projection):
+            return self._resolve_material_views(
+                query, projection=projection, scope=scope, query_hash=query_hash,
+                started=started, recall_only=recall_only,
+            )
+
+    def _resolve_material_views(self, query, *, projection, scope, query_hash, started, recall_only):
         observation_aliases = _observation_event_aliases(projection)
         after_snapshot = time.perf_counter()
 
