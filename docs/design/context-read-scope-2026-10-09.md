@@ -25,4 +25,4 @@ SQLite隔离文档说明WAL读取事务固定一个快照，换连接的写入�
 
 补充实现：LifeContent先构造完整material rows，再独立执行每种视图的单项/总量裁剪；当前限定范围内的MemoryRetrievalDecision也按candidate、privacy与九组源投影集合身份复用，作用域外沿原函数路径。前史来源证明依赖三个实际集合身份。跨作用域只复用不可变对象的纯结构检查布尔值（弱引用、4096条）；不跨域保留任何资格结论。Scope中的失败/可变结果不会污染已知不可变ID集合。
 
-快照连接路径取自SQLite实际打开的main数据库，避免后续cwd变化；关闭的父store不能新建lease，现有lease退出即失效。当前固定四个Capsule/corpus逐字节相同；入口样本中位约2.07s，收益有限，需要最终重复测量，不声明稳定2秒。场景覆盖包括文本/显式null回应、多预算原抑制原因、SQLite内存Adapter、lease过期、cwd变化、每轮重新核验。
+快照连接路径取自SQLite实际打开的main数据库，避免后续cwd变化；关闭的父store不能新建lease，现有lease退出即失效。当前固定四个Capsule/corpus逐字节相同；冻结后的两组共12次入口样本中位2.070s，4/12<=2s，收益有限，不声明稳定2秒；完整验收与全suite一次超时失败及定向复测见audit。场景覆盖包括文本/显式null回应、多预算原抑制原因、SQLite内存Adapter、lease过期、cwd变化、每轮重新核验。

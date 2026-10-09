@@ -1,3 +1,24 @@
+Snapshot-bound Context material sharing implemented (2026-10-09):
+Baselineaf814fa0(runtime d3d7fb06), runtime2c10c762; spec docs/design/context-read-scope-2026-10-09.md;
+audit docs/audits/context-read-scope-2026-10-09.md. One short read_snapshot for synchronous Context;
+SQLite independent read-only lease, memory copy, unknown Adapter ordinary fallback; owner-thread,
+nested/exception/expired/closed-store lifetime checked. Life/Experience full material shared across
+independently clipped views; current source/candidate proofs shared only for exact projection collections
+and actor/privacy/ref/cursor parameters. No cross-request permission cache; next frame revalidates.
+Content2048refs/16MiB estimated, material4096entry bounds; mutable/failed checks never poison IDs.
+Four full Capsule/corpus cases byte-identical(1629docs); local cold4.471->4.057s,next1.018/1.260->1.008/1.210s.
+Two frozen actual-config six-question runs: medians2.119/2.044s;combined2.070,min1.767,max2.459,4/12<=2s.
+Previous combined2.148s:small3.7% sample decrease,strict2s STILL RED;no p95/production/reply-latency claim.
+Context native median1.176s;other pre-request median.922s. Startup42.525/40.621s separate.
+All12 hit HTTP boundary,intercepted deferred;0realDeepSeek/0visible outputs.147focusedpass,Ruff/8Pythoncompilepass.
+Static Standards and Spec reviews0confirmed findings. Full frozen2c10c762:1fail/10415pass/19skip/2xfail/
+1existingwarning,1193.93s/exit1; 8 modified Python hashes unchanged. Failure is existing10ms-margin reviewer
+retry timing test; unchanged test/runtime path uses test-local resolver,does not create new read scope.
+Independent5/5 and whole deliberation module115pass(4.95s);timing-sensitive evidence,not proven root fix.
+Full-suite failure retained;do not label aggregate green.No deadline relaxation or unrelated test edit.
+No production/QQ/config/deadline/budget changes. OriginalCNY5ledger166requests/spent4.628753/
+unknownreserve.231340/remaining.139907 verified unchanged.
+
 Immutable Context material reuse optimized (2026-10-09):
 Baseline7f717b08, runtime d3d7fb06; spec docs/design/context-materialization-2026-10-09.md;
 audit docs/audits/context-materialization-2026-10-09.md. Reuse unscoped prehistory item construction,
