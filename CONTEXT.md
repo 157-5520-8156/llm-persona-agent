@@ -1,3 +1,18 @@
+Input-to-provider preparation optimized again (2026-10-09):
+Baseline daac85ba, runtime47dfcfd0; spec docs/design/ingress-two-seconds-2026-10-09.md;
+audit docs/audits/ingress-two-seconds-2026-10-09.md. Reuse immutable prehistory payload validation/hash;
+all current authority/time/world checks remain. Shared pure lexical features use64MiB+8192entry bounds,
+startup/write maintenance prepares them without extra embedding. Address indexes32slots+200k total rows.
+Frozen actual configured six-turn HTTP-intercepted entry:2.873/2.459/3.003/2.329/2.381/2.726s,
+median2.593,0/6<=2s:target STILL RED. Context1.228–1.733s. All reached boundary;0DeepSeek/visible outputs,
+intentional intercept leavesdeferred;not full reply or character silence/semantic success. Feature cache
+single shared38.4MiB estimated (not RSS),45109hits/2973misses;do not add duplicate names in harness report.
+Four fullCapsule/corpus byte comparisons identical(1629docs). 65scopedpass,9PythonRuff/compilepass;
+Standards/Spec static reviews no findings. Full frozen47dfcfd0:10393pass/19skip/2xfail/1existingwarning,
+1256.19s/exit0.9Python hashes unchanged after full run; subsequent edits documentation only.
+Original experimentCNY5/166requests/spent4.628753/unknownreserve.231340/remaining.139907 unchanged;
+newreservequotes.217114–.220542 exceed remaining. No production/QQ/config/deadline changes.
+
 Ordinary Context preparation optimized (2026-10-09):
 Baseline3ff4d69a; runtime0b632838; spec docs/design/context-preparation-optimization-2026-10-09.md;
 audit docs/audits/context-preparation-optimization-2026-10-09.md. Existing current-tuple indexes now address
