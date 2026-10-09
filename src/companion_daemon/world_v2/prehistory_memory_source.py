@@ -6,7 +6,6 @@ retrieval compiler calls it only after candidate status/privacy selection.
 from __future__ import annotations
 
 from datetime import datetime
-from functools import lru_cache
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import Field, model_validator
@@ -21,6 +20,8 @@ from .character_prehistory import (
     digest, validate_story_boundary,
 )
 from .schema_core import FrozenModel
+from .projection_lookup import lookup_first
+from .immutable_value_cache import immutable_value_cache
 from .story_episode import EpisodeMembershipReading
 from .prehistory_story import CompactStoryMemoryReading, StoryMemoryReading, story_memory_reading
 if TYPE_CHECKING:
@@ -60,17 +61,17 @@ class PrehistoryMemoryReading(FrozenModel):
         return self
 
 
-@lru_cache(maxsize=1024)
+@immutable_value_cache(maxsize=2048)
 def _record_hash(record: PrehistoryRecord) -> str:
     return digest(record)
 
 
-@lru_cache(maxsize=128)
+@immutable_value_cache(maxsize=128)
 def _manifest_hash(manifest: PrehistoryArchiveManifest) -> str:
     return digest(manifest)
 
 
-@lru_cache(maxsize=1024)
+@immutable_value_cache(maxsize=2048)
 def _record_payload_hash(row: PrehistoryRecordProjection) -> str:
     return digest(PrehistoryRecordImportedPayload(
         archive_id=row.archive_id, archive_manifest_hash=row.archive_manifest_hash,
@@ -78,13 +79,14 @@ def _record_payload_hash(row: PrehistoryRecordProjection) -> str:
     ))
 
 
-@lru_cache(maxsize=128)
+@immutable_value_cache(maxsize=128)
 def _archive_payload_hash(archive: PrehistoryArchiveProjection) -> str:
     return digest(archive.model_dump(mode="json", exclude={
         "accepted_event_ref", "accepted_world_revision", "accepted_payload_hash", "accepted_at",
     }))
 
 
+@immutable_value_cache(maxsize=2048)
 def prehistory_memory_binding(record: PrehistoryRecordProjection) -> MemorySourceBinding:
     from .schemas import MemorySourceBinding
 
@@ -105,18 +107,18 @@ def resolve_prehistory_memory_source(
     committed_events: tuple[CommittedWorldEventRef, ...],
 ) -> tuple[PrehistoryRecordProjection, PrehistoryArchiveProjection]:
     """Require the reviewed manifest and its exact separately committed record."""
-    row = next((item for item in records if item.record.record_id == binding.source_id), None)
+    row = lookup_first(records, "record.record_id", binding.source_id)
     if row is None or binding != prehistory_memory_binding(row):
         raise ValueError("memory source does not resolve exact prehistory authority")
-    archive = next((item for item in archives if item.manifest.archive_id == row.archive_id), None)
+    archive = lookup_first(archives, "manifest.archive_id", row.archive_id)
     if archive is None or (
         archive.manifest.actor_ref != row.actor_ref
         or _manifest_hash(archive.manifest) != row.archive_manifest_hash
         or archive.world_started_at != row.world_started_at
         or row.record.occurred_until >= row.world_started_at
         or row.accepted_at < archive.accepted_at
-        or not any(pin.record_id == binding.source_id and pin.record_hash == binding.source_values_hash
-                   for pin in archive.manifest.records)
+        or lookup_first(archive.manifest.records, "record_id", binding.source_id,
+                        predicate=lambda pin: pin.record_hash == binding.source_values_hash) is None
     ):
         raise ValueError("prehistory memory source lost its reviewed archive")
     # Cache only pure hashes of fully immutable values. Source presence, actor,
@@ -126,7 +128,7 @@ def resolve_prehistory_memory_source(
         raise ValueError("prehistory memory source body differs from its authority")
     for source, event_type in ((row, "CharacterPrehistoryRecordImported"),
                                (archive, "CharacterPrehistoryArchiveAccepted")):
-        authority = next((item for item in committed_events if item.event_id == source.accepted_event_ref), None)
+        authority = lookup_first(committed_events, "event_id", source.accepted_event_ref)
         if authority is None or (
             authority.event_type != event_type
             or authority.world_revision != source.accepted_world_revision

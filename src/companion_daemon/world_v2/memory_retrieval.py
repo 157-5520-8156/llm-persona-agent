@@ -25,6 +25,7 @@ from .life_content_reading import (
 )
 from .life_content_store import ImmutableLifeContentStore
 from .memory_reducers import evaluate_memory_retrieval
+from .immutable_value_cache import immutable_value_cache
 from .schema_core import FrozenModel, PrivacyClass
 from .schemas import (
     ExperienceProjection,
@@ -40,7 +41,7 @@ from .schemas import (
 
 
 from .prehistory_memory_source import (
-    PrehistoryMemoryReading, prehistory_memory_reading, resolve_prehistory_memory_source,
+    PrehistoryMemoryReading, prehistory_memory_binding, prehistory_memory_reading, resolve_prehistory_memory_source,
 )
 
 
@@ -191,6 +192,18 @@ def _source_summary_is_bound(values: MemoryCandidateValues) -> bool:
     )
 
 
+@immutable_value_cache(maxsize=2048)
+def _prehistory_excerpt_value(row, archive, max_characters):
+    """Pure bounded reading; eligibility and visibility are checked by callers."""
+    text = row.record.statement[:max_characters]
+    return MemorySourceExcerpt(
+        **prehistory_memory_binding(row).model_dump(), excerpt_ref=row.record.record_id,
+        excerpt_payload_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        text=text, truncated=len(text) < len(row.record.statement),
+        prehistory=prehistory_memory_reading(row, archive),
+    )
+
+
 class MemoryRetrievalCompiler:
     """Deep read module for source-bound memory excerpts.
 
@@ -232,6 +245,9 @@ class MemoryRetrievalCompiler:
             ledger=self._ledger,
             projection=projection,
         )
+        material_histories = {}
+        for transition in projection.memory_candidate_transitions:
+            material_histories.setdefault(transition.candidate_id, []).append(transition)
         decisions = {
             item.candidate_id: item
             for item in evaluate_memory_retrieval(
@@ -389,7 +405,7 @@ class MemoryRetrievalCompiler:
                     retrieval_strength_bp=candidate.values.retrieval_strength_bp,
                     source_excerpts=tuple(excerpts),
                     truncated=any(item.truncated for item in excerpts),
-                    updated_at=_material_updated_at(candidate, projection.memory_candidate_transitions),
+                    updated_at=_material_updated_at(candidate, material_histories.get(candidate.candidate_id, ())),
                     reviewed_at=candidate.values.reviewed_at,
                     assessment_scope=("initialization_defaults_not_character_judgment" if is_unassessed_initial_memory(candidate, ledger=self._ledger)
                                       else "memory_salience_not_current_goal_or_obligation"),
@@ -426,13 +442,9 @@ class MemoryRetrievalCompiler:
         )
         if actor_ref is None or row.actor_ref != actor_ref:
             return None
-        text = row.record.statement[:self._max_excerpt_characters]
-        excerpt = MemorySourceExcerpt(
-            **binding.model_dump(), excerpt_ref=row.record.record_id,
-            excerpt_payload_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
-            text=text, truncated=len(text) < len(row.record.statement),
-            prehistory=prehistory_memory_reading(row, archive),
-        )
+        # Copy before attaching the compiler-local private pointer. No caller
+        # can mutate a shared cached excerpt's private indexing state.
+        excerpt = _prehistory_excerpt_value(row, archive, self._max_excerpt_characters).model_copy()
         # This private attribute is set only after the exact active candidate,
         # owner, record, archive and event closure have passed the reader above.
         # RecallCorpusCompiler uses it to form bounded source-exact windows;

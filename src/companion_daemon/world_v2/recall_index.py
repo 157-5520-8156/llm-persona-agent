@@ -1651,12 +1651,13 @@ class SQLiteRecallIndex(_RecallIndexCore):
             """,
             (self._world_id,),
         ).fetchone()
-        reusable: dict[str, tuple[str, tuple[float, ...]]] = {}
+        reusable: dict[str, tuple[str, tuple[float, ...], str]] = {}
         if head is not None and str(head[3]) == self._index_version:
             reusable = {
                 str(document_id): (
                     str(document_json),
-                    tuple(float(item) for item in json.loads(str(embedding_json))),
+                    _decode_snapshot_vector(str(embedding_json)),
+                    str(embedding_json),
                 )
                 for document_id, document_json, embedding_json in self._connection.execute(
                     """
@@ -1672,12 +1673,15 @@ class SQLiteRecallIndex(_RecallIndexCore):
             raise ValueError("recall document identity is duplicated")
         if any(item.source_world_revision > cursor.world_revision for item in ordered):
             raise ValueError("recall document is newer than the index cursor")
+        document_jsons = {
+            item.document_id: _canonical_json(item.model_dump(mode="json")) for item in ordered
+        }
         fresh = tuple(
             item
             for item in ordered
             if (
                 reusable.get(item.document_id, ("", ()))[0]
-                != _canonical_json(item.model_dump(mode="json"))
+                != document_jsons[item.document_id]
                 # A recoverable provider outage materializes a zero vector so
                 # lexical/temporal/structured recall remains available.  Do
                 # not cache that degraded vector as if it were a completed
@@ -1693,11 +1697,9 @@ class SQLiteRecallIndex(_RecallIndexCore):
             (
                 item,
                 (
-                    reusable[item.document_id][1]
-                    if item.document_id in reusable
-                    and reusable[item.document_id][0]
-                    == _canonical_json(item.model_dump(mode="json"))
-                    else fresh_rows[item.document_id]
+                    fresh_rows[item.document_id]
+                    if item.document_id in fresh_rows
+                    else reusable[item.document_id][1]
                 ),
             )
             for item in ordered
@@ -1708,15 +1710,28 @@ class SQLiteRecallIndex(_RecallIndexCore):
             for _, vector in rows
         ):
             raise ValueError("cached recall embedding is incompatible with its adapter")
-        set_hash = _digest(
-            [
-                {
-                    "document": document.model_dump(mode="json"),
-                    "embedding": vector,
-                }
-                for document, vector in rows
-            ]
-        )
+        vector_jsons = {
+            document.document_id: (
+                _canonical_snapshot_vector(reusable[document.document_id][2])
+                if document.document_id not in fresh_rows
+                else _canonical_json(vector)
+            )
+            for document, vector in rows
+        }
+        # Exact canonical list encoding, without serializing every unchanged
+        # float vector again or constructing a second whole-corpus object.
+        hasher = hashlib.sha256()
+        hasher.update(b"[")
+        for ordinal, (document, _) in enumerate(rows):
+            if ordinal:
+                hasher.update(b",")
+            hasher.update(b'{"document":')
+            hasher.update(document_jsons[document.document_id].encode("utf-8"))
+            hasher.update(b',"embedding":')
+            hasher.update(vector_jsons[document.document_id].encode("utf-8"))
+            hasher.update(b"}")
+        hasher.update(b"]")
+        set_hash = hasher.hexdigest()
         exact_cursor = (
             cursor.world_revision,
             cursor.deliberation_revision,
@@ -1782,8 +1797,8 @@ class SQLiteRecallIndex(_RecallIndexCore):
                             (
                                 self._world_id,
                                 document.document_id,
-                                _canonical_json(document.model_dump(mode="json")),
-                                _canonical_json(vector),
+                                document_jsons[document.document_id],
+                                vector_jsons[document.document_id],
                                 document.memory_kind,
                                 document.status,
                                 _PRIVACY_RANK[document.privacy_class],
@@ -1864,8 +1879,8 @@ class SQLiteRecallIndex(_RecallIndexCore):
         ).fetchall()
         rows = tuple(
             (
-                RecallDocument.model_validate_json(str(document_json)),
-                tuple(float(item) for item in json.loads(str(embedding_json))),
+                _decode_snapshot_document(str(document_json)),
+                _decode_snapshot_vector(str(embedding_json)),
             )
             for document_json, embedding_json in stored
         )
@@ -1876,6 +1891,22 @@ class SQLiteRecallIndex(_RecallIndexCore):
         close_embedding = getattr(self._embedding, "close", None)
         if callable(close_embedding):
             close_embedding()
+
+
+@lru_cache(maxsize=4096)
+def _decode_snapshot_document(document_json: str) -> RecallDocument:
+    """Decode exact stored bytes only; rows/cursor are still read each time."""
+    return RecallDocument.model_validate_json(document_json)
+
+
+@lru_cache(maxsize=4096)
+def _decode_snapshot_vector(embedding_json: str) -> tuple[float, ...]:
+    return tuple(float(item) for item in json.loads(embedding_json))
+
+
+@lru_cache(maxsize=4096)
+def _canonical_snapshot_vector(embedding_json: str) -> str:
+    return _canonical_json(_decode_snapshot_vector(embedding_json))
 
 
 def _lexical_feature_spans(text: str) -> tuple[tuple[int, int, str], ...]:

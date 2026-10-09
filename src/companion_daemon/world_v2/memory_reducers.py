@@ -8,6 +8,7 @@ import json
 
 from .character_prehistory import PrehistoryArchiveProjection, PrehistoryRecordProjection
 from .prehistory_memory_source import resolve_prehistory_memory_source
+from .projection_lookup import lookup_first
 from .fact_events import FACT_PAYLOAD_MODELS
 from .memory_events import (
     MemoryCandidateChangedPayload,
@@ -623,14 +624,7 @@ def _resolve_source(
     prehistory_archives: tuple[PrehistoryArchiveProjection, ...] = (),
     require_current: bool,
 ) -> PrivacyClass:
-    authority = next(
-        (
-            item
-            for item in committed_events
-            if item.event_id == binding.authority_event_ref
-        ),
-        None,
-    )
+    authority = lookup_first(committed_events, "event_id", binding.authority_event_ref)
     if (
         authority is None
         or authority.world_revision != binding.authority_world_revision

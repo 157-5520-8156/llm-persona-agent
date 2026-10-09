@@ -11,6 +11,7 @@ or join it behind the same compiler seam.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 import unicodedata
 
 
@@ -97,7 +98,8 @@ def _recall_features(texts: tuple[str, ...]) -> frozenset[str]:
     return frozenset(features)
 
 
-def lexical_relevance_bp(query_text: str, document_texts: tuple[str, ...]) -> int:
+@lru_cache(maxsize=4096)
+def _cached_lexical_relevance_bp(query_text: str, document_texts: tuple[str, ...]) -> int:
     query = _recall_features((query_text,))
     document = _recall_features(document_texts)
     if not query or not document:
@@ -108,6 +110,17 @@ def lexical_relevance_bp(query_text: str, document_texts: tuple[str, ...]) -> in
     numerator = sum(len(feature) * len(feature) for feature in overlap)
     denominator = max(1, sum(len(feature) * len(feature) for feature in query))
     return min(10_000, numerator * 10_000 // denominator)
+
+
+def lexical_relevance_bp(query_text: str, document_texts: tuple[str, ...]) -> int:
+    # Numeric surface overlap only, keyed by every exact input byte. No actor
+    # selection, source eligibility, time or relevance-policy decision is cached.
+    # Limit retained input size as well as entry count.
+    if (type(query_text) is str and type(document_texts) is tuple
+        and all(type(text) is str for text in document_texts)
+        and len(query_text) + sum(map(len, document_texts)) <= 1024):
+        return _cached_lexical_relevance_bp(query_text, document_texts)
+    return _cached_lexical_relevance_bp.__wrapped__(query_text, document_texts)
 
 
 class AssociativeRecallCompiler:

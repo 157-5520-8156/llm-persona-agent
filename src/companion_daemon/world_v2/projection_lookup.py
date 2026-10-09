@@ -2,6 +2,7 @@
 
 from collections import OrderedDict
 from threading import RLock
+from operator import attrgetter
 
 from .schema_core import FrozenModel
 
@@ -15,12 +16,15 @@ _BUILD_AFTER_LOOKUPS = 8
 
 def _build_index(rows, attribute):
     index = {}
+    path = attribute.split(".")
     for row in rows:
-        if (not isinstance(row, FrozenModel)
-            or type(row).model_config.get("frozen") is not True
-            or attribute not in type(row).model_fields):
-            return False
-        key = getattr(row, attribute)
+        key = row
+        for part in path:
+            if (not isinstance(key, FrozenModel)
+                or type(key).model_config.get("frozen") is not True
+                or part not in type(key).model_fields):
+                return False
+            key = getattr(key, part)
         if not isinstance(key, (str, int, type(None))):
             return False
         index.setdefault(key, row)
@@ -35,8 +39,9 @@ def lookup_first(rows, attribute: str, value, *, predicate=None):
     Mutable collections/rows and non-scalar keys use the ordinary scan. The
     caller must still verify the returned row's current provenance and access.
     """
+    get_key = attrgetter(attribute)
     def scan():
-        return next((row for row in rows if getattr(row, attribute) == value
+        return next((row for row in rows if get_key(row) == value
                      and (predicate is None or predicate(row))), None)
 
     if type(rows) is not tuple or not 8 <= len(rows) <= _MAX_INDEX_ROWS:

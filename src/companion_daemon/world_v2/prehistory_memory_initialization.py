@@ -7,6 +7,7 @@ and later forgetting still apply; initialization is not a salience judgement.
 from __future__ import annotations
 
 from datetime import datetime, UTC
+from functools import lru_cache
 from typing import Literal
 from pydantic import Field
 
@@ -27,6 +28,7 @@ POLICY = "policy:prehistory-initial-memory.1"
 ASSESSMENT = "initialization_defaults_not_character_judgment"
 
 
+@lru_cache(maxsize=1)
 def initial_retrieval_defaults():
     from .fact_memory_draft import FactMemoryRetentionDraft
 
@@ -65,6 +67,16 @@ class PrehistoryMemoryInitializationRecorded(FrozenModel):
     actor_ref: str
     source_binding: MemorySourceBinding
     recorded_at: datetime
+
+
+@lru_cache(maxsize=2048)
+def _decoded_initialization(payload_json: str):
+    return PrehistoryMemoryInitializationRecorded.model_validate_json(payload_json)
+
+
+@lru_cache(maxsize=1)
+def _initial_policy_hash():
+    return digest(initial_retrieval_defaults())
 
 
 def reduce_initialization(state, event):
@@ -114,10 +126,8 @@ def is_unassessed_initial_memory(candidate, *, ledger):
     event, _ = grant
     if event.event_type != EVENT_TYPE or event.actor != ACTOR or event.source != SOURCE:
         return False
-    payload = PrehistoryMemoryInitializationRecorded.model_validate_json(event.payload_json)
-    return payload.source_binding == bindings[0] and payload.policy_hash == digest(
-        initial_retrieval_defaults()
-    )
+    payload = _decoded_initialization(event.payload_json)
+    return payload.source_binding == bindings[0] and payload.policy_hash == _initial_policy_hash()
 
 
 class PrehistoryMemoryInitializer:
