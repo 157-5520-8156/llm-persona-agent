@@ -1,3 +1,30 @@
+World outlook continuity + central NPC activities implemented (2026-10-09):
+Baselinead8070ce; feature2bc3b7c4; original-script recovery2c99b515. Spec
+ docs/design/world-outlook-continuity-2026-10-09.md; audit docs/audits/world-outlook-continuity-2026-10-09.md.
+Private thread status/history anchors + real effect/Experience/Memory journal across revisions.
+Author reads <=8 bounded historical materials via existing same-cursor local Recall snapshot; no
+extra LLM extractor/reviewer/document embedding. Only typed retained external history and owned
+settled sources; no legacy-untyped/private interpretation/intent/withheld/foreign material.
+Current script freezes navigation in immutable consequence bytes; rawmetadata never enters model
+Context. Ordinary Memory/World eligibility precedes bounded two-way one-hop Recall links after
+settlement. Original source hashes remain authority; a narrative link is not causal evidence.
+NPC scripted activities start/complete, cancel exact NPC-owned plan, or change lifecycle to
+inactive/departed/retired using existing events.0NPC-model/event-author calls at execution.
+Offscreen plans never put protagonist among participants or invent her Experience/Memory. Only
+reviewed_schedule grants whole-window NPC place access; no current-location mutation/assets/newNPC.
+Prepaid completion works even when planning budget paused. Different-script failed retries get
+new exact author audit; materialized nodes cannot be rewritten; original recovery binding checked.
+8newtests +361relatedpass;15changedPythonRuff/compilepass; Standards1P2fixed/closed,Specno findings.
+Three-day runtimefixture4central calls/0NPC/0execution-author,mainplanunchanged,replaymatches.
+Full frozen2c99b515:10370pass/19skip/2xfail/1dependencywarning,1234.27s/exit0.15sourcehashes
+verified unchanged after full run; manifest and source-freeze-verification in private audit output.
+Normal console no-networkpreflight with fullprehistory clone:deferred/main_timeout/primary_timeout
+beforeHTTP,0visible replies/0DeepSeekrequests. Context~9.4s,totalturn11.609s under concurrent fullsuite;
+not isolated latency qualification.1590vectorsreused/1newtext. SharedCNY5ledger166requests/spent4.628753/
+unknownreserve.231340/remaining.139907 unchanged. No fresh reserve quote because HTTP never reached.
+Do not relabel this as budget rejection or role silence/success. Real narrative/dialogue qualification
+still incomplete; default-off isolated branch only, no production/QQ/config changes.
+
 Private rolling World outlook and central NPC execution implemented (2026-10-09):
 User clarified only protagonist independently deliberates; one World Author prewrites external
 conditions and attributed NPC utterances. Baseline9cb07f2b; feature27bd40fc; recoveryf219855b.
