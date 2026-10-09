@@ -897,6 +897,8 @@ class RecallCorpusCompiler:
                 interpretation_scope=("current_revisable_understanding" if item.read_status == "active"
                                       else "remembered_understanding_not_current_belief"),
             ))
+        from .lived_story import connect_readable_documents
+        documents = connect_readable_documents(documents, world_life=sources.world_life, actor_ref=actor_ref)
         ordered = tuple(sorted(documents, key=lambda item: item.document_id))
         if len({item.document_id for item in ordered}) != len(ordered):
             raise ValueError("recall corpus contains duplicate document identities")

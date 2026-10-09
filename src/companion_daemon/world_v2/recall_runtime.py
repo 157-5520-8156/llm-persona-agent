@@ -1202,6 +1202,26 @@ class RecallCoordinator:
         finally:
             self._end_recall()
 
+    def world_author_history(self, *, expected_cursor, trigger_ref, actor_ref, query_text, link_refs=()):
+        """Bounded local search of an existing snapshot, with no provider or role-pull receipt.
+
+        Callers must rebind returned history through their narrower author
+        capabilities. This does not make the World Author a character thinker.
+        """
+        self._begin_recall()
+        try:
+            context = self._context_for(expected_cursor, trigger_ref=trigger_ref)
+            if context is None or context.actor_ref != actor_ref:
+                return ()
+            query = RecallQuery(query_text=query_text[:1024] or "生活", cursor=expected_cursor,
+                actor_ref=actor_ref, subject_refs=context.subject_refs,
+                viewer_privacy_ceiling="private", at=context.logical_time,
+                memory_kinds=("episodic",), link_refs=tuple(sorted(set(link_refs)))[:32],
+                limit=8, accessibility_seed="world-author-history")
+            return tuple(hit.document for hit in context.snapshot.search(query).hits)
+        finally:
+            self._end_recall()
+
     def _begin_recall(self) -> None:
         with self._active_recall_guard:
             if self._closed:

@@ -4564,6 +4564,7 @@ def build_sqlite_world_v2_turn_application(
                     path=path, world_id=config.world_id, actor_ref=config.companion_actor_ref,
                 ),
                 author=life_world_author_model, actor_ref=config.companion_actor_ref,
+                history_reader=recall_coordinator.world_author_history,
                 npc_refs_reader=lambda state: tuple(
                     v.npc_ref for v in npc_identity_views(state, content_store=life_content_store)
                     if v.lifecycle_state == "active"

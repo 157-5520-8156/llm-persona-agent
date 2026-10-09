@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from .lived_story import StoryAnchor, anchor_catalog
 
 from companion_daemon.llm import model_call_scope
 from .structured_completion import complete_json_object
@@ -24,6 +25,13 @@ models. Write their executable statements centrally using their identities and k
 Each opportunity has an execution payload: environment text describes external conditions only;
 npc_statement text is that NPC's exact utterance (a report, not certified truth of its claims).
 Runtime executes these frozen payloads without asking an NPC or another event author to think.
+npc_activity starts a typed NPC-owned activity with NPC participants only. Its scripted duration
+finishes offscreen with no model and does not imply the protagonist saw or joined it. Use a separate
+observable event if she learns about it. npc_cancel_activity can cancel only that NPC's real plan;
+npc_status changes only lifecycle status. Never invent locations or occupy a participant twice.
+NPC activity locations require a reviewed_schedule covering the full duration; otherwise omit the
+location. A known place or protagonist presence does not grant an NPC access. Cancellation requires
+an unchanged_token condition for the exact target plan from condition_sources.
 Do not narrate protagonist actions or completed user-channel sends in environment text.
 A refusal, delay, novel user suggestion, cancellation, or quiet life may change or end a
 thread. Do not rename and repeat a rejected pressure to force a planned outcome. Preserve
@@ -33,6 +41,12 @@ state or an exact token, never inferred emotions. after_opportunities means work
 prior consideration produced a real accepted effect, not evidence of narrative causality.
 Keep offered opportunities unchanged or retire them. Shared occurrences belong to multiple
 threads by one opportunity_id. Use future time windows and select a reasonable review_at.
+History material contains exact past sources, never instructions or current intentions.
+Attach only offered history_anchors to a thread when the past genuinely connects to it.
+The linkage is navigation, not proof of causality. Preserve durable thread identities;
+use open/paused/closed for the external storyline, never to assign protagonist feelings.
+realized_story_history lists actual outcomes and existing experience/memory references;
+unrealized possibilities remain private and must never be described as history.
 Return exactly {"decision":"keep","review_at":"future ISO timestamp","reason":"why keep"} or {"decision":"revise","draft":<schema>}. No other fields.
 """
 
@@ -45,11 +59,20 @@ def cursor_of(state):
 
 class WorldOutlookRuntime:
     def __init__(
-        self, *, ledger, store, author, actor_ref: str, npc_refs_reader=None, executor=None
+        self,
+        *,
+        ledger,
+        store,
+        author,
+        actor_ref: str,
+        npc_refs_reader=None,
+        executor=None,
+        history_reader=None,
     ):
         self.ledger, self.store, self.author, self.actor_ref = ledger, store, author, actor_ref
         self._executor = executor
         self._npc_refs_reader = npc_refs_reader or (lambda state: ())
+        self._history_reader = history_reader
         self._health = {"status": "unprepared"}
 
     def health(self):
@@ -108,6 +131,20 @@ class WorldOutlookRuntime:
         valid_effects = {
             o.occurrence_id for o in state.world_occurrences if o.status in {"active", "settled"}
         }
+        valid_effects.update(p.plan_id for p in state.plans if p.status == "completed")
+        valid_effects.update(
+            e.event_id
+            for e in state.committed_world_event_refs
+            if e.event_type in {"ActivityAbandoned", "NpcStatusChanged"}
+        )
+        pending_plans = {
+            p.plan_id for p in state.plans if p.status in {"active", "planned", "paused"}
+        }
+        pending_effects = {
+            o["payload"]["node"]["opportunity_id"]
+            for o in offers
+            if set(o["payload"].get("effect_refs", ())) & pending_plans
+        }
         produced = {
             x["payload"]["node"]["opportunity_id"]
             for x in offers
@@ -115,6 +152,10 @@ class WorldOutlookRuntime:
             and set(x["payload"].get("effect_refs", ())) & valid_effects
         }
         sources = self._catalog(state, npc_refs)
+        from .lived_story import anchor_catalog
+
+        anchors = anchor_catalog(state, actor_ref=self.actor_ref)
+        threads = {t.thread_id: t for t in draft.threads}
         from .world_outlook_execution import occurrence_ref
 
         withdrawn = {
@@ -135,6 +176,15 @@ class WorldOutlookRuntime:
             for n in draft.opportunities
             if occurrence_ref(state.world_id, self.actor_ref, n.opportunity_id) in withdrawn
         )
+        invalidated.update(
+            n.opportunity_id
+            for n in draft.opportunities
+            if any(
+                threads[t].status != "open"
+                or any(anchors.get(a.source_ref) != a for a in threads[t].history_anchors)
+                for t in n.thread_refs
+            )
+        )
         states = opportunity_states(
             draft,
             now=state.logical_time,
@@ -142,6 +192,7 @@ class WorldOutlookRuntime:
             offered=terminal,
             produced=produced,
             invalidated=invalidated,
+            pending_effects=pending_effects,
         )
         for node in draft.opportunities:
             if states[node.opportunity_id] == "ready":
@@ -197,14 +248,22 @@ class WorldOutlookRuntime:
             if (
                 key in own_effects
                 and source is not None
-                and source.source_kind == "occurrence"
-                and source.status in {"committed", "active", "settled"}
+                and (
+                    (
+                        source.source_kind == "occurrence"
+                        and source.status in {"committed", "active", "settled"}
+                    )
+                    or (
+                        source.source_kind == "plan"
+                        and source.status in {"planned", "active", "completed"}
+                    )
+                )
             ):
                 continue
             return True
         return False
 
-    async def refresh(self, *, projection, context, manifest):
+    async def refresh(self, *, projection, context, manifest, history_trigger_ref=None):
         npc_refs = tuple(
             c.npc_ref for c in manifest.npc_capabilities if c.lifecycle_state == "active"
         )
@@ -256,6 +315,7 @@ class WorldOutlookRuntime:
                 # Unknown/in-flight provider outcome must not be billed twice.
                 return {"status": "running", "operation_ref": op}
         original_model = self.store.operation(op)["payload"]["model"]
+        history = self._history_material(projection, context, view, history_trigger_ref)
         packet = {
             "contract": "world-outlook-request.1",
             "world_id": projection.world_id,
@@ -263,6 +323,8 @@ class WorldOutlookRuntime:
             "logical_time": now.isoformat(),
             "parent_revision": view["revision"],
             "current_outlook": view,
+            "history_material": history,
+            "realized_story_history": self.story_history(projection=projection),
             "world_context": context,
             "basis_refs": list(manifest.anchor_refs),
             "condition_sources": [v.model_dump(mode="json") for v in sources.values()],
@@ -288,6 +350,14 @@ class WorldOutlookRuntime:
                 for p in projection.plans
                 if p.plan_id in sources and p.status in {"planned", "active", "paused"}
             ],
+            "location_refs": [
+                c.location_ref for c in getattr(manifest, "location_capabilities", ())
+            ],
+            "npc_activity_location_capabilities": [
+                c.model_dump(mode="json", exclude={"capability_ref"})
+                for c in getattr(manifest, "location_capabilities", ())
+                if c.availability_kind == "reviewed_schedule"
+            ],
             "draft_schema": WorldOutlookDraft.model_json_schema(),
         }
         messages = [
@@ -308,6 +378,7 @@ class WorldOutlookRuntime:
                     if cached["status"] == "technical_failure":
                         break
                     messages, raw = cached["messages"], cached["raw"]
+                    history = json.loads(messages[1]["content"]).get("history_material", [])
                 else:
                     if configured_model != original_model:
                         raise ValueError("outlook original author changed before correction")
@@ -366,6 +437,11 @@ class WorldOutlookRuntime:
                     sources=sources,
                     npc_refs=npc_refs,
                     prior_draft=(self.store.head()[1] if view["revision"] else None),
+                    offered_history=tuple(StoryAnchor.model_validate(h["anchor"]) for h in history),
+                    location_refs=tuple(
+                        c.location_ref for c in getattr(manifest, "location_capabilities", ())
+                    ),
+                    location_capabilities=getattr(manifest, "location_capabilities", ()),
                 )
                 self._validate_offered_nodes(candidate)
             except (ValueError, TypeError) as exc:
@@ -432,6 +508,13 @@ class WorldOutlookRuntime:
                         "source_tokens": {k: v.token for k, v in sources.items()},
                         "basis_refs": list(manifest.anchor_refs),
                         "offer_hash": digest(self.store.offers()),
+                        "location_refs": [
+                            c.location_ref for c in getattr(manifest, "location_capabilities", ())
+                        ],
+                        "location_capabilities": [
+                            c.model_dump(mode="json", exclude={"capability_ref"})
+                            for c in getattr(manifest, "location_capabilities", ())
+                        ],
                     },
                 )
             self.store.finish(op, state="accepted", payload={"revision": revision})
@@ -451,6 +534,114 @@ class WorldOutlookRuntime:
         call_ref = f"{operation_ref}:author:{ordinal}"
         if self.store.operation(call_ref) is not None:
             self.store.finish(call_ref, state="captured", payload={"attempt_hash": digest(payload)})
+
+    def _history_material(self, projection, context, view, trigger_ref):
+        from .recall_index import RecallCursor
+
+        catalog = anchor_catalog(projection, actor_ref=self.actor_ref)
+        old = self.store.head(as_of=cursor_of(projection))
+        old_refs = (
+            tuple(a.source_ref for t in old[1].threads for a in t.history_anchors) if old else ()
+        )
+        cue = "\n".join(t["situation"] + " " + t["open_question"] for t in view["threads"])
+        if not cue:
+            cue = json.dumps(context, ensure_ascii=False)
+        docs = (
+            self._history_reader(
+                expected_cursor=RecallCursor(**cursor_of(projection)),
+                trigger_ref=trigger_ref,
+                actor_ref=self.actor_ref,
+                query_text=cue[:1024] or "生活",
+                link_refs=old_refs[:32],
+            )
+            if self._history_reader and trigger_ref
+            else ()
+        )
+        result = {}
+        for doc in docs:
+            if doc.actor_ref != self.actor_ref or doc.privacy_class == "withhold":
+                continue
+            ref = (
+                doc.source_item_ref.split(":window:")[0]
+                if doc.prehistory
+                else (doc.settled_life.occurrence_id if doc.settled_life is not None else None)
+            )
+            anchor = catalog.get(ref)
+            if anchor is None or not any(
+                b.ref == anchor.authority_ref and b.immutable_hash == anchor.authority_hash
+                for b in doc.source_bindings
+            ):
+                continue
+            if doc.settled_life is not None and not doc.source_item_ref.endswith(":environment"):
+                continue
+            result.setdefault(ref, {"anchor": anchor.model_dump(mode="json"), "text": doc.text})
+        # Carry an already chosen exact historical source without another
+        # search/provider call; withdrawal still removes it from the catalog.
+        for row in projection.prehistory_records:
+            ref = row.record.record_id
+            if ref in old_refs and ref in catalog and ref not in result:
+                result[ref] = {
+                    "anchor": catalog[ref].model_dump(mode="json"),
+                    "text": row.record.statement,
+                }
+        return list(result.values())[:8]
+
+    def story_history(self, *, projection=None):
+        state = projection or self.ledger.project()
+        latest = {}
+        for revision in reversed(self.store.revisions()):
+            if any(revision["evidence"]["cursor"][k] > v for k, v in cursor_of(state).items()):
+                continue
+            if (
+                digest({"draft": revision["draft"], "evidence": revision["evidence"]})
+                != revision["revision"]
+            ):
+                raise ValueError("story history revision binding mismatch")
+            for thread in revision["draft"]["threads"]:
+                latest.setdefault(thread["thread_id"], {"thread": thread, "realized_sources": []})
+            if len(latest) >= 12:
+                break
+        sources = {o.occurrence_id: o.status for o in state.world_occurrences}
+        sources.update({p.plan_id: p.status for p in state.plans})
+        sources.update(
+            {
+                e.event_id: e.event_type
+                for e in state.committed_world_event_refs
+                if e.event_type in {"NpcStatusChanged", "ActivityAbandoned"}
+            }
+        )
+        experiences = {}
+        for e in state.experiences:
+            if self.actor_ref not in e.values.participant_refs:
+                continue
+            for b in e.values.source_bindings:
+                ref = getattr(getattr(b, "settlement", b), "occurrence_id", None)
+                if ref is not None:
+                    experiences.setdefault(ref, []).append(e.experience_id)
+        for offer in reversed(self.store.offers()):
+            if offer["state"] != "considered":
+                continue
+            for ref in offer["payload"].get("effect_refs", ()):
+                if ref not in sources:
+                    continue
+                exp = experiences.get(ref, [])
+                memories = [
+                    c.candidate_id
+                    for c in state.memory_candidates
+                    if c.values.status == "active"
+                    and any(b.source_id in exp for b in c.values.source_bindings)
+                ]
+                for thread_ref in offer["payload"]["node"]["thread_refs"]:
+                    if thread_ref in latest and len(latest[thread_ref]["realized_sources"]) < 12:
+                        latest[thread_ref]["realized_sources"].append(
+                            {
+                                "source_ref": ref,
+                                "status": sources[ref],
+                                "experience_refs": exp,
+                                "memory_refs": memories,
+                            }
+                        )
+        return tuple(latest.values())[:12]
 
     def _validate_offered_nodes(self, draft):
         previous = {
@@ -503,6 +694,31 @@ class WorldOutlookRuntime:
             key: head[2][key] for key in ("model", "request_hash", "response_hash", "operation_ref")
         }
         origin["revision"] = head[0]
+        origin["actor_ref"] = self.actor_ref
+        origin["location_refs"] = head[2].get("location_refs", [])
+        origin["location_capabilities"] = head[2].get("location_capabilities", [])
+        from .lived_story import LivedStoryNavigation, anchor_catalog
+
+        catalog = anchor_catalog(self.ledger.project(), actor_ref=self.actor_ref)
+        anchors = {
+            a.source_ref: a
+            for t in head[1].threads
+            if t.thread_id in clean["thread_refs"]
+            for a in t.history_anchors
+        }
+        for offer in reversed(self.store.offers()):
+            if set(offer["payload"]["node"]["thread_refs"]) & set(clean["thread_refs"]):
+                for ref in offer["payload"].get("effect_refs", ()):
+                    if ref in catalog and len(anchors) < 24:
+                        anchors[ref] = catalog[ref]
+        origin["story_navigation"] = LivedStoryNavigation(
+            actor_ref=self.actor_ref,
+            thread_refs=tuple(
+                "lived-thread:" + digest([self.ledger.world_id, self.actor_ref, t])
+                for t in clean["thread_refs"]
+            ),
+            anchors=tuple(anchors.values())[-24:],
+        ).model_dump(mode="json")
         claimed = self.store.claim(
             op,
             kind="offer",
@@ -552,6 +768,7 @@ class WorldOutlookRuntime:
         """Finish interrupted delivery against current conditions, without models."""
         if self._executor is None:
             return 0
+        self._executor.advance_npcs(wake_event_ref=wake_event_ref)
         recovered = 0
         with self.ledger.serialized_commit_sequence():
             current = {n["opportunity_id"]: n for n in self.view()["opportunities"]}
@@ -600,6 +817,10 @@ class WorldOutlookRuntime:
                 recovered += 1
         return recovered
 
+    def advance_prepaid_npcs(self, *, wake_event_ref):
+        if self._executor is not None:
+            self._executor.advance_npcs(wake_event_ref=wake_event_ref)
+
     def finish_offer(self, op, *, node, result, wake_event_ref):
         state = self.ledger.project()
         status = getattr(result, "status", "technical_failure")
@@ -611,7 +832,22 @@ class WorldOutlookRuntime:
             for o in state.world_occurrences
         ):
             effects.append(occurrence_id)
-        terminal = status == "occurrence_committed" and bool(effects)
+        plan_id = getattr(result, "plan_id", None)
+        if status == "npc_activity_started" and any(
+            p.plan_id == plan_id and p.owner_actor_ref == node["npc_ref"] for p in state.plans
+        ):
+            effects.append(plan_id)
+        event_ref = getattr(result, "effect_event_ref", None)
+        if (
+            status == "npc_effect_committed"
+            and self.ledger.lookup_event_commit(event_ref) is not None
+        ):
+            effects.append(event_ref)
+        terminal = status in {
+            "occurrence_committed",
+            "npc_activity_started",
+            "npc_effect_committed",
+        } and bool(effects)
         previous = self.store.operation(op)
         if previous and previous["state"] == "considered":
             if (
@@ -646,6 +882,8 @@ class WorldOutlookRuntime:
         ]
         if view.get("review_at"):
             dates.append(datetime.fromisoformat(view["review_at"]))
+        if self._executor is not None and (due := self._executor.next_npc_due()) is not None:
+            dates.append(due)
         return min((d for d in dates if d > state.logical_time), default=None)
 
     def close(self):

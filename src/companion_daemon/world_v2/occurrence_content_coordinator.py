@@ -214,6 +214,15 @@ class OccurrenceContentCoordinator:
         if request.world_id != self._ledger.world_id:
             raise ValueError("occurrence content request belongs to another world")
         for candidate in request.candidate_contents:
+            if candidate.result_contract == "world-consequence.2":
+                navigation = WorldConsequenceV2.model_validate_json(candidate.text).story_navigation
+                if navigation is not None:
+                    from .lived_story import validate_navigation
+                    if navigation.actor_ref not in request.occurrence.participant_refs:
+                        raise ValueError("story navigation requires its observer participant")
+                    validate_navigation(navigation, projection=self._ledger.project(),
+                                        privacy_class=request.occurrence.visibility)
+        for candidate in request.candidate_contents:
             self._store.put_if_absent(candidate.sidecar_record())
 
         occurrence = request.occurrence.model_copy(

@@ -939,6 +939,9 @@ class _RecallIndexCore:
             from .story_episode import select_episode_page
             hits = select_episode_page(eligible_rows=eligible_rows, ranked=ranked,
                 request=query.episode_window, limit=query.limit, index_version=self._index_version)
+        from .lived_story import expand_lived_story_hits
+        hits = expand_lived_story_hits(hits=hits, eligible_rows=eligible_rows,
+            query=query, index_version=self._index_version)
         # A byte-limited view can retain coordinates of another eligible
         # scene for a later pull. This never names a hidden/forgotten/future
         # endpoint, nor supplies its unpresented text as claim evidence.

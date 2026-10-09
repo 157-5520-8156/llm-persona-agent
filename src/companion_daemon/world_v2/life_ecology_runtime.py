@@ -325,6 +325,18 @@ class LifeEcologyRuntime:
                 trigger_id=claim.trigger_id,
                 reason_code="life_ecology.run_in_progress",
             )
+        if self._world_outlook is not None and any(
+            ref.event_id == wake_event_ref and ref.event_type == "ClockAdvanced"
+            for ref in projection.committed_world_event_refs
+        ):
+            # Completion of an already authored NPC activity has no model
+            # expense. A spent planning budget must not freeze it mid-action.
+            try:
+                self._world_outlook.advance_prepaid_npcs(wake_event_ref=wake_event_ref)
+                projection = self._ledger.project()
+            except Exception as exc:
+                self._world_outlook.record_failure(exc)
+                _LOG.warning("prepaid NPC execution unavailable: %s", type(exc).__name__)
         if self.background_budget_paused():
             # This is a capacity fact, not a character decision and not a
             # technical failure: today's background envelope is spent, so the
@@ -980,6 +992,8 @@ class LifeEcologyRuntime:
                 or biographical_status == "transitioned"
                 or life_development_status
                 in {
+                    "npc_activity_started",
+                    "npc_effect_committed",
                     "plan_committed",
                     "plan_completed",
                     "occurrence_committed",

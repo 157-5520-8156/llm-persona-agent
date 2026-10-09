@@ -11,6 +11,7 @@ from pydantic import Field, model_validator
 
 from .schema_core import FrozenModel
 from .schema_core import PrivacyClass
+from .lived_story import StoryAnchor, LivedStoryNavigation, validate_navigation
 
 
 def digest(value: object) -> str:
@@ -41,15 +42,52 @@ class OutlookThread(FrozenModel):
     thread_id: str = Field(min_length=1, max_length=96)
     situation: str = Field(min_length=1, max_length=600)
     open_question: str = Field(min_length=1, max_length=600)
+    status: Literal["open", "paused", "closed"] = Field(
+        default="open", exclude_if=lambda v: v == "open"
+    )
+    history_anchors: tuple[StoryAnchor, ...] = Field(
+        default=(), max_length=8, exclude_if=lambda v: not v
+    )
 
 
 class OutlookExecution(FrozenModel):
     """A centrally authored external stimulus, never a protagonist action."""
 
-    kind: Literal["environment", "npc_statement"]
+    kind: Literal[
+        "environment", "npc_statement", "npc_activity", "npc_cancel_activity", "npc_status"
+    ]
     text: str = Field(min_length=1, max_length=2400)
     privacy_class: PrivacyClass = "private"
     duration_minutes: int = Field(default=30, ge=1, le=720)
+    activity_kind: str | None = Field(
+        default=None, min_length=1, max_length=128, exclude_if=lambda v: v is None
+    )
+    location_ref: str | None = Field(
+        default=None, min_length=1, max_length=512, exclude_if=lambda v: v is None
+    )
+    participant_npc_refs: tuple[str, ...] = Field(
+        default=(), max_length=6, exclude_if=lambda v: not v
+    )
+    target_plan_ref: str | None = Field(
+        default=None, min_length=1, max_length=512, exclude_if=lambda v: v is None
+    )
+    target_status: Literal["dormant", "departed", "retired"] | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
+
+    @model_validator(mode="after")
+    def action_fields_match_kind(self):
+        if (self.kind == "npc_activity") != (self.activity_kind is not None):
+            raise ValueError("only NPC activities require an activity kind")
+        if self.kind != "npc_activity" and (self.location_ref or self.participant_npc_refs):
+            raise ValueError("only NPC activities reserve participants and places")
+        if (self.kind == "npc_cancel_activity") != (self.target_plan_ref is not None):
+            raise ValueError("only NPC cancellation requires a target plan")
+        if (self.kind == "npc_status") != (self.target_status is not None):
+            raise ValueError("only NPC lifecycle changes require target status")
+        if len(set(self.participant_npc_refs)) != len(self.participant_npc_refs):
+            raise ValueError("NPC participants must be distinct")
+        return self
 
 
 class OutlookOpportunity(FrozenModel):
@@ -71,8 +109,8 @@ class OutlookOpportunity(FrozenModel):
             raise ValueError("outlook window must be nonempty")
         if (self.lane == "npc") != (self.npc_ref is not None):
             raise ValueError("only NPC scripts identify a target NPC")
-        if (self.lane == "npc") != (self.execution.kind == "npc_statement"):
-            raise ValueError("NPC execution must be an attributed statement")
+        if (self.lane == "npc") != self.execution.kind.startswith("npc_"):
+            raise ValueError("NPC execution must use a typed NPC action")
         return self
 
 
@@ -180,6 +218,9 @@ def validate_draft(
     sources,
     npc_refs,
     prior_draft=None,
+    offered_history=(),
+    location_refs=(),
+    location_capabilities=(),
 ):
     if (
         draft.world_id != projection.world_id
@@ -191,8 +232,35 @@ def validate_draft(
     if now is None or not now < draft.review_at <= draft.horizon_end <= now + timedelta(days=30):
         raise ValueError("outlook horizon must be within the next 30 days")
     old_nodes = {n.opportunity_id: n for n in prior_draft.opportunities} if prior_draft else {}
+    offered = set(offered_history)
+    if prior_draft is not None:
+        offered.update(a for t in prior_draft.threads for a in t.history_anchors)
+    for thread in draft.threads:
+        if not set(thread.history_anchors) <= offered:
+            raise ValueError("story anchors were not offered to this author")
+        validate_navigation(
+            LivedStoryNavigation(
+                actor_ref=actor_ref, thread_refs=(), anchors=thread.history_anchors
+            ),
+            projection=projection,
+            privacy_class="withhold",
+        )
+    threads = {t.thread_id: t for t in draft.threads}
     existing_events = {e.event_id for e in projection.committed_world_event_refs}
     for node in draft.opportunities:
+        if any(threads[t].status != "open" for t in node.thread_refs):
+            raise ValueError("new opportunity belongs to a paused or closed thread")
+        validate_navigation(
+            LivedStoryNavigation(
+                actor_ref=actor_ref,
+                thread_refs=(),
+                anchors=tuple(
+                    dict.fromkeys(a for t in node.thread_refs for a in threads[t].history_anchors)
+                ),
+            ),
+            projection=projection,
+            privacy_class=node.execution.privacy_class,
+        )
         allowed_basis = set(basis_refs)
         if old_nodes.get(node.opportunity_id) == node:
             allowed_basis |= set(node.basis_refs) & existing_events
@@ -205,6 +273,16 @@ def validate_draft(
             rank = ("public", "shareable", "personal", "private", "withhold")
             if rank.index(node.execution.privacy_class) < rank.index(npc.privacy_class):
                 raise ValueError("outlook NPC script weakens source privacy")
+        from .world_outlook_npc import validate_npc_execution
+
+        validate_npc_execution(
+            node,
+            projection=projection,
+            npc_refs=npc_refs,
+            location_refs=location_refs,
+            location_capabilities=location_capabilities,
+            check_busy=False,
+        )
         for condition in node.conditions:
             source = sources.get(condition.source_ref)
             if source is None:
@@ -218,7 +296,9 @@ def validate_draft(
                 raise ValueError("outlook source token does not match current state")
 
 
-def opportunity_states(draft, *, now, sources, offered, produced, invalidated=()):
+def opportunity_states(
+    draft, *, now, sources, offered, produced, invalidated=(), pending_effects=()
+):
     """Evaluate authored conditions only; never decide a character response."""
     nodes = {n.opportunity_id: n for n in draft.opportunities}
     states = {}
@@ -251,7 +331,9 @@ def opportunity_states(draft, *, now, sources, offered, produced, invalidated=()
                 if parent in produced:
                     continue
                 prior = evaluate(parent)
-                if prior in {"invalidated", "expired", "considered"}:
+                if prior in {"invalidated", "expired"} or (
+                    prior == "considered" and parent not in pending_effects
+                ):
                     state = "invalidated"
                     break
                 if state != "invalidated":

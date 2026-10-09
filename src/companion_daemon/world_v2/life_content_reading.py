@@ -15,6 +15,7 @@ from typing import Literal
 from pydantic import Field
 
 from .schema_core import FrozenModel
+from .lived_story import LivedStoryNavigation
 from .projection_lookup import lookup_first
 from .life_content_store import life_content_payload_hash
 from .world_consequence_contract import WorldConsequenceExecutionBinding, WorldConsequenceV2
@@ -39,6 +40,9 @@ class AuthorizedAttemptExcerpt(FrozenModel):
 class WorldConsequenceReading(FrozenModel):
     contract: Literal["world-consequence.2"] = "world-consequence.2"
     environment: WorldEnvironmentExcerpt
+    # Reader-internal association metadata; only corpus-filtered opaque links
+    # may leave through Recall. Raw historical refs never reach model JSON.
+    story_navigation: LivedStoryNavigation | None = Field(default=None, exclude=True)
     authorized_attempt_result: AuthorizedAttemptExcerpt | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )
@@ -107,6 +111,7 @@ class LifeContentReading(FrozenModel):
         return LifeContentReading(
             world_consequence=WorldConsequenceReading(
                 environment=environment, authorized_attempt_result=attempt,
+                story_navigation=world.story_navigation,
             ),
             character_response=response,
         )
@@ -185,6 +190,7 @@ def world_consequence_reading(
 ) -> WorldConsequenceReading:
     attempt = consequence.authorized_attempt_result
     return WorldConsequenceReading(
+        story_navigation=consequence.story_navigation,
         environment=WorldEnvironmentExcerpt(
             text=consequence.environment_text,
             epistemic_scope="settled_world_environment" if settled else "candidate_world_environment",

@@ -28,6 +28,15 @@ class WorldOutlookExecutor:
         if occurrence_content.ledger is not ledger:
             raise ValueError("outlook executor must use the same World")
         self._ledger, self._content, self._owner = ledger, occurrence_content, actor_ref
+        from .world_outlook_npc import CentralNpcExecutor
+
+        self._npcs = CentralNpcExecutor(ledger=ledger, actor_ref=actor_ref)
+
+    def advance_npcs(self, *, wake_event_ref):
+        self._npcs.advance(wake_event_ref=wake_event_ref)
+
+    def next_npc_due(self):
+        return self._npcs.next_due()
 
     def cancel_pending(self, *, node, wake_event_ref):
         """Retire an unactivated intermediate write whose conditions no longer hold."""
@@ -87,6 +96,10 @@ class WorldOutlookExecutor:
             )
 
     def recover(self, *, node):
+        from .world_outlook_npc import NPC_EXECUTION_KINDS
+
+        if node["execution"]["kind"] in NPC_EXECUTION_KINDS:
+            return self._npcs.recover(OutlookOpportunity.model_validate_json(json.dumps(node)))
         ref = occurrence_ref(self._ledger.world_id, self._owner, node["opportunity_id"])
         occurrence = next(
             (o for o in self._ledger.project().world_occurrences if o.occurrence_id == ref), None
@@ -129,6 +142,10 @@ class WorldOutlookExecutor:
             wake = located[0]
             if not node.opens_at <= state.logical_time < node.closes_at:
                 return SimpleNamespace(status="rejected", reason_code="outlook_window_not_open")
+            from .world_outlook_npc import NPC_EXECUTION_KINDS
+
+            if node.execution.kind in NPC_EXECUTION_KINDS:
+                return self._npcs.execute(node=node, wake_event_ref=wake_event_ref, origin=origin)
             ref = occurrence_ref(state.world_id, self._owner, node.opportunity_id)
             existing = next((o for o in state.world_occurrences if o.occurrence_id == ref), None)
             if existing is None:
@@ -159,7 +176,16 @@ class WorldOutlookExecutor:
                         ensure_ascii=False,
                         separators=(",", ":"),
                     )
-                consequence = WorldConsequenceV2(environment_text=body)
+                from .lived_story import LivedStoryNavigation
+
+                consequence = WorldConsequenceV2(
+                    environment_text=body,
+                    story_navigation=LivedStoryNavigation.model_validate_json(
+                        json.dumps(origin["story_navigation"])
+                    )
+                    if origin.get("story_navigation")
+                    else None,
+                )
                 text = json.dumps(
                     consequence.model_dump(mode="json"),
                     ensure_ascii=False,

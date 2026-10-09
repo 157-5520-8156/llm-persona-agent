@@ -13,8 +13,10 @@ import json
 from typing import Annotated, Literal, TYPE_CHECKING
 
 from pydantic import Field, model_validator
+from pydantic.json_schema import SkipJsonSchema
 
 from .schema_core import FrozenModel, PrivacyClass
+from .lived_story import LivedStoryNavigation
 
 if TYPE_CHECKING:
     from .proposal_audit_schemas import RecordedModelResultAudit
@@ -80,6 +82,9 @@ class AuthorizedAttemptResult(FrozenModel):
 class WorldConsequenceV2(FrozenModel):
     contract: Literal["world-consequence.2"] = WORLD_CONSEQUENCE_CONTRACT
     environment_text: str = Field(min_length=1, max_length=12_000)
+    story_navigation: SkipJsonSchema[LivedStoryNavigation | None] = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
     authorized_attempt_result: AuthorizedAttemptResult | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )

@@ -1877,6 +1877,7 @@ class LifeDevelopmentRuntime:
         return await self._world_outlook.refresh(
             projection=state,
             context=slice_background_capsule_context(context, profile), manifest=manifest,
+            history_trigger_ref=_capsule.trigger_ref,
         )
 
     def _resolve_occasion_draw(
