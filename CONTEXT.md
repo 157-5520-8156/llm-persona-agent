@@ -1,3 +1,23 @@
+Immutable Context material reuse optimized (2026-10-09):
+Baseline7f717b08, runtime d3d7fb06; spec docs/design/context-materialization-2026-10-09.md;
+audit docs/audits/context-materialization-2026-10-09.md. Reuse unscoped prehistory item construction,
+current actor/eligibility checks still run; updated_at and visible story/episode filtering remain per read,
+and outgoing excerpts copy private pointers. Current prehistory proof pair passed only within one compile;
+new reads revalidate. Pure event binding/record hash/binding value reuse; episode ID once per episode;
+canonical semantic hash streams identical bytes; map(mul) keeps exact float operation order.
+No full dependency graph/read-scope authorization cache. Extra serialization cache experiment removed:
+20ms micro gain but no reliable entrance gain and22.5MiB extra. Kept runtime adds no model/embedding call.
+Two independent configured six-question runs: medians2.148/2.154s;12 combined median2.148,min1.854,max2.494,
+3/12<=2s:strict2s STILL RED. All hit HTTP boundary;intentional interceptdeferred,0DeepSeek/visible output.
+Startup separately recorded;not full reply latency/p95/production/semantic qualification.
+Four complete Capsule/corpus comparisons byte-identical(1629docs). Context next1.225/1.595->1.018/1.260s;
+cold4.230->4.471s:no cold improvement.139focusedpass,Ruff/9Pythoncompilepass,staticSpec/Standardsno findings.
+Full frozen d3d7fb06:10400pass/19skip/2xfail/1existingwarning,1201.35s/exit0.
+9modifiedPython hashes unchanged after run; later changes documentation only.
+20MiB synthetic semantic allocation41,943,530->314bytes/hashsame,not process RSS.
+No production/QQ/config/deadline/budget changes;originalCNY5ledger/166requests/spent4.628753/
+unknownreserve.231340/remaining.139907 retained.
+
 Input-to-provider preparation optimized again (2026-10-09):
 Baseline daac85ba, runtime47dfcfd0; spec docs/design/ingress-two-seconds-2026-10-09.md;
 audit docs/audits/ingress-two-seconds-2026-10-09.md. Reuse immutable prehistory payload validation/hash;
