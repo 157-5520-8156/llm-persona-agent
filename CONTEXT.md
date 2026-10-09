@@ -1,3 +1,23 @@
+Ordinary Context preparation optimized (2026-10-09):
+Baseline3ff4d69a; runtime0b632838; spec docs/design/context-preparation-optimization-2026-10-09.md;
+audit docs/audits/context-preparation-optimization-2026-10-09.md. Existing current-tuple indexes now address
+prehistory record/archive paths; bounded weak immutable pure-value caches avoid recursive model hash keys.
+Current source/actor/privacy/status/time checks remain. SQLite exact-byte parse reuse and one serialization
+per document preserve canonical set hash. Memory transition histories grouped per compile; initial-grant
+parse/defaults and bounded lexical scores reuse pure work. Recovered zero embeddings now replace stale zero
+rows and are reused instead of re-embedded each refresh. No new model calls, behavior rules or budget change.
+Frozen full-source SQLite comparison: cold8.841->4.333s; changed-prefix next8.321/8.152->1.831/1.974s.
+All4 complete Capsule/corpus byte comparisons equal;1629docs/1278prehistory windows/1259records preserved.
+1.5s preparation target STILL FAILS. No profile/full-suite load during final timing; not p95/soak evidence.
+Actual configured normal ingress2turns, HTTP-intercepted:Context1.818/1.744s,ready-to-send3.649/3.348s;
+process startup42.519s separate. Both reach HTTP before deadline; intentional intercept leaves deferred,
+0DeepSeek requests/0visible outputs. Not complete reply latency, natural silence, dialogue/story quality.
+QuotesCNY.220550/.218788 still exceed original experiment remaining.139907;166requests/spent4.628753/
+unknownreserve.231340 unchanged. No reset/increase. 98focusedpass,11PythonRuff/compilepass;
+Standards/Spec static reviews no findings. Full frozen0b632838:10379pass/19skip/2xfail/1existingwarning,
+1205.47s/exit0.11modifiedPythonSHA-256 unchanged after run; later edits documentation only.
+No production/QQ/config changes. Runtime/semantic/end-to-end qualification remains incomplete.
+
 World outlook continuity + central NPC activities implemented (2026-10-09):
 Baselinead8070ce; feature2bc3b7c4; original-script recovery2c99b515. Spec
  docs/design/world-outlook-continuity-2026-10-09.md; audit docs/audits/world-outlook-continuity-2026-10-09.md.
