@@ -9,8 +9,10 @@ from .schema_core import FrozenModel
 
 _INDEXES = OrderedDict()
 _LOCK = RLock()
-_MAX_INDEXES = 8
+_MAX_INDEXES = 32
 _MAX_INDEX_ROWS = 100_000
+_MAX_RETAINED_ROWS = 200_000
+_RETAINED_ROWS = 0
 _BUILD_AFTER_LOOKUPS = 8
 
 
@@ -39,6 +41,7 @@ def lookup_first(rows, attribute: str, value, *, predicate=None):
     Mutable collections/rows and non-scalar keys use the ordinary scan. The
     caller must still verify the returned row's current provenance and access.
     """
+    global _RETAINED_ROWS
     get_key = attrgetter(attribute)
     def scan():
         return next((row for row in rows if get_key(row) == value
@@ -59,9 +62,12 @@ def lookup_first(rows, attribute: str, value, *, predicate=None):
         # index. Build only when this same collection is repeatedly addressed.
         if index is None and uses >= _BUILD_AFTER_LOOKUPS:
             index = _build_index(rows, attribute)
+        if cached is None or cached[0] is not rows:
+            _RETAINED_ROWS += len(rows) - (len(cached[0]) if cached is not None else 0)
         _INDEXES[cache_key] = (rows, index, uses)
-        while len(_INDEXES) > _MAX_INDEXES:
-            _INDEXES.popitem(last=False)
+        while len(_INDEXES) > _MAX_INDEXES or _RETAINED_ROWS > _MAX_RETAINED_ROWS:
+            _, evicted = _INDEXES.popitem(last=False)
+            _RETAINED_ROWS -= len(evicted[0])
     # Never hold the cache mutex while executing a caller's predicate or a
     # mutable-row fallback scan. Index dictionaries are immutable after build.
     if index is None or index is False:

@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import Field, model_validator
 
 from .schema_core import FrozenModel, PrivacyClass, canonicalize_json_value
+from .immutable_value_cache import immutable_value_cache
 from .prehistory_story import PrehistoryStoryStructure, StoryRelationKind
 from .story_episode import StoryEpisode
 
@@ -374,6 +375,27 @@ def prehistory_event_id(*, world_id, event_type, payload):
     return "event:prehistory:" + digest([world_id, event_type, payload.model_dump(mode="json")])
 
 
+@immutable_value_cache(maxsize=128)
+def _validated_archive_payload_hash(row: PrehistoryArchiveProjection) -> str:
+    payload = PrehistoryArchiveAcceptedPayload(**{
+        key: getattr(row, key) for key in PrehistoryArchiveAcceptedPayload.model_fields
+    })
+    return digest(payload)
+
+
+@immutable_value_cache(maxsize=2048)
+def _validated_record_payload_hash(row: PrehistoryRecordProjection) -> str:
+    payload = PrehistoryRecordImportedPayload(**{
+        key: getattr(row, key) for key in PrehistoryRecordImportedPayload.model_fields
+    })
+    return digest(payload)
+
+
+@immutable_value_cache(maxsize=2048)
+def _projected_record_hash(record: PrehistoryRecord) -> str:
+    return digest(record)
+
+
 def validate_prehistory_state(archives, records, events, *, logical_time, world_id=None):
     """A cached projection cannot invent or silently drop accepted history."""
     by_ref = {x.event_id: x for x in events}
@@ -383,19 +405,30 @@ def validate_prehistory_state(archives, records, events, *, logical_time, world_
         raise ValueError("prehistory projection has missing or uncommitted authority")
     if len({x.manifest.archive_id for x in archives}) != len(archives) or len({x.record.record_id for x in records}) != len(records):
         raise ValueError("prehistory projection duplicates identities")
-    for row, payload_type, event_type in (
-        *((x, PrehistoryArchiveAcceptedPayload, "CharacterPrehistoryArchiveAccepted") for x in archives),
-        *((x, PrehistoryRecordImportedPayload, "CharacterPrehistoryRecordImported") for x in records),
+    for row, payload_hash, event_type in (
+        *((x, _validated_archive_payload_hash, "CharacterPrehistoryArchiveAccepted") for x in archives),
+        *((x, _validated_record_payload_hash, "CharacterPrehistoryRecordImported") for x in records),
     ):
         source = by_ref.get(row.accepted_event_ref)
-        payload = payload_type(**{key: getattr(row, key) for key in payload_type.model_fields})
+        # Reuse only the immutable payload's construction/validation/hash.
+        # Current source membership, metadata and logical time remain checks
+        # of this projection, even when the pure value is already cached.
+        actual_payload_hash = payload_hash(row)
         if source is None or (
             source.event_type, source.world_revision, source.payload_hash, source.logical_time
         ) != (event_type, row.accepted_world_revision, row.accepted_payload_hash, row.accepted_at) or (
-            digest(payload) != source.payload_hash or logical_time is None or row.accepted_at > logical_time
+            actual_payload_hash != source.payload_hash or logical_time is None or row.accepted_at > logical_time
         ):
             raise ValueError("prehistory projection changed its exact accepted source")
     manifests = {x.manifest.archive_id: x for x in archives}
+    pins_by_archive = {
+        x.manifest.archive_id: {pin.record_id: pin.record_hash for pin in x.manifest.records}
+        for x in archives
+    }
+    entities_by_archive = {
+        x.manifest.archive_id: {entity.entity_ref: entity for entity in x.manifest.entities}
+        for x in archives
+    }
     entities = {}
     for archive in archives:
         start = by_ref.get(archive.world_started_ref)
@@ -413,16 +446,16 @@ def validate_prehistory_state(archives, records, events, *, logical_time, world_
         archive = manifests.get(row.archive_id)
         if archive is None:
             raise ValueError("prehistory record projection lost its archive")
-        pins = {x.record_id: x.record_hash for x in archive.manifest.records}
+        pins = pins_by_archive[row.archive_id]
         if (
             row.actor_ref != archive.manifest.actor_ref
             or row.world_started_at != archive.world_started_at
             or row.archive_manifest_hash != archive.admission_manifest_hash
-            or pins.get(row.record.record_id) != digest(row.record)
+            or pins.get(row.record.record_id) != _projected_record_hash(row.record)
             or row.record.occurred_until >= row.world_started_at
         ):
             raise ValueError("prehistory record projection differs from reviewed history")
-        validate_historical_references(row.record, {x.entity_ref: x for x in archive.manifest.entities})
+        validate_historical_references(row.record, entities_by_archive[row.archive_id])
         validate_story_boundary(row.record, actor_ref=row.actor_ref, world_started_at=row.world_started_at)
     from .story_import import validate_complete_import, validate_import_record
     for archive in archives:

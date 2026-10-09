@@ -12,6 +12,7 @@ from collections import OrderedDict
 from datetime import datetime
 import threading
 from functools import lru_cache
+from .associative_recall import _text_recall_features
 import hashlib
 import json
 import math
@@ -1944,8 +1945,9 @@ def _lexical_feature_spans(text: str) -> tuple[tuple[int, int, str], ...]:
     return tuple(spans)
 
 
-def _lexical_features(text: str) -> frozenset[str]:
-    return frozenset(term for _, _, term in _lexical_feature_spans(text))
+# The associative reader and ranked index use the same normalized n-grams.
+# Share one byte-bounded cache instead of retaining the same strings twice.
+_lexical_features = _text_recall_features
 
 
 def _matched_query_groups(

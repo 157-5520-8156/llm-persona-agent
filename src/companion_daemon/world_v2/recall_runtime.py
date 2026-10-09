@@ -621,6 +621,15 @@ class RecallCoordinator:
             context = self._context_for(expected_cursor, trigger_ref=trigger_ref)
             if context is None:
                 raise ValueError("semantic preparation requires the exact pinned Context")
+            # The same write/startup maintenance can prepare local lexical
+            # values, even when all document vectors already exist. It makes
+            # no retrieval decision and does not add embedding/model calls.
+            from .associative_recall import _text_recall_features
+            for document in context.snapshot.documents:
+                if not document.context_only:
+                    _text_recall_features(document.text)
+                    if document.retrieval_text is not None:
+                        _text_recall_features(document.retrieval_text)
             self._semantic_index.prepare(context.snapshot)
             return self._semantic_index.health()
         finally:

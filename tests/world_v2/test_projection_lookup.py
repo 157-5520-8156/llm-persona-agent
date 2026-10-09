@@ -41,8 +41,10 @@ def test_warm_index_rechecks_predicate_and_keeps_matching_duplicate_fallback():
     for _ in range(10):
         assert lookup_first(rows, "identity", "2") is rows[2]
     allowed = {"old"}
+
     def check(row):
         return row.payload in allowed
+
     assert lookup_first(rows, "identity", "2", predicate=check) is rows[2]
     allowed.clear()
     assert lookup_first(rows, "identity", "2", predicate=check) is None
@@ -53,11 +55,62 @@ def test_warm_index_rechecks_predicate_and_keeps_matching_duplicate_fallback():
 def test_nested_address_keeps_current_frozen_path_and_duplicate_predicate():
     class Outer(FrozenModel):
         entry: Row
-    rows=tuple(Outer(entry=Row(identity=str(i),payload='old')) for i in range(12))
-    rows=(*rows,Outer(entry=Row(identity='2',payload='duplicate')))
+
+    rows = tuple(Outer(entry=Row(identity=str(i), payload="old")) for i in range(12))
+    rows = (*rows, Outer(entry=Row(identity="2", payload="duplicate")))
     for _ in range(10):
-        assert lookup_first(rows,'entry.identity','2') is rows[2]
-    assert lookup_first(rows,'entry.identity','2',predicate=lambda r:r.entry.payload=='duplicate') is rows[-1]
-    changed=(*rows[:2], rows[2].model_copy(update={'entry':Row(identity='changed',payload='new')}), *rows[3:])
-    assert lookup_first(changed,'entry.identity','2') is rows[-1]
-    assert lookup_first(changed,'entry.identity','changed') is changed[2]
+        assert lookup_first(rows, "entry.identity", "2") is rows[2]
+    assert (
+        lookup_first(
+            rows, "entry.identity", "2", predicate=lambda r: r.entry.payload == "duplicate"
+        )
+        is rows[-1]
+    )
+    changed = (
+        *rows[:2],
+        rows[2].model_copy(update={"entry": Row(identity="changed", payload="new")}),
+        *rows[3:],
+    )
+    assert lookup_first(changed, "entry.identity", "2") is rows[-1]
+    assert lookup_first(changed, "entry.identity", "changed") is changed[2]
+
+
+def test_interleaved_current_collections_keep_their_address_indexes(monkeypatch):
+    import companion_daemon.world_v2.projection_lookup as module
+    from collections import OrderedDict
+
+    monkeypatch.setattr(module, "_INDEXES", OrderedDict())
+    monkeypatch.setattr(module, "_RETAINED_ROWS", 0)
+    collections = [
+        tuple(Row(identity=str(i), payload=str(group)) for i in range(40)) for group in range(20)
+    ]
+    for rows in collections:
+        for _ in range(8):
+            assert lookup_first(rows, "identity", "39") is rows[-1]
+    accesses = []
+    original = Row.__getattribute__
+
+    def count(self, name):
+        if name == "identity":
+            accesses.append(name)
+        return original(self, name)
+
+    monkeypatch.setattr(Row, "__getattribute__", count)
+    for _ in range(3):
+        for rows in collections:
+            assert lookup_first(rows, "identity", "39") is rows[-1]
+    assert accesses == [], "interleaving the Context collections must not evict every hot index"
+
+
+def test_address_cache_also_bounds_total_retained_rows(monkeypatch):
+    from collections import OrderedDict
+    import companion_daemon.world_v2.projection_lookup as module
+
+    monkeypatch.setattr(module, "_INDEXES", OrderedDict())
+    monkeypatch.setattr(module, "_RETAINED_ROWS", 0)
+    monkeypatch.setattr(module, "_MAX_RETAINED_ROWS", 64)
+    for group in range(20):
+        rows = tuple(Row(identity=str(i), payload=str(group)) for i in range(12))
+        assert lookup_first(rows, "identity", "11") is rows[-1]
+        assert module._RETAINED_ROWS == sum(len(entry[0]) for entry in module._INDEXES.values())
+        assert module._RETAINED_ROWS <= 64

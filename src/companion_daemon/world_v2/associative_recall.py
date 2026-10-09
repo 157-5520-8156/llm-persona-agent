@@ -14,6 +14,8 @@ from dataclasses import dataclass
 from functools import lru_cache
 import unicodedata
 
+from .lexical_feature_cache import lexical_feature_cache
+
 
 ASSOCIATIVE_PREFETCH_POLICY_VERSION = "associative-prefetch.lexical-ngram.1"
 
@@ -67,7 +69,7 @@ def _flush_feature_run(
         features.add(value)
 
 
-def _recall_features(texts: tuple[str, ...]) -> frozenset[str]:
+def _uncached_recall_features(texts: tuple[str, ...]) -> frozenset[str]:
     """Build language-light lexical cues without interpreting their meaning."""
 
     features: set[str] = set()
@@ -96,6 +98,17 @@ def _recall_features(texts: tuple[str, ...]) -> frozenset[str]:
                 run.append(character)
         _flush_feature_run(features, run=run, kind=kind)
     return frozenset(features)
+
+
+@lexical_feature_cache(max_bytes=64 * 1024 * 1024, maxsize=8192)
+def _text_recall_features(text: str) -> frozenset[str]:
+    return _uncached_recall_features((text,))
+
+
+def _recall_features(texts: tuple[str, ...]) -> frozenset[str]:
+    if len(texts) == 1:
+        return _text_recall_features(texts[0])
+    return frozenset(term for text in texts for term in _text_recall_features(text))
 
 
 @lru_cache(maxsize=4096)
