@@ -85,6 +85,7 @@ from .context_resolver import (
 )
 from .ledger import LedgerPort
 from .memory_retrieval import MemoryRetrievalCompiler, MemoryRetrievalItem
+from .immutable_value_cache import immutable_value_cache
 from .memory_understanding import MemoryUnderstandingReader
 from .later_expression_freshness import queued_later_facts
 from .life_content import LifeContentCompiler, collect_user_channel_limited_content_refs, RecentExperienceContextItem
@@ -1525,6 +1526,16 @@ class _AuditRecoveryLedger:
         return ref
 
 
+@immutable_value_cache(maxsize=4096)
+def _recall_event_binding(event):
+    """Pure value conversion after current prefix/reference selection."""
+    return RecallSourceBinding(
+        source_kind="committed_event", authority_type=event.event_type,
+        ref=event.event_id, source_world_revision=event.world_revision,
+        immutable_hash=event.payload_hash,
+    )
+
+
 class LedgerProjectionContextResolver(TrustedInternalContextResolver):
     """Resolve Context domains from exactly one ledger projection cursor."""
 
@@ -2534,13 +2545,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                     sources=recall_sources,
                     candidates=(
                         *(
-                            RecallSourceBinding(
-                                source_kind="committed_event",
-                                authority_type=item.event_type,
-                                ref=item.event_id,
-                                source_world_revision=item.world_revision,
-                                immutable_hash=item.payload_hash,
-                            )
+                            _recall_event_binding(item)
                             for item in projection.committed_world_event_refs
                             if item.world_revision <= query.world_revision
                             and item.event_id in required_authority_refs

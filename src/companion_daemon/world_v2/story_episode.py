@@ -63,11 +63,14 @@ def readable_episode_memberships(*, archives, actor_ref, world_id, visible_recor
     result = {}
     for episode, archive in latest.values():
         refs = [ref for ref in episode.record_refs if ref in visible_record_ids]
+        if not refs:
+            continue
+        view_ref = 'story-episode-view:' + digest([world_id, actor_ref, episode.episode_ref])
+        authority = StoryRelationAuthority(event_ref=archive.accepted_event_ref,
+            world_revision=archive.accepted_world_revision, payload_hash=archive.accepted_payload_hash)
         for position, ref in enumerate(refs):
             result.setdefault(ref, []).append(EpisodeMembershipReading(
-                episode_ref='story-episode-view:' + digest([world_id, actor_ref, episode.episode_ref]),
-                position=position, authority=StoryRelationAuthority(event_ref=archive.accepted_event_ref,
-                    world_revision=archive.accepted_world_revision, payload_hash=archive.accepted_payload_hash)))
+                episode_ref=view_ref, position=position, authority=authority))
     return {ref: tuple(sorted(items, key=lambda i: i.episode_ref)) for ref, items in result.items()}
 
 

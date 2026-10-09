@@ -1548,6 +1548,19 @@ class SQLiteWorldLedger:
             + b"}"
         )
 
+    @staticmethod
+    def _semantic_fragment_hash(fragments: dict[str, bytes]) -> str:
+        """Hash the same sorted canonical bytes without whole-state copies."""
+        digest = hashlib.sha256()
+        digest.update(b"{")
+        for index, key in enumerate(sorted(fragments)):
+            if index:
+                digest.update(b",")
+            digest.update(b'"' + key.encode("ascii") + b'":')
+            digest.update(fragments[key])
+        digest.update(b"}")
+        return digest.hexdigest()
+
     def _semantic_custom_fragment(self, field_name: str, state: ReducerState) -> bytes:
         """Canonical bytes of the semantic fields that are not plain dumps."""
 
@@ -1658,7 +1671,7 @@ class SQLiteWorldLedger:
                 )
                 return
             fragments[key] = state_bytes[key]
-        digest = hashlib.sha256(self._assemble_semantic_material(fragments)).hexdigest()
+        digest = self._semantic_fragment_hash(fragments)
         if not hmac.compare_digest(digest, str(persisted_semantic_hash)):
             _LOG.warning(
                 "world v2 semantic fragment assembly does not reproduce the head "
@@ -1719,7 +1732,7 @@ class SQLiteWorldLedger:
             # Fields outside the semantic payload (trigger bookkeeping,
             # proposal audit lanes, ...) do not affect the semantic hash.
         fragments["world_revision"] = str(int(world_revision)).encode("ascii")
-        digest = hashlib.sha256(self._assemble_semantic_material(fragments)).hexdigest()
+        digest = self._semantic_fragment_hash(fragments)
         self._semantic_fragment_cache = (digest, fragments)
         self._semantic_incremental_count += 1
         return digest
@@ -1832,7 +1845,7 @@ class SQLiteWorldLedger:
             fragments = {
                 key: _canonical_fragment(value).encode("utf-8") for key, value in payload.items()
             }
-            digest = hashlib.sha256(self._assemble_semantic_material(fragments)).hexdigest()
+            digest = self._semantic_fragment_hash(fragments)
             if hmac.compare_digest(digest, projection.semantic_hash):
                 self._semantic_fragment_cache = (digest, fragments)
             else:

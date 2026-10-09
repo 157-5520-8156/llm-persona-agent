@@ -196,11 +196,32 @@ def _source_summary_is_bound(values: MemoryCandidateValues) -> bool:
 def _prehistory_excerpt_value(row, archive, max_characters):
     """Pure bounded reading; eligibility and visibility are checked by callers."""
     text = row.record.statement[:max_characters]
-    return MemorySourceExcerpt(
+    excerpt = MemorySourceExcerpt(
         **prehistory_memory_binding(row).model_dump(), excerpt_ref=row.record.record_id,
         excerpt_payload_hash=hashlib.sha256(text.encode("utf-8")).hexdigest(),
         text=text, truncated=len(text) < len(row.record.statement),
         prehistory=prehistory_memory_reading(row, archive),
+    )
+    excerpt._recall_source_record = row.record
+    return excerpt
+
+
+@immutable_value_cache(maxsize=2048)
+def _single_history_item_material(candidate, excerpt, assessment_scope):
+    """Pure unscoped construction; current eligibility is checked before use.
+
+    Scope-dependent story/episode relations and historical update time are
+    applied later. The compiler copies every prehistory excerpt before this
+    material can leave its Interface, keeping private pointers isolated.
+    """
+    return MemoryRetrievalItem(
+        candidate_id=candidate.candidate_id, cue_kind=candidate.values.cue_kind,
+        retention_rationales=candidate.values.retention_rationales,
+        privacy_ceiling=candidate.values.privacy_ceiling,
+        retrieval_strength_bp=candidate.values.retrieval_strength_bp,
+        source_excerpts=(excerpt,), truncated=excerpt.truncated,
+        updated_at=candidate.updated_at, reviewed_at=candidate.values.reviewed_at,
+        assessment_scope=assessment_scope,
     )
 
 
@@ -248,6 +269,8 @@ class MemoryRetrievalCompiler:
         material_histories = {}
         for transition in projection.memory_candidate_transitions:
             material_histories.setdefault(transition.candidate_id, []).append(transition)
+        # A per-invocation handoff, never an authority cache across reads.
+        resolved_prehistory = {}
         decisions = {
             item.candidate_id: item
             for item in evaluate_memory_retrieval(
@@ -262,6 +285,7 @@ class MemoryRetrievalCompiler:
                 prehistory_records=projection.prehistory_records,
                 prehistory_archives=projection.prehistory_archives,
                 viewer_privacy_ceiling=viewer_privacy_ceiling,
+                _resolved_prehistory=resolved_prehistory,
             )
         }
         items: list[MemoryRetrievalItem] = []
@@ -372,9 +396,19 @@ class MemoryRetrievalCompiler:
                         user_channel_limited_content_refs=limited_content_refs,
                     )
                 elif binding.source_kind == "prehistory":
-                    excerpt = self._prehistory_excerpt(
-                        binding=binding, projection=projection, actor_ref=actor_ref,
-                    )
+                    resolved_source = resolved_prehistory.get(binding)
+                    if resolved_source is None:
+                        excerpt = self._prehistory_excerpt(
+                            binding=binding, projection=projection, actor_ref=actor_ref,
+                        )
+                    else:
+                        # This local pair was just proved against the same
+                        # immutable projection by evaluate_memory_retrieval.
+                        row, archive = resolved_source
+                        excerpt = (
+                            _prehistory_excerpt_value(row, archive, self._max_excerpt_characters)
+                            if actor_ref is not None and row.actor_ref == actor_ref else None
+                        )
                 else:
                     excerpt = None
                 if excerpt is None:
@@ -396,8 +430,17 @@ class MemoryRetrievalCompiler:
                         reasons=("content_unavailable",),
                     )
                 )
-            items.append(
-                MemoryRetrievalItem(
+            updated_at = _material_updated_at(candidate, material_histories.get(candidate.candidate_id, ()))
+            assessment_scope = (
+                "initialization_defaults_not_character_judgment"
+                if is_unassessed_initial_memory(candidate, ledger=self._ledger)
+                else "memory_salience_not_current_goal_or_obligation"
+            )
+            if len(excerpts) == 1 and excerpts[0].prehistory is not None:
+                material = _single_history_item_material(candidate, excerpts[0], assessment_scope)
+                items.append(material.model_copy(update={"updated_at": updated_at}))
+            else:
+                items.append(MemoryRetrievalItem(
                     candidate_id=candidate.candidate_id,
                     cue_kind=candidate.values.cue_kind,
                     retention_rationales=candidate.values.retention_rationales,
@@ -405,12 +448,9 @@ class MemoryRetrievalCompiler:
                     retrieval_strength_bp=candidate.values.retrieval_strength_bp,
                     source_excerpts=tuple(excerpts),
                     truncated=any(item.truncated for item in excerpts),
-                    updated_at=_material_updated_at(candidate, material_histories.get(candidate.candidate_id, ())),
-                    reviewed_at=candidate.values.reviewed_at,
-                    assessment_scope=("initialization_defaults_not_character_judgment" if is_unassessed_initial_memory(candidate, ledger=self._ledger)
-                                      else "memory_salience_not_current_goal_or_obligation"),
-                )
-            )
+                    updated_at=updated_at, reviewed_at=candidate.values.reviewed_at,
+                    assessment_scope=assessment_scope,
+                ))
         from .prehistory_memory_source import restrict_story_reading
         visible_records = {excerpt.source_id for item in items for excerpt in item.source_excerpts
                            if excerpt.prehistory is not None}
@@ -442,15 +482,9 @@ class MemoryRetrievalCompiler:
         )
         if actor_ref is None or row.actor_ref != actor_ref:
             return None
-        # Copy before attaching the compiler-local private pointer. No caller
-        # can mutate a shared cached excerpt's private indexing state.
-        excerpt = _prehistory_excerpt_value(row, archive, self._max_excerpt_characters).model_copy()
-        # This private attribute is set only after the exact active candidate,
-        # owner, record, archive and event closure have passed the reader above.
-        # RecallCorpusCompiler uses it to form bounded source-exact windows;
-        # it never enters the role's snapshot or provider request.
-        excerpt._recall_source_record = row.record
-        return excerpt
+        # Only internal material is shared. compile() always copies these
+        # excerpts while applying this invocation's visible story/episode set.
+        return _prehistory_excerpt_value(row, archive, self._max_excerpt_characters)
 
     def _experience_excerpt(
         self,

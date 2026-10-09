@@ -25,7 +25,7 @@ from .prehistory_memory_source import PrehistoryMemoryReading
 from .recall_index import (
     RecallCursor,
     RecallDocument,
-    RecallSourceBinding,
+    RecallSourceBinding, recall_source_binding,
 )
 from .recent_dialogue import RecentDialogueItem
 from .schema_core import FrozenModel, PrivacyClass
@@ -226,7 +226,7 @@ class RecallCorpusCompiler:
                 tuple(
                     self._prefer_binding(
                         authority=authority,
-                        fallback=RecallSourceBinding(
+                        fallback=recall_source_binding(
                             source_kind="committed_event",
                             authority_type=(
                                 "ObservationRecorded"
@@ -281,7 +281,7 @@ class RecallCorpusCompiler:
                 (
                     self._prefer_binding(
                         authority=authority,
-                        fallback=RecallSourceBinding(
+                        fallback=recall_source_binding(
                             source_kind="committed_event",
                             authority_type="FactCommitted",
                             ref=item.accepted_fact_event_ref,
@@ -291,7 +291,7 @@ class RecallCorpusCompiler:
                     ),
                     self._prefer_binding(
                         authority=authority,
-                        fallback=RecallSourceBinding(
+                        fallback=recall_source_binding(
                             source_kind="committed_event",
                             authority_type="ObservationRecorded",
                             ref=item.observation_event_ref,
@@ -335,7 +335,7 @@ class RecallCorpusCompiler:
                 (
                     self._prefer_binding(
                         authority=authority,
-                        fallback=RecallSourceBinding(
+                        fallback=recall_source_binding(
                             source_kind="committed_event",
                             authority_type="FactAuthorityEvent",
                             ref=item.accepted_fact_event_ref,
@@ -345,7 +345,7 @@ class RecallCorpusCompiler:
                     ),
                     self._prefer_binding(
                         authority=authority,
-                        fallback=RecallSourceBinding(
+                        fallback=recall_source_binding(
                             source_kind="committed_event",
                             authority_type="ObservationRecorded",
                             ref=item.observation_event_ref,
@@ -391,24 +391,24 @@ class RecallCorpusCompiler:
                 if historical is None or historical.actor_ref != actor_ref:
                     continue
                 bindings = (
-                    RecallSourceBinding(
+                    recall_source_binding(
                         source_kind="committed_event", authority_type="CharacterPrehistoryRecordImported",
                         ref=excerpt.authority_event_ref, source_world_revision=excerpt.authority_world_revision,
                         immutable_hash=excerpt.authority_payload_hash,
                     ),
-                    RecallSourceBinding(
+                    recall_source_binding(
                         source_kind="committed_event", authority_type="CharacterPrehistoryArchiveAccepted",
                         ref=historical.archive_event_ref, source_world_revision=historical.archive_world_revision,
                         immutable_hash=historical.archive_payload_hash,
                     ),
                 )
-                bindings = tuple(dict.fromkeys((*bindings, *(RecallSourceBinding(
+                bindings = tuple(dict.fromkeys((*bindings, *(recall_source_binding(
                     source_kind="committed_event", authority_type="CharacterPrehistoryArchiveAccepted",
                     ref=member.authority.event_ref, source_world_revision=member.authority.world_revision,
                     immutable_hash=member.authority.payload_hash,
                 ) for member in historical.episodes))))
                 if historical.story is not None:
-                    bindings = tuple(dict.fromkeys((*bindings, *(RecallSourceBinding(
+                    bindings = tuple(dict.fromkeys((*bindings, *(recall_source_binding(
                         source_kind="committed_event", authority_type="CharacterPrehistoryArchiveAccepted",
                         ref=edge.authority.event_ref, source_world_revision=edge.authority.world_revision,
                         immutable_hash=edge.authority.payload_hash,
@@ -423,7 +423,7 @@ class RecallCorpusCompiler:
                 # archive, owner and active-candidate proofs. Recheck its
                 # content identity here so a hand-built excerpt/private attr
                 # cannot introduce alternate index prose.
-                from .character_prehistory import digest as prehistory_record_digest
+                from .prehistory_memory_source import prehistory_record_content_hash as prehistory_record_digest
 
                 source_record = excerpt._recall_source_record
                 full_text = excerpt.text
@@ -509,7 +509,7 @@ class RecallCorpusCompiler:
                 (
                     self._prefer_exact_binding(
                         authority=authority,
-                        fallback=RecallSourceBinding(
+                        fallback=recall_source_binding(
                             source_kind="committed_event",
                             authority_type="ExperienceCommitted",
                             ref=item.content.authority_event_ref,
@@ -519,7 +519,7 @@ class RecallCorpusCompiler:
                     ),
                     self._prefer_exact_binding(
                         authority=authority,
-                        fallback=RecallSourceBinding(
+                        fallback=recall_source_binding(
                             source_kind="committed_event",
                             authority_type="LifeContentRecorded",
                             ref=item.content.descriptor_event_ref,
@@ -569,14 +569,14 @@ class RecallCorpusCompiler:
                 continue
             bindings = _canonical_bindings(
                 (
-                    RecallSourceBinding(
+                    recall_source_binding(
                         source_kind="committed_event",
                         authority_type="WorldOccurrenceSettled",
                         ref=item.source.authority_event_ref,
                         source_world_revision=item.source.authority_world_revision,
                         immutable_hash=item.source.authority_payload_hash,
                     ),
-                    RecallSourceBinding(
+                    recall_source_binding(
                         source_kind="committed_event",
                         authority_type="LifeContentRecorded",
                         ref=item.content.descriptor_event_ref,

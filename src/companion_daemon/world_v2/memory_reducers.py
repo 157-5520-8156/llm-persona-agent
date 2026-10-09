@@ -623,6 +623,7 @@ def _resolve_source(
     prehistory_records: tuple[PrehistoryRecordProjection, ...] = (),
     prehistory_archives: tuple[PrehistoryArchiveProjection, ...] = (),
     require_current: bool,
+    _resolved_prehistory: dict | None = None,
 ) -> PrivacyClass:
     authority = lookup_first(committed_events, "event_id", binding.authority_event_ref)
     if (
@@ -632,10 +633,13 @@ def _resolve_source(
     ):
         raise ValueError("memory source does not resolve exact event authority")
     if binding.source_kind == "prehistory":
-        row, _ = resolve_prehistory_memory_source(
+        row, archive = resolve_prehistory_memory_source(
             binding, records=prehistory_records, archives=prehistory_archives,
             committed_events=committed_events,
         )
+        if _resolved_prehistory is not None:
+            # Output only: never consume a caller-provided entry as proof.
+            _resolved_prehistory[binding] = (row, archive)
         return row.record.privacy_class
     if binding.source_kind == "fact":
         transition = next(
@@ -738,6 +742,7 @@ def evaluate_memory_retrieval(
     prehistory_records: tuple[PrehistoryRecordProjection, ...] = (),
     prehistory_archives: tuple[PrehistoryArchiveProjection, ...] = (),
     viewer_privacy_ceiling: PrivacyClass,
+    _resolved_prehistory: dict | None = None,
 ) -> tuple[MemoryRetrievalDecision, ...]:
     decisions: list[MemoryRetrievalDecision] = []
     for candidate in candidates:
@@ -759,6 +764,7 @@ def evaluate_memory_retrieval(
                     prehistory_records=prehistory_records,
                     prehistory_archives=prehistory_archives,
                     require_current=True,
+                    _resolved_prehistory=_resolved_prehistory,
                 )
             except ValueError:
                 stale_ids.append(binding.source_id)

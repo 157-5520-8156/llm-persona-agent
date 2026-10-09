@@ -62,7 +62,7 @@ class PrehistoryMemoryReading(FrozenModel):
 
 
 @immutable_value_cache(maxsize=2048)
-def _record_hash(record: PrehistoryRecord) -> str:
+def prehistory_record_content_hash(record: PrehistoryRecord) -> str:
     return digest(record)
 
 
@@ -95,7 +95,7 @@ def prehistory_memory_binding(record: PrehistoryRecordProjection) -> MemorySourc
         source_entity_revision=1, authority_event_ref=record.accepted_event_ref,
         authority_world_revision=record.accepted_world_revision,
         authority_payload_hash=record.accepted_payload_hash,
-        source_values_hash=_record_hash(record.record),
+        source_values_hash=prehistory_record_content_hash(record.record),
     )
 
 

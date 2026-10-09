@@ -16,6 +16,7 @@ from .associative_recall import _text_recall_features
 import hashlib
 import json
 import math
+from operator import mul
 from pathlib import Path
 import sqlite3
 from typing import Literal, Protocol, Self
@@ -99,6 +100,23 @@ class RecallSourceBinding(FrozenModel):
     ref: str = Field(min_length=1, max_length=256)
     source_world_revision: int = Field(ge=0)
     immutable_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+@lru_cache(maxsize=8192)
+def _binding_value(source_kind, authority_type, ref, source_world_revision, immutable_hash):
+    return RecallSourceBinding(source_kind=source_kind, authority_type=authority_type,
+        ref=ref, source_world_revision=source_world_revision, immutable_hash=immutable_hash)
+
+
+def recall_source_binding(*, source_kind, authority_type, ref, source_world_revision, immutable_hash):
+    """Reuse only immutable value construction, never source eligibility."""
+    values = (source_kind, authority_type, ref, source_world_revision, immutable_hash)
+    if (all(type(value) is str for value in (source_kind, authority_type, ref, immutable_hash))
+            and type(source_world_revision) is int):
+        return _binding_value(*values)
+    # Preserve constructor validation for malformed/unhashable input as well.
+    return RecallSourceBinding(source_kind=source_kind, authority_type=authority_type,
+        ref=ref, source_world_revision=source_world_revision, immutable_hash=immutable_hash)
 
 
 class RecallDocument(FrozenModel):
@@ -285,18 +303,18 @@ class RecallDocument(FrozenModel):
             raise ValueError("context-only recall requires one bounded prehistory record")
         if self.prehistory is not None:
             scope = self.prehistory
-            archive_proofs = {RecallSourceBinding(
+            archive_proofs = {recall_source_binding(
                 source_kind="committed_event", authority_type="CharacterPrehistoryArchiveAccepted",
                 ref=scope.archive_event_ref, source_world_revision=scope.archive_world_revision,
                 immutable_hash=scope.archive_payload_hash,
             )}
-            archive_proofs.update(RecallSourceBinding(
+            archive_proofs.update(recall_source_binding(
                 source_kind="committed_event", authority_type="CharacterPrehistoryArchiveAccepted",
                 ref=member.authority.event_ref, source_world_revision=member.authority.world_revision,
                 immutable_hash=member.authority.payload_hash,
             ) for member in scope.episodes)
             if scope.story is not None:
-                archive_proofs.update(RecallSourceBinding(
+                archive_proofs.update(recall_source_binding(
                     source_kind="committed_event", authority_type="CharacterPrehistoryArchiveAccepted",
                     ref=edge.authority.event_ref, source_world_revision=edge.authority.world_revision,
                     immutable_hash=edge.authority.payload_hash,
@@ -2008,7 +2026,7 @@ def _corpus_lexical_scores(
 def _cosine(left: tuple[float, ...], right: tuple[float, ...]) -> float:
     if len(left) != len(right):
         raise ValueError("recall vectors use different dimensions")
-    return sum(a * b for a, b in zip(left, right, strict=True))
+    return sum(map(mul, left, right))
 
 
 def _structured_score(query_refs: tuple[str, ...], document_refs: tuple[str, ...]) -> int:
