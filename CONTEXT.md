@@ -1,3 +1,18 @@
+Cache-first Context prototype completed (2026-10-10):
+Audit docs/audits/context-cache-prefix-prototype-2026-10-10.md. Runtime remains2c10c762.
+Offline replay of334captured requests/50historical chats fromad52b795,all matched to usage;
+19representation variants preserve canonical current JSON values;0newDeepSeek/BGE calls.
+These are UTF-8 prefix proxies under strict model/purpose/tool/system partitions,NOT token cache hits.
+Historical actual hit40.46%;offline original chat27.72%,field-order29.63%;current2request reorder adds639bytes.
+Final SequenceMatcher delta:chat52.20% with1.21x total bytes at1.5x per-frame cap;95.88% costs8.99x bytes
+and still lacks current-source authority proof. Conservative view checks reset48source-membership+
+2unresolved alias changes;25.07%.Source leaving top-k is NOT proof of revocation;needs ledger eligibility.
+No runtime candidate adopted.No claim90%/100CNY month/100daily messages/4s/quality/real24h achieved.
+Naive list-diff intermediate numbers superseded;frozen final prototype archived as private evidence,
+loose prototype removed.OriginalCNY5/166requests/spent4.628753/unknownreserve.231340/remaining.139907 unchanged.
+Next seam:stable material identity separated from fresh reading authority,bounded generations and
+native readable current views;do not deploy generic patch journal or freeze stale permissions.
+
 Snapshot-bound Context material sharing implemented (2026-10-09):
 Baselineaf814fa0(runtime d3d7fb06), runtime2c10c762; spec docs/design/context-read-scope-2026-10-09.md;
 audit docs/audits/context-read-scope-2026-10-09.md. One short read_snapshot for synchronous Context;
