@@ -648,6 +648,7 @@ class WorldOutlookRuntime:
             r["payload"]["node"]["opportunity_id"]: r["payload"]["node"]
             for r in self.store.offers()
             if r["state"] in {"considered", "running"}
+            or (self._executor is not None and self._executor.has_effect(r["payload"]["node"]))
         }
         for n in draft.opportunities:
             if (

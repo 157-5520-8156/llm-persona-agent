@@ -142,6 +142,23 @@ class CentralNpcExecutor:
 
     def recover(self, node):
         identity = self._identity(node)
+        effect_ref = "event:outlook-npc:effect:" + identity
+        effect = self.ledger.lookup_event_commit(effect_ref)
+        if effect is None:
+            return None
+        audit = self.ledger.lookup_event_commit(effect[0].causation_id)
+        expected_type = {
+            "npc_activity": "ActivityPlanned",
+            "npc_cancel_activity": "ActivityAbandoned",
+            "npc_status": "NpcStatusChanged",
+        }[node.execution.kind]
+        if (
+            effect[0].event_type != expected_type
+            or audit is None
+            or audit[0].payload().get("node_hash") != digest(node)
+            or audit[0].payload().get("central_authorship", {}).get("actor_ref") != self.owner
+        ):
+            raise ValueError("NPC recovery does not bind the original script and author")
         if node.execution.kind == "npc_activity":
             plan = next(
                 (
@@ -158,14 +175,16 @@ class CentralNpcExecutor:
                     plan_id=plan.plan_id,
                 )
         else:
-            ref = "event:outlook-npc:effect:" + identity
-            if self.ledger.lookup_event_commit(ref) is not None:
-                return SimpleNamespace(
-                    status="npc_effect_committed",
-                    reason_code="outlook.npc_effect_existing",
-                    effect_event_ref=ref,
-                )
+            return SimpleNamespace(
+                status="npc_effect_committed",
+                reason_code="outlook.npc_effect_existing",
+                effect_event_ref=effect_ref,
+            )
         return None
+
+    def has_effect(self, node):
+        ref = "event:outlook-npc:effect:" + self._identity(node)
+        return self.ledger.lookup_event_commit(ref) is not None
 
     def execute(self, *, node, wake_event_ref, origin):
         if node.npc_ref == self.owner or self.owner in node.execution.participant_npc_refs:
@@ -194,17 +213,20 @@ class CentralNpcExecutor:
         )
         evidence = self._evidence(wake_event_ref)
         identity = self._identity(node)
-        audit_ref = "event:outlook-npc:author:" + identity
+        audit_ref = "event:outlook-npc:author:" + digest(
+            [identity, node.model_dump(mode="json"), origin]
+        )
         if self.ledger.lookup_event_commit(audit_ref) is None:
             audit = self._event(
                 "ProposalRecorded",
                 audit_ref,
                 {
-                    "proposal_id": "proposal:outlook-npc:" + identity,
+                    "proposal_id": "proposal:" + audit_ref,
                     "proposal_kind": "central_npc_execution",
                     "trigger_id": wake_event_ref,
                     "evaluated_world_revision": state.world_revision,
                     "central_authorship": origin,
+                    "node_hash": digest(node),
                     "execution": e.model_dump(mode="json"),
                     "npc_ref": node.npc_ref,
                     "no_model_call_at_execution": True,

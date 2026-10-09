@@ -38,6 +38,14 @@ class WorldOutlookExecutor:
     def next_npc_due(self):
         return self._npcs.next_due()
 
+    def has_effect(self, node):
+        from .world_outlook_npc import NPC_EXECUTION_KINDS
+
+        if node["execution"]["kind"] in NPC_EXECUTION_KINDS:
+            return self._npcs.has_effect(OutlookOpportunity.model_validate_json(json.dumps(node)))
+        ref = occurrence_ref(self._ledger.world_id, self._owner, node["opportunity_id"])
+        return any(o.occurrence_id == ref for o in self._ledger.project().world_occurrences)
+
     def cancel_pending(self, *, node, wake_event_ref):
         """Retire an unactivated intermediate write whose conditions no longer hold."""
         with self._ledger.serialized_commit_sequence():

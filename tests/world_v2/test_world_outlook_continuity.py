@@ -341,6 +341,48 @@ async def test_history_to_settled_life_link_enters_normal_recall_only_after_real
             limit=6,
         )
         assert any(h.document.settled_life is not None for h in index.search(query).hits)
+        # The same source graph must survive the ordinary Context resolver,
+        # not only a directly constructed test corpus.
+        from companion_daemon.world_v2.ledger_context_resolver import (
+            context_capsule_compiler_from_ledger,
+            ContextRelevanceScope,
+        )
+        from companion_daemon.world_v2.context_resolver import query_from_projection
+        from companion_daemon.world_v2.recall_audit import CharacterRecallRequest
+        from companion_daemon.world_v2.recall_runtime import (
+            recall_evidence_json,
+            verify_trusted_recall_trace,
+        )
+
+        trigger = "event:ordinary-story-query"
+        capsule = context_capsule_compiler_from_ledger(
+            ledger=ledger,
+            relevance_scope=ContextRelevanceScope(actor_ref=OWNER),
+            life_content_store=content,
+            recall_coordinator=recall,
+        ).compile(query_from_projection(ledger.project(), actor_ref=OWNER, trigger_ref=trigger))
+        assert "story_navigation" not in capsule.model_content_json
+        trace = recall.recall(
+            request=CharacterRecallRequest(query_text=row.record.statement, limit=6),
+            accessibility_seed="ordinary:story-query",
+            expected_cursor=query.cursor,
+            trigger_ref=trigger,
+        )
+        packet = recall_evidence_json(verify_trusted_recall_trace(trace))
+        assert executed.occurrence_id in packet
+        assert any(
+            h.document.source_item_ref.split(":window:")[0] == row.record.record_id
+            for h in trace.audit.hits
+        )
+        assert not any(
+            h.document.settled_life is not None
+            for h in index.search(query.model_copy(update={"occurred_to": wake.logical_time})).hits
+        )
+        assert not index.search(
+            query.model_copy(
+                update={"actor_ref": "actor:foreign", "subject_refs": ("actor:foreign",)}
+            )
+        ).hits
         _choice(ledger, binding, before=active, status="forgotten")
         docs = compile_docs(ledger, sources_for(ledger, content))
         assert not any(d.prehistory is not None for d in docs)
@@ -478,5 +520,137 @@ async def test_central_author_cannot_cancel_protagonist_plan(tmp_path):
         assert result["status"] == "technical_failure"
         assert ledger.project() == before and runtime.store.head() is None
         assert len(author.calls) == 2
+    finally:
+        runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_prepaid_npc_completion_continues_when_planning_budget_is_paused(tmp_path):
+    from companion_daemon.world_v2.life_ecology_runtime import (
+        LifeEcologyRuntime,
+        LifeEcologyAvailability,
+    )
+    from test_life_ecology_runtime import _Media, _TriggerStore
+
+    ledger, wake, author, runtime, npc, world = npc_setup(
+        tmp_path, lambda d: activity(d["opportunities"][0], duration=20)
+    )
+    try:
+        await runtime.refresh(
+            projection=ledger.project(), context={}, manifest=npc_manifest(ledger, wake)
+        )
+        node = next(n for n in runtime.ready() if n["opportunity_id"] == "notice")
+        started = runtime.execute_offer(node, wake_event_ref=wake.event_id)
+        later = _seed_clock(
+            ledger,
+            event_id="clock:budget-paused",
+            logical_time=wake.logical_time + timedelta(minutes=20),
+            logical_time_from=wake.logical_time,
+        )
+        ecology = LifeEcologyRuntime(
+            ledger=ledger,
+            trigger_store=_TriggerStore(),
+            media_followup=_Media(),
+            availability=LifeEcologyAvailability(state="installed_and_active"),
+            world_outlook=runtime,
+            background_budget_paused=lambda: True,
+        )
+        result = await ecology.advance_once(
+            wake_event_ref=later.event_id, trace_id="budget", correlation_id="budget"
+        )
+        assert result.reason_code == "life_ecology.paused_by_budget"
+        assert (
+            next(p for p in ledger.project().plans if p.plan_id == started.plan_id).status
+            == "completed"
+        )
+        assert len(author.calls) == 1 and npc.calls == [] and world.calls == []
+    finally:
+        runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_npc_activity_recovers_after_commit_before_receipt_without_duplicate_plan(
+    tmp_path, monkeypatch
+):
+    class Crash(BaseException):
+        pass
+
+    ledger, wake, author, runtime, npc, world = npc_setup(
+        tmp_path, lambda d: activity(d["opportunities"][0])
+    )
+    try:
+        await runtime.refresh(
+            projection=ledger.project(), context={}, manifest=npc_manifest(ledger, wake)
+        )
+        node = next(n for n in runtime.ready() if n["opportunity_id"] == "notice")
+
+        def crash(*args, **kwargs):
+            raise Crash()
+
+        with monkeypatch.context() as m:
+            m.setattr(runtime, "finish_offer", crash)
+            with pytest.raises(Crash):
+                runtime.execute_offer(node, wake_event_ref=wake.event_id)
+        assert runtime.reconcile_accepted_offers(wake_event_ref=wake.event_id) == 1
+        assert runtime.reconcile_accepted_offers(wake_event_ref=wake.event_id) == 0
+        assert runtime.execute_offer(node, wake_event_ref=wake.event_id) is None
+        assert sum(p.owner_actor_ref == "npc:lin" for p in ledger.project().plans) == 1
+        assert len(author.calls) == 1
+    finally:
+        runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_revised_npc_script_after_precommit_failure_gets_its_own_author_evidence(
+    tmp_path, monkeypatch
+):
+    ledger, wake, author, runtime, npc, world = npc_setup(
+        tmp_path, lambda d: activity(d["opportunities"][0])
+    )
+    original = ledger.commit_at_cursor
+
+    def unavailable(events, **kwargs):
+        if events[0].event_type == "ActivityPlanned":
+            raise RuntimeError("plan storage unavailable")
+        return original(events, **kwargs)
+
+    try:
+        await runtime.refresh(
+            projection=ledger.project(), context={}, manifest=npc_manifest(ledger, wake)
+        )
+        node = next(n for n in runtime.ready() if n["opportunity_id"] == "notice")
+        with monkeypatch.context() as m:
+            m.setattr(ledger, "commit_at_cursor", unavailable)
+            assert (
+                runtime.execute_offer(node, wake_event_ref=wake.event_id).status
+                == "technical_failure"
+            )
+        later = _seed_clock(
+            ledger,
+            event_id="clock:revised-task",
+            logical_time=wake.logical_time + timedelta(days=1),
+            logical_time_from=wake.logical_time,
+        )
+        draft = retime(draft_value(later), ledger.project(), later)
+        draft["parent_revision"] = runtime.store.head()[0]
+        activity(draft["opportunities"][0])
+        draft["opportunities"][0]["execution"]["activity_kind"] = "different_activity"
+        author.outputs.append({"decision": "revise", "draft": draft})
+        assert (
+            await runtime.refresh(
+                projection=ledger.project(), context={}, manifest=npc_manifest(ledger, later)
+            )
+        )["status"] == "ready"
+        node = next(n for n in runtime.ready() if n["opportunity_id"] == "notice")
+        result = runtime.execute_offer(node, wake_event_ref=later.event_id)
+        assert result.status == "npc_activity_started"
+        plan = next(p for p in ledger.project().plans if p.plan_id == result.plan_id)
+        start = ledger.lookup_event_commit(plan.authority_origin.accepted_event_ref)[0]
+        audit = ledger.lookup_event_commit(start.causation_id)[0].payload()
+        assert plan.activity_kind == audit["execution"]["activity_kind"] == "different_activity"
+        assert (
+            audit["central_authorship"]["response_hash"] == runtime.store.head()[2]["response_hash"]
+        )
+        assert len(author.calls) == 2 and npc.calls == [] and world.calls == []
     finally:
         runtime.close()
