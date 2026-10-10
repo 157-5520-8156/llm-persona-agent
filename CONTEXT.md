@@ -12,6 +12,9 @@ Naive list-diff intermediate numbers superseded;frozen final prototype archived 
 loose prototype removed.OriginalCNY5/166requests/spent4.628753/unknownreserve.231340/remaining.139907 unchanged.
 Next seam:stable material identity separated from fresh reading authority,bounded generations and
 native readable current views;do not deploy generic patch journal or freeze stale permissions.
+Additional11-cap sweep(max32updates):chat total1.63x/72.25% or2.04x/79.36% is a useful research range.
+5x per-frame cap gives2.92x/86.55%;43.2% more bytes than3x cap for only2.2% extra byte-price-proxy gain.
+Proxy substitutes bytes for tokens and assumes full prefix hits;NOT actual savings.Source authority remains unresolved.
 
 Snapshot-bound Context material sharing implemented (2026-10-09):
 Baselineaf814fa0(runtime d3d7fb06), runtime2c10c762; spec docs/design/context-read-scope-2026-10-09.md;
