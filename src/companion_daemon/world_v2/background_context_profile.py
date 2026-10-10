@@ -532,15 +532,10 @@ def slice_background_capsule_context(
 ) -> dict[str, object]:
     """Filter one deliberation Context object to a lane profile."""
 
-    from .model_context_reading import context_reading_scope
-
-    reading = context_reading_scope()
-
     if not profile.capsule_slices:
         return {
             **dict(context),
             "background_context_profile": profile.profile_id,
-            "context_reading": reading,
         }
 
     slices = context.get("slices")
@@ -548,7 +543,6 @@ def slice_background_capsule_context(
         return {
             **dict(context),
             "background_context_profile": profile.profile_id,
-            "context_reading": reading,
         }
 
     filtered_slices: dict[str, object] = {}
@@ -588,7 +582,6 @@ def slice_background_capsule_context(
     result = dict(context)
     result["slices"] = ordered_slices
     result["background_context_profile"] = profile.profile_id
-    result["context_reading"] = reading
     return result
 
 

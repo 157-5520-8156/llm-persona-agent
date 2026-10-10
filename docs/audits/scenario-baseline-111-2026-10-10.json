@@ -1,0 +1,21 @@
+{
+  "contract": "world-v2-offline-mechanism-rebaseline.1",
+  "old_version": "world-v2-offline-mechanism-baseline.110",
+  "old_manifest_hash": "0f32339ce83781e8eb9980be35869a61dccbbf15304bf426d4fe986cfba793f3",
+  "new_run_hash_with_old_version": "d7c7fd69f35ce106f7aa54777159009cf6c3a8e92eafc7fe76cc68700e735020",
+  "new_version": "world-v2-offline-mechanism-baseline.111",
+  "new_manifest_hash": "9bd39fd78a5663fe4756cd528a2aa437534eccb0beb8f9d03452455a95798943",
+  "case_count": 120,
+  "changed_cases": [
+    "npc_world_impact.01"
+  ],
+  "changed_fields": {
+    "npc_world_impact.01": [
+      "replay_hash"
+    ]
+  },
+  "all_predicates_passed": true,
+  "all_case_replays_passed": true,
+  "rationale": "model-context-reading.1 is new provider input for current role cognition. Only npc_world_impact.01 replay identity changes; visible output, calls, events, state, background activity and receipt assertions are identical. Original corpus and per-case predicates unchanged.",
+  "limitations": "Fixed fake providers, not semantic/cloud/latency/cost qualification. Initial old-source-only run lacked repository configs; controlled old run includes original src/configs/fixtures and reproduces .110 manifest exactly."
+}

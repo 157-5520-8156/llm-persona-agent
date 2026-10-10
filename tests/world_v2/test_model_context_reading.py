@@ -59,7 +59,9 @@ def test_world_author_does_not_inherit_private_recall():
     for purpose in ("world_consequence_draft", "life_development_draft"):
         view = slice_background_capsule_context(context, background_context_profile_for_purpose(purpose))
         assert "PRIVATE" not in json.dumps(view)
-        assert view["context_reading"]["history_coverage"] == "partial"
+        # External authors retain their own versioned factual/opportunity
+        # contract; they do not receive role cognition or a rewritten wire.
+        assert "context_reading" not in view
     assert context == original
 
 

@@ -4637,7 +4637,13 @@ class _InboundCharacterAuthor:
             from ..model_context_reading import context_reading_scope
 
             displayed = json.loads(messages[1]["content"])
+            # Keep the correction trailer last so its prefix is exactly the
+            # original author input, including this shared reading contract.
+            had_correction_trailer = "role_result_correction" in displayed
+            correction_trailer = displayed.pop("role_result_correction", None)
             displayed["context_reading"] = context_reading_scope(displayed.get("inner_life_snapshot"))
+            if had_correction_trailer:
+                displayed["role_result_correction"] = correction_trailer
             messages[1] = {"role": "user", "content": json.dumps(displayed, ensure_ascii=False, separators=(",", ":"))}
         if (self._whole_candidate_mode and self._atomic_tool_envelope_version == "slim"
             and compact_atomic_prompt and use_forced_tool and transport_provider is None
