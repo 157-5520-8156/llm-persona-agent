@@ -1,3 +1,19 @@
+Native memory-bank verification continued (2026-10-10):
+Audit docs/audits/context-source-bank-validation-2026-10-10.md. Runtime remains2c10c762.
+6controlled source-reader scenarios pass:carry eligible unselected history,context eviction != forgetting,
+real forget/actor/privacy rebuild,current-cursor failure cannot publish old view.38related tests pass(4.36s).
+10real debug Flash calls through ordinary respond+v25 required review in a two-record fixture;spent.060058CNY.
+First native shape broke registered source_excerpts reading and added unsupported detail;2turnsdeferred,
+2corrective requests denied before HTTP. Baseline2action_authorized(5.050/5.237s),not dispatched in that run.
+Preserving stock memory schema restored source reading once:action_authorized5.373s;2local fixture sends,
+second receipt join failed from fixture duplicateprovider_ref. Port uniqueness fixed/checkpassed;full receipt
+replay stillblocked by regenerated inner-life-snapshot identity;strict matching not relaxed.
+Quality NOT PASSED:reviewer accepted recollected past relief as current non_record without historic source.
+No keyword/rationale reclassification,no runtime prompt/role changes,no production/QQ deployment.
+2048-output limited small recheck differs from4096baseline;all10finish_reason!=length,not a savings claim.
+No actual80%/100CNY month/100daily chats/4s/complete-life qualification. Serial warmed tiny cache not causal evidence.
+Original5CNY task cap unchanged;176requests/spent4.688811/oldunknownreserve.231340/remaining.079849.
+
 Cache-first Context prototype completed (2026-10-10):
 Audit docs/audits/context-cache-prefix-prototype-2026-10-10.md. Runtime remains2c10c762.
 Offline replay of334captured requests/50historical chats fromad52b795,all matched to usage;
