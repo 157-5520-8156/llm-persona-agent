@@ -144,6 +144,12 @@ def select_scene_context(*, hits, ranked, eligible_rows, query, index_version, q
         literal_entry = max(literal_matches, key=lambda hit: (
             hit.lexical_score_bp, hit.score_bp, -positions[hit.document.document_id]),
             default=None)
+        if (literal_entry is not None and query.limit >= 2
+                and record_ref(primary.document) == record_ref(literal_entry.document)):
+            # One record keeps one representative window. Preserve the same
+            # contextual anchor's identity but show its current-question
+            # window rather than letting its opening deduplicate the answer.
+            primary = literal_entry
     priority = [*(hit for hit in hits if hit.structured_score_bp > 0), primary,
                 *([literal_entry] if literal_entry is not None else []),
                 *([second] if second is not None else hits)]
@@ -157,7 +163,12 @@ def select_scene_context(*, hits, ranked, eligible_rows, query, index_version, q
         if len(seeds) >= query.limit:
             break
         key = scene_key(hit.document)
-        if key not in seen_scenes:
+        # Distinct blocks in the same occurrence can carry distinct question
+        # evidence. Scene diversity must not swallow the reserved literal
+        # record; add() still deduplicates records and enforces both budgets.
+        reserved_literal = (literal_entry is not None and query.limit >= 2
+                            and hit.document.document_id == literal_entry.document.document_id)
+        if key not in seen_scenes or reserved_literal:
             if add(hit):
                 seeds.append(hit)
                 seen_scenes.add(key)

@@ -4332,6 +4332,13 @@ class _InboundCharacterAuthor:
         # Core-owned Recall has no coordinator on the private expression wire.
         # Present the same author capability used by this call's tool contract.
         expression_user_material["recall_available"] = recall_available
+        if not preserve_legacy_authoring:
+            from ..model_context_reading import present_dialogue_reports
+
+            # Type the derived dialogue before encoding materials. Otherwise
+            # V3 (and slim without the reference codec) hides this field from
+            # the later presentation pass inside shared-string-view.
+            expression_user_material = present_dialogue_reports(expression_user_material)
         if "inner_life_snapshot" in expression_user_material:
             # Never invent this key: a message that carried no pinned snapshot
             # must not start claiming one with a null body. Host readers also
