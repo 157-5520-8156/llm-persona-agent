@@ -134,8 +134,21 @@ def select_scene_context(*, hits, ranked, eligible_rows, query, index_version, q
         .9 * row[0] + .1 * 10_000 * row[1] / max_novel,
         -positions.get(row[2].document.document_id, len(ranked)),
     ))[2] if focused else None
+    literal_entry = None
+    if index_version.partition('+embedding:')[0] == 'world-v2-recall-index.hybrid.18' and query.lexical_text:
+        # Independent current-question evidence is reserved before a context
+        # scene's graph consumes the whole reading budget. This is matching,
+        # not a decision about what she should recall or tell the user.
+        literal_matches = [hit for _, _, hit in ranked
+                           if hit.document.prehistory is not None and hit.lexical_score_bp > 0]
+        literal_entry = max(literal_matches, key=lambda hit: (
+            hit.lexical_score_bp, hit.score_bp, -positions[hit.document.document_id]),
+            default=None)
     priority = [*(hit for hit in hits if hit.structured_score_bp > 0), primary,
+                *([literal_entry] if literal_entry is not None else []),
                 *([second] if second is not None else hits)]
+    if literal_entry is not None and query.limit >= 2:
+        priority = [primary, literal_entry, *priority]
 
     # Reserve independent entries before completing any one's nearby branch.
     seeds = []
@@ -148,6 +161,18 @@ def select_scene_context(*, hits, ranked, eligible_rows, query, index_version, q
             if add(hit):
                 seeds.append(hit)
                 seen_scenes.add(key)
+
+    if literal_entry is not None and record_ref(literal_entry.document) in selected_records:
+        # Preserve one authenticated continuation/origin alongside the topic
+        # entry before an unrelated branch consumes every remaining slot.
+        neighbours = related.get(record_ref(literal_entry.document), set())
+        if neighbours:
+            neighbour = min((best_hit(ref, question_focused=True) for ref in neighbours),
+                key=lambda hit: (-question_focus_scores.get(hit.document.document_id, 0),
+                                 positions.get(hit.document.document_id, len(ranked)),
+                                 hit.document.document_id))
+            if add(neighbour):
+                seen_scenes.add(scene_key(neighbour.document))
 
     def order(ref):
         hit = best_hit(ref)

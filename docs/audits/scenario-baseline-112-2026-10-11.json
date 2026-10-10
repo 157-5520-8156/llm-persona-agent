@@ -1,0 +1,18 @@
+{
+  "contract": "world-v2-offline-mechanism-rebaseline.1",
+  "old_version": "world-v2-offline-mechanism-baseline.111",
+  "old_manifest_hash": "9bd39fd78a5663fe4756cd528a2aa437534eccb0beb8f9d03452455a95798943",
+  "new_version": "world-v2-offline-mechanism-baseline.112",
+  "new_manifest_hash": "8db27254d8e899d762f567e47a0055e97d2a68429e2be74add8769dd9ee29204",
+  "new_run_hash_with_old_version": "74a02a7d1d8507f8fe826cde11ea1f589221198707276add4c4a8bd5c4868e01",
+  "case_count": 120,
+  "changed_fields": {
+    "npc_world_impact.01": [
+      "replay_hash"
+    ]
+  },
+  "all_predicates_passed": true,
+  "all_case_replays_passed": true,
+  "rationale": "model-context-reading.2 changes current role request identity. Only npc_world_impact.01 replay hash differs; output/event/state/calls/background/receipt fields identical. Corpus/predicates unchanged.",
+  "limitations": "Fixed fake providers; not cloud first-call semantic qualification."
+}

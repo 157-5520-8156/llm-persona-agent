@@ -4634,9 +4634,10 @@ class _InboundCharacterAuthor:
             messages[0]["content"] = prompt(messages[0]["content"])
         reference_bindings = None
         if not preserve_legacy_authoring:
-            from ..model_context_reading import context_reading_scope
+            from ..model_context_reading import context_reading_scope, present_dialogue_reports
 
             displayed = json.loads(messages[1]["content"])
+            displayed = present_dialogue_reports(displayed)
             # Keep the correction trailer last so its prefix is exactly the
             # original author input, including this shared reading contract.
             had_correction_trailer = "role_result_correction" in displayed
@@ -4654,6 +4655,8 @@ class _InboundCharacterAuthor:
             material_view = snapshot_view.get("materials", {})
             if isinstance(material_view, dict) and material_view.get("contract") == "shared-string-view.1":
                 snapshot_view["materials"] = unpack_shared_strings(material_view)
+            from ..model_context_reading import present_dialogue_reports
+            displayed = present_dialogue_reports(displayed)
             if self._visible_source_review_version == "25":
                 # Order the plain materials before assigning request-local
                 # ordinals, so changing dialogue cannot renumber the stable

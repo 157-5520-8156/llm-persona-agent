@@ -274,7 +274,7 @@ def test_legacy_compiler_bytes_stay_frozen_and_compact_v3_has_new_identity():
     # recorded carriers are verified from their saved bytes. The eight historical
     # variants above retain their bytes; saved v3 carriers also retain their
     # exact original prompt rather than using this compiler during replay.
-    # model-context-reading.1 is an explicit new current input contract.
+    # model-context-reading.2 is an explicit new current input contract.
     # Saved v3 carriers are still verified from their original bytes above.
-    assert current["3:False:True:False"] == "24c5d7c09b924fe8b091549fa07f95d9817c564722a164313674bcb938792c57"
-    assert current["3:False:True:True"] == "76de7599dd422523870650cec953883cd979a23cdc6213da840f6dc49c4d2af5"
+    assert current["3:False:True:False"] == "7fa2467e5f4783f1a6418872509e44614e34008c7ecb293a25b860cfe543ffc3"
+    assert current["3:False:True:True"] == "b77f97273bd8cfb60e9fefee135afba0489ccbd0a28df45b03d4c4fd13e21625"

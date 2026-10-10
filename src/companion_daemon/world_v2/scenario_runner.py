@@ -365,7 +365,10 @@ class ScenarioVerificationError(AssertionError):
 # old-source+config control reproduces .110 exactly; only npc_world_impact.01's
 # replay hash changes. All outputs, calls, events, state and receipt predicates
 # remain identical. See docs/audits/scenario-baseline-111-2026-10-10.json.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.111"
+# .112 types source reading as .2; a complete .111 control and current run
+# differ only in npc_world_impact.01's replay identity. Per-case behavior and
+# all source/receipt predicates are unchanged; see the dated .112 audit.
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.112"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -694,7 +697,7 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.111
 # frozen; changing their historical maximum changes only derived replay
 # identities in all 120 offline cases, not outputs or predicates. See
 # docs/audits/scenario-baseline-108-2026-09-30.json.
-FROZEN_OFFLINE_SUITE_MANIFEST_HASH = "9bd39fd78a5663fe4756cd528a2aa437534eccb0beb8f9d03452455a95798943"
+FROZEN_OFFLINE_SUITE_MANIFEST_HASH = "8db27254d8e899d762f567e47a0055e97d2a68429e2be74add8769dd9ee29204"
 
 
 class _FixedScenarioRouter:

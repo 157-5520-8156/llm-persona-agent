@@ -81,7 +81,7 @@ async def test_default_application_installs_configured_history_without_provider(
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "enabled,expected",
-    [(True, "world-v2-recall-index.hybrid.17"), (False, "world-v2-recall-index.hybrid.14")],
+    [(True, "world-v2-recall-index.hybrid.18"), (False, "world-v2-recall-index.hybrid.14")],
 )
 async def test_user_conversation_host_resolves_shared_story_setting(tmp_path, enabled, expected):
     from companion_daemon.config import Settings
@@ -401,7 +401,7 @@ async def test_normal_chat_cli_fetches_initial_memory_from_user_text_only(tmp_pa
     records = [json.loads(line) for line in transcript.read_text().splitlines()]
     started = next(r for r in records if r["record_type"] == "session_started")
     turn = next(r for r in records if r["record_type"] == "turn")
-    assert started["memory_runtime_profile"]["recall_policy"] == "world-v2-recall-index.hybrid.17"
+    assert started["memory_runtime_profile"]["recall_policy"] == "world-v2-recall-index.hybrid.18"
     assert started["memory_runtime_profile"]["initialization_mode"] == "direct"
     assert started["evaluation_scope"] == "user_conversation_entrypoint"
     assert started["semantic_quality"] == "not_evaluated"

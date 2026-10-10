@@ -14,13 +14,13 @@ _ATTRIBUTED_READING_POLICIES = frozenset({
     "world-v2-recall-index.hybrid.8", "world-v2-recall-index.hybrid.9",
     "world-v2-recall-index.hybrid.10", "world-v2-recall-index.hybrid.11",
     "world-v2-recall-index.hybrid.12", "world-v2-recall-index.hybrid.13",
-    "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17",
+    "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18",
 })
 _FACT_READING_POLICIES = frozenset({
     "world-v2-recall-index.hybrid.9", "world-v2-recall-index.hybrid.10",
     "world-v2-recall-index.hybrid.11", "world-v2-recall-index.hybrid.12",
     "world-v2-recall-index.hybrid.13",
-    "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17",
+    "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18",
 })
 
 
@@ -28,7 +28,7 @@ def supports_life_reading(index_version: str) -> bool:
     return index_version.partition("+embedding:")[0] in {
         "world-v2-recall-index.hybrid.10", "world-v2-recall-index.hybrid.11",
         "world-v2-recall-index.hybrid.12", "world-v2-recall-index.hybrid.13",
-        "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17",
+        "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18",
     }
 
 
@@ -73,7 +73,7 @@ def interior_recall_item(
             "valid_to": document.valid_to.isoformat() if document.valid_to else None,
         }
     story_window = {}
-    if index_version.partition("+embedding:")[0] == "world-v2-recall-index.hybrid.17" and document.prehistory is not None:
+    if index_version.partition("+embedding:")[0] in {"world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18"} and document.prehistory is not None:
         story_window["episode_navigation"] = [{"episode_ref": member.episode_ref,
             "scope": "currently_readable_sources_only",
             "overview": {"episode_ref": member.episode_ref, "mode": "overview"},
@@ -111,7 +111,7 @@ def interior_recall_item(
                if document.interpretation_scope is not None else {})}
            if document.authority == "defeasible_interpretation"
            and index_version.partition("+embedding:")[0] in {
-               "world-v2-recall-index.hybrid.13", "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17"}
+               "world-v2-recall-index.hybrid.13", "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18"}
            else {}),
         **({"subject_refs": list(document.subject_refs)} if attributed else {}),
         **({"speaker_ref": document.speaker_ref}
@@ -123,7 +123,7 @@ def interior_recall_item(
            if document.source_window_start is not None and index_version.partition("+embedding:")[0] in {
                "world-v2-recall-index.hybrid.11", "world-v2-recall-index.hybrid.12",
                "world-v2-recall-index.hybrid.13",
-               "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17",
+               "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18",
            } else {}),
         **({"settled_life": {
             "settled_at": life.settled_at.isoformat(),
@@ -134,7 +134,7 @@ def interior_recall_item(
 
     if document.prehistory is not None:
         result["prehistory"].pop("episodes", None)
-    if (index_version.partition("+embedding:")[0] in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17"}
+    if (index_version.partition("+embedding:")[0] in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18"}
             and document.prehistory is not None and document.prehistory.story is not None):
         # Only transport proof and duplicate coordinates leave the model view.
         # Full typed source proof stays in the immutable RecallAuditTrace.
@@ -165,7 +165,7 @@ def interior_recall_item(
             story["incoming_relations"] = incoming
         if result["story_window"]["complete_record"]:
             result["story_window"] = {"complete_record": True}
-    if index_version.partition("+embedding:")[0] in {"world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17"} and document.prehistory is not None:
+    if index_version.partition("+embedding:")[0] in {"world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18"} and document.prehistory is not None:
         result['reading_scope'] = 'selected_records_not_exhaustive_history'
         result['unreturned_followups'] = 'not_established'
     return result
