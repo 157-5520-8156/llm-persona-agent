@@ -1,3 +1,26 @@
+First-call Context transport implemented (2026-10-10):
+Runtime bfc20cbf; spec docs/design/model-context-reading-2026-10-10.md;
+audit docs/audits/model-context-reading-2026-10-10.md. Actual chat policy sampled,
+no synchronous semantic review restored. Current chat3/slim and role background
+share model-context-reading.1; completed role recall keeps its registered content,
+refs, inventory and Faculty binding after purpose slicing. 15 private purposes/30
+wire variants plus one provider-call test pass; neither new LLM nor embedding calls.
+World Author keeps its own factual/opportunity contract and old wire. V1/V2 eight
+frozen hashes stay identical; correction trailer stays last. LifeSourceView recall
+still unpresented under its fixed source catalogue; NOT solved or qualified.
+All-purpose read-only input/usage audit joins334originalDeepSeek bills/384captures,
+50localQwen captures lack usage rows; historical7.0340CNY not current cost forecast.
+Initial full cf27:5fail/10449pass; compatibility/prefix fixed, current V3 input
+identity explicit. Old src+configs+fixtures reproduces baseline110 exactly; only
+npc_world_impact.01 replay_hash changes, all120outputs/events/state/calls/background/
+receipt predicates identical; versioned baseline111 (audit JSON retained).
+Final frozen bfc20:10454pass/19skip/2xfail/1existingwarning,1232.14s/exit0;
+10Python hashes unchanged. Final6ordinary full-source HTTP intercepts median2.115s,
+2/6<=2s; strict2s still RED. 0realcalls/0visibleoutputs; no four-second claim.
+Cloud first-call semantics/full-life/all-purpose costs/90%hit/100CNY month remain
+unqualified. Original5CNY ledger176requests/spent4.688811/unknownreserve.231340/
+remaining.079849 unchanged. Additional<=.5CNY cloud grant question pending, not approved.
+
 Native memory-bank verification continued (2026-10-10):
 Audit docs/audits/context-source-bank-validation-2026-10-10.md. Runtime remains2c10c762.
 6controlled source-reader scenarios pass:carry eligible unselected history,context eviction != forgetting,
