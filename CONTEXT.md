@@ -1,3 +1,20 @@
+Two full-source ordinary cloud chats verified (2026-10-11):
+Audit docs/audits/first-recall-cloud-2026-10-11.md; runtime stillbfc20cbf.
+User explicitly approved independent<=.5CNY; old5CNYledger untouched.
+First private harness startup:2localQwen calls,0remoteissued;late budget binding
+classified run legacycapture-only,thenwrongclosemethodmaskedreport. Preserved;
+fixed only harness pre-registration/aclose,error/timing capture; no runtimechange.
+Successful run:2localQwen+4realFlash (2initialrecallchoices+2after_recall),0semantic
+review/0technicalcorrection. Recall pulled once each and actually presented.
+2action_authorized/6Consoletexts;first9.684/8.843s,whole10.674/9.810s:4sRED.
+110350input/850outputtokens,38400hit/71950miss=34.80%;spent.076120CNY,
+0unknownreserve,grantremaining.423880;do not use balance for unapproved new cases.
+Semantic NOT PASSED:turn1uses12dayoldownspeech/habit asrecentcompletedroster
+check despiteemptypersonalactionindex;turn2gets correcthighschoolsongsource
+butaddsunsupportedbothpeoplelaughing. Stage-mixedretrieval alsoobserved.
+No further paidpromptgrid,no sourcebackfill,no syncchatreview restored.
+Firstcallquality/full-life/allpurpose costs/90%/100month/4s stayunqualified.
+
 First-call Context transport implemented (2026-10-10):
 Runtime bfc20cbf; spec docs/design/model-context-reading-2026-10-10.md;
 audit docs/audits/model-context-reading-2026-10-10.md. Actual chat policy sampled,
