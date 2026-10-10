@@ -46,6 +46,7 @@ async def test_unreviewed_text_delivers_once_observer_is_non_authoritative_and_r
     async def reply(request):
         body = json.loads(request.content)
         calls.append(body)
+        assert json.loads(body['messages'][1]['content'])['context_reading']['history_coverage'] == 'partial'
         assert body['tool_choice']['function']['name'].startswith('character_inbound_')
         value = _decision()
         # Deliberately unsupported speech proves this new receipt does NOT

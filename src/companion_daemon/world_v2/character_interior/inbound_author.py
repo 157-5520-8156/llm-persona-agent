@@ -4633,12 +4633,16 @@ class _InboundCharacterAuthor:
 
             messages[0]["content"] = prompt(messages[0]["content"])
         reference_bindings = None
+        from ..model_context_reading import context_reading_scope
+
+        displayed = json.loads(messages[1]["content"])
+        displayed["context_reading"] = context_reading_scope(displayed.get("inner_life_snapshot"))
+        messages[1] = {"role": "user", "content": json.dumps(displayed, ensure_ascii=False, separators=(",", ":"))}
         if (self._whole_candidate_mode and self._atomic_tool_envelope_version == "slim"
             and compact_atomic_prompt and use_forced_tool and transport_provider is None
             and self._character_interior_recall_delegate
             and request.visible_source_requirement_json is not None):
             from ..reference_wire import prepare_reference_view
-            displayed = json.loads(messages[1]["content"])
             snapshot_view = displayed.get("inner_life_snapshot", {})
             material_view = snapshot_view.get("materials", {})
             if isinstance(material_view, dict) and material_view.get("contract") == "shared-string-view.1":

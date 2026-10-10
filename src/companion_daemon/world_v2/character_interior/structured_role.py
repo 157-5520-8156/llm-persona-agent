@@ -1985,6 +1985,15 @@ class StructuredCharacterRoleFaculty:
                 background_profile = life_source_profile(LIFE_REVIEW_CONTRACT)
             if current_choice:
                 background_profile = continuity_profile(background_profile, lifecycle_states=True)
+            elif "selected_recall" in full_snapshot.get("materials", {}) and not (
+                request.purpose == "world_stimulus_appraisal" and (
+                    self.requires_life_source_review or request.snapshot.life_source_origin is not None
+                )
+            ):
+                # This result was already actor/cursor-bound by CharacterInterior.
+                # A purpose whitelist must not discard the very pull the role
+                # requested. Pinned Life reviewer views retain their own contract.
+                background_profile = continuity_profile(background_profile, lifecycle_states=False)
             snapshot = slice_background_inner_life_snapshot(full_snapshot, background_profile)
         else:
             background_profile = None
@@ -2229,6 +2238,9 @@ class StructuredCharacterRoleFaculty:
             from .inbound_context_presentation import cache_ordered_background_material
 
             user_payload = cache_ordered_background_material(user_payload)
+        from ..model_context_reading import context_reading_scope
+
+        user_payload["context_reading"] = context_reading_scope(user_payload.get("inner_life_snapshot"))
         return [
             {
                 "role": "system",
