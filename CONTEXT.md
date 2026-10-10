@@ -1,3 +1,30 @@
+First-question prefetch and old speech typed (2026-10-11):
+Spec docs/design/first-pass-prefetch-and-speech-2026-10-11.md;
+audit docs/audits/first-pass-prefetch-2026-10-11.md. Runtime949e0695;
+paid same-two-question recheck was b10834e1, before local review fixes.
+Current story policy18 reserves filtered direct literal question evidence before
+graph expansion, including same-scene different records and same-record tail
+window; old17 unchanged, one record/window,6items and original byte caps stay.
+Current3/slim wrap derived conversation as recorded_utterance_only before
+shared-string encoding; original sentences/time/raw recent_dialogue unchanged.
+model-context-reading.2, isolated guide365bytes+wrapper159bytes; no new LLM,
+embedding batch, sync chat review or output cap reduction. Role chooses recall.
+Same two ordinary full-source chats:2localQwen+3realFlash (2initial+1after_recall),
+0syncsemanticreview/0technicalcorrection,2authorized/8Consoletexts;
+first7.029/10.429s,whole8.013/12.110s:4sRED. Input81191/output799,
+hit37888/miss43303=46.67%,new.047258CNY. Not controlled latency/cache A/B.
+Independent.5grant cumulative7requests/.123378spent/0unknown/.376622remaining;
+old5ledger176/4.688811/.231340/.079849unchanged. No more paidtrialgrid.
+Semantic NOT PASSED:one call direct but old roster utterance/habit still treated
+as recent execution;高中origin+universityfollowup now provided but event/time
+may be conflated in prose. Valid world_claims alone do not qualify free speech.
+Local reviews closed encoded3/slim and record/window omission P2s;9newregressions,
+54latest scoped pass; final frozen949e0695 full10463pass/19skip/2xfail/
+1existingwarning/1269.12s/exit0,11PythonSHAunchanged. No semanticgreenclaim.
+Old/new120scenario behavior equal except one input replay hash; baseline112
+explicit. V1/V2 frozen hashes unchanged. No production/QQ/full-lifequalification;
+manual_only/qualification_incomplete;90%/100month/4s/all-purpose costs unclosed.
+
 Two full-source ordinary cloud chats verified (2026-10-11):
 Audit docs/audits/first-recall-cloud-2026-10-11.md; runtime stillbfc20cbf.
 User explicitly approved independent<=.5CNY; old5CNYledger untouched.
