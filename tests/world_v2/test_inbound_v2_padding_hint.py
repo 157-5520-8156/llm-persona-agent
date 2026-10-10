@@ -63,6 +63,8 @@ async def test_captured_author_padding_hint_matches_initial_and_after_recall_sch
     await _exercise_review_cli(tmp_path, monkeypatch, recall_first=True, tool_version=tool_version)
     assert len(captured) == 2
     for index, body in enumerate(captured):
+        packet = json.loads(body["messages"][1]["content"])
+        assert ("context_reading" in packet) is (tool_version not in {"1", "2"})
         system = body["messages"][0]["content"]
         if tool_version == "1":
             assert _PADDING_MARKER not in system

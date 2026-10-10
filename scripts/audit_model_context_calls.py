@@ -30,7 +30,8 @@ def _decoded_user_views(body: dict) -> list[dict]:
 
 
 def audit(captures: Path, usage: Path) -> dict:
-    bills = json.loads(usage.read_text())
+    captured_bytes, usage_bytes = captures.read_bytes(), usage.read_bytes()
+    bills = json.loads(usage_bytes)
     if not isinstance(bills, list):
         raise ValueError("usage must contain a list of original billing rows")
     by_reservation = {}
@@ -41,7 +42,7 @@ def audit(captures: Path, usage: Path) -> dict:
         by_reservation[reservation] = bill
     groups = {}
     matched = set()
-    for line in captures.read_text().splitlines():
+    for line in captured_bytes.decode("utf-8").splitlines():
         row = json.loads(line)
         if row.get("kind") != "request":
             continue
@@ -105,8 +106,8 @@ def audit(captures: Path, usage: Path) -> dict:
         "contract": "model-context-calls-audit.1",
         "measurement": "original request UTF-8 bytes and settled usage; no token/cost extrapolation",
         "coverage_note": "Observed fields only; opaque/nested payloads are not decoded. Absence does not prove missing evidence.",
-        "input_sha256": {"captures": hashlib.sha256(captures.read_bytes()).hexdigest(),
-                         "usage": hashlib.sha256(usage.read_bytes()).hexdigest()},
+        "input_sha256": {"captures": hashlib.sha256(captured_bytes).hexdigest(),
+                         "usage": hashlib.sha256(usage_bytes).hexdigest()},
         "captured_requests": sum(row["requests"] for row in records),
         "matched_bills": len(matched),
         "unmatched_bills": len(by_reservation.keys() - matched),

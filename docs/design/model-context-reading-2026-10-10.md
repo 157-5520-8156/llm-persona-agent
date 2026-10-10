@@ -6,7 +6,7 @@
 
 1. 已完成且绑定当前快照的角色检索结果，应进入该角色下一次调用。一般后台用途不能因材料白名单而丢掉selected_recall及其来源目录。外部World Author不继承角色私有检索。
 2. 源证据、过去主观记录和角色此刻的回顾性理解是不同东西。提供统一的读取说明，不给角色指定感受、措辞、动作或必须提起哪条记忆；未提供的片段不能作为不存在的证据。
-3. 保留remembered_material、selected_recall、automatic_prefetch现有注册形状；不让模型执行JSON补丁，也不冻结跨轮权限。新说明进入本次请求哈希，不重写已保存请求。
+3. 保留remembered_material、selected_recall、automatic_prefetch现有注册形状；不让模型执行JSON补丁，也不冻结跨轮权限。新说明进入本次请求哈希，不重写已保存请求。入站V1/V2保留历史authoring bytes，只在当前3/slim加入说明；外部World Author不获得角色主观状态的创作权。
 4. 生活来源校验拥有独立且已固定的呈现/目录合同。此次不偷偷改变旧life-source-review合同：使用LifeSourceView的world_stimulus_appraisal暂保留其视图（含review_contract=None的来源视图），并明确标注检索结果是否实际呈现。其检索来源纳入目录需要独立版本化工作，不能宣布所有用途均已合格。
 5. 聊天、角色后台、外部生活作者的主要上下文入口共用读取说明。说明只描述来源/覆盖边界，不是新事实或授权；用途白名单、权限、时态和来源读取器仍负责硬边界。
 
