@@ -1,3 +1,50 @@
+Old speech deduplication and historical plan meaning (2026-10-11):
+Runtime30326244 (initial2a53d34c,source-budget112f7d14), baseline157cbbf1. Spec/audit
+docs/design/speech-authority-and-local-latency-2026-10-11.md and
+docs/audits/speech-authority-and-local-latency-2026-10-11.md.
+Current3/slim derived conversation links exact native dialogue_id/text/time;
+raw stable_turns/canonical snapshot and V1/V2 stay intact. Native lived_moment
+links underlying diary/appraisal/impression instead of repeating them; subjective
+interpretation remains distinct from execution. Plan state and personal-result
+index remain separate and sit near current question. No sync chat review added.
+New HistoricalActivityIntention binds original accepted Plan/Proposal, actor,
+privacy and pinned cursor; past intention only, never execution or World Author
+permission. Situation plan_id join now precedes BOTH resolver32ref proof budget
+and Capsule item budget. Real full-source intercepted first request contains
+paused walk-plan original intent/ref; previous reader3->bound0 omission fixed.
+No network in final-source intercept; arrival is not semantic success.
+Pure immutable prehistory archive/record joins reused via bounded weak tuple
+identity cache; every current event/world/revision/hash/time check still runs.
+Supports equivalent complete authored wait object; fixes slim auto tool-choice
+string transport crash. Production thinking/endpoint prompts unchanged.
+Actual early stage:3knowncloud+2local,1answered-but-unsupported/1deferred;
+first6.963s/whole8.300s; second9.430sdeferred(waitformat). Input80810/output969,
+hit17280/miss63530=21.38%,newknown.067753CNY. Low-thinking private experiment:
+pre-fix0cloud/2localdeferred;after-fix1issuedcloudtimeout/2local,secondcloud
+deniedbeforetransport. No responses. This turn6ordinary attempts:1incorrect
+answered+5deferred. Extra14local endpoint probes rejected/reverted;20localtotal.
+Independent.5ledger11requests/.191131known/.220956unknown/.087913available;
+do not clear unknown reserve or bypass insufficient next-request preflight.
+Old5ledger176/4.688811/.231340/.079849unchanged. No new paid calls authorized
+beyond remaining safe capacity; final30326244 has NOT been cloud qualified.
+Final saved-response timing pair157->112:prepare4.439->4.062s,
+post-response-to-first1.601->1.475s,first6.042->5.540s,whole6.938->6.345s.
+Instant local replay adds1.809s hold; NOT actual live latency or p95/4s proof.
+Old stable15turns preserved; duplicate displays halved; message bytes86565->86226,
+so no substantial token/cost saving claim. Full-life/model-purpose costs unclosed.
+Scoped106pass(previous120overlap),Ruff/diffpass. Standards0findings;
+Spec1P2source-budget ordering fixed+realentryintercepted. Initial112full interrupted
+after50fail/6881pass/2xfail/1warning/633s;28SHAunchanged.48legacy Life hashes and
+2growth declarations failed.303 fixes all fixed LifeSourceView profiles inclNone,
+producer/verifier aligned;ordinary role retains historical material,max3 declared.
+Compat109pass;22old/currentprofilemetadatahashes identical(None+1..21).
+Final120fake scenario rows ALL equal112 inclreplay;candidate113 withdrawn,
+original112manifest retained. No golden rewrite. Final303full10478pass/19skip/
+2xfail/1existingwarning,pytest1271.86s(wrapper1274.062),exit0;30Python SHA
+unchanged. Initial failures retained;final engineering green is not semanticgreen.
+Still manual_only/qualification_incomplete;first-call correctness/90%/100month/
+4s/all-purpose quality and costs remain unqualified. No production/QQ changes.
+
 First-question prefetch and old speech typed (2026-10-11):
 Spec docs/design/first-pass-prefetch-and-speech-2026-10-11.md;
 audit docs/audits/first-pass-prefetch-2026-10-11.md. Runtime949e0695;
