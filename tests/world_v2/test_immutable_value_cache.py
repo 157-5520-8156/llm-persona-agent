@@ -55,3 +55,23 @@ def test_cache_binds_every_model_and_scalar_option():
     assert combine(a, b.model_copy(update={"name": "new"}), limit=6) == "onenew"
     assert combine(a, b, limit=6) == "onetwo"
     assert combine.cache_info().hits == 1
+
+
+def test_tuple_inputs_bind_every_element_without_owning_the_collection():
+    calls = []
+
+    @immutable_value_cache(maxsize=2)
+    def read(rows):
+        calls.append(1)
+        return tuple(row.name for row in rows)
+
+    a, b = Row(name='a'), Row(name='b')
+    assert read((a, b)) == read(tuple([a, b])) == ('a', 'b')
+    assert len(calls) == 1
+    assert read((b, a)) == ('b', 'a')
+    assert read((a.model_copy(update={'name': 'new'}), b)) == ('new', 'b')
+    assert len(calls) == 3
+    pointer = weakref.ref(b)
+    del b
+    gc.collect()
+    assert pointer() is None

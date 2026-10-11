@@ -18,7 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 from .context_capsule import ResolvedSourceBinding, source_bindings_hash
 from .visible_subjective_source import subjective_source_support
 from .visible_life_source import settled_life_source_support
-from .world_life_context import ActiveActivityContextItem, CompletedActivityContextItem, PlannedActivityContextItem
+from .world_life_context import ActiveActivityContextItem, CompletedActivityContextItem, PlannedActivityContextItem, HistoricalActivityIntentionContextItem
 
 
 VISIBLE_SOURCE_CLOSURE_CONTRACT = "visible-beat-source-verdict.1"
@@ -683,6 +683,7 @@ def _activity_support(
         "active_activity": ActiveActivityContextItem,
         "completed_activity": CompletedActivityContextItem,
         "planned_activity": PlannedActivityContextItem,
+        "historical_activity_intention": HistoricalActivityIntentionContextItem,
     }.get(context_kind)
     if activity_type is None:
         return None
@@ -718,8 +719,10 @@ def _activity_support(
         ):
             return None
         return activity.owner_actor_ref, {
-            "contract": "visible-planned-activity-source.1",
-            "status": "planned",
+            "contract": ('visible-historical-intention-source.1'
+                         if isinstance(activity, HistoricalActivityIntentionContextItem)
+                         else 'visible-planned-activity-source.1'),
+            "status": activity.status,
             "source_event_type": "ActivityPlanned",
             "scope": activity.planning_scope,
         }
@@ -1146,6 +1149,13 @@ def visible_source_closure_messages(
                     "scheduled window. It proves no started activity, location presence, "
                     "past experience, embedded backstory, completion or objective outcome."
                 ),
+            }
+        if any(row.get('activity_support', {}).get('contract') == 'visible-historical-intention-source.1'
+               for row in source_references):
+            packet['historical_intention_support_contract'] = {
+                'contract': 'visible-historical-intention-source.1',
+                'scope': 'The original accepted choice is historical intention only. Its old window '
+                         'does not establish a current plan, activity, location, execution or outcome.',
             }
     if version in {"4", "5", "6", "7", "8"}:
         from .visible_source_evidence_cards import compile_visible_evidence_cards

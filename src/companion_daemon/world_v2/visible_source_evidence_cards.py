@@ -20,6 +20,7 @@ from .world_life_context import (
     ActiveActivityContextItem,
     CompletedActivityContextItem,
     PlannedActivityContextItem,
+    HistoricalActivityIntentionContextItem,
 )
 
 
@@ -27,6 +28,7 @@ _ACTIVITY_TYPES = {
     "active_activity": ActiveActivityContextItem,
     "completed_activity": CompletedActivityContextItem,
     "planned_activity": PlannedActivityContextItem,
+    "historical_activity_intention": HistoricalActivityIntentionContextItem,
 }
 _ACTIVITY_SCOPE_BOUNDARY = (
     "An accepted plan proves only its accepted intention and scheduled window. "

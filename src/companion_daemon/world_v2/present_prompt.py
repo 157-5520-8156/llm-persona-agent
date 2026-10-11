@@ -2496,6 +2496,23 @@ def compile_slim_consider_payload(
 
     if not is_slim_consider_payload(value):
         return None
+    wait = value.get("wait")
+    if isinstance(wait, Mapping):
+        # The role supplied the complete choice in one object. This is only
+        # transport normalization; ambiguous, missing or malformed choices
+        # still fail instead of being guessed, dropped or rescaled.
+        if set(wait) != {"after_seconds", "pressure_bp", "importance_bp"}:
+            raise ValueError("wait对象必须且只能包含after_seconds、pressure_bp、importance_bp")
+        seconds = wait["after_seconds"]
+        if type(seconds) is not int or not 30 <= seconds <= 86400:
+            raise ValueError("wait.after_seconds必须是30到86400整数秒")
+        for key in ("pressure_bp", "importance_bp"):
+            if type(wait[key]) is not int or not 0 <= wait[key] <= 10000:
+                raise ValueError(f"wait.{key}必须是0到10000整数基点")
+            if key in value and (type(value[key]) is not int or value[key] != wait[key]):
+                raise ValueError(f"wait.{key}与顶层{key}冲突")
+        value = {**value, "wait": seconds, "pressure_bp": wait["pressure_bp"],
+                 "importance_bp": wait["importance_bp"]}
     # Current carriers keep the topic and duration in one authored object.
     # Legacy pairs still replay exactly. No missing choice is inferred.
     revisit = value.get("come_back")

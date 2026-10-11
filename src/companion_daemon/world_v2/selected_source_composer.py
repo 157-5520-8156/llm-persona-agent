@@ -23,6 +23,7 @@ from .world_life_context import (
     BiographicalWorldContextItem,
     CompletedActivityContextItem,
     PlannedActivityContextItem,
+    HistoricalActivityIntentionContextItem,
     WorldLifeContextItem,
 )
 
@@ -105,6 +106,7 @@ def _world_entries(capsule: ContextCapsule, *, include_lifecycle_states: bool = 
         "active_activity": ActiveActivityContextItem,
         "completed_activity": CompletedActivityContextItem,
         "planned_activity": PlannedActivityContextItem,
+        "historical_activity_intention": HistoricalActivityIntentionContextItem,
         "biographical_context": BiographicalWorldContextItem,
     }
     if include_lifecycle_states:

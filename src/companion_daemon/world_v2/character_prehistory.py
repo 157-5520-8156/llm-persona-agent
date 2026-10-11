@@ -420,6 +420,26 @@ def validate_prehistory_state(archives, records, events, *, logical_time, world_
             actual_payload_hash != source.payload_hash or logical_time is None or row.accepted_at > logical_time
         ):
             raise ValueError("prehistory projection changed its exact accepted source")
+    for archive in archives:
+        start = by_ref.get(archive.world_started_ref)
+        if start is None or (
+            start.event_type, start.world_revision, start.payload_hash, start.logical_time
+        ) != ("WorldStarted", archive.world_started_revision, archive.world_started_hash, archive.world_started_at):
+            raise ValueError("prehistory projection changed the World start")
+        if world_id is not None and archive.manifest.world_id != world_id:
+            raise ValueError("prehistory projection belongs to another World")
+    _validate_prehistory_contents(archives, records)
+
+
+@immutable_value_cache(maxsize=4)
+def _validate_prehistory_contents(archives, records):
+    """Pure archive/record relations; current event, world and time checks stay above.
+
+    A chat receipt does not change these immutable records. Repeating their
+    entity, manifest and complete-import joins on every commit costs O(history).
+    Every member identity and order participates in this bounded weak cache;
+    new or changed records recompute, and failed checks are never cached.
+    """
     manifests = {x.manifest.archive_id: x for x in archives}
     pins_by_archive = {
         x.manifest.archive_id: {pin.record_id: pin.record_hash for pin in x.manifest.records}
@@ -431,13 +451,6 @@ def validate_prehistory_state(archives, records, events, *, logical_time, world_
     }
     entities = {}
     for archive in archives:
-        start = by_ref.get(archive.world_started_ref)
-        if start is None or (
-            start.event_type, start.world_revision, start.payload_hash, start.logical_time
-        ) != ("WorldStarted", archive.world_started_revision, archive.world_started_hash, archive.world_started_at):
-            raise ValueError("prehistory projection changed the World start")
-        if world_id is not None and archive.manifest.world_id != world_id:
-            raise ValueError("prehistory projection belongs to another World")
         for entity in archive.manifest.entities:
             if entity.entity_ref in entities and entity != entities[entity.entity_ref]:
                 raise ValueError("prehistory projection changed a historical identity")

@@ -587,7 +587,7 @@ def _experience_entry(
     if not isinstance(source_ref, str) or not isinstance(value, dict):
         return None
     if lane == "world_life":
-        if value.get("context_kind") in {"biographical_context", "active_activity", "completed_activity", "planned_activity", "activity_lifecycle_state"}:
+        if value.get("context_kind") in {"biographical_context", "active_activity", "completed_activity", "planned_activity", "historical_activity_intention", "activity_lifecycle_state"}:
             return None
         fields = (
             (
@@ -1416,6 +1416,18 @@ def compile_inner_life_snapshot(
     ]
     if planned_activities:
         materials["planned_activities"] = planned_activities
+
+    historical_intentions = [
+        entry for item in _slice_items(slices, 'world_life')
+        if isinstance(item.get('value'), dict)
+        and item['value'].get('context_kind') == 'historical_activity_intention'
+        and (entry := _state_entry(item, fields=(
+            'plan_id', 'owner_actor_ref', 'activity_kind', 'selected_at',
+            'planning_scope', 'accepted_intention',
+        )))
+    ]
+    if historical_intentions:
+        materials['historical_activity_intentions'] = historical_intentions
 
     recently_ended = [
         entry

@@ -172,6 +172,17 @@ class PlannedActivityReader(Protocol):
     ) -> PlannedActivityContextItem | None: ...
 
 
+class HistoricalActivityIntentionContextItem(PlannedActivityContextItem):
+    """The original accepted choice, independently of today's lifecycle state."""
+
+    context_kind: Literal['historical_activity_intention'] = 'historical_activity_intention'
+    status: Literal['accepted_intention'] = 'accepted_intention'
+    planning_scope: Literal['historical_intention_not_current_plan_or_execution'] = (
+        'historical_intention_not_current_plan_or_execution'
+    )
+    selected_at: datetime
+
+
 class ActiveActivityReader(Protocol):
     def read_active_plan(
         self,
@@ -338,6 +349,7 @@ WorldLifeModelContextItem = (
     | ActiveWorldOccurrenceContextItem
     | ActiveActivityContextItem
     | PlannedActivityContextItem
+    | HistoricalActivityIntentionContextItem
     | CompletedActivityContextItem
     | ActivityLifecycleStateContextItem
     | BiographicalWorldContextItem
@@ -594,10 +606,22 @@ class WorldLifeContextCompiler:
             projection=projection, actor_ref=actor_ref, cursor=cursor,
             viewer_privacy_ceiling=viewer_privacy_ceiling,
         )
+        historical_intentions = []
+        read_intention = getattr(self._planned_activity_reader, 'read_historical_intention', None)
+        if cursor is not None and callable(read_intention):
+            for state in lifecycle_states:
+                intention = read_intention(plan_id=state.plan_id, expected_cursor=cursor,
+                    actor_ref=actor_ref, viewer_privacy_ceiling=viewer_privacy_ceiling)
+                if (isinstance(intention, HistoricalActivityIntentionContextItem)
+                        and intention.plan_id == state.plan_id
+                        and intention.owner_actor_ref == actor_ref
+                        and intention.privacy_class == state.privacy_class
+                        and intention.accepted_intention.content_ref not in user_channel_limited_content_refs):
+                    historical_intentions.append(intention)
         return (
             ((biography,) if biography is not None else ())
             + tuple(activities) + tuple(completed_activities) + tuple(planned_activities)
-            + lifecycle_states + active + settled
+            + lifecycle_states + tuple(historical_intentions) + active + settled
         )
 
     def _biographical_item(

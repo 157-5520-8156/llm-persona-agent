@@ -101,6 +101,8 @@ def _permits_eligible_source_subject(
                 subject_role == owner
                 and pointer.startswith("/item/value/accepted_intention/")
             )
+        if activity.get('contract') == 'visible-historical-intention-source.1':
+            return False
         lifecycle_pointer = pointer in {
             "/item/value/status", "/item/value/started_at", "/item/value/ended_at",
         }

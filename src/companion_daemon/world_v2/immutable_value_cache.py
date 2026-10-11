@@ -56,17 +56,27 @@ def immutable_value_cache(*, maxsize):
             values = (*args, *(v for _, v in sorted(kwargs.items())))
             models = []
             components = []
-            for value in values:
+
+            def component(value):
                 if (
                     isinstance(value, FrozenModel)
                     and type(value).model_config.get("frozen") is True
                 ):
                     models.append(value)
-                    components.append(("model", id(value)))
-                elif type(value) in (str, bytes, int, bool, type(None)):
-                    components.append(("scalar", type(value), value))
-                else:
+                    return ("model", id(value))
+                if type(value) in (str, bytes, int, bool, type(None)):
+                    return ("scalar", type(value), value)
+                if type(value) is tuple:
+                    parts = tuple(component(item) for item in value)
+                    if all(part is not None for part in parts):
+                        return ("tuple", parts)
+                return None
+
+            for value in values:
+                part = component(value)
+                if part is None:
                     return function(*args, **kwargs)
+                components.append(part)
             key = (len(args), tuple(sorted(kwargs)), *components)
             with lock:
                 entry = entries.get(key)

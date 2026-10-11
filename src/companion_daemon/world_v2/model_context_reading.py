@@ -6,7 +6,7 @@ schemas, expands permissions, or reconstructs an old provider request.
 from collections.abc import Mapping
 
 
-def present_dialogue_reports(packet: dict[str, object]) -> dict[str, object]:
+def present_context_evidence(packet: dict[str, object]) -> dict[str, object]:
     """Type the derived transcript as reported speech, keeping all raw evidence.
 
     Only the current author presenter calls this. Canonical snapshots, legacy
@@ -15,14 +15,81 @@ def present_dialogue_reports(packet: dict[str, object]) -> dict[str, object]:
     snapshot = packet.get('inner_life_snapshot')
     materials = snapshot.get('materials') if isinstance(snapshot, dict) else None
     lines = materials.get('conversation') if isinstance(materials, dict) else None
-    if not isinstance(lines, list) or any(not isinstance(line, str) for line in lines):
+    if not isinstance(materials, dict):
         return packet
-    return {**packet, 'inner_life_snapshot': {**snapshot, 'materials': {**materials,
-        'conversation': {'contract': 'dialogue-report-view.1',
+    presented = dict(materials)
+    dialogue = materials.get('recent_dialogue')
+    if isinstance(dialogue, dict) and isinstance(dialogue.get('stable_turns'), list):
+        presented['recent_dialogue'] = {
+            'record_scope': 'who_said_what_not_proof_of_described_events_or_current_activity',
+            **dialogue,
+        }
+    if isinstance(lines, list) and all(isinstance(line, str) for line in lines):
+        conversation = {'contract': 'dialogue-report-view.1',
             'authority': 'recorded_utterance_only',
             'event_scope': 'said_at_recorded_time_not_proof_of_action_or_current_world',
-            'lines': list(lines)},
-    }}}
+            'lines': list(lines)}
+        links = _dialogue_display_links(snapshot, materials, lines)
+        if links is not None:
+            conversation = {'contract': 'dialogue-report-view.2',
+                'authority': 'recorded_utterance_only',
+                'read_from': 'recent_dialogue',
+                'event_scope': 'same_utterances_not_independent_evidence_of_execution',
+                'entries': links}
+        presented['conversation'] = conversation
+    if snapshot.get('contract') == 'inner-life-snapshot.1':
+        # These are known derived native views, never additional witnesses.
+        # Keep the registered source shapes and canonical snapshot intact.
+        appraisals = materials.get('appraisals')
+        if isinstance(appraisals, dict) and 'columns' in appraisals and 'rows' in appraisals:
+            presented['appraisals'] = {**appraisals,
+                'authority': 'character_interpretation_not_world_execution'}
+        experiences = materials.get('recent_self_experiences')
+        if isinstance(experiences, dict) and 'items' in experiences:
+            presented['recent_self_experiences'] = {**experiences,
+                'authority': 'field_scoped_world_records_not_automatic_personal_experience'}
+        sources = [key for key in ('week_diary', 'appraisals', 'private_impressions') if materials.get(key)]
+        if isinstance(materials.get('lived_moment'), str) and sources:
+            presented['lived_moment'] = {'contract': 'lived-material-links.1',
+                'authority': 'navigation_only_not_additional_evidence', 'source_fields': sources}
+    if presented == materials:
+        return packet
+    return {**packet, 'inner_life_snapshot': {**snapshot, 'materials': presented}}
+
+
+def _dialogue_display_links(snapshot, materials, lines):
+    """Match the native renderer exactly; unmatched display lines stay literal.
+
+    This is lossless presentation deduplication, not interpretation of speech.
+    Separate dialogue ids remain separate utterances even if their text agrees.
+    """
+    from collections import defaultdict, deque
+    from .character_interior.contracts import _instant, _rendered_conversation
+
+    dialogue = materials.get('recent_dialogue')
+    turns = dialogue.get('stable_turns') if isinstance(dialogue, dict) else dialogue
+    if not isinstance(turns, list):
+        return None
+    cursor = snapshot.get('cursor', {})
+    at = _instant(cursor.get('logical_time')) if isinstance(cursor, dict) else None
+    by_line = defaultdict(deque)
+    for turn in turns:
+        if not isinstance(turn, dict) or not isinstance(turn.get('dialogue_id'), str):
+            continue
+        rendered = _rendered_conversation({'recent_dialogue': [turn]}, at)
+        if rendered:
+            body = turn['text'].strip()
+            by_line[rendered[0]].append({'source_ref': turn['dialogue_id'],
+                'display_prefix': rendered[0][:-len(body)]})
+    found = False
+    entries = []
+    for line in lines:
+        if by_line[line]:
+            entries.append(by_line[line].popleft())
+            found = True
+        else:
+            entries.append({'line': line})
+    return entries if found else None
 
 
 def context_reading_scope(snapshot: Mapping[str, object] | None = None) -> dict[str, object]:

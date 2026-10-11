@@ -4333,12 +4333,12 @@ class _InboundCharacterAuthor:
         # Present the same author capability used by this call's tool contract.
         expression_user_material["recall_available"] = recall_available
         if not preserve_legacy_authoring:
-            from ..model_context_reading import present_dialogue_reports
+            from ..model_context_reading import present_context_evidence
 
             # Type the derived dialogue before encoding materials. Otherwise
             # V3 (and slim without the reference codec) hides this field from
             # the later presentation pass inside shared-string-view.
-            expression_user_material = present_dialogue_reports(expression_user_material)
+            expression_user_material = present_context_evidence(expression_user_material)
         if "inner_life_snapshot" in expression_user_material:
             # Never invent this key: a message that carried no pinned snapshot
             # must not start claiming one with a null body. Host readers also
@@ -4633,7 +4633,7 @@ class _InboundCharacterAuthor:
             )
         if self._atomic_tool_envelope_version == "slim" and use_forced_tool:
             messages[0]["content"] += (
-                "\n本轮唯一函数名称：" + cognition_tool_choice["function"]["name"]
+                "\n本轮唯一函数名称：" + cognition_contract.identity.tool_name
                 + "。函数名按原样使用，不根据result_kind另造函数名。")
         if isinstance(cognition_contract, InboundToolContract) and cognition_contract.native_slim_core:
             from .slim_native_core import prompt
@@ -4641,10 +4641,10 @@ class _InboundCharacterAuthor:
             messages[0]["content"] = prompt(messages[0]["content"])
         reference_bindings = None
         if not preserve_legacy_authoring:
-            from ..model_context_reading import context_reading_scope, present_dialogue_reports
+            from ..model_context_reading import context_reading_scope, present_context_evidence
 
             displayed = json.loads(messages[1]["content"])
-            displayed = present_dialogue_reports(displayed)
+            displayed = present_context_evidence(displayed)
             # Keep the correction trailer last so its prefix is exactly the
             # original author input, including this shared reading contract.
             had_correction_trailer = "role_result_correction" in displayed
@@ -4662,8 +4662,8 @@ class _InboundCharacterAuthor:
             material_view = snapshot_view.get("materials", {})
             if isinstance(material_view, dict) and material_view.get("contract") == "shared-string-view.1":
                 snapshot_view["materials"] = unpack_shared_strings(material_view)
-            from ..model_context_reading import present_dialogue_reports
-            displayed = present_dialogue_reports(displayed)
+            from ..model_context_reading import present_context_evidence
+            displayed = present_context_evidence(displayed)
             if self._visible_source_review_version == "25":
                 # Order the plain materials before assigning request-local
                 # ordinals, so changing dialogue cannot renumber the stable

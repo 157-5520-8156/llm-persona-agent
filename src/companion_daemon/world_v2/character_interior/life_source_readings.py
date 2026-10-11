@@ -66,7 +66,7 @@ def _fields(row):
         ]
         return 'settled_life', ('recent_self_experiences', 'week_diary'), source_subject_permissions(row=row, pointers=paths)
     if isinstance(row.get('activity_support'), dict):
-        scopes = {'planned': 'planned_activities', 'active': 'current_activities',
+        scopes = {'planned': 'planned_activities', 'accepted_intention': 'historical_activity_intentions', 'active': 'current_activities',
                   'in_progress': 'current_activities', 'completed': 'recently_ended_activities'}
         status = row['activity_support']['status']
         if status not in scopes:

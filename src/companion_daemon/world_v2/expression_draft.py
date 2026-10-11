@@ -739,6 +739,10 @@ def _world_life_occurrence_source_tokens(
             # Life's opt-in state reader has its own qualified authority.
             # A paused/abandoned Plan is not generic visible occurrence proof.
             continue
+        if kind == 'historical_activity_intention':
+            if not include_active:
+                tokens.update(_planned_activity_item_source_tokens(item))
+            continue
         if kind == "planned_activity":
             # The plan's existence is current intention authority, never an
             # occurrence, past experience or current location/activity proof.

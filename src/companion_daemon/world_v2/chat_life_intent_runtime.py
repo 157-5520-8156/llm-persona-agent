@@ -398,3 +398,11 @@ class CompositePlannedActivityReader:
             if value is not None:
                 return value
         return None
+
+    def read_historical_intention(self, **kwargs):
+        for reader in self._readers:
+            read = getattr(reader, 'read_historical_intention', None)
+            value = read(**kwargs) if callable(read) else None
+            if value is not None:
+                return value
+        return None

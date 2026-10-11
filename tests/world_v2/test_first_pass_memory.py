@@ -59,19 +59,19 @@ def test_literal_hit_survives_context_scene_and_semantic_distractor(tmp_path, po
 
 
 def test_old_speech_is_presented_as_speech_without_changing_its_words():
-    from companion_daemon.world_v2.model_context_reading import present_dialogue_reports
+    from companion_daemon.world_v2.model_context_reading import present_context_evidence
     packet = {'inner_life_snapshot': {'materials': {
         'conversation': ['我（12 天前）：我按新表把自己那栏核了一遍。'],
         'recent_dialogue': [{'speaker':'companion','text':'我按新表把自己那栏核了一遍。'}],
     }}, 'personal_action_evidence': {'results': []}}
-    view = present_dialogue_reports(packet)
+    view = present_context_evidence(packet)
     conversation = view['inner_life_snapshot']['materials']['conversation']
     assert conversation['authority'] == 'recorded_utterance_only'
     assert conversation['lines'] == packet['inner_life_snapshot']['materials']['conversation']
     assert view['inner_life_snapshot']['materials']['recent_dialogue'] == packet['inner_life_snapshot']['materials']['recent_dialogue']
     assert view['personal_action_evidence']['results'] == []
     assert isinstance(packet['inner_life_snapshot']['materials']['conversation'], list)
-    assert present_dialogue_reports(view) == view
+    assert present_context_evidence(view) == view
 
 
 def test_literal_entry_in_same_scene_survives_sibling_expansion(tmp_path):

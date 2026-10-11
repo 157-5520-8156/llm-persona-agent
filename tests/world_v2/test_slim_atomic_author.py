@@ -33,6 +33,28 @@ def _slim(*, silent=False):
     }
 
 
+def test_structured_wait_preserves_the_same_authored_choice():
+    from companion_daemon.world_v2.present_prompt import compile_slim_consider_payload
+    flat = {**_slim(), 'waiting_for': '他说说高中印象深的事', 'wait': 3600,
+        'pressure_bp': 2500, 'importance_bp': 4500}
+    grouped = {**_slim(), 'waiting_for': flat['waiting_for'], 'wait': {
+        'after_seconds': 3600, 'pressure_bp': 2500, 'importance_bp': 4500}}
+    assert compile_slim_consider_payload(grouped) == compile_slim_consider_payload(flat)
+
+
+@pytest.mark.parametrize('change', [
+    {'pressure_bp': 3000},
+    {'wait': {'after_seconds': 3600, 'pressure_bp': 2500}},
+    {'wait': {'after_seconds': True, 'pressure_bp': 2500, 'importance_bp': 4500}},
+])
+def test_structured_wait_cannot_resolve_conflicts_or_fill_missing_choices(change):
+    from companion_daemon.world_v2.present_prompt import compile_slim_consider_payload
+    grouped = {**_slim(), 'waiting_for': '他说说高中印象深的事', 'wait': {
+        'after_seconds': 3600, 'pressure_bp': 2500, 'importance_bp': 4500}, **change}
+    with pytest.raises(ValueError):
+        compile_slim_consider_payload(grouped)
+
+
 class _SlimHTTP:
     """Answer the slim carrier, then the grounded review of what she chose."""
 

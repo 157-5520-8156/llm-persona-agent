@@ -161,8 +161,9 @@ def cache_ordered_inbound_material(material: dict[str, object]) -> dict[str, obj
         ))
     return _ordered(result, (
         "activity_source_rule", "lived_evidence_scope", "expression_capabilities",
-        "appraisal_affect_hard_boundaries", "personal_action_evidence", "inner_life_snapshot",
-        "expression_hard_boundaries", "reference_dictionary", "request", "current_trigger_message",
+        "appraisal_affect_hard_boundaries", "inner_life_snapshot",
+        "expression_hard_boundaries", "reference_dictionary", "request",
+        "personal_action_evidence", "current_trigger_message",
     ))
 
 

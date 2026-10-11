@@ -114,3 +114,44 @@ def test_warm_prehistory_values_never_replace_current_authority_checks(tmp_path,
             history.validate_prehistory_state(**kwargs)
     finally:
         ledger.close()
+
+
+def test_repeated_projection_reuses_only_unchanged_history_structure(tmp_path, monkeypatch):
+    ledger = started_ledger(tmp_path / 'history-reuse.sqlite')
+    try:
+        PrehistoryArchiveRuntime(ledger=ledger, owner_actor_ref=ACTOR).import_reviewed(
+            reviewed_archive(), created_at=START)
+        projection = ledger.project()
+        validator = getattr(history, '_validate_prehistory_contents', None)
+        if validator is not None:
+            validator.cache_clear()
+        calls = []
+        original = history.validate_historical_references
+
+        def count(*args, **kwargs):
+            calls.append(1)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(history, 'validate_historical_references', count)
+        args = (projection.prehistory_archives, projection.prehistory_records,
+                projection.committed_world_event_refs)
+        history.validate_prehistory_state(*args, logical_time=START, world_id=projection.world_id)
+        first = len(calls)
+        assert first > 0
+        history.validate_prehistory_state(*args, logical_time=START + timedelta(seconds=1),
+            world_id=projection.world_id)
+        assert len(calls) == first
+        # A successful structural read cannot authorize a new world, past
+        # clock, missing event or changed accepted body.
+        with pytest.raises(ValueError):
+            history.validate_prehistory_state(*args, logical_time=START, world_id='world:other')
+        with pytest.raises(ValueError):
+            history.validate_prehistory_state(*args, logical_time=START - timedelta(seconds=1))
+        with pytest.raises(ValueError):
+            history.validate_prehistory_state(args[0], args[1], (), logical_time=START)
+        row = args[1][0]
+        changed = row.model_copy(update={'actor_ref': 'actor:other'})
+        with pytest.raises(ValueError):
+            history.validate_prehistory_state(args[0], (changed,), args[2], logical_time=START)
+    finally:
+        ledger.close()

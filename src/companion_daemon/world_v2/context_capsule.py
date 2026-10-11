@@ -51,6 +51,7 @@ from .world_life_context import (
     ActivityLifecycleStateContextItem,
     CompletedActivityContextItem,
     PlannedActivityContextItem,
+    HistoricalActivityIntentionContextItem,
     ActiveWorldOccurrenceContextItem,
     BiographicalWorldContextItem,
     WorldLifeContextItem,
@@ -1684,6 +1685,7 @@ def _compile_slice(
     bound: ResolvedSlice[object] | None,
     limit: SliceBudget,
     model_content_profile: Literal["general", "proactive_decision"] = "general",
+    preferred_item_refs: frozenset[str] = frozenset(),
 ) -> tuple[CapsuleSlice, tuple[TruncationEntry, ...]]:
     if bound is None:
         return _unavailable(limit), ()
@@ -1736,6 +1738,7 @@ def _compile_slice(
     # tail-eviction policy preserve its source-bound contract.
     resolved.sort(
         key=lambda pair: (
+            0 if pair[1].item_ref in preferred_item_refs else 1,
             0
             if slice_name == "relevant_facts"
             and isinstance(pair[0], FactRecallItem)
@@ -2595,11 +2598,25 @@ def _compile_resolved_context(
     bounds = {name: bound for name, bound in inputs}
     truncation_log: list[TruncationEntry] = []
     for slice_name, bound in inputs:
+        preferred = frozenset()
+        if slice_name == 'world_life' and bound is not None:
+            # Keep an original meaning for a Plan already offered by the
+            # current situation. This is a source join, not a chosen topic;
+            # privacy, whole-item and global budgets still apply below.
+            plan_ids = {
+                activity['plan_id']
+                for item in slices['current_situation'].items
+                for activity in json.loads(item.payload_json).get('activity_slices', ())
+                if activity.get('availability') == 'available' and activity.get('plan_id')
+            }
+            preferred = frozenset(item.activity_event_ref for item in _values(bound)
+                if isinstance(item, HistoricalActivityIntentionContextItem) and item.plan_id in plan_ids)
         compiled, entries = _compile_slice(
             slice_name=slice_name,
             bound=bound,
             limit=getattr(active_policy, slice_name),
             model_content_profile=model_content_profile,
+            preferred_item_refs=preferred,
         )
         slices[slice_name] = compiled
         truncation_log.extend(entries)

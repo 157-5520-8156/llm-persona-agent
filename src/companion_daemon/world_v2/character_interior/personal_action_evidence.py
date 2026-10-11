@@ -33,10 +33,33 @@ def personal_action_evidence(snapshot):
 
     for key in ('recent_self_experiences', 'week_diary', 'remembered_material'):
         visit(materials.get(key))
+    plans, seen_plans = [], set()
+    intentions = materials.get('historical_activity_intentions', [])
+    intention_refs = {item.get('plan_id'): item.get('source_ref')
+        for item in intentions if isinstance(item, dict)} if isinstance(intentions, list) else {}
+    situations = materials.get('situation', [])
+    for situation in situations if isinstance(situations, list) else ():
+        if not isinstance(situation, dict):
+            continue
+        activities = situation.get('activity_slices', [])
+        for activity in activities if isinstance(activities, list) else ():
+            if not isinstance(activity, dict) or activity.get('availability') != 'available':
+                continue
+            if not isinstance(activity.get('plan_id'), str):
+                continue
+            fields = ('plan_id', 'status', 'window_opens_at', 'window_closes_at')
+            key = tuple(activity.get(field) for field in fields)
+            if key not in seen_plans:
+                seen_plans.add(key)
+                plans.append({**{field: activity.get(field) for field in fields},
+                    'authority': 'plan_state_not_execution',
+                    **({'original_intention_source_ref': intention_refs[activity['plan_id']]}
+                       if intention_refs.get(activity['plan_id']) else {})})
     return {
-        'contract': 'personal-attempt-result-index.1',
+        'contract': 'personal-attempt-result-index.2',
         'scope': 'index_of_visible_result_fields_only_not_complete_life_history',
         'results': found,
+        'plans': plans,
         'instruction': '这是当前材料里可定位的个人行动结果。按结果原意使用，失败或未证实不等于成功。'
             '回顾自己实际做过什么时，环境、原计划、活动结束和过去说过的话都不能替代执行结果。'
             '其他有明确权限的事实、生平记录仍可用；列表为空不证明什么都没发生，也不授权补写经历。'

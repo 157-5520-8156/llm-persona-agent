@@ -35,6 +35,13 @@ class RoleLifeIntentActivityReader:
         except (ValueError, TypeError, KeyError):
             return None
 
+    def read_historical_intention(self, **kwargs):
+        for status in ('paused', 'abandoned'):
+            value = self._read(**kwargs, status=status)
+            if value is not None:
+                return value
+        return None
+
     def _read_context(self, *, plan_id, expected_cursor, actor_ref, viewer_privacy_ceiling, status):
         from .schemas import validate_plan_authority_state
         from .world_life_context import (
@@ -42,6 +49,7 @@ class RoleLifeIntentActivityReader:
             ActiveActivityContextItem,
             CompletedActivityContextItem,
             PlannedActivityContextItem,
+            HistoricalActivityIntentionContextItem,
             ActiveWorldOccurrenceProposalBinding,
             WorldLifeSourceBinding,
         )
@@ -163,6 +171,22 @@ class RoleLifeIntentActivityReader:
             cursor.ledger_sequence,
         ):
             return None
+        if status in {'paused', 'abandoned'}:
+            return HistoricalActivityIntentionContextItem(
+                activity_event_ref=bindings[0].authority_event_ref,
+                plan_id=plan_id, owner_actor_ref=actor_ref, activity_kind=plan.activity_kind,
+                scheduled_window=planned.plan.scheduled_window, privacy_class=plan.privacy_class,
+                selected_at=origin.selected_at,
+                accepted_intention=AcceptedActivityIntention(
+                    content_ref=origin.proposal_event_ref + '#' + origin.change_id,
+                    content_payload_hash=hashlib.sha256(intent.intention.encode()).hexdigest(),
+                    text=intent.intention[:480], truncated=len(intent.intention) > 480),
+                proposal_source=ActiveWorldOccurrenceProposalBinding(
+                    authority_event_ref=origin.proposal_event_ref,
+                    authority_ledger_sequence=proposal[1].ledger_sequence,
+                    authority_payload_hash=origin.proposal_payload_hash),
+                source_bindings=(bindings[0],),
+            )
         item_type = {
             "active": ActiveActivityContextItem,
             "completed": CompletedActivityContextItem,

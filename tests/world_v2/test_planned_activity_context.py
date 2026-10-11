@@ -31,6 +31,77 @@ class _FuturePlanHTTP(_DayOpenHTTP):
         return await super().__call__(request)
 
 
+@pytest.mark.parametrize('status,event_type', [('paused', 'ActivityPaused'), ('abandoned', 'ActivityAbandoned')])
+def test_closed_plan_keeps_original_intention_in_the_real_context(status, event_type, tmp_path):
+    from test_world_life_intent_runtime import _seed, _audit, ACTOR, INTENT, WORLD_ID
+    from test_world_consequence_authoring_context import _operator_transition
+    from test_current_activity_context import current_context
+    from companion_daemon.world_v2.world_life_intent_runtime import WorldLifeIntentRuntime, WorldLifeIntentPlannedReader
+    from companion_daemon.world_v2.schemas import ProjectionCursor
+    from companion_daemon.world_v2.expression_draft import world_claim_source_refs_by_scope
+    from companion_daemon.world_v2.character_interior.personal_action_evidence import personal_action_evidence
+
+    ledger, _ = _seed(tmp_path / 'historical-intention.sqlite')
+    try:
+        proposal, cursor = _audit(ledger)
+        WorldLifeIntentRuntime(ledger=ledger, owner_actor_ref=ACTOR).accept(
+            world_id=WORLD_ID, audit_cursor=cursor, proposal_id=proposal.proposal_id)
+        plan = next(p for p in ledger.project().plans if p.plan_id.startswith('plan:world-life-intent:'))
+        creation_ref = plan.authority_origin.accepted_event_ref
+        _operator_transition(ledger, plan.plan_id, 'ActivityStarted', 'event:history-start')
+        paused_ref = _operator_transition(ledger, plan.plan_id, event_type, 'event:history-state')
+        before = ledger.export_replay_evidence()
+        capsule, context, snapshot = current_context(ledger, None, actor_ref=ACTOR)
+        items = snapshot.model_view()['materials']['historical_activity_intentions']
+        assert len(items) == 1
+        assert items[0]['accepted_intention']['text'] == INTENT['intention']
+        assert items[0]['source_ref'] == creation_ref
+        assert items[0]['planning_scope'] == 'historical_intention_not_current_plan_or_execution'
+        assert not snapshot.model_view()['materials'].get('current_activities')
+        scopes = world_claim_source_refs_by_scope(context=context)
+        assert creation_ref in scopes['past_world']
+        assert creation_ref not in scopes['current_world']
+        assert all(paused_ref not in refs for refs in scopes.values())
+        from companion_daemon.world_v2.selected_source_composer import compile_selected_source_table
+        selected = compile_selected_source_table(capsule=capsule).as_dict()
+        assert 'historical_activity_intention' not in selected['unsupported_source_kinds']
+        evidence = personal_action_evidence(snapshot.model_view())
+        assert evidence['results'] == []
+        if status == 'paused':
+            assert evidence['plans'][0]['original_intention_source_ref'] == creation_ref
+        state = ledger.project()
+        cursor = ProjectionCursor(world_revision=state.world_revision,
+            deliberation_revision=state.deliberation_revision, ledger_sequence=state.ledger_sequence)
+        reader = WorldLifeIntentPlannedReader(ledger=ledger)
+        assert reader.read_historical_intention(plan_id=plan.plan_id, expected_cursor=cursor,
+            actor_ref='actor:other', viewer_privacy_ceiling='private') is None
+        assert reader.read_historical_intention(plan_id=plan.plan_id, expected_cursor=cursor,
+            actor_ref=ACTOR, viewer_privacy_ceiling='public') is None
+        assert reader.read_historical_intention(plan_id=plan.plan_id,
+            expected_cursor=cursor.model_copy(update={'ledger_sequence': cursor.ledger_sequence-1}),
+            actor_ref=ACTOR, viewer_privacy_ceiling='private') is None
+        from companion_daemon.world_v2.world_life_context import WorldLifeContextCompiler
+        hidden = WorldLifeContextCompiler(planned_activity_reader=reader).compile(
+            projection=state, actor_ref=ACTOR, cursor=cursor, viewer_privacy_ceiling='private',
+            user_channel_limited_content_refs=frozenset({items[0]['accepted_intention']['content_ref']}))
+        assert not any(getattr(x, 'context_kind', None) == 'historical_activity_intention' for x in hidden)
+        assert ledger.export_replay_evidence() == before
+        if status == 'paused':
+            from companion_daemon.world_v2.context_capsule import ContextCapsuleBudgetPolicy
+            from companion_daemon.world_v2.context_resolver import query_from_projection
+            from companion_daemon.world_v2.ledger_context_resolver import (
+                context_capsule_compiler_from_ledger, ContextRelevanceScope,
+            )
+            policy = ContextCapsuleBudgetPolicy()
+            policy = policy.model_copy(update={'world_life': policy.world_life.model_copy(update={'max_items': 1})})
+            limited = context_capsule_compiler_from_ledger(ledger=ledger, policy=policy,
+                relevance_scope=ContextRelevanceScope(actor_ref=ACTOR)).compile(
+                    query_from_projection(state, actor_ref=ACTOR, trigger_ref='event:one-readable-plan'))
+            assert limited.world_life.items[0].item_ref == creation_ref
+    finally:
+        ledger.close()
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("restart", [False, True])
 async def test_future_plan_original_intention_reaches_next_actual_chat_request(

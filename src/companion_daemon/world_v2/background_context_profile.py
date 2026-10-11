@@ -194,6 +194,7 @@ _CHARACTER_CONTINUITY_MATERIALS = (
     "situation",
     "current_activities",
     "planned_activities",
+    "historical_activity_intentions",
     "recently_ended_activities",
     "relationship",
     "protagonist_npc_relationships",
@@ -239,7 +240,7 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
         # emotional arc. Character cognition retains its full continuity
         # profile. Exact attempts are supplied separately by their reader.
         capsule_slices=("character_core", "current_situation", "relevant_facts", "world_life"),
-        capsule_item_exclusions={"world_life": frozenset({"active_activity", "completed_activity", "planned_activity"})},
+        capsule_item_exclusions={"world_life": frozenset({"active_activity", "completed_activity", "planned_activity", "historical_activity_intention"})},
         capsule_slice_limits={"world_life": 6, "relevant_facts": 8},
     ),
     BackgroundContextProfile(
@@ -263,7 +264,7 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
         capsule_slices=_LIFE_ECOLOGY_CAPSULE_SLICES,
         # This typed item carries the protagonist's accepted inner intention.
         # Her own continuity may read it; an external World Author may not.
-        capsule_item_exclusions={"world_life": frozenset({"active_activity", "completed_activity", "planned_activity"})},
+        capsule_item_exclusions={"world_life": frozenset({"active_activity", "completed_activity", "planned_activity", "historical_activity_intention"})},
         capsule_slice_limits={
             "recent_experiences": 4,
             "world_life": 6,
