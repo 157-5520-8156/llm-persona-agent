@@ -148,6 +148,7 @@ from .schemas import (
 )
 from .situation_compiler import SituationCompiler, request_from_ledger_projection
 from .world_life_context import (
+    HistoricalActivityIntentionContextItem,
     ActiveActivityContextItem,
     ActivityLifecycleStateContextItem,
     CompletedActivityContextItem,
@@ -2711,6 +2712,20 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             "",
         )
 
+        # Preserve the original meaning of Plans present in this Situation
+        # before the resolver's source-proof budget, not only at Capsule fit.
+        # This join changes selection order; all source checks and caps remain.
+        situation_plan_ids = {
+            item.plan_id for item in situation.activity_slices
+            if item.availability == 'available' and item.plan_id is not None
+        }
+        source_rank_overrides = continuity_rank_overrides | frozenset(
+            ('world_life', item.activity_event_ref)
+            for item in world_life
+            if isinstance(item, HistoricalActivityIntentionContextItem)
+            and item.plan_id in situation_plan_ids
+        )
+
         domains: dict[SliceName, tuple[BaseModel, ...] | None] = {
             # ``agent:companion`` is the canonical companion actor reference.
             # Early character-core provisioning committed ``actor:companion``
@@ -2759,7 +2774,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                     slice_name,
                     items,
                     query.logical_time,
-                    continuity_rank_overrides,
+                    source_rank_overrides,
                     trigger_text,
                 )
             )
@@ -2819,7 +2834,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                 resolved_events,
                 scope,
                 observation_aliases,
-                continuity_rank_overrides,
+                source_rank_overrides,
             )
             resolved[field] = built
 

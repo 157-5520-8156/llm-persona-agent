@@ -32,7 +32,8 @@ class _FuturePlanHTTP(_DayOpenHTTP):
 
 
 @pytest.mark.parametrize('status,event_type', [('paused', 'ActivityPaused'), ('abandoned', 'ActivityAbandoned')])
-def test_closed_plan_keeps_original_intention_in_the_real_context(status, event_type, tmp_path):
+@pytest.mark.parametrize('source_ref_limit', [32, 1])
+def test_closed_plan_keeps_original_intention_in_the_real_context(status, event_type, source_ref_limit, tmp_path, monkeypatch):
     from test_world_life_intent_runtime import _seed, _audit, ACTOR, INTENT, WORLD_ID
     from test_world_consequence_authoring_context import _operator_transition
     from test_current_activity_context import current_context
@@ -50,6 +51,10 @@ def test_closed_plan_keeps_original_intention_in_the_real_context(status, event_
         creation_ref = plan.authority_origin.accepted_event_ref
         _operator_transition(ledger, plan.plan_id, 'ActivityStarted', 'event:history-start')
         paused_ref = _operator_transition(ledger, plan.plan_id, event_type, 'event:history-state')
+        # A rich world can exhaust the proof-ref budget before the capsule's
+        # item budget. Keep the meaning of a displayed paused Plan at both cuts.
+        if status == 'paused':
+            monkeypatch.setattr('companion_daemon.world_v2.ledger_context_resolver.MAX_SOURCE_REFS_PER_ITEM', source_ref_limit)
         before = ledger.export_replay_evidence()
         capsule, context, snapshot = current_context(ledger, None, actor_ref=ACTOR)
         items = snapshot.model_view()['materials']['historical_activity_intentions']

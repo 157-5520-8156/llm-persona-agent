@@ -1,0 +1,15 @@
+{
+  "contract": "world-v2-offline-mechanism-rebaseline.1",
+  "old_version": "world-v2-offline-mechanism-baseline.112",
+  "old_manifest_hash": "8db27254d8e899d762f567e47a0055e97d2a68429e2be74add8769dd9ee29204",
+  "new_version": "world-v2-offline-mechanism-baseline.113",
+  "new_manifest_hash": "ea9419303ced08e3e03921cd501986278e037b56a428bb4c9897620fedf8c3bc",
+  "new_run_hash_with_old_version": "1f68c3d0210c5860621c5c3e16f38186d09b5a9495cd8ad07664ce98e660dd7a",
+  "case_count": 120,
+  "changed_fields": {"npc_world_impact.01": ["replay_hash"]},
+  "all_predicates_passed": true,
+  "all_case_replays_passed": true,
+  "control": "Reused frozen 949e0695 scenario-candidate rows; setting its declared baseline to .112 reproduces the committed .112 hash exactly. No old rows changed.",
+  "rationale": "Current author input presentation distinguishes reported speech and removes derived duplicates. Only npc_world_impact.01 replay hash differs; output/event/state/calls/background/receipt fields identical. Corpus and predicates unchanged.",
+  "limitations": "Fixed fake providers; not cloud first-call semantic qualification."
+}
