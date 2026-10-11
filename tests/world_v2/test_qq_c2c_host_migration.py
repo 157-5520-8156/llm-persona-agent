@@ -3096,7 +3096,8 @@ class _SelectingLifeEcologyModel:
         tools=None,
         tool_choice=None,
     ):  # type: ignore[no-untyped-def]
-        capsule = json.loads(messages[-1]["content"])
+        # The author may end with system guidance; the original JSON is the user body.
+        capsule = json.loads(messages[1]["content"])
         purpose = capsule.get("inner_turn", {}).get("purpose")
         if purpose == "activity_lifecycle_choice":
             assert tools and len(tools) == 1

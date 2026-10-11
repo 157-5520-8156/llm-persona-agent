@@ -445,7 +445,8 @@ class _PlanHTTP(_HTTP):
 
     async def __call__(self, request):
         wire = json.loads(request.content)
-        material = json.loads(wire["messages"][-1]["content"])
+        # World Author may carry request-specific system guidance after the user JSON.
+        material = json.loads(wire["messages"][1]["content"])
         purpose = material.get("inner_turn", {}).get("purpose")
         if purpose == "world_stimulus_appraisal":
             return await self.response(request)
