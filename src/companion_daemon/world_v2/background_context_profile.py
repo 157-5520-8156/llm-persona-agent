@@ -221,6 +221,7 @@ _CHARACTER_CONTINUITY_MATERIALS = (
     "logical_time",
 )
 _CHARACTER_CONTINUITY_LIMITS = {
+    "historical_activity_intentions": 3,
     "recent_dialogue": 12,
     "folded_dialogue": 2,
     "recent_self_experiences": 4,

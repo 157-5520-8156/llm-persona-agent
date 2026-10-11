@@ -20,6 +20,17 @@ COMPACT_INVENTORY_CONTRACTS = frozenset({'life-source-review.16', 'life-source-r
 
 def life_source_profile(review_contract):
     profile = background_context_profile_for_purpose('world_stimulus_appraisal')
+    # LifeSourceView has its own fixed catalogue, including persisted views
+    # without a reviewer. New ordinary character-continuity materials must not
+    # silently change that catalogue's author identity. A future Life contract
+    # can opt in explicitly; current role/chat profiles still keep the field.
+    profile = replace(
+        profile,
+        snapshot_material_keys=tuple(key for key in profile.snapshot_material_keys
+                                     if key != 'historical_activity_intentions'),
+        snapshot_material_limits={key: value for key, value in profile.snapshot_material_limits.items()
+                                  if key != 'historical_activity_intentions'},
+    )
     if review_contract in {f'life-source-review.{version}' for version in range(1, 17)}:
         # These immutable reviewer wires predate standing understandings.
         # Extending the current background profile must not alter their

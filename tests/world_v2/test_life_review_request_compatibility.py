@@ -38,6 +38,19 @@ def test_standing_understandings_do_not_change_historical_author_profile_metadat
     assert current.snapshot_material_limits['memory_understandings'] == 6
 
 
+def test_historical_intentions_do_not_retroactively_change_fixed_life_catalogues():
+    from companion_daemon.world_v2.background_context_profile import background_context_profile_for_purpose
+
+    for contract in (None, *(f'life-source-review.{version}' for version in range(1, 22))):
+        profile = life_source_profile(contract)
+        assert 'historical_activity_intentions' not in profile.snapshot_material_keys
+        assert 'historical_activity_intentions' not in profile.snapshot_material_limits
+    # The ordinary character view can use the new original intention; keeping
+    # Life's old catalogue stable must not disable the new chat/source bridge.
+    current_role = background_context_profile_for_purpose('world_stimulus_appraisal')
+    assert 'historical_activity_intentions' in current_role.snapshot_material_keys
+
+
 @asynccontextmanager
 async def historical_source_case(mode):
     # Captured from the commit that established the existing 48 golden hashes.

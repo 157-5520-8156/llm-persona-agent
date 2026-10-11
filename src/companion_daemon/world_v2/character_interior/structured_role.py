@@ -1979,10 +1979,14 @@ class StructuredCharacterRoleFaculty:
         )
         if request.purpose in REGISTERED_BACKGROUND_PURPOSES:
             background_profile = background_context_profile_for_purpose(request.purpose)
-            if request.purpose == "world_stimulus_appraisal" and self.requires_life_source_review:
+            if request.purpose == "world_stimulus_appraisal" and (
+                self.requires_life_source_review or request.snapshot.life_source_origin is not None
+            ):
                 from .life_source_review import MINTED_CONTRACT as LIFE_REVIEW_CONTRACT
                 from .life_source_state_readings import life_source_profile
-                background_profile = life_source_profile(LIFE_REVIEW_CONTRACT)
+                background_profile = life_source_profile(
+                    LIFE_REVIEW_CONTRACT if self.requires_life_source_review else None
+                )
             if current_choice:
                 background_profile = continuity_profile(background_profile, lifecycle_states=True)
             elif "selected_recall" in full_snapshot.get("materials", {}) and not (
