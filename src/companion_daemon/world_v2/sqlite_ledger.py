@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
+from collections import OrderedDict
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime
@@ -693,6 +694,10 @@ class SQLiteWorldLedger:
         # before consulting this cache, so an unsupported cross-connection
         # mutation is rejected by the full-history verifier rather than hidden.
         self._verified_event_commit_cache: dict[str, tuple[WorldEvent, CommitResult]] = {}
+        # Parsed bytes only. Every source read still verifies the freshly read
+        # row hash, identity, World and requested revision before returning it.
+        self._source_event_parse_cache: OrderedDict[str, tuple[str, WorldEvent, int]] = OrderedDict()
+        self._source_event_parse_cache_bytes = 0
         self._verified_observation_event_cache: dict[
             tuple[str, str, str], HistoricalLedgerEvent
         ] = {}
@@ -764,6 +769,8 @@ class SQLiteWorldLedger:
 
     def close(self) -> None:
         with self._database_write_lock, self._thread_lock:
+            self._source_event_parse_cache.clear()
+            self._source_event_parse_cache_bytes = 0
             self._connection.close()
 
     def maintain_wal_if_needed(
@@ -5829,8 +5836,19 @@ class SQLiteWorldLedger:
             hashlib.sha256(event_json.encode()).hexdigest(), str(row["event_hash"])
         ):
             raise LedgerIntegrityError("event source envelope hash mismatch")
-        event = WorldEvent.model_validate_json(event_json)
-        validate_event_identity(event)
+        cached = self._source_event_parse_cache.get(str(row['event_hash']))
+        if cached is not None and cached[0] == event_json:
+            event = cached[1]
+            self._source_event_parse_cache.move_to_end(str(row['event_hash']))
+        else:
+            verified = self._verified_event_commit_cache.get(str(row['event_id']))
+            if verified is not None and canonical_event_json(verified[0]) == event_json:
+                # The cold verifier/committer already validated these exact
+                # current-format bytes. Fresh row and cursor checks follow.
+                event = verified[0]
+            else:
+                event = WorldEvent.model_validate_json(event_json)
+                validate_event_identity(event)
         world_revision = int(row["world_revision"])
         if event.world_id != self._world_id or event.event_id != row["event_id"]:
             raise LedgerIntegrityError("event source row does not match its authority")
@@ -5838,6 +5856,17 @@ class SQLiteWorldLedger:
             raise ValueError("committed event source is newer than the pinned projection")
         if event_definition(event.event_type).revision_class is not RevisionClass.WORLD:
             raise ValueError("Situation source is not a committed world event")
+        if cached is None:
+            # Conservative allowance for both source/model strings and Python
+            # object overhead; oversized envelopes use the uncached path.
+            size = 8 * len(event_json.encode()) + 4096
+            if size <= 16 * 1024 * 1024:
+                self._source_event_parse_cache[str(row['event_hash'])] = (event_json, event, size)
+                self._source_event_parse_cache_bytes += size
+                while (len(self._source_event_parse_cache) > 256
+                       or self._source_event_parse_cache_bytes > 16 * 1024 * 1024):
+                    _, removed = self._source_event_parse_cache.popitem(last=False)
+                    self._source_event_parse_cache_bytes -= removed[2]
         return CommittedWorldEventRef(
             event_id=event.event_id,
             event_type=event.event_type,

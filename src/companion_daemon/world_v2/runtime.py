@@ -4270,6 +4270,12 @@ class WorldRuntime:
                                     authorized_action_ids = tuple(
                                         item.action.action_id for item in material.beats
                                     )
+        if reply_authorized and authorized_action_ids:
+            # Expression acceptance is already durable. A scoped host may
+            # drain its first text through the normal ActionPump before the
+            # independent, already-authored inner facets finish settling.
+            from .authorized_reply_handoff import handoff_authorized_reply
+            await handoff_authorized_reply(authorized_action_ids)
         if inline_inbound_state is not None:
             advisory_deferred = await self._settle_unified_inbound_state(
                 observation=observation,

@@ -73,6 +73,34 @@ def test_cached_prefix_preserves_all_values_and_the_system_level_of_request_guid
     assert len(old) == 2
 
 
+def test_new_application_uses_cache_layout_with_equal_world_material_and_longer_prefix():
+    from os.path import commonprefix
+    from inspect import signature
+    from companion_daemon.world_v2.production_turn_application import WorldV2TurnApplicationConfig
+    from companion_daemon.world_v2.qq_c2c_host import build_qq_c2c_host
+
+    config = WorldV2TurnApplicationConfig(world_id='world:prompt',
+        companion_actor_ref='actor:companion', reply_target='user:test', action_pump_owner='pump:test')
+    assert config.world_author_cache_stable_prefix
+    assert signature(build_qq_c2c_host).parameters['world_author_cache_stable_prefix'].default is True
+    old, new = [], []
+    for revision in (1, 2):
+        authority, context = _inputs()
+        authority = authority.model_copy(update={'evaluated_cursor':
+            authority.evaluated_cursor.model_copy(update={'world_revision':revision, 'ledger_sequence':revision})})
+        context['capability_manifest']['pinned_cursor'] = authority.evaluated_cursor.model_dump(mode='json')
+        before = deepcopy(context)
+        plain = compile_world_consequence_messages(user_context=context, authority=authority, execution_materials=())
+        cached = compile_world_consequence_messages(user_context=context, authority=authority, execution_materials=(),
+            cache_stable_prefix=config.world_author_cache_stable_prefix)
+        assert context == before
+        assert json.loads(plain[1]['content']) == json.loads(cached[1]['content'])
+        assert cached[2]['role'] == 'system' and cached[2]['content'] in plain[0]['content']
+        old.append(json.dumps(plain, ensure_ascii=False))
+        new.append(json.dumps(cached, ensure_ascii=False))
+    assert len(commonprefix(new)) > len(commonprefix(old))
+
+
 @pytest.mark.parametrize("wrong", ["owner", "cursor", "legacy"])
 def test_current_prompt_cannot_relabel_another_or_historical_manifest(wrong):
     authority, context = _inputs()

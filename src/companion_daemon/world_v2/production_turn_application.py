@@ -756,7 +756,7 @@ class WorldV2TurnApplicationConfig:
     visible_source_review_required: bool = False
     # New World requests only; persisted author requests retain their carrier.
     world_author_transport: Literal["auto", "json_object"] = "auto"
-    world_author_cache_stable_prefix: bool = False
+    world_author_cache_stable_prefix: bool = True
     world_outlook_enabled: bool = False
     # Complete an already-selected, source-verified prehistory window within
     # the existing reading/receipt budgets. False retains the legacy windows.
