@@ -1613,47 +1613,7 @@ class QQC2CHost:
             attachment_refs=batch.attachment_refs,
             coalescing_metadata=metadata,
         )
-        from .authorized_reply_handoff import authorized_reply_handoff
-
-        early_drains: dict[str, asyncio.Task[object]] = {}
-        early_visible_ns: dict[str, int] = {}
-
-        async def deliver_authorized_first_text(ids: tuple[str, ...]) -> None:
-            if not ids or self._action_due_projection_reader is None:
-                return
-            if (turn_budget is not None and turn_budget.remaining(include_reserve=False)
-                    < turn_budget.acceptance_dispatch_reserve_seconds):
-                return
-            try:
-                projection = await self._read_action_due_projection()
-            except Exception as exc:
-                _LOG.warning('early reply hint unavailable error_type=%s', type(exc).__name__)
-                return
-            first = next((item for item in getattr(projection, 'actions', ())
-                          if getattr(item, 'action_id', None) == ids[0]), None)
-            if first is None or getattr(first, 'kind', None) not in {'reply', 'followup'}:
-                return
-            self._register_exchange_actions(batch, ids)
-            task = self._start_owned_action_drain(ids[0])
-            early_drains[ids[0]] = task
-            try:
-                # Preserve the same owned task on timeout/cancellation. This
-                # bounded first chance must not strand the inner-state work
-                # behind a slow transport; the final join below owns recovery.
-                seconds = (turn_budget.acceptance_dispatch_reserve_seconds
-                           if turn_budget is not None else 1.0)
-                async with asyncio.timeout(seconds):
-                    result = await asyncio.shield(task)
-                if (getattr(result, 'status', None) == 'settled'
-                        and getattr(result, 'provider_status', None) == 'delivered'):
-                    early_visible_ns[ids[0]] = self._observation_clock_ns()
-            except Exception as exc:
-                # The same task is joined below, after paid state settlement.
-                # Its error is not converted into success or character silence.
-                _LOG.warning('early authorized reply handoff deferred error_type=%s', type(exc).__name__)
-
-        with authorized_reply_handoff(deliver_authorized_first_text):
-            outcome = await self._host.inbound(inbound)
+        outcome = await self._host.inbound(inbound)
         system_notice_failure = _system_notice_failure_code(outcome)
         dispatch_terminal_failure = False
         action_ids = tuple(
@@ -1662,16 +1622,23 @@ class QQC2CHost:
         # Character shape is updated only from positively delivered text
         # Actions. Authorization, typing, media and failed sends are not
         # evidence that the peer saw a character bubble.
-        self._register_exchange_actions(batch, action_ids)
+        self._recent_exchange_shapes.append((batch.batch_id, len(batch.source_event_ids), 0))
+        retained_exchange_ids = {exchange_id for exchange_id, _, _ in self._recent_exchange_shapes}
+        self._exchange_id_by_action_id = {
+            existing_action_id: exchange_id
+            for existing_action_id, exchange_id in self._exchange_id_by_action_id.items()
+            if exchange_id in retained_exchange_ids
+        }
+        self._exchange_id_by_action_id.update(
+            {candidate_action_id: batch.batch_id for candidate_action_id in action_ids}
+        )
         action_id = next(iter(action_ids), None)
         if action_id is not None:
             dispatch_ack_recorded = False
             visible_reply_recorded = False
             first_visible_reply_ns: int | None = None
             for candidate_action_id in action_ids:
-                drain_task = early_drains.get(candidate_action_id)
-                if drain_task is None:
-                    drain_task = self._start_owned_action_drain(candidate_action_id)
+                drain_task = self._start_owned_action_drain(candidate_action_id)
                 dispatch_seconds = (
                     turn_budget.remaining(include_reserve=True) if turn_budget is not None else None
                 )
@@ -1748,7 +1715,7 @@ class QQC2CHost:
                     # when the model chose typing plus several text beats.
                     record_visible_reply()
                     visible_reply_recorded = True
-                    first_visible_reply_ns = early_visible_ns.get(candidate_action_id, self._observation_clock_ns())
+                    first_visible_reply_ns = self._observation_clock_ns()
             # Process-observed first fragment arrival to the first positively
             # accepted visible reply. The scheduler/pacing clock is excluded:
             # it may be virtual in an isolated audit and wall-clock recovery
@@ -1855,16 +1822,6 @@ class QQC2CHost:
         if isinstance(projection, Awaitable):
             projection = await projection
         return projection
-
-    def _register_exchange_actions(self, batch: QQIngressBatch, action_ids: tuple[str, ...]) -> None:
-        if not any(identity == batch.batch_id for identity, _, _ in self._recent_exchange_shapes):
-            self._recent_exchange_shapes.append((batch.batch_id, len(batch.source_event_ids), 0))
-        retained = {identity for identity, _, _ in self._recent_exchange_shapes}
-        self._exchange_id_by_action_id = {
-            action_id: identity for action_id, identity in self._exchange_id_by_action_id.items()
-            if identity in retained
-        }
-        self._exchange_id_by_action_id.update({action_id: batch.batch_id for action_id in action_ids})
 
     async def _action_due_wake_projection(self) -> object:
         """Add no state; expose durable Notice deadlines to the shared timer."""

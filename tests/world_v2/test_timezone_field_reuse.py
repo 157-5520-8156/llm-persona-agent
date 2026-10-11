@@ -61,9 +61,21 @@ def test_field_reuse_does_not_keep_its_owner_alive():
     assert pointer() is None
 
 
-def test_field_cache_stays_bounded_and_nonfrozen_owners_are_not_anchors():
+def test_field_cache_stays_bounded():
     frames = [Frame(entries=tuple(range(i, i+64))) for i in range(300)]
     assert len(schema_core._TIMEZONE_FIELD_CACHE) <= schema_core._TIMEZONE_FIELD_CACHE_LIMIT
     for frame in frames:
         frame.datetimes_are_timezone_aware()
     assert len(schema_core._TIMEZONE_FIELD_CACHE) <= schema_core._TIMEZONE_FIELD_CACHE_LIMIT
+
+
+def test_nonfrozen_owner_never_anchors_a_validation_result():
+    class MutableFrame(Frame):
+        model_config = {"frozen": False}
+
+    frame = MutableFrame(entries=tuple(range(64)))
+    entry = schema_core._TIMEZONE_FIELD_CACHE.get(id(frame.entries))
+    assert entry is None or entry[0]() is not frame
+    frame.entries = (*frame.entries, datetime(2026, 1, 1))
+    with pytest.raises(ValueError, match="timezone-aware"):
+        frame.datetimes_are_timezone_aware()
