@@ -1,3 +1,32 @@
+Local latency and background cache layout (2026-10-11):
+Final runtime ab0a209c against4aa38e93; audit/design first-reply-and-life-input-cost-2026-10-11.md.
+Bounded weak-owner immutable tuple timezone scan reuse plus fresh-row exact-byte
+WorldEvent parse reuse; current hash/world/event/revision checks remain. New app
+and public host default world_author_cache_stable_prefix=True; existing saved
+requests replay their original carrier. No production restart/QQ or sync chat review.
+Early visible handoff candidate3e870e6e fully WITHDRAWN: next inbound could read
+unsettled private state, plus timeout/cancellation/not_due hazards. Runtime restored
+byte-identical4aa; do not cite early candidate speed as final. Both review axes closed.
+Final one paired full-source timed offline replay:request ready2.425->2.318s,
+fixed rolewait2.055s,response-to-first1.509->1.438s,first5.989->5.811s,
+whole6.819->6.549s. Not live timing/p95/semantic proof; old replay answer remains
+known unsupported. Local outside-model3.756s;2/3/4s targets NOT met.
+506/719 saved World requests current-tool5 A/B preserve all user values and
+system-guidance authority,0fail;213other carriers/corrections excluded. Message-byte
+prefix proxy6.38%->39.40%,body+0.154%;not token cache/CNY/generated-quality proof.
+Old offline harness missed BGE: first2profiles each1call,estimated total.000133632CNY.
+Fixed private harness blocks allIP,imports onlyexistingvectors;finalpair0network,
+usage tables identicalsource. 0newDeepSeek;5CNY ledger176/4.688811/.231340/.079849,
+.5CNY ledger11/.191131/.220956/.087913 unchanged;unknownreserves retained.
+81scoped tests pass,Ruff/diff pass. Full-source cold reopen39,970ledgerrows/
+1,259prehistoryrecords preserveshead/statehash,0events. Final frozen full:10479pass/7fail/19skip/2xfail/1existingwarning,
+1276.80s,exit1;1462PythonSHAunchanged. All7failures were2offlinefixtures reading
+last system guidance asJSON. Test-only 1273ff3f reads originaluser[1], noassertion
+or runtime change;170relatedpass27.08s,2reviewsclosed. Fullnotrerun afterfixturefix;
+do not claim finalfullgreen. latency-final-verification.json records closure and
+runtime Python unchanged. Evidence output/private-audits/model-context-reading-20261010/.
+manual_only/qualification_incomplete;real first-call semantics/life quality/cost remain open.
+
 Account spend and 2s/4s priority (2026-10-11):
 User confirmed >CNY200 is DeepSeek account debit, not Codex subscription.
 Read-only audit docs/audits/account-spend-and-speed-priority-2026-10-11.md;
