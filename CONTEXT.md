@@ -1,3 +1,22 @@
+Account spend and 2s/4s priority (2026-10-11):
+User confirmed >CNY200 is DeepSeek account debit, not Codex subscription.
+Read-only audit docs/audits/account-spend-and-speed-priority-2026-10-11.md;
+private evidence output/private-audits/account-spend-latency-20261011/.
+Sep11-Oct11 central local usage after copied-row dedup:201.6553CNY,
+development145.8501/production55.8052.11613rows->8640unique;2973duplicates,
+8254known/383not_billed/3unknown;nonDeepSeek/localQwen excluded. No platform
+invoice access or full-account reconciliation; special ledgers may be missing.
+Known inputs205.23Mtokens,cachehit34.72%,average24864/request. Production
+Oct1-10cost32.1798/10days,noordinaryinboundrecords;30dayflat extrapolation96.5394
+is NOT forecast and excludes desired100chats/day. Production remains running.
+Old small batch costs must never stand in for all development/production spend.
+Priority now4s first meaningful reply,aspire2s when context ready. Existing real
+early Console sample:prepare3.266/model2.050/post1.647=6.963s;outside model4.913s.
+Keep no sync chat review/agency/permissions/CAS/receipts. First optimize serial
+local work and existing one-request first-beat delivery,then small live validation;
+local overhead<=1s is a target,not measured. No new paid requests,global cap
+changes or life frequency cuts authorized/performed in this audit.
+
 Old speech deduplication and historical plan meaning (2026-10-11):
 Runtime30326244 (initial2a53d34c,source-budget112f7d14), baseline157cbbf1. Spec/audit
 docs/design/speech-authority-and-local-latency-2026-10-11.md and
