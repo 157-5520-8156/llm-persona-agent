@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import timedelta
 from types import SimpleNamespace
 from .life_events import ActivityPlannedPayload, ActivityTransitionPayload, NpcStatusChangedPayload
-from .schemas import DueWindow, EvidenceRef, PlanStateProjection, ProjectionCursor, WorldEvent
-from .world_outlook import digest
+from .schemas import DueWindow, PlanStateProjection, ProjectionCursor, WorldEvent
+from .world_outlook import digest, outlook_clock_evidence
 from .event_identity import domain_idempotency_key
 
 NPC_EXECUTION_KINDS = frozenset({"npc_activity", "npc_cancel_activity", "npc_status"})
@@ -107,14 +107,7 @@ class CentralNpcExecutor:
             or located[0].logical_time != state.logical_time
         ):
             raise ValueError("NPC script requires the current committed clock")
-        event, commit = located
-        return EvidenceRef(
-            ref_id=event.event_id,
-            evidence_type="committed_world_event",
-            claim_purpose="life_transition",
-            source_world_revision=commit.world_revision,
-            immutable_hash=event.payload_hash,
-        )
+        return outlook_clock_evidence(state, located[0])
 
     def _event(self, event_type, ref, payload, *, wake):
         now = self.ledger.project().logical_time

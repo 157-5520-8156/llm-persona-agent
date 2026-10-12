@@ -22,6 +22,19 @@ def digest(value: object) -> str:
     ).hexdigest()
 
 
+def outlook_clock_evidence(projection, event):
+    """Bind the clock event itself, never the final revision of its batch."""
+    from .schemas import EvidenceRef
+
+    source = next((ref for ref in projection.committed_world_event_refs if ref.event_id == event.event_id), None)
+    if (source is None or source.event_type != "ClockAdvanced" or event.event_type != "ClockAdvanced" or event.world_id != projection.world_id
+            or source.payload_hash != event.payload_hash or source.logical_time != event.logical_time):
+        raise ValueError("outlook clock lacks exact committed authority")
+    return EvidenceRef(ref_id=source.event_id, evidence_type="committed_world_event",
+                       claim_purpose="life_transition", source_world_revision=source.world_revision,
+                       immutable_hash=source.payload_hash)
+
+
 class OutlookDependency(FrozenModel):
     source_ref: str = Field(min_length=1, max_length=512)
     # State predicates are executable domain facts, not motives or feelings.

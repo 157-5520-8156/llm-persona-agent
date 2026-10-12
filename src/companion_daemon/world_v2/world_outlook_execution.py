@@ -14,9 +14,9 @@ from .event_identity import domain_idempotency_key
 from .life_content_store import life_content_payload_hash
 from .life_events import WorldOccurrenceActivatedPayload, WorldOccurrenceTerminalPayload
 from .occurrence_content_coordinator import OccurrenceContentCommitRequest, OutcomeCandidateContent
-from .schemas import DueWindow, EvidenceRef, ProjectionCursor, WorldEvent, WorldOccurrenceProjection
+from .schemas import DueWindow, ProjectionCursor, WorldEvent, WorldOccurrenceProjection
 from .world_consequence_contract import WorldConsequenceV2
-from .world_outlook import OutlookOpportunity, digest
+from .world_outlook import OutlookOpportunity, digest, outlook_clock_evidence
 
 
 def occurrence_ref(world_id, actor_ref, node_id):
@@ -66,13 +66,7 @@ class WorldOutlookExecutor:
                 effective_at=state.logical_time,
                 reason_ref=wake.event_id,
                 evidence_refs=(
-                    EvidenceRef(
-                        ref_id=wake.event_id,
-                        evidence_type="committed_world_event",
-                        claim_purpose="life_transition",
-                        source_world_revision=located[1].world_revision,
-                        immutable_hash=wake.payload_hash,
-                    ),
+                    outlook_clock_evidence(state, wake),
                 ),
                 policy_refs=("policy:world-outlook.1",),
             ).model_dump(mode="json")
@@ -248,13 +242,7 @@ class WorldOutlookExecutor:
                     self._ledger.commit_at_cursor(
                         (event,), expected_cursor=expected_cursor, commit_id="commit:" + proposal_id
                     )
-                evidence = EvidenceRef(
-                    ref_id=wake.event_id,
-                    evidence_type="committed_world_event",
-                    claim_purpose="life_transition",
-                    source_world_revision=located[1].world_revision,
-                    immutable_hash=wake.payload_hash,
-                )
+                evidence = outlook_clock_evidence(state, wake)
                 participants = tuple(
                     sorted({self._owner, *((node.npc_ref,) if node.npc_ref else ())})
                 )
@@ -292,13 +280,7 @@ class WorldOutlookExecutor:
             state = self._ledger.project()
             occurrence = next(o for o in state.world_occurrences if o.occurrence_id == ref)
             if occurrence.status == "committed":
-                evidence = EvidenceRef(
-                    ref_id=wake.event_id,
-                    evidence_type="committed_world_event",
-                    claim_purpose="life_transition",
-                    source_world_revision=located[1].world_revision,
-                    immutable_hash=wake.payload_hash,
-                )
+                evidence = outlook_clock_evidence(state, wake)
                 payload = WorldOccurrenceActivatedPayload(
                     change_id="activate:" + ref,
                     transition_id="activate:" + ref,
