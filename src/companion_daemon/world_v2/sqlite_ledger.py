@@ -37,6 +37,7 @@ from .ledger import (
     _observation_id,
     _preflight_commit_events,
     _validated_observation_locators,
+    _verify_immutable_audit_event,
     canonical_event_json,
     commit_request_hash,
     derived_commit_id,
@@ -60,6 +61,7 @@ from .ledger_prefix_proof import (
     verify_checkpoint_in_prefix,
 )
 from .replay_evidence import ReplayCommitEvidence, ReplayEvidence, ReplayEventEvidence
+from .proposal_audit_schemas import ModelResultAuditProjection, ProposalAuditProjection
 from .reducers import (
     V53_REDUCER_BUNDLE_VERSION,
     V54_REDUCER_BUNDLE_VERSION,
@@ -4903,6 +4905,87 @@ class SQLiteWorldLedger:
             )
             self._remember_historical_projection(projection)
             return projection
+
+    def _proposal_audit_at(
+        self, *, proposal_id: str, cursor: ProjectionCursor
+    ) -> ProposalAuditProjection | None:
+        return self._immutable_audit_at(identity=proposal_id, cursor=cursor, proposal=True)
+
+    def _model_result_audit_at(
+        self, *, model_result_ref: str, cursor: ProjectionCursor
+    ) -> ModelResultAuditProjection | None:
+        return self._immutable_audit_at(identity=model_result_ref, cursor=cursor, proposal=False)
+
+    def _immutable_audit_at(self, *, identity: str, cursor: ProjectionCursor, proposal: bool):
+        """Read an immutable role audit from the verified prefix without replay.
+
+        Startup/refresh verifies reducer history, including the final model-result
+        binding and uniqueness of each audit. Audits are append-only. Only their
+        exact event membership needs checking here; mutable historical state must
+        still use project_at. One SQLite snapshot covers head, boundary and audit.
+        """
+
+        with self._thread_lock:
+            connection = self._connection
+            # External refresh may rebuild derived prefix proofs in its own
+            # transaction. Then pin the read snapshot and reject a racing write.
+            self._refresh_verified_external_history_locked()
+            owns_transaction = not connection.in_transaction
+            try:
+                if owns_transaction:
+                    connection.execute("BEGIN")
+                if self._ledger_mutation_epoch_locked() != self._verified_ledger_epoch:
+                    raise ConcurrencyConflict("ledger changed while pinning proposal audit history")
+                head = self._project_locked()
+                head_cursor = ProjectionCursor(
+                    world_revision=head.world_revision,
+                    deliberation_revision=head.deliberation_revision,
+                    ledger_sequence=head.ledger_sequence,
+                )
+                zero = ProjectionCursor(world_revision=0, deliberation_revision=0, ledger_sequence=0)
+                if cursor.ledger_sequence > head.ledger_sequence:
+                    raise ValueError("requested projection cursor is outside the ledger range")
+                if not cursor.ledger_sequence:
+                    if cursor != zero:
+                        raise ValueError("requested projection cursor is not present in the ledger")
+                    return None
+                boundary = connection.execute(
+                    """SELECT commit_id, world_revision, deliberation_revision
+                       FROM world_v2_events WHERE world_id = ? AND ledger_sequence = ?""",
+                    (self._world_id, cursor.ledger_sequence),
+                ).fetchone()
+                if boundary is None:
+                    raise LedgerIntegrityError("proposal history boundary is missing")
+                # Unlike observation proof pins, project_at permits mid-batch
+                # cursors. Verify the owning batch, then compare the exact row.
+                self._verify_cold_commit_locked(str(boundary["commit_id"]), expected_cursor=head_cursor)
+                if (int(boundary["world_revision"]), int(boundary["deliberation_revision"])) != (
+                    cursor.world_revision, cursor.deliberation_revision,
+                ):
+                    raise ValueError("requested projection cursor is not present in the ledger")
+                records = head.proposal_audits if proposal else head.model_result_audits
+                field = "proposal_id" if proposal else "model_result_ref"
+                audit = next((a for a in records if getattr(a, field) == identity), None)
+                if audit is None:
+                    return None
+                row = connection.execute(
+                    "SELECT ledger_sequence, commit_id, event_json FROM world_v2_events WHERE world_id = ? AND event_id = ?",
+                    (self._world_id, audit.event_ref),
+                ).fetchone()
+                if row is None:
+                    raise LedgerIntegrityError("proposal audit event is missing")
+                if int(row["ledger_sequence"]) > cursor.ledger_sequence:
+                    return None
+                # The verified prefix may include migration-only carriers.
+                # Reuse startup's exact-byte verification/upcast policy; applying
+                # today's request hash to a legacy batch would reject valid history.
+                self._verify_cold_commit_locked(str(row["commit_id"]), expected_cursor=head_cursor)
+                event = WorldEvent.model_validate_json(row["event_json"])
+                _verify_immutable_audit_event(audit, event)
+                return audit
+            finally:
+                if owns_transaction:
+                    connection.rollback()
 
     def _pin_observation_history_proof(
         self, *, cursor: ProjectionCursor

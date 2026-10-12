@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 from .lived_story import StoryAnchor, anchor_catalog
-from .world_outlook_request import PRESENTATION_GUIDE, decode_outlook_request, encode_outlook_request
+from .world_outlook_request import (
+    PRESENTATION_GUIDE, RESPONSE_REFERENCE_CONTRACT, decode_outlook_request,
+    decode_outlook_response, encode_outlook_request,
+)
 
 from companion_daemon.llm import model_call_scope
 from .structured_completion import complete_json_object
@@ -48,7 +51,7 @@ The linkage is navigation, not proof of causality. Preserve durable thread ident
 use open/paused/closed for the external storyline, never to assign protagonist feelings.
 realized_story_history lists actual outcomes and existing experience/memory references;
 unrealized possibilities remain private and must never be described as history.
-Return exactly {"decision":"keep","review_at":"future ISO timestamp","reason":"why keep"} or {"decision":"revise","draft":<schema>}. No other fields.
+Return a JSON object, exactly {"decision":"keep","review_at":"future ISO timestamp","reason":"why keep"} or {"decision":"revise","draft":<schema>}. No other fields.
 """
 
 
@@ -323,6 +326,7 @@ class WorldOutlookRuntime:
         history = self._history_material(projection, context, view, history_trigger_ref)
         packet = {
             "contract": "world-outlook-request.1",
+            "response_reference_contract": RESPONSE_REFERENCE_CONTRACT,
             "world_id": projection.world_id,
             "actor_ref": self.actor_ref,
             "logical_time": now.isoformat(),
@@ -407,7 +411,7 @@ class WorldOutlookRuntime:
                         "life_development_draft", action_id=f"world-outlook:{input_key}:{ordinal}"
                     ):
                         raw = await complete_json_object(self.author, messages, temperature=0.3)
-                obj = json.loads(raw)
+                obj = decode_outlook_response(raw, request_raw=messages[1]["content"])
                 if (
                     isinstance(obj, dict)
                     and set(obj) == {"decision", "review_at", "reason"}

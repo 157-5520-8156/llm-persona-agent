@@ -4,6 +4,9 @@ from datetime import timedelta
 import json
 
 import pytest
+import httpx
+
+from companion_daemon.llm import DeepSeekChatModel
 
 from test_world_outlook import (
     setup,
@@ -13,6 +16,62 @@ from test_world_outlook import (
     ProductionAuthor,
 )
 from test_life_development_runtime import _manifest, _projection_cursor
+
+
+def test_outlook_reference_aliases_are_request_bound_and_never_rewrite_prose():
+    from companion_daemon.world_v2.world_outlook_request import (
+        RESPONSE_REFERENCE_CONTRACT, decode_outlook_response,
+    )
+    from companion_daemon.world_v2.shared_string_view import pack_shared_strings
+    ref = "event:authoritative-history:" + "b" * 90
+    request = pack_shared_strings({"response_reference_contract": RESPONSE_REFERENCE_CONTRACT,
+                                   "basis_refs": [ref] * 8})
+    alias = next(iter(request["strings"]))
+    reply = {"draft": {"opportunities": [{"basis_refs": [alias], "execution": {"text": alias}}]}}
+    result = decode_outlook_response(json.dumps(reply), request_raw=json.dumps(request))
+    node = result["draft"]["opportunities"][0]
+    assert node["basis_refs"] == [ref]
+    assert node["execution"]["text"] == alias
+    old = pack_shared_strings({"basis_refs": [ref] * 8})
+    assert decode_outlook_response(json.dumps(reply), request_raw=json.dumps(old)) == reply
+    with pytest.raises(ValueError, match="unknown reference alias"):
+        decode_outlook_response(json.dumps({"basis_refs": [request["prefix"] + "999"]}),
+                                request_raw=json.dumps(request))
+    other = pack_shared_strings({"response_reference_contract": RESPONSE_REFERENCE_CONTRACT,
+                                 "basis_refs": [ref + "other"] * 8})
+    rebound = decode_outlook_response(json.dumps(reply), request_raw=json.dumps(other))
+    assert rebound["draft"]["opportunities"][0]["basis_refs"] == [ref + "other"]
+
+
+@pytest.mark.asyncio
+async def test_outlook_real_json_mode_request_includes_provider_required_instruction(tmp_path):
+    ledger, wake, _, _, runtime = setup(tmp_path, lambda w: [])
+    requests = []
+
+    def provider(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        assert body["response_format"] == {"type": "json_object"}
+        # DeepSeek rejects before generation when this documented requirement
+        # is absent. Exercise the real request builder without any network.
+        assert "json" in " ".join(m["content"] for m in body["messages"]).lower()
+        return httpx.Response(200, json={"choices": [{"message": {
+            "content": json.dumps({"decision": "revise", "draft": draft_value(wake)}),
+        }}]})
+
+    model = DeepSeekChatModel(api_key="offline", base_url="https://api.deepseek.com",
+                             model="deepseek-flash", transport=httpx.MockTransport(provider))
+    runtime.author = model
+    try:
+        result = await runtime.refresh(
+            projection=ledger.project(), context={},
+            manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
+        )
+        assert result["status"] == "ready", result
+        assert len(requests) == 1
+    finally:
+        runtime.close()
+        await model.aclose()
 
 
 @pytest.mark.asyncio

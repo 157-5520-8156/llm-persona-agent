@@ -11,12 +11,21 @@ from .shared_string_view import (
 
 _COLUMNS = ("source_ref", "source_kind", "status", "allowed_statuses", "token")
 _TABLE = "outlook-condition-sources-table.1"
+RESPONSE_REFERENCE_CONTRACT = "outlook-source-references.1"
 PRESENTATION_GUIDE = """Request encoding: a shared-string-view.1 wrapper is lossless. Read value,
 resolving each exact prefix token using strings. If condition_sources is an
 outlook-condition-sources-table.1, each row maps positionally to columns.
-These are the same complete sources, not summaries. Output original expanded
-source refs and tokens, never string-dictionary aliases. The draft schema and
-all authority rules are unchanged."""
+These are the same complete sources, not summaries. When response_reference_contract
+is outlook-source-references.1, reference fields may copy exact dictionary aliases;
+the host expands them against this request only, then validates all authority.
+Otherwise output original expanded refs. Write narrative text yourself, never
+dictionary aliases in prose. The draft schema and authority rules are unchanged."""
+
+_REFERENCE_FIELDS = frozenset({
+    "world_id", "actor_ref", "parent_revision", "thread_id", "opportunity_id",
+    "thread_refs", "after_opportunities", "source_ref", "authority_ref", "basis_refs",
+    "npc_ref", "participant_npc_refs", "location_ref", "target_plan_ref", "unchanged_token",
+})
 
 
 def _wire(value):
@@ -35,6 +44,40 @@ def decode_outlook_request(raw):
             dict(zip(_COLUMNS, row, strict=True)) for row in sources["rows"]
         ]
     return packet
+
+
+def decode_outlook_response(raw, *, request_raw):
+    """Expand only explicit reference fields; never edit authored prose/choices.
+
+    The marker is pinned in the stored request. Old requests keep their original
+    interpretation, including failed attempts; this is not retrospective repair.
+    """
+    response = json.loads(raw)
+    request = json.loads(request_raw)
+    expanded = decode_outlook_request(request_raw)
+    if expanded.get("response_reference_contract") != RESPONSE_REFERENCE_CONTRACT:
+        return response
+    strings = request.get("strings", {}) if request.get("contract") == SHARED_STRINGS else {}
+    prefix = request.get("prefix") if strings else None
+
+    def reference(value):
+        if isinstance(value, str) and prefix and value.startswith(prefix):
+            if value not in strings:
+                raise ValueError("outlook response uses an unknown reference alias")
+            return strings[value]
+        if isinstance(value, list):
+            return [reference(item) for item in value]
+        return value
+
+    def visit(value):
+        if isinstance(value, dict):
+            return {key: reference(child) if key in _REFERENCE_FIELDS else visit(child)
+                    for key, child in value.items()}
+        if isinstance(value, list):
+            return [visit(item) for item in value]
+        return value
+
+    return visit(response)
 
 
 def encode_outlook_request(packet, *, byte_limit):

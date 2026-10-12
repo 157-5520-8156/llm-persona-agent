@@ -30,6 +30,7 @@ from .affect_target_bounds import (
 from .decision_proposal_authority import DecisionProposalAuthorityReader
 from .event_identity import domain_idempotency_key
 from .ledger import LedgerPort
+from .affect_acceptance_manifest import AffectAcceptanceManifest
 from .schema_core import EvidenceRef, FrozenModel
 from .schemas import (
     AffectComponentProjection,
@@ -95,6 +96,7 @@ class AffectProposalCompilation(FrozenModel):
     typed_proposal_id: str | None = None
     commit: CommitResult | None = None
     acceptance_cursor: ProjectionCursor | None = None
+    settled_acceptance_commit: CommitResult | None = None
 
 
 class AffectProposalCompiler:
@@ -220,14 +222,13 @@ class AffectProposalCompiler:
         ):
             raise AffectProposalCompilerError("appraisal_refs_not_from_source_proposal")
         projection = self._ledger.project_at(current_cursor)
-        pinned_projection = self._ledger.project_at(audit_cursor)
         accepted_candidate = self._accepted_rebased_candidate(
             projection=projection,
             authority=authority,
             change=change,
         )
         if accepted_candidate is not None:
-            candidate, commit = accepted_candidate
+            candidate, commit, accepted_commit = accepted_candidate
             return AffectProposalCompilation(
                 status="candidate_recorded",
                 source_proposal_id=proposal.proposal_id,
@@ -235,6 +236,7 @@ class AffectProposalCompiler:
                 typed_proposal_id=candidate.proposal_id,
                 commit=commit,
                 acceptance_cursor=self._cursor_from_commit(commit),
+                settled_acceptance_commit=accepted_commit,
             )
         existing = tuple(
             item
@@ -314,6 +316,10 @@ class AffectProposalCompiler:
                 source_proposal_event_ref=authority.audit.event_ref,
                 skip_reason="affect_proposal_compiler.source_appraisal_closed",
             )
+        # Completed/reusable candidates and closed Appraisals do not inspect
+        # historical target bounds. Reconstruct them only for a new mutation;
+        # cold backlog recovery otherwise replays years for an unused value.
+        pinned_projection = self._ledger.project_at(audit_cursor)
         if self._target_lower_bound_changed_after_pin(
             raw=raw,
             pinned_projection=pinned_projection,
@@ -379,13 +385,14 @@ class AffectProposalCompiler:
         projection,
         authority,
         change,
-    ) -> tuple[AffectProposalProjection, CommitResult] | None:
+    ) -> tuple[AffectProposalProjection, CommitResult, CommitResult] | None:
         """Locate an already settled candidate descended from this source choice."""
 
-        matches: list[tuple[AffectProposalProjection, CommitResult]] = []
+        matches: list[tuple[AffectProposalProjection, CommitResult, CommitResult]] = []
         for decision in projection.acceptance_decisions:
             if (
                 decision.manifest_version != "affect-acceptance.1"
+                or decision.status != "accepted"
                 or decision.acceptance_event_ref is None
             ):
                 continue
@@ -420,7 +427,24 @@ class AffectProposalCompiler:
                 or binding.change_payload_hash != change.payload.payload_hash
             ):
                 continue
-            matches.append((candidate, located[1]))
+            # Recover the original receipt, not fresh permission to mutate.
+            # Bind both sides of the atomic accepted batch before returning it.
+            manifest = AffectAcceptanceManifest.model_validate_json(acceptance[0].payload_json)
+            mutation = self._ledger.lookup_event_commit(manifest.mutation_event_id)
+            if (
+                acceptance[0].event_type != "AcceptanceRecorded"
+                or manifest.proposal_id != candidate.proposal_id
+                or manifest.proposal_event_payload_hash != located[0].payload_hash
+                or manifest.accepted_change_id != candidate.change_id
+                or manifest.accepted_change_hash != candidate.proposed_change_hash
+                or mutation is None
+                or mutation[1] != acceptance[1]
+                or mutation[0].event_type != manifest.mutation_event_type
+                or mutation[0].payload_hash != manifest.mutation_payload_hash
+                or mutation[0].causation_id != acceptance[0].event_id
+            ):
+                raise AffectProposalCompilerError("settled_affect_receipt_mismatch")
+            matches.append((candidate, located[1], acceptance[1]))
         if len(matches) > 1:
             raise AffectProposalCompilerError("rebased_candidate_accepted_ambiguous")
         return matches[0] if matches else None

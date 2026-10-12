@@ -38,6 +38,10 @@ from .reducers import (
     require_reducer_bundle,
 )
 from .replay_evidence import ReplayCommitEvidence, ReplayEvidence, ReplayEventEvidence
+from .proposal_audit_schemas import (
+    ModelResultAuditProjection, ModelResultRecordedPayload,
+    ProposalAuditProjection, ProposalRecordedV2Payload,
+)
 from .schemas import (
     CommitResult,
     CommittedWorldEventRef,
@@ -53,6 +57,24 @@ _COMMIT_PREFLIGHT_MAX_DEPTH = 32
 _COMMIT_PREFLIGHT_MAX_NODES = 16_384
 _COMMIT_PREFLIGHT_MAX_KEY_CHARS = 512
 _COMMIT_PREFLIGHT_MAX_INTEGER = (1 << 63) - 1
+
+
+def _verify_immutable_audit_event(
+    audit: ProposalAuditProjection | ModelResultAuditProjection, event: WorldEvent,
+) -> None:
+    event_type = "ProposalRecorded" if isinstance(audit, ProposalAuditProjection) else "ModelResultRecorded"
+    payload_type = ProposalRecordedV2Payload if isinstance(audit, ProposalAuditProjection) else ModelResultRecordedPayload
+    # Historical valid records may omit defaults or carry explicit nulls.
+    # Compare the same typed projection the reducer builds, keeping the raw
+    # event/hash verification below and in the owning ledger unchanged.
+    recorded = payload_type.model_validate_json(event.payload_json)
+    if (
+        event.event_type != event_type
+        or event.event_id != audit.event_ref
+        or event.payload_hash != audit.event_payload_hash
+        or recorded.model_dump(mode="json") != audit.model_dump(mode="json", exclude={"event_ref", "event_payload_hash"})
+    ):
+        raise LedgerIntegrityError("proposal audit does not match its immutable event")
 
 
 class LedgerPort(Protocol):
@@ -815,6 +837,46 @@ class WorldLedger:
             if event_id in commit.result.event_ids:
                 return stored.event, commit.result
         raise RuntimeError(f"event {event_id!r} has no owning commit")
+
+    def _proposal_audit_at(
+        self, *, proposal_id: str, cursor: ProjectionCursor
+    ) -> ProposalAuditProjection | None:
+        return self._immutable_audit_at(identity=proposal_id, cursor=cursor, proposal=True)
+
+    def _model_result_audit_at(
+        self, *, model_result_ref: str, cursor: ProjectionCursor
+    ) -> ModelResultAuditProjection | None:
+        return self._immutable_audit_at(identity=model_result_ref, cursor=cursor, proposal=False)
+
+    def _immutable_audit_at(self, *, identity: str, cursor: ProjectionCursor, proposal: bool):
+        """Read append-only model/proposal audits, never mutable historical state."""
+
+        with self._thread_lock:
+            zero = ProjectionCursor(world_revision=0, deliberation_revision=0, ledger_sequence=0)
+            if cursor.ledger_sequence > len(self._events):
+                raise ValueError("requested projection cursor is outside the ledger range")
+            reached = zero
+            if cursor.ledger_sequence:
+                boundary = self._events[cursor.ledger_sequence - 1]
+                reached = ProjectionCursor(
+                    world_revision=boundary.world_revision,
+                    deliberation_revision=boundary.deliberation_revision,
+                    ledger_sequence=boundary.ledger_sequence,
+                )
+            if reached != cursor:
+                raise ValueError("requested projection cursor is not present in the ledger")
+            records = self._state.proposal_audits if proposal else self._state.model_result_audits
+            field = "proposal_id" if proposal else "model_result_ref"
+            audit = next((a for a in records if getattr(a, field) == identity), None)
+            if audit is None:
+                return None
+            stored = self._by_event_id.get(audit.event_ref)
+            if stored is None:
+                raise LedgerIntegrityError("proposal audit event is missing")
+            if stored.ledger_sequence > cursor.ledger_sequence:
+                return None
+            _verify_immutable_audit_event(audit, stored.event)
+            return audit
 
     def recent_events_by_type(
         self,

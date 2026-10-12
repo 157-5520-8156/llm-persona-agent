@@ -1270,16 +1270,16 @@ class ExperienceTransitionSettlement:
         proposal_id: str,
         source_event: WorldEvent,
     ) -> tuple[object, DecisionProposal, TypedChange | None]:
-        projection = self._ledger.project_at(audit_cursor)
-        audit = next(
-            (
-                item
-                for item in projection.proposal_audits
-                if item.proposal_id == proposal_id and item.trigger_ref == source_event.event_id
-            ),
-            None,
-        )
-        if audit is None:
+        read_audit = getattr(self._ledger, "_proposal_audit_at", None)
+        if callable(read_audit):
+            audit = read_audit(proposal_id=proposal_id, cursor=audit_cursor)
+        else:
+            projection = self._ledger.project_at(audit_cursor)
+            audit = next(
+                (item for item in projection.proposal_audits if item.proposal_id == proposal_id),
+                None,
+            )
+        if audit is None or audit.trigger_ref != source_event.event_id:
             raise ValueError("experience settlement source audit is unavailable")
         proposal = validate_proposal_envelope(json.loads(audit.proposal_json))
         if not isinstance(proposal, DecisionProposal):

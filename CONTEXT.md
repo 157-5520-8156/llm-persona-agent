@@ -1,3 +1,35 @@
+Old task recovery and real Outlook acceptance (2026-10-12):
+Base988db8fc; design old-task-recovery-and-story-acceptance-2026-10-12.md;
+audit old-task-recovery-and-real-story-2026-10-12.md. Isolated branch only.
+Immutable Proposal/ModelResult reads now verify exact cursor membership and original
+event/commit bytes without reconstructing historical World state. Keep legacy default/null
+normalization and existing migration-aware commit verification; mutable state still pins.
+Affect reads historical bounds only for new mutation, and already accepted work returns
+the original receipt after verifying source binding, manifest, atomic mutation/hash/causation.
+Missing mutation is failure; new acceptance/CAS/effect-once rules and role authorship unchanged.
+Full-source offline-v6: old 3-task step122.2235s ->5.6798s (95.35% reduction), same results
+and same model counts. Step includes 1 existing fixture memory-retention call in both versions;
+the 3 old reflections do not re-author. 1259prehistory retained; replay/cold repeat0effects.
+Whole chain366.57s includes full replay and overlapped CPU work; NOT a chat SLA measurement.
+Original39895+5 event bytes and embedding cache/usage tables equal in all4final clones.
+Real qualification REJECTED before cross-day execution: v1 JSON-mode HTTP400 fixed by
+explicit JSON instruction; harness O_EXCL rolling-log bug fixed by atomic replacement.
+New pinned request marker outlook-source-references.1 expands only exact reference fields;
+prose and old request interpretation stay unchanged, all source/schema validation continues.
+v2 authors2invalid drafts; v3 keep-on-empty then3threads/0opportunities with unoffered anchors.
+Crucial diagnostic: 2 rejected v3 anchors match authoritative catalog and appeared with hashes
+in world_context.slices.world_life.items, but were absent from the 2-item history_material list.
+This is displayed-source vs allowed-anchor inconsistency, not evidence of invented memories.
+No14day/story-choice/ordinary-chat quality pass; samples mostly shallow environmental changes.
+Stop repeated paid probes. Next align actually shown authorized sources with offered anchors,
+then cold-start structural contract and cross-day quality; no sync chat review or scripted choices.
+New explicit5CNY grant:7requests,known.138021,unknownreserve.289870,remaining4.572109.
+Old5/.5CNY ledgers unchanged. These are scoped usage estimates, not platform account debits.
+228scopedpass then added missing-mutation negative; both review axes closed. Final frozenfull
+10540pass/19skip/2xfail/1existingwarning,pytest1248.45s,exit0;1692PythonSHAunchanged.
+Evidence output/private-audits/old-task-recovery-story-quality-20261012/.
+No production restart/QQ or Outlook deployment; manual_only/qualification_incomplete persists.
+
 Full-history World Outlook closure (2026-10-12):
 Base769af7f6; runtime88b5b973; design/audit world-outlook-closed-loop-2026-10-12.md.
 Four confirmed fixes: full Outlook114445B exceeded100000B and silently looked idle;

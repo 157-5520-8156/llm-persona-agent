@@ -307,6 +307,10 @@ class InternalAuthorityReader:
     ) -> ModelResultAuditProjection | None:
         if not model_result_ref:
             raise ValueError("model_result_ref must not be empty")
+        self._validate_world(world_id)
+        read_audit = getattr(self._ledger, "_model_result_audit_at", None)
+        if callable(read_audit):
+            return read_audit(model_result_ref=model_result_ref, cursor=cursor)
         projection = self._at(world_id=world_id, cursor=cursor)
         return next(
             (
@@ -326,6 +330,10 @@ class InternalAuthorityReader:
     ) -> ProposalAuditProjection | None:
         if not proposal_id:
             raise ValueError("proposal_id must not be empty")
+        self._validate_world(world_id)
+        read_audit = getattr(self._ledger, "_proposal_audit_at", None)
+        if callable(read_audit):
+            return read_audit(proposal_id=proposal_id, cursor=cursor)
         projection = self._at(world_id=world_id, cursor=cursor)
         return next(
             (audit for audit in projection.proposal_audits if audit.proposal_id == proposal_id),

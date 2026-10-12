@@ -52,6 +52,7 @@ from ..errors import ConcurrencyConflict
 from ..immediate_emotion_proposal_worker import ImmediateEmotionProposalWorker
 from ..perception import PerceptionResultAcceptedPayload, perception_result_trigger_id
 from ..perception_result_context import PerceptionResultReader
+from ..projection import InternalAuthorityReader
 from ..proposal_audit_schemas import (
     ModelResultRecordedPayload,
     RecordedCharacterInteriorTurnLineage,
@@ -2637,16 +2638,11 @@ class CharacterInteriorWorldStimulusRuntime:
         and crosses one cursor-CAS boundary.
         """
 
-        audit_projection = await self._project_at(audit_cursor)
-        audit = next(
-            (
-                item
-                for item in audit_projection.proposal_audits
-                if item.proposal_id == proposal_id and item.trigger_ref == source_event.event_id
-            ),
-            None,
-        )
-        if audit is None:
+        read = InternalAuthorityReader(ledger=self._ledger).proposal_audit_by_id
+        kwargs = dict(world_id=self._ledger.world_id, cursor=audit_cursor, proposal_id=proposal_id)
+        audit = (await asyncio.to_thread(read, **kwargs)
+                 if getattr(self._ledger, "blocks_event_loop", False) else read(**kwargs))
+        if audit is None or audit.trigger_ref != source_event.event_id:
             raise ValueError("world stimulus aspiration source audit is unavailable")
         proposal = validate_proposal_envelope(json.loads(audit.proposal_json))
         if not isinstance(proposal, DecisionProposal):

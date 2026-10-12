@@ -156,14 +156,16 @@ class ImmediateEmotionProposalWorker:
         ):
             raise RuntimeError("rebased affect compiler returned an incomplete candidate")
         try:
-            accepted = self._affect_acceptance.accept_runtime_owned(
-                handle=self._affect_acceptance.pin_proposal(
-                    cursor=affect.acceptance_cursor,
-                    proposal_id=affect.typed_proposal_id,
-                ),
-                actor=self._actor,
-                source=self._source,
-            )
+            accepted = affect.settled_acceptance_commit
+            if accepted is None:
+                accepted = self._affect_acceptance.accept_runtime_owned(
+                    handle=self._affect_acceptance.pin_proposal(
+                        cursor=affect.acceptance_cursor,
+                        proposal_id=affect.typed_proposal_id,
+                    ),
+                    actor=self._actor,
+                    source=self._source,
+                )
         except ConcurrencyConflict as exc:
             raise ImmediateEmotionConcurrencyConflict(stage="affect") from exc
         _LOG.warning(
