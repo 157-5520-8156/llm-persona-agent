@@ -135,3 +135,62 @@ def test_source_table_and_string_dictionary_preserve_every_value():
     raw = encode_outlook_request(packet, byte_limit=1)
     assert decode_outlook_request(raw) == packet
     assert len(raw.encode()) < len(json.dumps(packet, ensure_ascii=False).encode())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("interrupted", [False, True])
+async def test_script_retry_on_later_clock_reuses_its_execution_proposal(
+    tmp_path, monkeypatch, interrupted
+):
+    from test_world_outlook import install_executor
+    from test_life_development_runtime import _seed_clock
+
+    class Crash(BaseException):
+        pass
+
+    ledger, wake, store, author, runtime = setup(
+        tmp_path, lambda w: [{"decision": "revise", "draft": draft_value(w)}]
+    )
+    content = install_executor(ledger, runtime)
+    try:
+        await runtime.refresh(
+            projection=ledger.project(),
+            context={},
+            manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
+        )
+        node = runtime.ready()[0]
+        original = content.commit
+
+        def fail(request):
+            raise Crash() if interrupted else OSError("offline injected content failure")
+
+        monkeypatch.setattr(content, "commit", fail)
+        if interrupted:
+            with pytest.raises(Crash):
+                runtime.execute_offer(node, wake_event_ref=wake.event_id)
+        else:
+            assert (
+                runtime.execute_offer(node, wake_event_ref=wake.event_id).status
+                == "technical_failure"
+            )
+        monkeypatch.setattr(content, "commit", original)
+        later = _seed_clock(
+            ledger,
+            event_id="clock:later-retry",
+            logical_time=wake.logical_time + timedelta(hours=1),
+            logical_time_from=wake.logical_time,
+        )
+        if interrupted:
+            assert runtime.reconcile_accepted_offers(wake_event_ref=later.event_id) == 1
+        else:
+            ready = next(
+                n for n in runtime.ready() if n["opportunity_id"] == node["opportunity_id"]
+            )
+            assert (
+                runtime.execute_offer(ready, wake_event_ref=later.event_id).status
+                == "occurrence_committed"
+            )
+        assert len(ledger.project().world_occurrences) == 1
+        assert len(author.calls) == 1
+    finally:
+        runtime.close()

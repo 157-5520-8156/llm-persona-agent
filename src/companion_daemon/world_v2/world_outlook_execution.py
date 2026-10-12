@@ -200,7 +200,10 @@ class WorldOutlookExecutor:
                     sort_keys=True,
                     separators=(",", ":"),
                 )
-                identity = digest([state.world_id, self._owner, node.model_dump(mode="json")])
+                # Bind both script and the original author/navigation bytes.
+                # A later clock retries the same proposal; a genuinely revised
+                # author binding gets its own immutable candidate and audit.
+                identity = digest([state.world_id, self._owner, node.model_dump(mode="json"), origin])
                 content = OutcomeCandidateContent(
                     candidate_result_ref="candidate:outlook:" + identity,
                     result_id="result:outlook:" + identity,
@@ -214,7 +217,7 @@ class WorldOutlookExecutor:
                 )
                 # The immutable execution receipt records original authoring,
                 # not a fabricated provider call at execution time.
-                proposal_id = "event:world-outlook:execution:" + digest([identity, wake_event_ref])
+                proposal_id = "event:world-outlook:execution:" + identity
                 payload = {
                     "proposal_id": "proposal:world-outlook:" + identity,
                     "proposal_kind": "world_outlook_execution",

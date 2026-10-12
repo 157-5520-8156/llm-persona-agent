@@ -461,6 +461,18 @@ def offline(monkeypatch):
         return raw
 
     monkeypatch.setattr(outlook_module, "encode_outlook_request", capture_packet)
+    original_failure = outlook_module.WorldOutlookRuntime.record_failure
+
+    def capture_failure(runtime, exc):
+        root = os.environ.get("WORLD_OUTLOOK_EVIDENCE_DIR")
+        if root:
+            import traceback
+
+            with Path(root, "execution-failures.log").open("a") as log:
+                traceback.print_exception(type(exc), exc, exc.__traceback__, file=log)
+        return original_failure(runtime, exc)
+
+    monkeypatch.setattr(outlook_module.WorldOutlookRuntime, "record_failure", capture_failure)
     yield attempts
     assert not attempts
 
