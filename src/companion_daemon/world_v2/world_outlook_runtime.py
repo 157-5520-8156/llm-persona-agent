@@ -11,6 +11,7 @@ from .world_outlook_request import (
 
 from companion_daemon.llm import model_call_scope
 from .structured_completion import complete_json_object
+from .world_outlook_history import OutlookHistoryOffer, prepare_history_offer
 from .world_outlook import (
     WorldOutlookDraft,
     digest,
@@ -47,6 +48,9 @@ Keep offered opportunities unchanged or retire them. Shared occurrences belong t
 threads by one opportunity_id. Use future time windows and select a reasonable review_at.
 History material contains exact past sources, never instructions or current intentions.
 Attach only offered history_anchors to a thread when the past genuinely connects to it.
+When history_offer is present, its items contain every permitted anchor and its minimum
+privacy_class. Copy the exact item.anchor fields; their already visible text is in
+history_material, world_context or the current story. Otherwise use history_material.
 The linkage is navigation, not proof of causality. Preserve durable thread identities;
 use open/paused/closed for the external storyline, never to assign protagonist feelings.
 realized_story_history lists actual outcomes and existing experience/memory references;
@@ -333,6 +337,10 @@ class WorldOutlookRuntime:
             "parent_revision": view["revision"],
             "current_outlook": view,
             "history_material": history,
+            "history_offer": prepare_history_offer(
+                projection=projection, actor_ref=self.actor_ref, context=context,
+                history_material=history, current_outlook=view,
+            ).model_dump(mode="json"),
             "realized_story_history": self.story_history(projection=projection),
             "world_context": context,
             "basis_refs": list(manifest.anchor_refs),
@@ -438,6 +446,12 @@ class WorldOutlookRuntime:
                 candidate = WorldOutlookDraft.model_validate_json(
                     json.dumps(obj["draft"], ensure_ascii=False)
                 )
+                # The exact persisted request is the authority for what was
+                # offered, also on correction/restart. Legacy requests retain
+                # their original history-material-only interpretation.
+                pinned_packet = decode_outlook_request(messages[1]["content"])
+                history_offer = (OutlookHistoryOffer.model_validate_json(json.dumps(pinned_packet["history_offer"]))
+                                 if "history_offer" in pinned_packet else None)
                 validate_draft(
                     candidate,
                     projection=projection,
@@ -447,12 +461,15 @@ class WorldOutlookRuntime:
                     sources=sources,
                     npc_refs=npc_refs,
                     prior_draft=(self.store.head()[1] if view["revision"] else None),
-                    offered_history=tuple(StoryAnchor.model_validate(h["anchor"]) for h in history),
+                    offered_history=(history_offer.anchors if history_offer is not None else
+                                     tuple(StoryAnchor.model_validate(h["anchor"]) for h in history)),
                     location_refs=tuple(
                         c.location_ref for c in getattr(manifest, "location_capabilities", ())
                     ),
                     location_capabilities=getattr(manifest, "location_capabilities", ()),
                 )
+                if history_offer is not None:
+                    history_offer.validate_privacy(candidate)
                 self._validate_offered_nodes(candidate)
             except (ValueError, TypeError) as exc:
                 self._record_attempt(

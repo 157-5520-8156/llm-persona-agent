@@ -15,7 +15,9 @@ def _wire(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
-def pack_shared_strings(value):
+def pack_shared_strings(value, *, min_value_bytes=72):
+    if type(min_value_bytes) is not int or min_value_bytes < 1:
+        raise ValueError("shared string minimum must be positive bytes")
     counts = Counter()
     literals = set()
 
@@ -36,7 +38,7 @@ def pack_shared_strings(value):
     while any(prefix in literal for literal in literals):
         prefix = "@" + prefix
     # Size is a transport property, not semantic selection. Every value stays.
-    selected = sorted(s for s, n in counts.items() if n >= 2 and len(s.encode()) >= 72)
+    selected = sorted(s for s, n in counts.items() if n >= 2 and len(s.encode()) >= min_value_bytes)
     names = {s: f"{prefix}{i}" for i, s in enumerate(selected)}
 
     def replace(node):

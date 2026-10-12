@@ -23,7 +23,7 @@ dictionary aliases in prose. The draft schema and authority rules are unchanged.
 
 _REFERENCE_FIELDS = frozenset({
     "world_id", "actor_ref", "parent_revision", "thread_id", "opportunity_id",
-    "thread_refs", "after_opportunities", "source_ref", "authority_ref", "basis_refs",
+    "thread_refs", "after_opportunities", "source_ref", "authority_ref", "authority_hash", "basis_refs",
     "npc_ref", "participant_npc_refs", "location_ref", "target_plan_ref", "unchanged_token",
 })
 
@@ -94,7 +94,10 @@ def encode_outlook_request(packet, *, byte_limit):
             "columns": list(_COLUMNS),
             "rows": [[source[key] for key in _COLUMNS] for source in sources],
         }
-    candidates = (plain, _wire(tabular), _wire(pack_shared_strings(tabular)))
+    # The explicit history offer repeats exact 64-byte authority hashes already
+    # shown in Context. Intern these as well; never trim sources to fit the cap.
+    candidates = (plain, _wire(tabular), _wire(pack_shared_strings(tabular)),
+                  _wire(pack_shared_strings(tabular, min_value_bytes=64)))
     encoded = min(candidates, key=lambda raw: len(raw.encode()))
     if decode_outlook_request(encoded) != packet:
         raise ValueError("outlook presentation changed the request")

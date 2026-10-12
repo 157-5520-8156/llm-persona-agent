@@ -1,3 +1,28 @@
+Visible history / allowed anchor alignment (2026-10-13):
+Base7d5ae340; design outlook-visible-history-offer-2026-10-12.md;
+audit outlook-visible-history-offer-2026-10-13.md. New history_offer pins one allowed
+anchor set from actually shown eligible world_life items, original history_material,
+and current story anchors. Catalog validates availability, never grants the whole corpus.
+Verify World/actor/exact cursor, typed metadata/value hash, settlement/content descriptor,
+participants/current source refs/hash/revision. Bare refs/quotes, hidden metadata-only
+sources, plans, unsettled results, withheld sources or mismatched authority cannot join.
+All three routes preserve selected outcome+bound descriptor privacy floor; withhold drops
+permission and prior anchors cannot bypass the new offer. Source prose/role choices stay.
+Correction/restart uses the exact persisted offer; old requests keep legacy interpretation.
+Fixed real live-v3 response: baseline rejects unoffered anchors; candidate passes production
+draft+privacy validation without changing its prose/choice, Context or retrieval materials.
+Offer2->6 (2retrieved+4already visible);1259prehistory retained,World unchanged,0API.
+Initial metadata carrier101045B exceeded original100000 cap. Outlook now also considers
+lossless64-byte hash interning; generic72-byte default unchanged, exact JSON roundtrip.
+authority_hash aliases resolve only against that request dictionary, never inside prose.
+Final fixed packet99609->97491B;offer prep5samples9.89-10.65ms;not tokens/cache/SLA proof.
+78scopedpass,Ruff/diff pass,both review axes closed. Frozenfull10567pass/19skip/2xfail/
+1existingwarning,pytest1210.49s,exit0;1694PythonSHAunchanged.
+Evidence output/private-audits/outlook-visible-history-20261012/fixed-capture-v4/;
+exact historical pin comes from v3 SQLite project_at; original failed attempts stay failed.
+No paid requests this turn;5CNY ledger remains7requests/.138021known/.289870reserve/4.572109left.
+No new live cross-day quality claim, production restart,QQ,or synchronous chat review.
+
 Old task recovery and real Outlook acceptance (2026-10-12):
 Base988db8fc; design old-task-recovery-and-story-acceptance-2026-10-12.md;
 audit old-task-recovery-and-real-story-2026-10-12.md. Isolated branch only.
