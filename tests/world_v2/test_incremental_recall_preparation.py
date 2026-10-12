@@ -329,3 +329,78 @@ def test_same_pinned_context_reads_equal_memory_candidate_set_once(tmp_path, mon
     finally:
         recall.close()
         ledger.close()
+
+
+def test_deleted_index_head_does_not_resurrect_removed_documents_after_reopen(tmp_path):
+    path = tmp_path / "orphan.sqlite"
+    index = SQLiteRecallIndex(
+        path=path, world_id="world:test", embedding=FeatureHashRecallEmbedding()
+    )
+    docs = _documents()
+    index.rebuild(cursor=CURSOR, documents=docs)
+    with sqlite3.connect(path) as other:
+        other.execute("DELETE FROM world_v2_recall_index_heads WHERE world_id=?", ("world:test",))
+    remaining = (docs[1],)
+    next_cursor = CURSOR.model_copy(update={"ledger_sequence": 82})
+    index.rebuild(cursor=next_cursor, documents=remaining)
+    assert index.snapshot().documents == remaining
+    index.close()
+    reopened = SQLiteRecallIndex(
+        path=path, world_id="world:test", embedding=FeatureHashRecallEmbedding()
+    )
+    try:
+        assert reopened.snapshot().documents == remaining
+    finally:
+        reopened.close()
+
+
+def test_overlapping_memory_views_share_raw_reads_but_recompute_visible_story(
+    tmp_path, monkeypatch
+):
+    from companion_daemon.world_v2.context_read_scope import context_read_scope
+    from companion_daemon.world_v2.life_content_store import InMemoryImmutableLifeContentStore
+    from companion_daemon.world_v2.memory_retrieval import MemoryRetrievalCompiler
+    from companion_daemon.world_v2.schemas import ProjectionCursor
+    import companion_daemon.world_v2.memory_retrieval as readings
+    from test_character_prehistory import ACTOR, started_ledger
+    from test_prehistory_story_recall import _linked_archive, _active_rows
+
+    ledger = started_ledger(tmp_path / "overlap.sqlite")
+    store = InMemoryImmutableLifeContentStore()
+    try:
+        _active_rows(ledger, _linked_archive())
+        state = ledger.project()
+        candidates = tuple(c for c in state.memory_candidates if c.values.status == "active")
+        assert len(candidates) == 5
+        cursor = ProjectionCursor(
+            world_revision=state.world_revision,
+            deliberation_revision=state.deliberation_revision,
+            ledger_sequence=state.ledger_sequence,
+        )
+        compiler = MemoryRetrievalCompiler(ledger=ledger, life_content_store=store)
+        kwargs = dict(
+            cursor=cursor, projection=state, actor_ref=ACTOR, viewer_privacy_ceiling="private"
+        )
+        expected = compiler.compile(candidates=candidates, **kwargs)
+        counts = []
+        original = readings.evaluate_memory_retrieval
+
+        def count(values, **options):
+            counts.append(len(values))
+            return original(values, **options)
+
+        monkeypatch.setattr(readings, "evaluate_memory_retrieval", count)
+        with context_read_scope(store, state):
+            partial = compiler.compile(candidates=candidates[:2], **kwargs)
+            source = partial.items[0].source_excerpts[0]._recall_source_record
+            partial.items[0].source_excerpts[0]._recall_source_record = source.model_copy(
+                update={"statement": "不能污染缓存"}
+            )
+            full = compiler.compile(candidates=candidates, **kwargs)
+            assert full.model_dump_json() == expected.model_dump_json()
+            assert full.items[0].source_excerpts[0]._recall_source_record == source
+            assert counts == [2, 3]
+            wrong = compiler.compile(candidates=candidates, **dict(kwargs, actor_ref="actor:other"))
+            assert not wrong.items
+    finally:
+        ledger.close()

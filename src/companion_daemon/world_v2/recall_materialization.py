@@ -10,7 +10,7 @@ from threading import RLock
 import math
 from zoneinfo import ZoneInfo
 
-from .immutable_value_cache import immutable_value_cache
+from weakref import ref
 from pydantic import BaseModel
 from pydantic_core import TzInfo
 
@@ -29,14 +29,68 @@ def _immutable_material(value):
     return False
 
 
-@immutable_value_cache(maxsize=8192)
+# Cache one complete immutability result per model, without rebuilding the
+# generic argument/weak-reference wrapper on every field of every document.
+# JSON is filled only when a dependency key actually needs it.
+_MODEL_CACHE = OrderedDict()
+_MODEL_LOCK = RLock()
+_MODEL_BYTES = 0
+_MODEL_LIMIT = 16384
+_MODEL_BYTE_LIMIT = 64 * 1024 * 1024
+
+
+def _trim_models():
+    global _MODEL_BYTES
+    while len(_MODEL_CACHE) > _MODEL_LIMIT or _MODEL_BYTES > _MODEL_BYTE_LIMIT:
+        _, entry = _MODEL_CACHE.popitem(last=False)
+        _MODEL_BYTES -= entry[3]
+
+
+def _model_info(value):
+    global _MODEL_BYTES
+    if type(value).model_config.get("frozen") is not True:
+        return None
+    key = id(value)
+    with _MODEL_LOCK:
+        previous = _MODEL_CACHE.get(key)
+        if previous is not None and previous[0]() is value:
+            _MODEL_CACHE.move_to_end(key)
+            return previous
+    immutable = _immutable_material(value)
+    entry = [ref(value), immutable, None, 0]
+    with _MODEL_LOCK:
+        previous = _MODEL_CACHE.pop(key, None)
+        if previous is not None:
+            _MODEL_BYTES -= previous[3]
+        _MODEL_CACHE[key] = entry
+        _trim_models()
+    return entry
+
+
 def immutable_material(value):
+    if isinstance(value, BaseModel):
+        info = _model_info(value)
+        return info is not None and info[1]
     return _immutable_material(value)
 
 
-@immutable_value_cache(maxsize=4096)
 def _model_json(value):
-    return value.model_dump_json()
+    global _MODEL_BYTES
+    info = _model_info(value)
+    if info is None or not info[1]:
+        return None
+    with _MODEL_LOCK:
+        existing = info[2]
+    if existing is not None:
+        return existing
+    rendered = value.model_dump_json()
+    with _MODEL_LOCK:
+        if _MODEL_CACHE.get(id(value)) is info and info[2] is None:
+            info[2] = rendered
+            info[3] = 4 * len(rendered.encode())
+            _MODEL_BYTES += info[3]
+            _trim_models()
+    return rendered
 
 
 def material_key(value):
@@ -47,7 +101,8 @@ def material_key(value):
     if isinstance(value, datetime):
         return (datetime, value.isoformat(), value.fold) if _immutable_material(value) else None
     if isinstance(value, BaseModel):
-        return (type(value), _model_json(value)) if immutable_material(value) else None
+        rendered = _model_json(value)
+        return (type(value), rendered) if rendered is not None else None
     if type(value) is tuple:
         parts = tuple(material_key(item) for item in value)
         return parts if all(item is not None for item in parts) else None

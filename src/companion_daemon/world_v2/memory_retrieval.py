@@ -262,6 +262,63 @@ class MemoryRetrievalCompiler:
             or projection.ledger_sequence != cursor.ledger_sequence
         ):
             raise ValueError("memory retrieval projection does not match its pinned cursor")
+        # Reuse raw source-qualified members only inside this exact content
+        # read scope. The visible story/episode closure is recomputed below for
+        # EACH requested set, including broader Recall and narrower Context.
+        from .context_read_scope import memoized_context_read_batch
+
+        def collect(missing):
+            result = self._collect_raw(
+                cursor=cursor, candidates=missing, viewer_privacy_ceiling=viewer_privacy_ceiling,
+                projection=projection, actor_ref=actor_ref,
+            )
+            items_by_id = {item.candidate_id: item for item in result.items}
+            suppressed_by_id = {item.candidate_id: item for item in result.suppressions}
+            return tuple((items_by_id.get(item.candidate_id), suppressed_by_id.get(item.candidate_id))
+                         for item in missing)
+
+        if len({item.candidate_id for item in candidates}) != len(candidates):
+            # Preserve the historical handling of duplicate/unusual caller input.
+            result = self._collect_raw(
+                cursor=cursor, candidates=candidates, viewer_privacy_ceiling=viewer_privacy_ceiling,
+                projection=projection, actor_ref=actor_ref,
+            )
+            items, suppressions = list(result.items), list(result.suppressions)
+        else:
+            members = memoized_context_read_batch(
+                store=self._life_content_store, projection=projection, kind="memory_raw_members",
+                owner=self, inputs=candidates,
+                parameters=(actor_ref, viewer_privacy_ceiling, self._max_excerpt_characters),
+                compute=collect,
+            )
+            items = [item for item, _ in members if item is not None]
+            suppressions = [item for _, item in members if item is not None]
+        from .prehistory_memory_source import restrict_story_reading
+        visible_records = {excerpt.source_id for item in items for excerpt in item.source_excerpts
+                           if excerpt.prehistory is not None}
+        from .story_episode import readable_episode_memberships
+        memberships = readable_episode_memberships(archives=projection.prehistory_archives,
+            actor_ref=actor_ref, world_id=self._ledger.world_id, visible_record_ids=visible_records)
+        # Only already source-checked, currently readable endpoints contribute
+        # cross-story edges. Their new archive remains the edge's authority.
+        cross_story_relations = tuple(dict.fromkeys(edge
+            for item in items for excerpt in item.source_excerpts
+            if excerpt.prehistory is not None and excerpt.prehistory.story is not None
+            for edge in excerpt.prehistory.story.relations if edge.authority is not None
+            and {edge.left_record_id, edge.right_record_id} <= visible_records))
+        items = [item.model_copy(update={"source_excerpts": tuple(
+            excerpt.model_copy(update={"prehistory": restrict_story_reading(
+                excerpt.prehistory.model_copy(update={"episodes": memberships.get(excerpt.source_id, ())}),
+                visible_records, record_id=excerpt.source_id,
+                cross_story_relations=cross_story_relations,
+            )}) if excerpt.prehistory is not None else excerpt.model_copy()
+            for excerpt in item.source_excerpts
+        )}) for item in items]
+        return MemoryRetrievalResult(items=tuple(items), suppressions=tuple(suppressions))
+
+    def _collect_raw(
+        self, *, cursor, candidates, viewer_privacy_ceiling, projection, actor_ref,
+    ):
         limited_content_refs = collect_user_channel_limited_content_refs(
             ledger=self._ledger,
             projection=projection,
@@ -451,27 +508,6 @@ class MemoryRetrievalCompiler:
                     updated_at=updated_at, reviewed_at=candidate.values.reviewed_at,
                     assessment_scope=assessment_scope,
                 ))
-        from .prehistory_memory_source import restrict_story_reading
-        visible_records = {excerpt.source_id for item in items for excerpt in item.source_excerpts
-                           if excerpt.prehistory is not None}
-        from .story_episode import readable_episode_memberships
-        memberships = readable_episode_memberships(archives=projection.prehistory_archives,
-            actor_ref=actor_ref, world_id=self._ledger.world_id, visible_record_ids=visible_records)
-        # Only already source-checked, currently readable endpoints contribute
-        # cross-story edges. Their new archive remains the edge's authority.
-        cross_story_relations = tuple(dict.fromkeys(edge
-            for item in items for excerpt in item.source_excerpts
-            if excerpt.prehistory is not None and excerpt.prehistory.story is not None
-            for edge in excerpt.prehistory.story.relations if edge.authority is not None
-            and {edge.left_record_id, edge.right_record_id} <= visible_records))
-        items = [item.model_copy(update={"source_excerpts": tuple(
-            excerpt.model_copy(update={"prehistory": restrict_story_reading(
-                excerpt.prehistory.model_copy(update={"episodes": memberships.get(excerpt.source_id, ())}),
-                visible_records, record_id=excerpt.source_id,
-                cross_story_relations=cross_story_relations,
-            )}) if excerpt.prehistory is not None else excerpt
-            for excerpt in item.source_excerpts
-        )}) for item in items]
         return MemoryRetrievalResult(items=tuple(items), suppressions=tuple(suppressions))
 
     def _prehistory_excerpt(self, *, binding, projection, actor_ref):

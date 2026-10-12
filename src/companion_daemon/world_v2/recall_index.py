@@ -1908,7 +1908,7 @@ class SQLiteRecallIndex(_RecallIndexCore):
                     return None
                 # If the index version changed, no old vector was reusable;
                 # clear old rows so removals are still exact.
-                if head is not None and str(head[3]) != self._index_version:
+                if head is None or str(head[3]) != self._index_version:
                     self._connection.execute("DELETE FROM world_v2_recall_documents WHERE world_id=?",
                                              (self._world_id,))
                 else:
