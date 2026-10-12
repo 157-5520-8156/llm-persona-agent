@@ -9,6 +9,7 @@ they never change validity, authorize an Action, or recommend behaviour.
 from __future__ import annotations
 
 from collections import OrderedDict
+from dataclasses import dataclass
 from datetime import datetime
 import threading
 from functools import lru_cache
@@ -20,11 +21,13 @@ from operator import mul
 from pathlib import Path
 import sqlite3
 from typing import Literal, Protocol, Self
+from types import MappingProxyType
 import unicodedata
 
 from pydantic import Field, model_validator
 
 from .fact_recall_item import FactRecallItem, HistoricalFactRecallItem
+from .recall_materialization import immutable_material
 from .fact_observation_value_lookup import resolve_observation_fact_value
 from .prehistory_memory_source import PrehistoryMemoryReading
 from .recall_model_reading import RECALL_INDEX_POLICY_VERSION, interior_recall_item
@@ -674,6 +677,30 @@ class _RecallIndexCore:
         empty_vector = (0.0,) * self._embedding.dimensions
         return tuple((item, by_id.get(item.document_id, empty_vector)) for item in ordered)
 
+    def _prepare_search(self, query, rows):
+        lexical_text = query.lexical_text or query.query_text
+        eligible_rows = tuple((document, position) for position, (document, _) in enumerate(rows)
+                              if self._eligible(document, query))
+        if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18"} and query.story_window is None:
+            from .prehistory_story import compact_story_reading
+            eligible_rows = tuple((document.model_copy(update={
+                "prehistory": document.prehistory.model_copy(update={
+                    "story": compact_story_reading(document.prehistory.story),
+                }),
+            }) if document.prehistory is not None and document.prehistory.story is not None else document,
+                                   vector) for document, vector in eligible_rows)
+        search_rows = tuple(row for row in eligible_rows if not row[0].context_only)
+        # Reuse pure lexical work inside this exact eligibility snapshot; no
+        # cached authority, corpus frequency or ranking survives the query.
+        features_by_id = {
+            document.document_id: _lexical_features(document.retrieval_text or document.text)
+            for document, _ in search_rows
+        }
+        lexical_scores = _corpus_lexical_scores(
+            lexical_text, tuple(features_by_id[document.document_id] for document, _ in search_rows),
+        )
+        return _SearchBasis(eligible_rows, MappingProxyType(features_by_id), lexical_scores)
+
     def _search(
         self,
         *,
@@ -681,6 +708,7 @@ class _RecallIndexCore:
         cursor: RecallCursor,
         rows: tuple[tuple[RecallDocument, tuple[float, ...]], ...],
         diagnostics: list[RecallSearchDiagnostic] | None = None,
+        preparation=None,
     ) -> RecallResult:
         if query.episode_window is not None and self.policy_version not in {"world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18"}:
             raise ValueError("episode reading requires recall policy 17")
@@ -707,27 +735,13 @@ class _RecallIndexCore:
         if len(query_vector_values) != len(query_texts):
             raise ValueError("recall query embedding count is invalid")
         query_vectors = tuple(self._normalize_vector(vector) for vector in query_vector_values)
+        basis = (preparation.get(self, query, rows) if preparation is not None
+                 else self._prepare_search(query, rows))
         lexical_text = query.lexical_text or query.query_text
-        eligible_rows = tuple((document, vector) for document, vector in rows
-                              if self._eligible(document, query))
-        if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18"} and query.story_window is None:
-            from .prehistory_story import compact_story_reading
-            eligible_rows = tuple((document.model_copy(update={
-                "prehistory": document.prehistory.model_copy(update={
-                    "story": compact_story_reading(document.prehistory.story),
-                }),
-            }) if document.prehistory is not None and document.prehistory.story is not None else document,
-                                   vector) for document, vector in eligible_rows)
+        eligible_rows = tuple((document, rows[position][1]) for document, position in basis.eligible)
         search_rows = tuple(row for row in eligible_rows if not row[0].context_only)
-        # Reuse pure lexical work inside this exact eligibility snapshot; no
-        # cached authority, corpus frequency or ranking survives the query.
-        features_by_id = {
-            document.document_id: _lexical_features(document.retrieval_text or document.text)
-            for document, _ in search_rows
-        }
-        lexical_scores = _corpus_lexical_scores(
-            lexical_text, tuple(features_by_id[document.document_id] for document, _ in search_rows),
-        )
+        features_by_id = basis.features
+        lexical_scores = basis.lexical_scores
         ranked: list[tuple[int, str, RecallHit]] = []
         question_focus_scores: dict[str, int] = {}
         matched_candidate_ids: list[str] = []
@@ -1396,10 +1410,48 @@ class _RecallIndexCore:
         return True
 
 
+@dataclass(frozen=True)
+class _SearchBasis:
+    eligible: tuple
+    features: dict
+    lexical_scores: tuple[int, ...]
+
+
+class _SharedSearchPreparation:
+    """At most four exact queries over one immutable document generation.
+
+    No provider work runs while this lock is held. Semantic and local lanes
+    keep separate vectors/results; only their common read computation is shared.
+    """
+    def __init__(self, documents):
+        self.documents = documents
+        self._cacheable = None
+        self._entries = OrderedDict()
+        self._lock = threading.RLock()
+
+    def get(self, core, query, rows):
+        if (len(rows) != len(self.documents)
+                or any(document is not original for (document, _), original in zip(rows, self.documents))):
+            raise ValueError("shared recall preparation requires identical document objects")
+        key = (core.policy_version, core._eligible,
+               getattr(core._prepare_search, "__func__", core._prepare_search), query.model_dump_json())
+        with self._lock:
+            if self._cacheable is None:
+                self._cacheable = all(immutable_material(d) for d in self.documents)
+            if not self._cacheable or not immutable_material(query):
+                return core._prepare_search(query, rows)
+            if key not in self._entries:
+                self._entries[key] = core._prepare_search(query, rows)
+                while len(self._entries) > 4:
+                    self._entries.popitem(last=False)
+            self._entries.move_to_end(key)
+            return self._entries[key]
+
+
 class RecallIndexSnapshot:
     """Immutable process-local search view for one exact ledger cursor."""
 
-    __slots__ = ("_core", "_cursor", "_rows")
+    __slots__ = ("_core", "_cursor", "_rows", "_preparation")
 
     def __init__(
         self,
@@ -1407,10 +1459,12 @@ class RecallIndexSnapshot:
         core: _RecallIndexCore,
         cursor: RecallCursor,
         rows: tuple[tuple[RecallDocument, tuple[float, ...]], ...],
+        _preparation=None,
     ) -> None:
         self._core = core
         self._cursor = cursor
         self._rows = rows
+        self._preparation = _preparation or _SharedSearchPreparation(tuple(d for d, _ in rows))
 
     @property
     def policy_version(self) -> str:
@@ -1428,7 +1482,7 @@ class RecallIndexSnapshot:
         return self._core._search(
             query=query,
             cursor=self._cursor,
-            rows=self._rows,
+            rows=self._rows, preparation=self._preparation,
         )
 
     def with_query_embedding(self, embedding: RecallEmbedding) -> "RecallIndexSnapshot":
@@ -1437,7 +1491,7 @@ class RecallIndexSnapshot:
             raise ValueError("query embedding dimensions differ from prepared index")
         return RecallIndexSnapshot(
             core=_RecallIndexCore(embedding=embedding, policy_version=self.policy_version),
-            cursor=self.cursor, rows=self._rows,
+            cursor=self.cursor, rows=self._rows, _preparation=self._preparation,
         )
 
     def search_with_diagnostics(
@@ -1449,7 +1503,7 @@ class RecallIndexSnapshot:
             query=query,
             cursor=self._cursor,
             rows=self._rows,
-            diagnostics=diagnostic,
+            diagnostics=diagnostic, preparation=self._preparation,
         )
         if len(diagnostic) != 1:
             raise RuntimeError("recall diagnostic capture did not produce one stage trace")
@@ -1534,7 +1588,8 @@ class IncrementalSemanticRecallIndex:
                     empty = (0.0,) * self._embedding.dimensions
                     rows = tuple((d, empty if d.context_only else self._vectors[d.retrieval_text or d.text])
                                  for d in sorted(documents, key=lambda d: d.document_id))
-                    prepared = RecallIndexSnapshot(core=core, cursor=snapshot.cursor, rows=rows)
+                    prepared = RecallIndexSnapshot(core=core, cursor=snapshot.cursor, rows=rows,
+                                                   _preparation=snapshot._preparation)
                     self._snapshots[snapshot] = prepared
                     self._prepared += 1
                     while len(self._snapshots) > 16:
@@ -1603,6 +1658,15 @@ class InMemoryRecallIndex(_RecallIndexCore):
         )
 
 
+@dataclass(frozen=True)
+class _StoredRecallRow:
+    document_json: str
+    vector: tuple[float, ...]
+    vector_json: str
+    origin: RecallDocument | None = None
+    document: RecallDocument | None = None
+
+
 class SQLiteRecallIndex(_RecallIndexCore):
     """Disposable SQLite adapter; deleting its rows loses no World authority."""
 
@@ -1617,6 +1681,10 @@ class SQLiteRecallIndex(_RecallIndexCore):
         super().__init__(embedding=embedding, policy_version=policy_version)
         if not world_id:
             raise ValueError("SQLite recall index requires a world")
+        self._guard = threading.RLock()
+        self._prepared_generation = None
+        self._prepared_rows = {}
+        self._prepared_snapshot = None
         self._world_id = world_id
         self._path = str(path)
         self._write_lock = sqlite_write_lock(self._path)
@@ -1656,56 +1724,116 @@ class SQLiteRecallIndex(_RecallIndexCore):
                 """
             )
 
-    def rebuild(
-        self,
-        *,
-        cursor: RecallCursor,
-        documents: tuple[RecallDocument, ...],
-    ) -> RecallRebuildReport:
-        head = self._connection.execute(
-            """
-            SELECT world_revision, deliberation_revision, ledger_sequence,
-                   index_version, document_set_hash
-            FROM world_v2_recall_index_heads WHERE world_id = ?
-            """,
-            (self._world_id,),
+            self._install_generation_tracking()
+
+    def _install_generation_tracking(self):
+        # Derived-table revisions change only when this index changes. A World
+        # append on another connection is not reason to reload unchanged rows.
+        self._connection.execute("""CREATE TABLE IF NOT EXISTS world_v2_recall_generations (
+            world_id TEXT PRIMARY KEY, revision INTEGER NOT NULL)""")
+        for table in ("world_v2_recall_documents", "world_v2_recall_index_heads"):
+            for operation, row in (("INSERT", "NEW"), ("UPDATE", "NEW"), ("DELETE", "OLD")):
+                extra = ("""INSERT INTO world_v2_recall_generations VALUES (OLD.world_id, 1)
+                    ON CONFLICT(world_id) DO UPDATE SET revision=revision+1;"""
+                    if operation == "UPDATE" else "")
+                # UPDATE increments twice (old/new). This also tracks a moved
+                # world_id without relying on cooperative external writers.
+                self._connection.execute(f"""CREATE TRIGGER IF NOT EXISTS
+                    {table}_generation_{operation.lower()} AFTER {operation} ON {table}
+                    BEGIN
+                        INSERT INTO world_v2_recall_generations VALUES ({row}.world_id, 1)
+                        ON CONFLICT(world_id) DO UPDATE SET revision=revision+1;
+                        {extra}
+                    END""")
+
+    def _generation(self):
+        row = self._connection.execute(
+            "SELECT revision FROM world_v2_recall_generations WHERE world_id=?", (self._world_id,),
         ).fetchone()
-        reusable: dict[str, tuple[str, tuple[float, ...], str]] = {}
-        if head is not None and str(head[3]) == self._index_version:
-            reusable = {
-                str(document_id): (
-                    str(document_json),
-                    _decode_snapshot_vector(str(embedding_json)),
-                    str(embedding_json),
-                )
-                for document_id, document_json, embedding_json in self._connection.execute(
-                    """
-                    SELECT document_id, document_json, embedding_json
-                    FROM world_v2_recall_documents
-                    WHERE world_id = ?
-                    """,
-                    (self._world_id,),
-                ).fetchall()
-            }
+        return int(row[0]) if row else 0
+
+    def _read_current(self):
+        # Stamp, head and cold rows belong to ONE short SQLite read snapshot.
+        self._connection.execute("BEGIN")
+        try:
+            generation = self._generation()
+            head = self._connection.execute(
+                """SELECT world_revision, deliberation_revision, ledger_sequence,
+                          index_version, document_set_hash
+                   FROM world_v2_recall_index_heads WHERE world_id=?""", (self._world_id,),
+            ).fetchone()
+            reusable = {}
+            if head is not None and str(head[3]) == self._index_version:
+                if self._prepared_generation == generation:
+                    reusable = self._prepared_rows
+                else:
+                    reusable = {
+                        str(document_id): _StoredRecallRow(
+                            str(document_json), _decode_snapshot_vector(str(embedding_json)),
+                            str(embedding_json),
+                        )
+                        for document_id, document_json, embedding_json in self._connection.execute(
+                            """SELECT document_id, document_json, embedding_json
+                               FROM world_v2_recall_documents WHERE world_id=?""", (self._world_id,),
+                        ).fetchall()
+                    }
+            self._connection.execute("COMMIT")
+            return generation, head, reusable
+        except BaseException:
+            self._connection.execute("ROLLBACK")
+            raise
+
+    def _publish_prepared(self, generation, entries, cursor):
+        rows = tuple((entry.document or _decode_snapshot_document(entry.document_json), entry.vector)
+                     for _, entry in sorted(entries.items()))
+        snapshot = RecallIndexSnapshot(core=self, cursor=cursor, rows=rows)
+        # Cache capacity never truncates source coverage; a large corpus keeps
+        # the complete snapshot and takes the ordinary cold preparation path.
+        size = sum(len(e.document_json.encode()) + len(e.vector_json.encode())
+                   + 32 * len(e.vector) for e in entries.values())
+        if len(entries) <= 16384 and size <= 64 * 1024 * 1024:
+            self._prepared_rows = entries
+            self._prepared_generation = generation
+            self._prepared_snapshot = snapshot
+        else:
+            self._prepared_rows = {}
+            self._prepared_generation = None
+            self._prepared_snapshot = None
+        return snapshot
+
+    def rebuild(self, *, cursor: RecallCursor, documents: tuple[RecallDocument, ...]) -> RecallRebuildReport:
+        with self._guard:
+            for _ in range(3):
+                result = self._rebuild_current(cursor=cursor, documents=documents)
+                if result is not None:
+                    return result
+            raise ValueError("recall index changed during preparation")
+
+    def _rebuild_current(self, *, cursor, documents):
+        generation, head, reusable = self._read_current()
         ordered = tuple(sorted(documents, key=lambda item: item.document_id))
         if len({item.document_id for item in ordered}) != len(ordered):
             raise ValueError("recall document identity is duplicated")
         if any(item.source_world_revision > cursor.world_revision for item in ordered):
             raise ValueError("recall document is newer than the index cursor")
         document_jsons = {
-            item.document_id: _canonical_json(item.model_dump(mode="json")) for item in ordered
+            item.document_id: (
+                reusable[item.document_id].document_json
+                if item.document_id in reusable and reusable[item.document_id].origin is item
+                else _canonical_json(item.model_dump(mode="json"))
+            ) for item in ordered
         }
         fresh = tuple(
             item
             for item in ordered
             if (
-                reusable.get(item.document_id, ("", ()))[0]
+                (reusable[item.document_id].document_json if item.document_id in reusable else "")
                 != document_jsons[item.document_id]
                 # A recoverable provider outage materializes a zero vector so
                 # lexical/temporal/structured recall remains available.  Do
                 # not cache that degraded vector as if it were a completed
                 # semantic embedding; the next refresh gets another chance.
-                or not any(reusable.get(item.document_id, ("", ()))[1])
+                or not any(reusable[item.document_id].vector)
             )
         )
         fresh_rows = {
@@ -1718,20 +1846,21 @@ class SQLiteRecallIndex(_RecallIndexCore):
                 (
                     fresh_rows[item.document_id]
                     if item.document_id in fresh_rows
-                    else reusable[item.document_id][1]
+                    else reusable[item.document_id].vector
                 ),
             )
             for item in ordered
         )
         if any(
             len(vector) != self._embedding.dimensions
-            or any(not math.isfinite(value) for value in vector)
-            for _, vector in rows
+            or ((document.document_id in fresh_rows or self._prepared_generation != generation)
+                    and any(not math.isfinite(value) for value in vector))
+            for document, vector in rows
         ):
             raise ValueError("cached recall embedding is incompatible with its adapter")
         vector_jsons = {
             document.document_id: (
-                _canonical_snapshot_vector(reusable[document.document_id][2])
+                _canonical_snapshot_vector(reusable[document.document_id].vector_json)
                 if document.document_id not in fresh_rows
                 else _canonical_json(vector)
             )
@@ -1751,161 +1880,105 @@ class SQLiteRecallIndex(_RecallIndexCore):
             hasher.update(b"}")
         hasher.update(b"]")
         set_hash = hasher.hexdigest()
-        exact_cursor = (
-            cursor.world_revision,
-            cursor.deliberation_revision,
-            cursor.ledger_sequence,
-        )
-        if (
-            head is not None
-            and (
-                int(head[0]),
-                int(head[1]),
-                int(head[2]),
-            )
-            == exact_cursor
-            and str(head[3]) == self._index_version
-            and str(head[4]) == set_hash
-        ):
-            return RecallRebuildReport(
-                mode="noop",
-                document_count=len(rows),
-                sqlite_changes=0,
-            )
+        entries = {
+            document.document_id: _StoredRecallRow(
+                document_jsons[document.document_id], vector, vector_jsons[document.document_id],
+                document if immutable_material(document) else None,
+                # Preserve the old snapshot's schema validation, including
+                # model_copy() inputs which may bypass constructor validation.
+                _decode_snapshot_document(document_jsons[document.document_id]),
+            ) for document, vector in rows
+        }
+        exact_cursor = (cursor.world_revision, cursor.deliberation_revision, cursor.ledger_sequence)
+        if (head is not None and tuple(head[:3]) == exact_cursor
+                and str(head[3]) == self._index_version and str(head[4]) == set_hash):
+            self._publish_prepared(generation, entries, cursor)
+            return RecallRebuildReport(mode="noop", document_count=len(rows), sqlite_changes=0)
+        changed_ids = tuple(doc_id for doc_id, entry in entries.items()
+                            if doc_id not in reusable
+                            or entry.document_json != reusable[doc_id].document_json
+                            or entry.vector_json != reusable[doc_id].vector_json)
+        removed_ids = tuple(doc_id for doc_id in reusable if doc_id not in entries)
         changes_before = self._connection.total_changes
         with self._write_lock:
             self._connection.execute("BEGIN IMMEDIATE")
             try:
-                documents_changed = (
-                    head is None or str(head[3]) != self._index_version or str(head[4]) != set_hash
-                )
-                if documents_changed:
-                    retained_ids = tuple(document.document_id for document, _ in rows)
-                    if retained_ids:
-                        placeholders = ",".join("?" for _ in retained_ids)
-                        self._connection.execute(
-                            f"""
-                            DELETE FROM world_v2_recall_documents
-                            WHERE world_id = ? AND document_id NOT IN ({placeholders})
-                            """,
-                            (self._world_id, *retained_ids),
-                        )
-                    else:
-                        self._connection.execute(
-                            "DELETE FROM world_v2_recall_documents WHERE world_id = ?",
-                            (self._world_id,),
-                        )
+                if self._generation() != generation:
+                    self._connection.execute("ROLLBACK")
+                    return None
+                # If the index version changed, no old vector was reusable;
+                # clear old rows so removals are still exact.
+                if head is not None and str(head[3]) != self._index_version:
+                    self._connection.execute("DELETE FROM world_v2_recall_documents WHERE world_id=?",
+                                             (self._world_id,))
+                else:
                     self._connection.executemany(
-                        """
-                        INSERT INTO world_v2_recall_documents(
-                            world_id, document_id, document_json, embedding_json,
-                            memory_kind, status, privacy_rank, occurred_from, occurred_to
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                        ON CONFLICT(world_id, document_id) DO UPDATE SET
-                            document_json=excluded.document_json,
-                            embedding_json=excluded.embedding_json,
-                            memory_kind=excluded.memory_kind,
-                            status=excluded.status,
-                            privacy_rank=excluded.privacy_rank,
-                            occurred_from=excluded.occurred_from,
-                            occurred_to=excluded.occurred_to
-                        WHERE document_json != excluded.document_json
-                           OR embedding_json != excluded.embedding_json
-                        """,
-                        (
-                            (
-                                self._world_id,
-                                document.document_id,
-                                document_jsons[document.document_id],
-                                vector_jsons[document.document_id],
-                                document.memory_kind,
-                                document.status,
-                                _PRIVACY_RANK[document.privacy_class],
-                                document.occurred_from.isoformat(),
-                                (
-                                    document.occurred_to.isoformat()
-                                    if document.occurred_to is not None
-                                    else None
-                                ),
-                            )
-                            for document, vector in rows
-                        ),
+                        "DELETE FROM world_v2_recall_documents WHERE world_id=? AND document_id=?",
+                        ((self._world_id, doc_id) for doc_id in removed_ids),
                     )
-                self._connection.execute(
-                    """
-                    INSERT INTO world_v2_recall_index_heads(
-                        world_id, world_revision, deliberation_revision,
-                        ledger_sequence, index_version, document_set_hash
-                    ) VALUES (?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(world_id) DO UPDATE SET
-                        world_revision=excluded.world_revision,
-                        deliberation_revision=excluded.deliberation_revision,
-                        ledger_sequence=excluded.ledger_sequence,
-                        index_version=excluded.index_version,
-                        document_set_hash=excluded.document_set_hash
-                    """,
-                    (
-                        self._world_id,
-                        cursor.world_revision,
-                        cursor.deliberation_revision,
-                        cursor.ledger_sequence,
-                        self._index_version,
-                        set_hash,
-                    ),
+                self._connection.executemany(
+                    """INSERT INTO world_v2_recall_documents(
+                        world_id, document_id, document_json, embedding_json,
+                        memory_kind, status, privacy_rank, occurred_from, occurred_to
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(world_id, document_id) DO UPDATE SET
+                        document_json=excluded.document_json, embedding_json=excluded.embedding_json,
+                        memory_kind=excluded.memory_kind, status=excluded.status,
+                        privacy_rank=excluded.privacy_rank, occurred_from=excluded.occurred_from,
+                        occurred_to=excluded.occurred_to
+                    WHERE document_json != excluded.document_json OR embedding_json != excluded.embedding_json""",
+                    ((self._world_id, doc_id, entries[doc_id].document_json, entries[doc_id].vector_json,
+                      entries[doc_id].document.memory_kind, entries[doc_id].document.status,
+                      _PRIVACY_RANK[entries[doc_id].document.privacy_class],
+                      entries[doc_id].document.occurred_from.isoformat(),
+                      entries[doc_id].document.occurred_to.isoformat() if entries[doc_id].document.occurred_to else None)
+                     for doc_id in changed_ids),
                 )
+                self._connection.execute(
+                    """INSERT INTO world_v2_recall_index_heads(
+                        world_id, world_revision, deliberation_revision, ledger_sequence,
+                        index_version, document_set_hash) VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(world_id) DO UPDATE SET world_revision=excluded.world_revision,
+                        deliberation_revision=excluded.deliberation_revision,
+                        ledger_sequence=excluded.ledger_sequence, index_version=excluded.index_version,
+                        document_set_hash=excluded.document_set_hash""",
+                    (self._world_id, *exact_cursor, self._index_version, set_hash),
+                )
+                updated_generation = self._generation()
                 self._connection.execute("COMMIT")
             except BaseException:
                 self._connection.execute("ROLLBACK")
                 raise
+        self._publish_prepared(updated_generation, entries, cursor)
         return RecallRebuildReport(
-            mode=(
-                "documents_changed"
-                if head is None or str(head[3]) != self._index_version or str(head[4]) != set_hash
-                else "cursor_only"
-            ),
+            mode="documents_changed" if head is None or str(head[3]) != self._index_version
+                or str(head[4]) != set_hash else "cursor_only",
             document_count=len(rows),
-            sqlite_changes=self._connection.total_changes - changes_before,
+            # Retain the established diagnostic count, excluding revision metadata.
+            sqlite_changes=self._connection.total_changes-changes_before-(updated_generation-generation),
         )
 
     def search(self, query: RecallQuery) -> RecallResult:
         return self.snapshot().search(query)
 
     def snapshot(self) -> RecallIndexSnapshot:
-        head = self._connection.execute(
-            """
-            SELECT world_revision, deliberation_revision, ledger_sequence, index_version
-            FROM world_v2_recall_index_heads WHERE world_id = ?
-            """,
-            (self._world_id,),
-        ).fetchone()
-        if head is None:
-            raise ValueError("recall index has not been built")
-        cursor = RecallCursor(
-            world_revision=int(head[0]),
-            deliberation_revision=int(head[1]),
-            ledger_sequence=int(head[2]),
-        )
-        if str(head[3]) != self._index_version:
-            raise ValueError("recall index adapter version does not match stored rows")
-        stored = self._connection.execute(
-            """
-            SELECT document_json, embedding_json
-            FROM world_v2_recall_documents
-            WHERE world_id = ?
-            ORDER BY document_id
-            """,
-            (self._world_id,),
-        ).fetchall()
-        rows = tuple(
-            (
-                _decode_snapshot_document(str(document_json)),
-                _decode_snapshot_vector(str(embedding_json)),
-            )
-            for document_json, embedding_json in stored
-        )
-        return RecallIndexSnapshot(core=self, cursor=cursor, rows=rows)
+        with self._guard:
+            generation, head, rows = self._read_current()
+            if head is None:
+                raise ValueError("recall index has not been built")
+            if str(head[3]) != self._index_version:
+                raise ValueError("recall index adapter version does not match stored rows")
+            cursor = RecallCursor(world_revision=int(head[0]), deliberation_revision=int(head[1]),
+                                  ledger_sequence=int(head[2]))
+            if (self._prepared_generation == generation and self._prepared_snapshot is not None
+                    and self._prepared_snapshot.cursor == cursor):
+                return self._prepared_snapshot
+            return self._publish_prepared(generation, rows, cursor)
 
     def close(self) -> None:
+        self._prepared_rows = {}
+        self._prepared_snapshot = None
+        self._prepared_generation = None
         self._connection.close()
         close_embedding = getattr(self._embedding, "close", None)
         if callable(close_embedding):

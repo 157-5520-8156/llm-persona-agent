@@ -86,7 +86,7 @@ from .context_resolver import (
 from .ledger import LedgerPort
 from .memory_retrieval import MemoryRetrievalCompiler, MemoryRetrievalItem
 from .immutable_value_cache import immutable_value_cache
-from .context_read_scope import context_read_scope
+from .context_read_scope import context_read_scope, current_content_snapshot
 from .memory_understanding import MemoryUnderstandingReader
 from .later_expression_freshness import queued_later_facts
 from .life_content import LifeContentCompiler, collect_user_channel_limited_content_refs, RecentExperienceContextItem
@@ -2510,17 +2510,26 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                 recall_source_ids = scoped_source_ids | {
                     item.experience_id for item in recall_experiences
                 }
-                recall_memories = self._memory_retrieval.compile(
-                    cursor=query.cursor,
-                    candidates=tuple(
-                        item for item in projection.memory_candidates
-                        if item.values.status == "active" and all(
-                            binding.source_id in recall_source_ids
-                            for binding in item.values.source_bindings
-                        )
-                    ),
-                    viewer_privacy_ceiling="private", projection=projection,
-                    actor_ref=query.actor_ref,
+                recall_candidates = tuple(
+                    item for item in projection.memory_candidates
+                    if item.values.status == "active" and all(
+                        binding.source_id in recall_source_ids
+                        for binding in item.values.source_bindings
+                    )
+                )
+                # Both consumers are inside this exact projection/content read
+                # snapshot and use the same actor/privacy ceiling. Reuse only
+                # the identical candidate set; broader recall still compiles
+                # its complete sources and unknown stores keep fresh reads.
+                recall_memories = (
+                    memory_retrievals
+                    if recall_candidates == scoped_memories
+                    and current_content_snapshot(self._life_content_store) is not None
+                    else self._memory_retrieval.compile(
+                        cursor=query.cursor, candidates=recall_candidates,
+                        viewer_privacy_ceiling="private", projection=projection,
+                        actor_ref=query.actor_ref,
+                    )
                 )
                 understanding_view = (self._understanding_readers.setdefault(
                     query.actor_ref, MemoryUnderstandingReader(

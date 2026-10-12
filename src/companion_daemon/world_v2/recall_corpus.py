@@ -28,6 +28,7 @@ from .recall_index import (
     RecallSourceBinding, recall_source_binding,
 )
 from .recent_dialogue import RecentDialogueItem
+from .recall_materialization import RecallMaterialPool
 from .schema_core import FrozenModel, PrivacyClass
 from .schemas import (
     AffectEpisodeProjection,
@@ -183,6 +184,7 @@ class RecallCorpusCompiler:
         if type(prehistory_parent_context) is not bool:
             raise ValueError("prehistory parent context flag must be boolean")
         self._prehistory_parent_context = prehistory_parent_context
+        self._materials = RecallMaterialPool()
         if prehistory_parent_context:
             self.VERSION = "world-v2-recall-corpus.13-parent-context"
 
@@ -946,9 +948,8 @@ class RecallCorpusCompiler:
             raise ValueError("recall source has the wrong authority type")
         return binding
 
-    @staticmethod
     def _document(
-        *,
+        self, *,
         memory_kind: str,
         source_item_ref: str,
         source_slice: str,
@@ -974,6 +975,22 @@ class RecallCorpusCompiler:
         source_window_start: int | None = None,
         context_only: bool = False,
     ) -> RecallDocument:
+        # All current proof checks in compile() precede this pure material seam.
+        # Include every input, including nested story/source metadata and timezone
+        # representation, so no cross-cursor authority or presentation is guessed.
+        inputs = tuple((name, value) for name, value in locals().items() if name != "self")
+        return self._materials.materialize(
+            (actor_ref, source_slice, source_item_ref, source_window_start), inputs,
+            lambda: self._build_document(**dict(inputs)),
+        )
+
+    @staticmethod
+    def _build_document(
+        *, memory_kind, source_item_ref, source_slice, bindings, text, retrieval_text,
+        actor_ref, subject_refs, link_refs, occurred_from, occurred_to, valid_from,
+        valid_to, status, privacy_class, authority, epistemic_scope, interpretation_scope,
+        speaker_ref, prehistory, accepted_fact, settled_life, source_window_start, context_only,
+    ):
         canonical = _canonical_bindings(bindings)
         return RecallDocument(
             document_id=_document_id(
