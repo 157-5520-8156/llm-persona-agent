@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from .lived_story import StoryAnchor, anchor_catalog
+from .world_outlook_request import PRESENTATION_GUIDE, decode_outlook_request, encode_outlook_request
 
 from companion_daemon.llm import model_call_scope
 from .structured_completion import complete_json_object
@@ -306,7 +307,11 @@ class WorldOutlookRuntime:
         ):
             saved = self.store.operation(op)
             if saved["state"] != "running":
-                return {"status": saved["state"], "operation_ref": op}
+                result = {"status": saved["state"], "operation_ref": op}
+                if saved["state"] == "technical_failure":
+                    result["failure_code"] = saved["payload"].get("code", "outlook_author_failed")
+                self._health = result
+                return self.health()
             if saved["payload"]["cursor"] != cursor_of(projection):
                 self.store.finish(op, state="stale", payload={"cursor": saved["payload"]["cursor"]})
                 return {"status": "stale", "operation_ref": op}
@@ -361,14 +366,15 @@ class WorldOutlookRuntime:
             "draft_schema": WorldOutlookDraft.model_json_schema(),
         }
         messages = [
-            {"role": "system", "content": _SYSTEM},
-            {"role": "user", "content": json.dumps(packet, ensure_ascii=False)},
+            {"role": "system", "content": _SYSTEM + "\n" + PRESENTATION_GUIDE},
+            {"role": "user", "content": encode_outlook_request(packet, byte_limit=100_000)},
         ]
         if len(messages[1]["content"].encode()) > 100_000:
             self.store.finish(
                 op, state="technical_failure", payload={"code": "outlook_input_too_large"}
             )
-            return {"status": "technical_failure", "failure_code": "outlook_input_too_large"}
+            self._health = {"status": "technical_failure", "failure_code": "outlook_input_too_large"}
+            return self.health()
         draft = None
         for ordinal in range(2):
             raw = None
@@ -378,7 +384,7 @@ class WorldOutlookRuntime:
                     if cached["status"] == "technical_failure":
                         break
                     messages, raw = cached["messages"], cached["raw"]
-                    history = json.loads(messages[1]["content"]).get("history_material", [])
+                    history = decode_outlook_request(messages[1]["content"]).get("history_material", [])
                 else:
                     if configured_model != original_model:
                         raise ValueError("outlook original author changed before correction")

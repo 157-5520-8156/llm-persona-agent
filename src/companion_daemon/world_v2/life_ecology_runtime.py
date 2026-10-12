@@ -580,7 +580,14 @@ class LifeEcologyRuntime:
                 ):
                     prepare = getattr(self._life_development_followup, "prepare_outlook_once", None)
                     if callable(prepare):
-                        await prepare(wake_event_ref=wake_event_ref)
+                        prepared = await prepare(wake_event_ref=wake_event_ref)
+                        if isinstance(prepared, dict) and prepared.get("status") == "technical_failure":
+                            code = str(prepared.get("failure_code") or "preparation_failed")
+                            life_development_failure_code = "outlook." + (
+                                re.sub(r"[^a-z0-9._-]+", "_", code.lower()).strip("._-")[:88]
+                                or "preparation_failed"
+                            )
+                            life_development_status = "technical_failure"
                 ready = self._world_outlook.ready()
                 outlook_node = min(
                     ready, key=lambda n: (n["opens_at"], n["opportunity_id"]), default=None,
@@ -592,6 +599,8 @@ class LifeEcologyRuntime:
                 self._world_outlook.record_failure(exc)
                 _LOG.warning("world outlook unavailable: %s", type(exc).__name__)
                 outlook_node = None
+                life_development_failure_code = "outlook.preparation_exception"
+                life_development_status = "technical_failure"
 
         async def advance_due_development():
             nonlocal life_development_status, life_development_failure_code
