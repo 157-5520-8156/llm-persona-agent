@@ -135,7 +135,7 @@ def select_scene_context(*, hits, ranked, eligible_rows, query, index_version, q
         -positions.get(row[2].document.document_id, len(ranked)),
     ))[2] if focused else None
     literal_entry = None
-    if index_version.partition('+embedding:')[0] == 'world-v2-recall-index.hybrid.18' and query.lexical_text:
+    if index_version.partition('+embedding:')[0] in {'world-v2-recall-index.hybrid.18', 'world-v2-recall-index.hybrid.19'} and query.lexical_text:
         # Independent current-question evidence is reserved before a context
         # scene's graph consumes the whole reading budget. This is matching,
         # not a decision about what she should recall or tell the user.

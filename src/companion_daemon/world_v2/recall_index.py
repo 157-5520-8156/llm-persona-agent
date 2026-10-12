@@ -639,7 +639,7 @@ class _RecallIndexCore:
             raise ValueError("recall dense match threshold is invalid")
         policy_version = RECALL_INDEX_POLICY_VERSION if policy_version is None else policy_version
         if not isinstance(policy_version, str) or policy_version not in {
-            RECALL_INDEX_POLICY_VERSION, "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18",
+            RECALL_INDEX_POLICY_VERSION, "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18", "world-v2-recall-index.hybrid.19",
         }:
             raise ValueError("unknown recall search policy")
         self._index_version = f"{policy_version}+embedding:{embedding.version}"
@@ -681,7 +681,7 @@ class _RecallIndexCore:
         lexical_text = query.lexical_text or query.query_text
         eligible_rows = tuple((document, position) for position, (document, _) in enumerate(rows)
                               if self._eligible(document, query))
-        if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18"} and query.story_window is None:
+        if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18", "world-v2-recall-index.hybrid.19"} and query.story_window is None:
             from .prehistory_story import compact_story_reading
             eligible_rows = tuple((document.model_copy(update={
                 "prehistory": document.prehistory.model_copy(update={
@@ -710,13 +710,13 @@ class _RecallIndexCore:
         diagnostics: list[RecallSearchDiagnostic] | None = None,
         preparation=None,
     ) -> RecallResult:
-        if query.episode_window is not None and self.policy_version not in {"world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18"}:
+        if query.episode_window is not None and self.policy_version not in {"world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18", "world-v2-recall-index.hybrid.19"}:
             raise ValueError("episode reading requires recall policy 17")
         if query.cursor != cursor:
             raise ValueError("recall query cursor does not match the sidecar cursor")
         embedding_failure = self._last_rebuild_embedding_failure
         query_texts = (query.query_text,)
-        if (self.policy_version in {"world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18"}
+        if (self.policy_version in {"world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18", "world-v2-recall-index.hybrid.19"}
                 and query.lexical_text is not None and query.lexical_text != query.query_text
                 and any(document.prehistory is not None for document, _ in rows)):
             # The broader attention cue can contain recent dialogue and
@@ -748,7 +748,7 @@ class _RecallIndexCore:
         for (document, vector), lexical in zip(search_rows, lexical_scores, strict=True):
             dense = max(0, min(10_000, round(_cosine(query_vectors[0], vector) * 10_000)))
             question_focus = None
-            if self.policy_version in {"world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18"} and document.prehistory is not None:
+            if self.policy_version in {"world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18", "world-v2-recall-index.hybrid.19"} and document.prehistory is not None:
                 # Without a distinct current-question vector this is exactly
                 # the same dot product and rounding as dense above.
                 focus = dense if len(query_vectors) == 1 else max(
@@ -887,7 +887,7 @@ class _RecallIndexCore:
             "world-v2-recall-index.hybrid.11",
             "world-v2-recall-index.hybrid.12",
             "world-v2-recall-index.hybrid.13",
-            "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18",
+            "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18", "world-v2-recall-index.hybrid.19",
         }:
             from .life_recall_windows import attempt_family
             families = {hit.document.document_id: attempt_family(hit.document)
@@ -949,11 +949,11 @@ class _RecallIndexCore:
         hits = tuple(selected)
         if (query.include_historical
                 and self._index_version.partition("+embedding:")[0] in {
-                    "world-v2-recall-index.hybrid.13", "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18"}):
+                    "world-v2-recall-index.hybrid.13", "world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18", "world-v2-recall-index.hybrid.19"}):
             hits = self._add_linked_impression_context(
                 hits=hits, eligible_rows=eligible_rows, query=query,
             )
-        if hits and self.policy_version in {"world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18"}:
+        if hits and self.policy_version in {"world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18", "world-v2-recall-index.hybrid.19"}:
             from .scene_recall import select_scene_context
             hits = select_scene_context(hits=hits, ranked=ranked, eligible_rows=eligible_rows,
                 query=query, index_version=self._index_version, question_focus_scores=question_focus_scores)
@@ -964,7 +964,7 @@ class _RecallIndexCore:
                 eligible_rows=eligible_rows,
                 query=query,
             )
-        if self.policy_version in {"world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18"}:
+        if self.policy_version in {"world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18", "world-v2-recall-index.hybrid.19"}:
             hits = self._with_prehistory_parent_context(
                 hits=hits, eligible_rows=eligible_rows,
             )
@@ -1118,13 +1118,13 @@ class _RecallIndexCore:
         return tuple(expanded) if expanded else hits
 
     def _structured_refs(self, document: RecallDocument) -> tuple[str, ...]:
-        if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18"} and document.prehistory is not None:
+        if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18", "world-v2-recall-index.hybrid.19"} and document.prehistory is not None:
             return tuple(sorted({*document.link_refs, *document.source_refs,
                                  document.source_item_ref, document.source_item_ref.split(":window:")[0]}))
         return document.link_refs
 
     def _result_hit(self, hit: RecallHit) -> RecallHit:
-        if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18"} and hit.document.prehistory is not None:
+        if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18", "world-v2-recall-index.hybrid.19"} and hit.document.prehistory is not None:
             return hit.model_copy(update={"document": hit.document.model_copy(update={"retrieval_text": None})})
         return hit
 
@@ -1284,7 +1284,7 @@ class _RecallIndexCore:
             candidate = (*expanded, hit)
             reading_size = len(_canonical_json({"items": [
                 interior_recall_item(item.document, index_version=(self._index_version
-                    if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18"} else "world-v2-recall-index.hybrid.12"))
+                    if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18", "world-v2-recall-index.hybrid.19"} else "world-v2-recall-index.hybrid.12"))
                 for item in candidate
             ]}).encode("utf-8"))
             result_size = len(_canonical_json([

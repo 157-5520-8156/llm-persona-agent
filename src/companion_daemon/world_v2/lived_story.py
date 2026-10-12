@@ -162,6 +162,8 @@ def expand_lived_story_hits(*, hits, eligible_rows, query, index_version):
         _canonical_json,
         RECALL_MODEL_READING_MAX_BYTES,
         RECALL_RESULT_MAX_BYTES,
+        RECALL_STORY_MODEL_READING_MAX_BYTES,
+        RECALL_STORY_RESULT_MAX_BYTES,
     )
     from .recall_model_reading import interior_recall_item
 
@@ -172,6 +174,14 @@ def expand_lived_story_hits(*, hits, eligible_rows, query, index_version):
     }
     if not keys:
         return hits
+    # Scene expansion has already admitted an 11/22 KB story pack. Do not
+    # silently subject its next navigation hop to the narrower 7/14 KB normal
+    # pack. Version 18 and older keep their exact recorded selection behavior.
+    story_pack = index_version.partition("+embedding:")[0] == "world-v2-recall-index.hybrid.19" and any(
+        hit.document.prehistory is not None for hit in hits
+    )
+    model_limit = RECALL_STORY_MODEL_READING_MAX_BYTES if story_pack else RECALL_MODEL_READING_MAX_BYTES
+    result_limit = RECALL_STORY_RESULT_MAX_BYTES if story_pack else RECALL_RESULT_MAX_BYTES
     selected = list(hits)
     seen = {h.document.document_id for h in hits}
     candidates = sorted(
@@ -207,12 +217,12 @@ def expand_lived_story_hits(*, hits, eligible_rows, query, index_version):
                     }
                 ).encode()
             )
-            > RECALL_MODEL_READING_MAX_BYTES
+            > model_limit
         ):
             continue
         if (
             len(_canonical_json([h.model_dump(mode="json") for h in proposed]).encode())
-            > RECALL_RESULT_MAX_BYTES
+            > result_limit
         ):
             continue
         selected.append(hit)

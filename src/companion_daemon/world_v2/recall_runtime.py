@@ -356,7 +356,7 @@ class RecallCoordinator:
     ) -> None:
         self._index = index
         self._corpus = corpus or RecallCorpusCompiler(prehistory_parent_context=(
-            getattr(index, "policy_version", None) in {"world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18"}
+            getattr(index, "policy_version", None) in {"world-v2-recall-index.hybrid.14", "world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18", "world-v2-recall-index.hybrid.19"}
         ))
         self._semantic_embedding = semantic_embedding
         self._semantic_index = (IncrementalSemanticRecallIndex(semantic_embedding)
@@ -1626,7 +1626,7 @@ class RecallCoordinator:
         try:
             documents = context.snapshot.documents
             needs_question_vector = (
-                context.snapshot.policy_version in {"world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18"}
+                context.snapshot.policy_version in {"world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18", "world-v2-recall-index.hybrid.19"}
                 and any(document.prehistory is not None for document in documents)
             )
             focus = (request.lexical_text if (focused_attention or needs_question_vector) and request.lexical_text
