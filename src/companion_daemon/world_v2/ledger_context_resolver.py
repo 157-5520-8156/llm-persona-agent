@@ -86,7 +86,7 @@ from .context_resolver import (
 from .ledger import LedgerPort
 from .memory_retrieval import MemoryRetrievalCompiler, MemoryRetrievalItem
 from .immutable_value_cache import immutable_value_cache
-from .context_read_scope import context_read_scope, current_content_snapshot
+from .context_read_scope import context_read_scope
 from .memory_understanding import MemoryUnderstandingReader
 from .later_expression_freshness import queued_later_facts
 from .life_content import LifeContentCompiler, collect_user_channel_limited_content_refs, RecentExperienceContextItem
@@ -2163,13 +2163,50 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                 binding.source_id in scoped_source_ids for binding in item.values.source_bindings
             )
         )
-        memory_retrievals = self._memory_retrieval.compile(
-            cursor=query.cursor,
-            candidates=scoped_memories,
-            viewer_privacy_ceiling="private",
-            projection=projection,
-            actor_ref=query.actor_ref,
-        )
+        recall_preparation_error = None
+        prepared_recall_memories = None
+        if self._recall is not None:
+            try:
+                recall_life = self._life_content.compile(
+                    cursor=query.cursor, actor_ref=query.actor_ref,
+                    viewer_privacy_ceiling="private", projection=projection,
+                    user_channel_limited_content_refs=user_channel_limited_content_refs,
+                    budget=None,
+                )
+                recall_experiences = tuple(
+                    item for item in recall_life.experience_items
+                    if query.actor_ref in item.values.participant_refs
+                )
+                recall_results = {
+                    item.source_entity_id: item for item in recall_life.settled_items
+                }
+                recall_source_ids = scoped_source_ids | {
+                    item.experience_id for item in recall_experiences
+                }
+                recall_candidates = tuple(
+                    item for item in projection.memory_candidates
+                    if item.values.status == "active" and all(
+                        binding.source_id in recall_source_ids
+                        for binding in item.values.source_bindings
+                    )
+                )
+                memory_retrievals, prepared_recall_memories = self._memory_retrieval.compile_views(
+                    cursor=query.cursor, candidate_sets=(scoped_memories, recall_candidates),
+                    viewer_privacy_ceiling="private", projection=projection, actor_ref=query.actor_ref,
+                )
+            except Exception as exc:
+                # A failed broad Recall read must not erase an independently
+                # readable narrow Context. The ordinary optional-recall path
+                # below records/discards this same failure.
+                recall_preparation_error = exc
+        if prepared_recall_memories is None:
+            memory_retrievals = self._memory_retrieval.compile(
+                cursor=query.cursor,
+                candidates=scoped_memories,
+                viewer_privacy_ceiling="private",
+                projection=projection,
+                actor_ref=query.actor_ref,
+            )
         open_threads_for_continuity = tuple(
             item for item in scoped_threads if item.values.status == "open"
         )
@@ -2494,43 +2531,9 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                 # display window. Otherwise an older result (and its linked
                 # MemoryCandidate) disappears before lexical/vector ranking.
                 # Only selected recall hits enter the bounded model context.
-                recall_life = self._life_content.compile(
-                    cursor=query.cursor, actor_ref=query.actor_ref,
-                    viewer_privacy_ceiling="private", projection=projection,
-                    user_channel_limited_content_refs=user_channel_limited_content_refs,
-                    budget=None,
-                )
-                recall_experiences = tuple(
-                    item for item in recall_life.experience_items
-                    if query.actor_ref in item.values.participant_refs
-                )
-                recall_results = {
-                    item.source_entity_id: item for item in recall_life.settled_items
-                }
-                recall_source_ids = scoped_source_ids | {
-                    item.experience_id for item in recall_experiences
-                }
-                recall_candidates = tuple(
-                    item for item in projection.memory_candidates
-                    if item.values.status == "active" and all(
-                        binding.source_id in recall_source_ids
-                        for binding in item.values.source_bindings
-                    )
-                )
-                # Both consumers are inside this exact projection/content read
-                # snapshot and use the same actor/privacy ceiling. Reuse only
-                # the identical candidate set; broader recall still compiles
-                # its complete sources and unknown stores keep fresh reads.
-                recall_memories = (
-                    memory_retrievals
-                    if recall_candidates == scoped_memories
-                    and current_content_snapshot(self._life_content_store) is not None
-                    else self._memory_retrieval.compile(
-                        cursor=query.cursor, candidates=recall_candidates,
-                        viewer_privacy_ceiling="private", projection=projection,
-                        actor_ref=query.actor_ref,
-                    )
-                )
+                if recall_preparation_error is not None:
+                    raise recall_preparation_error
+                recall_memories = prepared_recall_memories
                 understanding_view = (self._understanding_readers.setdefault(
                     query.actor_ref, MemoryUnderstandingReader(
                         ledger=self._ledger, content_store=self._life_content_store, actor_ref=query.actor_ref)

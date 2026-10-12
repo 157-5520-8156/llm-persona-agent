@@ -262,37 +262,48 @@ class MemoryRetrievalCompiler:
             or projection.ledger_sequence != cursor.ledger_sequence
         ):
             raise ValueError("memory retrieval projection does not match its pinned cursor")
-        # Reuse raw source-qualified members only inside this exact content
-        # read scope. The visible story/episode closure is recomputed below for
-        # EACH requested set, including broader Recall and narrower Context.
-        from .context_read_scope import memoized_context_read_batch
+        raw = self._collect_raw(cursor=cursor, candidates=candidates,
+            viewer_privacy_ceiling=viewer_privacy_ceiling, projection=projection, actor_ref=actor_ref)
+        return self._visible(raw.items, raw.suppressions, projection=projection, actor_ref=actor_ref)
 
-        def collect(missing):
-            result = self._collect_raw(
-                cursor=cursor, candidates=missing, viewer_privacy_ceiling=viewer_privacy_ceiling,
-                projection=projection, actor_ref=actor_ref,
-            )
-            items_by_id = {item.candidate_id: item for item in result.items}
-            suppressed_by_id = {item.candidate_id: item for item in result.suppressions}
-            return tuple((items_by_id.get(item.candidate_id), suppressed_by_id.get(item.candidate_id))
-                         for item in missing)
+    def compile_views(self, *, cursor, candidate_sets, viewer_privacy_ceiling, projection=None, actor_ref=None):
+        """Read the union once, then retain each view's own story visibility.
 
-        if len({item.candidate_id for item in candidates}) != len(candidates):
-            # Preserve the historical handling of duplicate/unusual caller input.
-            result = self._collect_raw(
-                cursor=cursor, candidates=candidates, viewer_privacy_ceiling=viewer_privacy_ceiling,
-                projection=projection, actor_ref=actor_ref,
-            )
-            items, suppressions = list(result.items), list(result.suppressions)
-        else:
-            members = memoized_context_read_batch(
-                store=self._life_content_store, projection=projection, kind="memory_raw_members",
-                owner=self, inputs=candidates,
-                parameters=(actor_ref, viewer_privacy_ceiling, self._max_excerpt_characters),
-                compute=collect,
-            )
-            items = [item for item, _ in members if item is not None]
-            suppressions = [item for _, item in members if item is not None]
+        The union is an implementation detail, never an extra model-visible
+        memory set. Unknown stores and unusual duplicate inputs keep separate
+        reads. No source-qualified result is cached beyond this call.
+        """
+        from .context_read_scope import has_context_read_scope
+        projection = projection if projection is not None else self._ledger.project_at(cursor)
+        if (projection.world_revision != cursor.world_revision
+                or projection.deliberation_revision != cursor.deliberation_revision
+                or projection.ledger_sequence != cursor.ledger_sequence):
+            raise ValueError("memory retrieval projection does not match its pinned cursor")
+        union = {}
+        shareable = has_context_read_scope(self._life_content_store, projection)
+        for candidates in candidate_sets:
+            seen = set()
+            for candidate in candidates:
+                if (candidate.candidate_id in seen or (candidate.candidate_id in union
+                        and union[candidate.candidate_id] is not candidate)):
+                    shareable = False
+                seen.add(candidate.candidate_id)
+                union[candidate.candidate_id] = candidate
+        if not shareable:
+            return tuple(self.compile(cursor=cursor, candidates=candidates,
+                viewer_privacy_ceiling=viewer_privacy_ceiling, projection=projection, actor_ref=actor_ref)
+                for candidates in candidate_sets)
+        raw = self._collect_raw(cursor=cursor, candidates=tuple(union.values()),
+            viewer_privacy_ceiling=viewer_privacy_ceiling, projection=projection, actor_ref=actor_ref)
+        items = {item.candidate_id: item for item in raw.items}
+        suppressions = {item.candidate_id: item for item in raw.suppressions}
+        return tuple(self._visible(
+            tuple(items[c.candidate_id] for c in candidates if c.candidate_id in items),
+            tuple(suppressions[c.candidate_id] for c in candidates if c.candidate_id in suppressions),
+            projection=projection, actor_ref=actor_ref,
+        ) for candidates in candidate_sets)
+
+    def _visible(self, items, suppressions, *, projection, actor_ref):
         from .prehistory_memory_source import restrict_story_reading
         visible_records = {excerpt.source_id for item in items for excerpt in item.source_excerpts
                            if excerpt.prehistory is not None}
@@ -495,7 +506,8 @@ class MemoryRetrievalCompiler:
             )
             if len(excerpts) == 1 and excerpts[0].prehistory is not None:
                 material = _single_history_item_material(candidate, excerpts[0], assessment_scope)
-                items.append(material.model_copy(update={"updated_at": updated_at}))
+                items.append(material if updated_at is material.updated_at
+                             else material.model_copy(update={"updated_at": updated_at}))
             else:
                 items.append(MemoryRetrievalItem(
                     candidate_id=candidate.candidate_id,

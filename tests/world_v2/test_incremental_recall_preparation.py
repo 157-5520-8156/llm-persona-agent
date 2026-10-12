@@ -313,14 +313,14 @@ def test_same_pinned_context_reads_equal_memory_candidate_set_once(tmp_path, mon
             life_content_store=InMemoryImmutableLifeContentStore(),
             recall_coordinator=recall,
         )
-        original = MemoryRetrievalCompiler.compile
+        original = MemoryRetrievalCompiler._collect_raw
         calls = []
 
         def count(self, **kwargs):
             calls.append(tuple(c.candidate_id for c in kwargs["candidates"]))
             return original(self, **kwargs)
 
-        monkeypatch.setattr(MemoryRetrievalCompiler, "compile", count)
+        monkeypatch.setattr(MemoryRetrievalCompiler, "_collect_raw", count)
         state = ledger.project()
         compiler.compile(query_from_projection(state, actor_ref=ACTOR, trigger_ref="test:context"))
         assert calls and calls[0]
@@ -391,15 +391,16 @@ def test_overlapping_memory_views_share_raw_reads_but_recompute_visible_story(
 
         monkeypatch.setattr(readings, "evaluate_memory_retrieval", count)
         with context_read_scope(store, state):
-            partial = compiler.compile(candidates=candidates[:2], **kwargs)
+            partial, full = compiler.compile_views(
+                candidate_sets=(candidates[:2], candidates), **kwargs
+            )
             source = partial.items[0].source_excerpts[0]._recall_source_record
             partial.items[0].source_excerpts[0]._recall_source_record = source.model_copy(
                 update={"statement": "不能污染缓存"}
             )
-            full = compiler.compile(candidates=candidates, **kwargs)
             assert full.model_dump_json() == expected.model_dump_json()
             assert full.items[0].source_excerpts[0]._recall_source_record == source
-            assert counts == [2, 3]
+            assert counts == [5]
             wrong = compiler.compile(candidates=candidates, **dict(kwargs, actor_ref="actor:other"))
             assert not wrong.items
     finally:

@@ -114,37 +114,9 @@ def memoized_context_read(*, store, projection, kind, owners=(), parameters=(), 
     return _memoized(scope, kind, owners, parameters, compute)
 
 
-def memoized_context_read_batch(*, store, projection, kind, owner, inputs, parameters, compute):
-    """Compute missing members together within one exact content/projection read.
-
-    The caller owns any final set-dependent view (for example visible story
-    membership), and must not expose cached mutable private attributes.
-    """
+def has_context_read_scope(store, projection):
     scope = _CURRENT.get()
-    if scope is None or not scope.active_for(store) or scope.projection is not projection:
-        return compute(inputs)
-    try:
-        hash(parameters)
-    except TypeError:
-        return compute(inputs)
-    values = {}
-    missing = []
-    for value in inputs:
-        key = (kind, (id(owner), id(value)), parameters)
-        entry = scope.materials.get(key)
-        if entry is not None and entry[0][0] is owner and entry[0][1] is value:
-            values[id(value)] = entry[1]
-        else:
-            missing.append(value)
-    if missing:
-        fresh = compute(tuple(missing))
-        if len(fresh) != len(missing):
-            raise ValueError("material batch changed input membership")
-        for value, result in zip(missing, fresh, strict=True):
-            values[id(value)] = _memoized(
-                scope, kind, (owner, value), parameters, lambda result=result: result,
-            )
-    return tuple(values[id(value)] for value in inputs)
+    return scope is not None and scope.active_for(store) and scope.projection is projection
 
 
 def has_projection_read_scope(matching_fields):

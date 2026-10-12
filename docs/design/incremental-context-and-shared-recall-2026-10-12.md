@@ -9,6 +9,6 @@
 
 参考与未采用方案见docs/research/local-latency-primary-patterns-2026-10-12.md。若只减少部分材料的重复计算而尚未形成整个Context的依赖图，应在最终证据中明确范围，不声称所有准备已变为O(变更量)。
 
-同轮原始Memory读取按候选缓存于现有内容/投影快照内：两视图集合重叠时只补读缺失候选；返回前始终重新收窄故事与episode成员并复制来源摘录，私有完整原文指针不得污染缓存。不同actor/隐私/编译器/投影、未知store及重复候选输入保留独立路径。缓存不跨请求保存权限结论。
+同轮Memory的两个视图显式声明候选集合：compile_views在同一内容/投影快照内读取并集一次，再分别收窄故事与episode成员、复制来源摘录。私有完整原文指针不得跨视图污染。未知store、重复/不同身份候选保留独立读取；可选Recall准备失败仍回退独立的窄Context并按原路径记录Recall失败。逐候选缓存曾增加管理成本，已经由此显式接口替换，不跨请求保存权限结论。
 
 初版真实JSON数据使用pydantic_core.TzInfo及独立冻结Fact模型，原严格类型识别没有允许复用。已核实TzInfo的官方Rust定义为frozen及固定offset后只允许此精确类型，仍拒绝可变自定义时区。官方源码：https://raw.githubusercontent.com/pydantic/pydantic-core/main/src/input/datetime.rs 。
