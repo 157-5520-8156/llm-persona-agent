@@ -547,7 +547,12 @@ async def test_outlook_public_closed_loop(tmp_path, offline):
             result = await app.advance_life_ecology_once(
                 wake_event_ref="event:trigger:clock:" + key, trace_id=key, correlation_id=key
             )
-            background = [await app.drain_background_once() for _ in range(3)]
+            background = []
+            for _ in range(3):
+                work = await app.drain_background_once()
+                background.append(work)
+                if work is None:
+                    break
             state = app._ledger.project()
             step = {
                 "minute": minute,

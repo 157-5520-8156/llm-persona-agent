@@ -177,7 +177,8 @@ def expand_lived_story_hits(*, hits, eligible_rows, query, index_version):
     # Scene expansion has already admitted an 11/22 KB story pack. Do not
     # silently subject its next navigation hop to the narrower 7/14 KB normal
     # pack. Version 18 and older keep their exact recorded selection behavior.
-    story_pack = index_version.partition("+embedding:")[0] == "world-v2-recall-index.hybrid.19" and any(
+    policy = index_version.partition("+embedding:")[0]
+    story_pack = policy in {"world-v2-recall-index.hybrid.19", "world-v2-recall-index.hybrid.20"} and any(
         hit.document.prehistory is not None for hit in hits
     )
     model_limit = RECALL_STORY_MODEL_READING_MAX_BYTES if story_pack else RECALL_MODEL_READING_MAX_BYTES
@@ -192,19 +193,45 @@ def expand_lived_story_hits(*, hits, eligible_rows, query, index_version):
         ),
         key=lambda d: d.document_id,
     )
+
+    def peer_hit(doc):
+        return RecallHit(
+            document=doc.model_copy(update={"retrieval_text": None}),
+            match_channels=("structured",), score_bp=0, lexical_score_bp=0,
+            dense_score_bp=0, temporal_score_bp=0, structured_score_bp=10_000,
+            accessibility_offset_bp=0,
+        )
+
+    def fits(items):
+        return (
+            len(items) <= min(query.limit, 6)
+            and len(_canonical_json({"items": [interior_recall_item(h.document, index_version=index_version)
+                                              for h in items]}).encode()) <= model_limit
+            and len(_canonical_json([h.model_dump(mode="json") for h in items]).encode()) <= result_limit
+        )
+
+    if policy == "world-v2-recall-index.hybrid.20":
+        # Reserve at most one hop before a full pack of other matches can
+        # starve it. Keep the primary hit, its linked anchor and any sources
+        # explicitly requested by ref; then refill in the original order.
+        requested = set(query.link_refs)
+        for doc in candidates:
+            anchor = next(h for h in hits if set(h.document.link_refs) & set(doc.link_refs) & keys)
+            protected = tuple(h for h in hits if h is hits[0] or h is anchor or requested & {
+                h.document.document_id, h.document.source_item_ref, *h.document.link_refs,
+            })
+            peer = peer_hit(doc)
+            if not fits((*protected, peer)):
+                continue
+            kept = [*protected, peer]
+            for hit in hits:
+                if hit not in protected and fits((*kept, hit)):
+                    kept.append(hit)
+            return tuple(kept)
     for doc in candidates:
         if len(selected) >= min(query.limit, 6):
             break
-        hit = RecallHit(
-            document=doc.model_copy(update={"retrieval_text": None}),
-            match_channels=("structured",),
-            score_bp=0,
-            lexical_score_bp=0,
-            dense_score_bp=0,
-            temporal_score_bp=0,
-            structured_score_bp=10_000,
-            accessibility_offset_bp=0,
-        )
+        hit = peer_hit(doc)
         proposed = (*selected, hit)
         if (
             len(

@@ -3779,7 +3779,7 @@ def build_sqlite_world_v2_turn_application(
         path=path,
         world_id=config.world_id,
         embedding=FeatureHashRecallEmbedding(),
-        policy_version=("world-v2-recall-index.hybrid.19" if config.recall_story_context and config.world_outlook_enabled else
+        policy_version=("world-v2-recall-index.hybrid.20" if config.recall_story_context and config.world_outlook_enabled else
                         "world-v2-recall-index.hybrid.18" if config.recall_story_context else
                         "world-v2-recall-index.hybrid.14" if config.recall_parent_context else None),
     )

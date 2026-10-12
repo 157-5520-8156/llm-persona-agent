@@ -40,8 +40,12 @@ def test_scene_and_lived_story_share_existing_budget_without_dropping_direct_hit
         )
         hits = tuple(_hit(d) for d in docs)
         query = _query(ledger)
+
         def wire(obj):
-            return len(json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode())
+            return len(
+                json.dumps(obj, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+            )
+
         peer = None
         for size in range(100, 1600, 25):
             candidate = _documents()[1].model_copy(
@@ -95,3 +99,58 @@ def test_scene_and_lived_story_share_existing_budget_without_dropping_direct_hit
         ).hits
     finally:
         ledger.close()
+
+
+def test_full_pack_keeps_primary_link_anchor_and_explicit_sources():
+    from test_recall_index import _query as query_fixture
+
+    template = _documents()[1]
+    docs = [
+        template.model_copy(
+            update={
+                "document_id": f"recall:direct:{i}",
+                "source_item_ref": f"source:direct:{i}",
+                "link_refs": ("lived-story-link:pair",) if i == 1 else (),
+            }
+        )
+        for i in range(6)
+    ]
+    peer = template.model_copy(
+        update={
+            "document_id": "recall:peer",
+            "source_item_ref": "source:peer",
+            "link_refs": ("lived-story-link:pair",),
+        }
+    )
+    hits = tuple(_hit(d) for d in docs)
+    query = query_fixture(limit=6, link_refs=(docs[3].source_item_ref,))
+    rows = tuple((d, ()) for d in (*docs, peer))
+    old = expand_lived_story_hits(
+        hits=hits, eligible_rows=rows, query=query, index_version="world-v2-recall-index.hybrid.19"
+    )
+    assert old == hits
+    current = expand_lived_story_hits(
+        hits=hits, eligible_rows=rows, query=query, index_version="world-v2-recall-index.hybrid.20"
+    )
+    assert len(current) == 6
+    assert {docs[i].document_id for i in (0, 1, 3)} <= {h.document.document_id for h in current}
+    assert peer.document_id in {h.document.document_id for h in current}
+    assert (
+        expand_lived_story_hits(
+            hits=hits,
+            eligible_rows=tuple((d, ()) for d in docs),
+            query=query,
+            index_version="world-v2-recall-index.hybrid.20",
+        )
+        == hits
+    )
+    explicit = query.model_copy(update={"link_refs": tuple(d.source_item_ref for d in docs)})
+    assert (
+        expand_lived_story_hits(
+            hits=hits,
+            eligible_rows=rows,
+            query=explicit,
+            index_version="world-v2-recall-index.hybrid.20",
+        )
+        == hits
+    )
