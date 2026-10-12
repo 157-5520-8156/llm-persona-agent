@@ -1985,6 +1985,15 @@ class SQLiteRecallIndex(_RecallIndexCore):
             close_embedding()
 
 
+def canonical_recall_document(document: RecallDocument) -> RecallDocument:
+    """Use one canonical parsed object for the producer and SQLite snapshot.
+
+    The ordinary JSON/schema round trip still runs; interning its result
+    avoids retaining a second deep source/story model tree per document.
+    """
+    return _decode_snapshot_document(_canonical_json(document.model_dump(mode="json")))
+
+
 @lru_cache(maxsize=4096)
 def _decode_snapshot_document(document_json: str) -> RecallDocument:
     """Decode exact stored bytes only; rows/cursor are still read each time."""

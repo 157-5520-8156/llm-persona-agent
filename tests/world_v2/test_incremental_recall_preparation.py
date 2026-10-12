@@ -405,3 +405,26 @@ def test_overlapping_memory_views_share_raw_reads_but_recompute_visible_story(
             assert not wrong.items
     finally:
         ledger.close()
+
+
+def test_corpus_and_sqlite_snapshot_share_canonical_validated_document_objects(tmp_path):
+    compiler = RecallCorpusCompiler()
+    documents = compile_sources(compiler, _sources())
+    index = SQLiteRecallIndex(
+        path=tmp_path / "one-tree.sqlite",
+        world_id="world:test",
+        embedding=FeatureHashRecallEmbedding(),
+    )
+    try:
+        index.rebuild(cursor=CORPUS_CURSOR, documents=documents)
+        assert all(
+            left is right for left, right in zip(documents, index.snapshot().documents, strict=True)
+        )
+        # An invalid model_copy must still fail the ordinary JSON/schema path.
+        import pytest
+
+        invalid = documents[0].model_copy(update={"text": ""})
+        with pytest.raises(ValueError):
+            index.rebuild(cursor=CORPUS_CURSOR, documents=(invalid,))
+    finally:
+        index.close()

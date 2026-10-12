@@ -25,7 +25,7 @@ from .prehistory_memory_source import PrehistoryMemoryReading
 from .recall_index import (
     RecallCursor,
     RecallDocument,
-    RecallSourceBinding, recall_source_binding,
+    RecallSourceBinding, recall_source_binding, canonical_recall_document,
 )
 from .recent_dialogue import RecentDialogueItem
 from .recall_materialization import RecallMaterialPool
@@ -992,7 +992,7 @@ class RecallCorpusCompiler:
         speaker_ref, prehistory, accepted_fact, settled_life, source_window_start, context_only,
     ):
         canonical = _canonical_bindings(bindings)
-        return RecallDocument(
+        return canonical_recall_document(RecallDocument(
             document_id=_document_id(
                 source_slice,
                 source_item_ref,
@@ -1037,7 +1037,7 @@ class RecallCorpusCompiler:
             accepted_fact=accepted_fact,
             settled_life_json=settled_life.model_dump_json() if settled_life is not None else None,
             source_window_start=source_window_start,
-        )
+        ))
 
 
 __all__ = [
