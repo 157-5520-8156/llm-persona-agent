@@ -1,3 +1,32 @@
+Incremental context materials and shared recall (2026-10-12):
+Runtime5665e2ba, baseb69d120e; design/audit incremental-context-and-shared-recall-2026-10-12.md.
+Pure corpus material pool uses complete immutable inputs; SQLite derived-table generations
+avoid full row rereads on ordinary World appends, publish consistent snapshots, verify
+write generation and retain original canonical hash. Deleted head also clears orphan rows.
+compile_views reads Context/Recall candidate union once inside same content+projection
+snapshot, then independently restricts each story/episode view and copies private excerpts.
+Unknown/duplicate/different candidate input keeps separate reads; optional broad failure
+still preserves narrow Context. No cross-turn authority cache. Shared local/dense basis
+keeps full query/snapshot identity and independent vectors/results/traces. Canonical parsed
+Doc trees are interned across producer/index; no schema bypass or trust flag. Cache limits
+are finite. No sync semantic chat review, life frequency/corpus cut, or early delivery.
+Full Context/corpus equivalence4cases,1629documents retained. Hot new cursor builds1629->0,
+full index reads2->0,lexicalpasses2->1;remaining1090document dumps include output packaging.
+Final cold4.471->4.998s (worse);nextclock1.226->1.154,1.185->.790s. Not O(delta) entire Context.
+Full saved BGE vectors:24local/dense results+diagnostics exactlyequal,0API. Source-text
+queries among fixtures are not chat answer-quality evidence.
+Native fixed-response baseline ready2.216/2.447s,first5.665/5.899s. Final candidate two runs
+ready2.078/2.092s,first5.581/5.548s,whole6.356/6.276s. Simulated role2.05s;real cloud quality,
+p95 and2-4s gate remain OPEN. Old replay answer still semantically wrong. Intermediate
+per-candidate memo/duplicate Doc tree stages slowed ingress and were replaced, not hidden.
+280scopedpass;2reviewsclosed orphan-row bug (SpecP1/StandardsP2). Cold reopen39970ledgerrows,
+1259prehistory/1629indexdocs,head/statehashsame,0events. Freeze1464trackedPython.
+Final full10499pass/19skip/2xfail/1existingwarning,pytest1201.12s,exit0;all1464PythonSHAunchanged.
+Terminal output/private-audits/incremental-context-20261012/final-full-result.json.
+0newDeepSeek/BGE;finalclonevectorusagetables equalsource,0networkattempts. Specialbudgets
+5CNY176/4.688811/.231340/.079849; .5CNY11/.191131/.220956/.087913 unchanged.
+Isolated branch only, no production/QQ activation; manual_only/qualification_incomplete.
+
 Local latency and background cache layout (2026-10-11):
 Final runtime ab0a209c against4aa38e93; audit/design first-reply-and-life-input-cost-2026-10-11.md.
 Bounded weak-owner immutable tuple timezone scan reuse plus fresh-row exact-byte
