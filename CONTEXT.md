@@ -1,3 +1,40 @@
+Full-history World Outlook closure (2026-10-12):
+Base769af7f6; runtime88b5b973; design/audit world-outlook-closed-loop-2026-10-12.md.
+Four confirmed fixes: full Outlook114445B exceeded100000B and silently looked idle;
+lossless table/shared-string encoding gives90038B with exact JSON roundtrip and
+unchanged cap, persistent failures reach health/ecology. Lived-story navigation
+used normal7/14KB after scene had admitted11/22KB;19 aligns the existing story
+budget,20 also reserves one eligible neighbor only when append cannot fit.
+Protect primary,linked anchor,and all explicit coordinates via shared structured
+refs; old18/19 behavior stays,20 only Outlook+story opt-in. ReviewP2s(explicit
+event/base-record refs and unnecessary sparse reordering) fixed3f2f8238/closed.
+Cross-clock execution retries used new event ID with duplicate proposal ID;
+identity now binds fullnode+originalorigin independent of clock, including
+content refs. Old interrupted executor→new recovery independently verified.
+Multi-World-event Clock batches exposed commit-tail vs event-specific revision;
+execution/activation/cancellation/NPC now bind exact ClockAdvanced authority.
+Legacy3f2 executors fail3 real multi-event tests; current49 scopedpass7.60s.
+Full clone1259prehistory/39895primaryevents(+5otherWorld),sourceindex1628docs.
+full-chain-v7 passed354.21s:21wakes/48h4m/3dates,4fixtureWorldAuthor calls,
+3settled Outlook events,role declines then authors one plan and abandons it,
+dependent branch retired/independent line continues,experience+retention+
+ordinary inbound role-pull+captured delivery+history pointers+replay+cold repeat.
+0duplicate effects/calls on repeat;future sentinel absent from role/World.
+4new Experiences/Memories include1inherited backlog. No new model-result failures.
+Requests90038/92142/93732/92954B;native fake chat authorization2.562s is NOT live
+DeepSeek latency or2-4s proof. No sync chat review or scripted production choice.
+Source file/heads unchanged;original39895+5eventJSONbytes unchanged;vectorcache
+1864rows and0usage rows unchanged.0newDeepSeek/BGE,special budgets unchanged.
+Cold old reflection recovery remains SLOW:one step122.22s. Diagnostic firstunit
+project_at/_replay_locked replays31873events;profile225.075s,221.962s in replay;
+nextunits3.559/3.679s with cachedprefix. No provider calls;ledger thread-lock
+contention risk not live-qualified. Do not claim response SLA/long-story quality.
+Initial full10506pass had later edits and is superseded. Final88b5 frozenfull
+10514pass/19skip/2xfail/1existingwarning,pytest1223.40s,exit0;1691PythonSHAunchanged.
+Evidence output/private-audits/world-outlook-closed-loop-20261012/;all failures
+retained,diagnostic ProfileComplete is intentional stop. No production/QQ enable;
+offline mechanisms green,real author quality/cost/latency/soak remain unqualified.
+
 Incremental context materials and shared recall (2026-10-12):
 Runtime5665e2ba, baseb69d120e; design/audit incremental-context-and-shared-recall-2026-10-12.md.
 Pure corpus material pool uses complete immutable inputs; SQLite derived-table generations
