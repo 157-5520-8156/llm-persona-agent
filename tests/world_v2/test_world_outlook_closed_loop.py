@@ -584,7 +584,7 @@ async def test_outlook_public_closed_loop(tmp_path, offline):
             )
             return state
 
-        for minute in (1, 2, 3, 4, 5, 10):
+        for minute in (1, 2, 3, 4, 5, 10, 11, 12):
             state = await advance(minute)
         assert author.calls, report
         assert any(

@@ -164,6 +164,7 @@ def expand_lived_story_hits(*, hits, eligible_rows, query, index_version):
         RECALL_RESULT_MAX_BYTES,
         RECALL_STORY_MODEL_READING_MAX_BYTES,
         RECALL_STORY_RESULT_MAX_BYTES,
+        structured_recall_refs,
     )
     from .recall_model_reading import interior_recall_item
 
@@ -210,7 +211,7 @@ def expand_lived_story_hits(*, hits, eligible_rows, query, index_version):
             and len(_canonical_json([h.model_dump(mode="json") for h in items]).encode()) <= result_limit
         )
 
-    if policy == "world-v2-recall-index.hybrid.20":
+    if policy == "world-v2-recall-index.hybrid.20" and not any(fits((*hits, peer_hit(d))) for d in candidates):
         # Reserve at most one hop before a full pack of other matches can
         # starve it. Keep the primary hit, its linked anchor and any sources
         # explicitly requested by ref; then refill in the original order.
@@ -218,7 +219,8 @@ def expand_lived_story_hits(*, hits, eligible_rows, query, index_version):
         for doc in candidates:
             anchor = next(h for h in hits if set(h.document.link_refs) & set(doc.link_refs) & keys)
             protected = tuple(h for h in hits if h is hits[0] or h is anchor or requested & {
-                h.document.document_id, h.document.source_item_ref, *h.document.link_refs,
+                h.document.document_id, h.document.source_item_ref,
+                *structured_recall_refs(h.document, policy_version=policy),
             })
             peer = peer_hit(doc)
             if not fits((*protected, peer)):

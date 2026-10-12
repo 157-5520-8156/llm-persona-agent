@@ -1,6 +1,7 @@
 """Story navigation must use the already admitted story pack's budgets."""
 
 import json
+import pytest
 
 from companion_daemon.world_v2.lived_story import expand_lived_story_hits
 from companion_daemon.world_v2.recall_index import (
@@ -144,6 +145,18 @@ def test_full_pack_keeps_primary_link_anchor_and_explicit_sources():
         )
         == hits
     )
+    sparse = hits[:3]
+    assert expand_lived_story_hits(
+        hits=sparse,
+        eligible_rows=rows,
+        query=query,
+        index_version="world-v2-recall-index.hybrid.20",
+    ) == expand_lived_story_hits(
+        hits=sparse,
+        eligible_rows=rows,
+        query=query,
+        index_version="world-v2-recall-index.hybrid.19",
+    )
     explicit = query.model_copy(update={"link_refs": tuple(d.source_item_ref for d in docs)})
     assert (
         expand_lived_story_hits(
@@ -154,3 +167,51 @@ def test_full_pack_keeps_primary_link_anchor_and_explicit_sources():
         )
         == hits
     )
+
+
+@pytest.mark.parametrize("coordinate", ["event", "record"])
+def test_full_pack_preserves_every_supported_explicit_history_coordinate(tmp_path, coordinate):
+    from companion_daemon.world_v2.recall_index import structured_recall_refs
+
+    ledger = started_ledger(tmp_path / "protected.sqlite")
+    try:
+        _active_rows(ledger, _linked_archive())
+        target = next(d for d in _corpus(ledger, _read(ledger)) if d.prehistory)
+        if coordinate == "record":
+            ref = target.source_item_ref
+            target = target.model_copy(update={"source_item_ref": ref + ":window:0:40"})
+        else:
+            ref = target.source_refs[0]
+        assert ref in structured_recall_refs(
+            target, policy_version="world-v2-recall-index.hybrid.20"
+        )
+        base = _documents()[1]
+        docs = [
+            base.model_copy(
+                update={
+                    "document_id": f"recall:other:{i}",
+                    "source_item_ref": f"other:{i}",
+                    "link_refs": ("lived-story-link:protected",) if i == 1 else (),
+                }
+            )
+            for i in range(5)
+        ]
+        docs.append(target)
+        peer = base.model_copy(
+            update={
+                "document_id": "recall:peer",
+                "source_item_ref": "peer",
+                "link_refs": ("lived-story-link:protected",),
+            }
+        )
+        result = expand_lived_story_hits(
+            hits=tuple(_hit(d) for d in docs),
+            eligible_rows=tuple((d, ()) for d in (*docs, peer)),
+            query=_query(ledger).model_copy(update={"link_refs": (ref,)}),
+            index_version="world-v2-recall-index.hybrid.20",
+        )
+        assert len(result) == 6
+        assert target.document_id in {h.document.document_id for h in result}
+        assert peer.document_id in {h.document.document_id for h in result}
+    finally:
+        ledger.close()

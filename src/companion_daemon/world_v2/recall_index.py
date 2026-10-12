@@ -76,6 +76,14 @@ def _digest(value: object) -> str:
     return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
+def structured_recall_refs(document: RecallDocument, *, policy_version: str) -> tuple[str, ...]:
+    """The same public source coordinates for ranking and protected navigation."""
+    if policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18", "world-v2-recall-index.hybrid.19", "world-v2-recall-index.hybrid.20"} and document.prehistory is not None:
+        return tuple(sorted({*document.link_refs, *document.source_refs,
+                             document.source_item_ref, document.source_item_ref.split(":window:")[0]}))
+    return document.link_refs
+
+
 @lru_cache(maxsize=1024)
 def _unit_vector(values: tuple[float, ...]) -> tuple[float, ...]:
     """Cache pure arithmetic, independently of document/source eligibility."""
@@ -1118,10 +1126,7 @@ class _RecallIndexCore:
         return tuple(expanded) if expanded else hits
 
     def _structured_refs(self, document: RecallDocument) -> tuple[str, ...]:
-        if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18", "world-v2-recall-index.hybrid.19", "world-v2-recall-index.hybrid.20"} and document.prehistory is not None:
-            return tuple(sorted({*document.link_refs, *document.source_refs,
-                                 document.source_item_ref, document.source_item_ref.split(":window:")[0]}))
-        return document.link_refs
+        return structured_recall_refs(document, policy_version=self.policy_version)
 
     def _result_hit(self, hit: RecallHit) -> RecallHit:
         if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18", "world-v2-recall-index.hybrid.19", "world-v2-recall-index.hybrid.20"} and hit.document.prehistory is not None:
