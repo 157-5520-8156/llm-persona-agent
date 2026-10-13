@@ -12,11 +12,11 @@ from __future__ import annotations
 from companion_daemon.world_v2.visible_review_protocols import SUPPORTED_REVIEW_VERSIONS
 import asyncio
 from collections import OrderedDict
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from hashlib import sha256
 import json
 import logging
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, NoReturn
 
 from companion_daemon.llm import (
     ProviderToolIdentityError,
@@ -71,33 +71,21 @@ from .single_tool_transport import resolve_single_tool_transport
 from .inbound_wire import (
     _ExpressionDraftWire,
     _ProviderSubcallAuditCapture,
-    RecallChoiceValidationError,
     _RoutedExpressionDraftWire,
-    ValidationReselectionResult,
+    SameContractRetryForbidden,
     _ExpressionRecoveryContextStore,
     _ProviderInvocationIdentity,
     _parse_json_object,
-    _life_authority_availability_from_messages,
     _split_expression_episode_disposition,
     _provider_invocation_identity,
     _proposal_from_model_text as _strict_materialize_expression_draft,
-    _source_closure_reselection_envelope,
     _stream_unit_identity,
-    _trace_source_reselection_materialization_failure,
     _combine_usage,
     _compile_combined_cognition_envelope,
-    _expression_tool_reselection_kwargs,
     parse_character_recall_request,
     rejected_role_payload_kwargs,
-    claim_repair_instruction,
-    complete_bounded_validation_reselection,
     is_authored_expression_draft_shape_violation,
-    is_private_turn_state_violation,
-    is_recall_choice_violation,
-    private_turn_state_reselection_instruction,
-    recall_choice_reselection_instruction,
     review_expression_with_candidate_external_coverage,
-    shape_repair_instruction,
     source_closure_violation,
 )
 from ..deliberation import (
@@ -125,10 +113,8 @@ from ..expression_draft import (
     SourceRefAliasTable,
     TEXT_ONLY_EXPRESSION_CAPABILITIES,
     build_source_ref_alias_table,
-    is_world_claim_violation as _is_world_claim_violation,
     request_requires_response_expectation_assessment,
     validate_expression_private_turn_state,
-    world_claim_source_ref_aliases_by_scope,
 )
 from ..json_wire_repair import loads_one_json_object
 from ..isolated_source_closure_trace import (
@@ -138,10 +124,7 @@ from ..isolated_source_closure_trace import (
 from ..interaction_act_identity import interaction_act_overlapping_occurrence_count
 from ..model_facing_context import compact_chat_model_facing_context
 from ..production_reliability_metrics import (
-    record_claim_repair,
     record_failsafe,
-    record_shape_repair,
-    record_source_closure_reselection,
 )
 from ..private_turn_state import PrivateTurnState, validate_authored_impression_retention
 from ..proposal_envelope import (
@@ -163,10 +146,6 @@ from ..recall_runtime import (
     perform_character_recall_with_prefetch,
     recall_followup_evidence_json,
     verify_trusted_recall_trace,
-)
-from ..structured_expression_reselection_model import (
-    expression_reselection_output_contract,
-    normalize_realtime_expression_reselection_output,
 )
 from .author_identity import character_semantic_author_identity
 
@@ -1206,18 +1185,6 @@ def _compact_reply_only_transport_grammar(
     }
 
 
-class _CognitionReselectionResult(NamedTuple):
-    """Validated correction bytes from one indivisible character decision."""
-
-    raw: str
-    usage: ModelUsageProvenance | None
-    corrective_used: bool
-    winning_model_call_id: str | None = None
-    winning_request_hash: str | None = None
-    winning_model_id: str | None = None
-    source_closure_lane_used: bool = False
-    episode_disposition: str | None = None
-    paired_appraisal_proposal: dict[str, object] | None = None
 
 
 class _CompactGateInvocationAudit(NamedTuple):
@@ -1441,7 +1408,6 @@ class _PendingExpression:
         "winning_model_call_id",
         "winning_request_hash",
         "author_provider",
-        "corrective_spent",
         "episode_disposition",
         "recall_trace",
         "prefetch_trace",
@@ -1466,7 +1432,6 @@ class _PendingExpression:
         winning_model_call_id: str,
         winning_request_hash: str,
         author_provider: ChatCompletionModel,
-        corrective_spent: bool,
         episode_disposition: str | None = None,
         recall_trace: TrustedRecallTrace | None = None,
         prefetch_trace: TrustedRecallTrace | None = None,
@@ -1487,7 +1452,6 @@ class _PendingExpression:
         self.winning_model_call_id = winning_model_call_id
         self.winning_request_hash = winning_request_hash
         self.author_provider = author_provider
-        self.corrective_spent = corrective_spent
         self.episode_disposition = episode_disposition
         self.recall_trace = recall_trace
         self.prefetch_trace = prefetch_trace
@@ -1837,20 +1801,11 @@ def _retired_stream_candidate_audits(
 
 
 class _FailedExpressionDetail:
-    """The exact provider conversation and violation of one structural reject.
-
-    Retained so the post-acceptance expression pass can spend one corrective
-    retry that names the concrete violation before the bounded role-model
-    recovery.  This is attempt-bound evidence for a retry, never accepted state.
-    """
+    """Rejected bytes and exact pin identity; never an authoring recipe."""
 
     __slots__ = (
-        "messages",
         "raw",
         "violation",
-        "usage",
-        "private_state_context_json",
-        "source_ref_aliases",
         "origin_call_id",
         "origin_request_hash",
         "origin_world_revision",
@@ -1861,24 +1816,16 @@ class _FailedExpressionDetail:
     def __init__(
         self,
         *,
-        messages: list[dict[str, str]],
         raw: str,
         violation: str,
-        usage: ModelUsageProvenance | None,
-        private_state_context_json: str,
-        source_ref_aliases: SourceRefAliasTable,
         origin_call_id: str,
         origin_request_hash: str,
         origin_world_revision: int,
         origin_deliberation_revision: int,
         origin_ledger_sequence: int,
     ) -> None:
-        self.messages = messages
         self.raw = raw
         self.violation = violation
-        self.usage = usage
-        self.private_state_context_json = private_state_context_json
-        self.source_ref_aliases = source_ref_aliases
         self.origin_call_id = origin_call_id
         self.origin_request_hash = origin_request_hash
         self.origin_world_revision = origin_world_revision
@@ -2244,15 +2191,10 @@ class _PairedExpressionMaterializer:
                     "authored_expression_reselection_invalid",
                     **_ensure_reselection_detail(extra),
                 )
-            if key in self._owner._terminal_failed_combined:
-                raise ValidationTechnicalFailure(
-                    "recall_choice_reselection_invalid",
-                    failure_detail="回忆选择第二次仍没通过结构校验。",
-                )
             if failed_key in self._owner._failed_combined:
                 stored = self._owner._failed_details.get(failed_key)
                 self._owner._failed_combined.discard(failed_key)
-                repaired = await self._owner._retry_failed_expression_before_failsafe(
+                repaired = await self._owner._resume_failed_expression(
                     request,
                     failed_key,
                 )
@@ -2390,7 +2332,6 @@ class _PairedExpressionMaterializer:
             ) from exc
         reviewer = self._owner._source_closure_reviewer
         if reviewer is not None:
-            report_relative_adjudication_used = False
             review_result = await review_expression_with_candidate_external_coverage(
                 reviewer=reviewer,
                 inventory_model=None,
@@ -2402,7 +2343,6 @@ class _PairedExpressionMaterializer:
                 source_ref_aliases=pending.source_ref_aliases,
                 review_claim_free_candidates=self._owner._review_claim_free_candidates,
             )
-            report_relative_adjudication_used = review_result.report_relative_adjudication_used
             if review_result.usage is not None:
                 usage = _combine_usage(
                     usage,
@@ -2418,21 +2358,6 @@ class _PairedExpressionMaterializer:
                 )
             if review is not None and review.decision == "unsupported":
                 violation = source_closure_violation(review)
-                if pending.corrective_spent:
-                    _trace_source_closure_rejection(
-                        stage="reselection_not_attempted",
-                        raw=pending.raw,
-                        review=review,
-                    )
-                    raise ValidationTechnicalFailure(
-                        "authored_expression_reselection_invalid",
-                        model_call_id=winning_model_call_id,
-                        request_hash=winning_request_hash,
-                        attempted_model_id=winning_model_id,
-                        attempted_model_version=self._owner.VERSION,
-                        usage=usage,
-                        **_role_failure_payload_kwargs(pending.raw, violation),
-                    ) from ValueError(violation)
                 if not begin_validation_reselection_recovery():
                     _trace_source_closure_rejection(
                         stage="reselection_not_attempted",
@@ -2448,115 +2373,10 @@ class _PairedExpressionMaterializer:
                         review=review,
                     )
                     raise ValueError(violation)
-                repair_request = expression_request.model_copy(
-                    update={"model_content_json": pending.private_state_context_json}
+                self._owner._reject_source_reselection(
+                    request=expression_request, provider=pending.author_provider,
+                    raw=pending.raw, review=review,
                 )
-                repair_messages = self._owner._selected_expression(expression_request)._messages(  # noqa: SLF001 - paired cognition owns this internal seam
-                    request=repair_request,
-                    quick_recovery=False,
-                    provisional=False,
-                    failure_code=None,
-                    source_ref_aliases=pending.source_ref_aliases,
-                    source_authority_context_json=(
-                        pending.prehistory_source_authority_context_json
-                    ),
-                )
-                repaired_result = await self._owner._repair_expression_claims(
-                    request=expression_request,
-                    provider=pending.author_provider,
-                    messages=repair_messages,
-                    raw=pending.raw,
-                    violation=violation,
-                    source_closure_review=review,
-                    combined=False,
-                    timeout_seconds=repair_timeout,
-                    private_state_context_json=pending.private_state_context_json,
-                    source_ref_aliases=pending.source_ref_aliases,
-                    prehistory_source_authority_context_json=(
-                        pending.prehistory_source_authority_context_json
-                    ),
-                )
-                if repaired_result is None:
-                    raise ValueError(violation)
-                usage = _combine_usage(
-                    usage,
-                    repaired_result.usage,
-                    expression_request.call_id,
-                )
-                reselection_lane = self._owner._source_closure_reselection_lane
-                corrected_reviewer = reviewer
-                corrected_inventory = None
-                corrected_report_relative_reviewer = self._owner._report_relative_reviewer
-                if repaired_result.source_closure_lane_used:
-                    if reselection_lane is None:
-                        raise ValueError("paired source correction route was not retained")
-                    corrected_reviewer = reselection_lane.reviewer
-                    corrected_inventory = None
-                    corrected_report_relative_reviewer = reselection_lane.report_relative_reviewer
-                corrected_review_result = await review_expression_with_candidate_external_coverage(
-                    reviewer=corrected_reviewer,
-                    inventory_model=corrected_inventory,
-                    report_relative_reviewer=corrected_report_relative_reviewer,
-                    request=expression_request,
-                    raw=repaired_result.raw,
-                    identity_frame=self._owner._identity_frame,
-                    model_visible_context_json=pending.private_state_context_json,
-                    source_ref_aliases=pending.source_ref_aliases,
-                    review_claim_free_candidates=self._owner._review_claim_free_candidates,
-                    # The repaired raw has a distinct author invocation and
-                    # therefore its own single narrow-review allowance.
-                    allow_report_relative_adjudication=True,
-                )
-                report_relative_adjudication_used = (
-                    report_relative_adjudication_used
-                    or corrected_review_result.report_relative_adjudication_used
-                )
-                if corrected_review_result.usage is not None:
-                    usage = _combine_usage(
-                        usage,
-                        corrected_review_result.usage,
-                        expression_request.call_id,
-                    )
-                corrected_review = corrected_review_result.review
-                if corrected_review is not None and corrected_review.decision == "unsupported":
-                    _trace_source_closure_rejection(
-                        stage="corrected_rejection",
-                        raw=repaired_result.raw,
-                        review=corrected_review,
-                    )
-                    raise ValidationTechnicalFailure(
-                        "authored_expression_reselection_invalid",
-                        model_call_id=repaired_result.winning_model_call_id,
-                        request_hash=repaired_result.winning_request_hash,
-                        attempted_model_id=(repaired_result.winning_model_id or pending.model_id),
-                        attempted_model_version=self._owner.VERSION,
-                        usage=usage,
-                        **_role_failure_payload_kwargs(
-                            repaired_result.raw,
-                            source_closure_violation(corrected_review),
-                        ),
-                    ) from ValueError(source_closure_violation(corrected_review))
-                proposal = materialize_expression_draft(
-                    raw=repaired_result.raw,
-                    request=expression_request,
-                    capabilities=self._owner._capabilities,
-                    quick_recovery=False,
-                    stable_identity_source_refs=self._owner._stable_identity_source_refs,
-                    private_state_context_json=pending.private_state_context_json,
-                    source_ref_aliases=pending.source_ref_aliases,
-                    require_explicit_authored_decision_fields=(
-                        self._owner._require_explicit_authored_decision_fields
-                    ),
-                )
-                if (
-                    repaired_result.winning_model_call_id is None
-                    or repaired_result.winning_request_hash is None
-                ):
-                    raise ValueError("paired source correction omitted provider identity")
-                winning_model_call_id = repaired_result.winning_model_call_id
-                winning_request_hash = repaired_result.winning_request_hash
-                winning_model_id = repaired_result.winning_model_id or pending.model_id
-                winning_episode_disposition = repaired_result.episode_disposition
         if winning_episode_disposition is not None:
             proposal = {
                 **proposal,
@@ -2850,7 +2670,6 @@ class _InboundCharacterAuthor:
             OrderedDict()
         )
         self._failed_combined = _BoundedKeySet(_MAX_PENDING_DRAFTS)
-        self._terminal_failed_combined = _BoundedKeySet(_MAX_PENDING_DRAFTS)
         self._terminal_authored_expression_combined = _BoundedKeySet(_MAX_PENDING_DRAFTS)
         self._failed_details: OrderedDict[tuple[str, ...], _FailedExpressionDetail] = OrderedDict()
         self._rejected_call_audits: OrderedDict[str, AuthoredCandidateInvocationAudit] = OrderedDict()
@@ -3002,7 +2821,6 @@ class _InboundCharacterAuthor:
         self._failed_combined.discard(failed_key)
         self._failed_details.pop(failed_key, None)
         self._terminal_authored_expression_combined.discard(key)
-        self._terminal_failed_combined.discard(key)
         self._pending.pop(key, None)
         for item_key in [item for item in self._candidate_pending if item[0] == key]:
             self._candidate_pending.pop(item_key, None)
@@ -3452,8 +3270,8 @@ class _InboundCharacterAuthor:
     ) -> dict[str, object]:
         """Prepare the final transport and refresh its copied v2 message table.
 
-        Internal shape/source corrections and Recall follow-ups are final: the
-        transport must not advertise another Recall branch. Offline fixtures
+        The actor-requested Recall follow-up is final: its transport must
+        not advertise another Recall branch. Offline fixtures
         without required-tool support retain the historical plain JSON seam.
         """
 
@@ -3558,476 +3376,27 @@ class _InboundCharacterAuthor:
         inferred = str(getattr(provider, "model", "")).strip()
         return (inferred or self._model_id_for(request))[:256]
 
-    async def _repair_expression_claims(
-        self,
-        *,
-        request: ModelInput,
-        provider: ChatCompletionModel,
-        messages: list[dict[str, str]],
-        raw: str,
-        violation: object,
-        source_closure_review: Any | None = None,
-        combined: bool = True,
-        timeout_seconds: float = _CLAIM_REPAIR_TIMEOUT_SECONDS,
-        private_state_context_json: str | None = None,
-        source_ref_aliases: SourceRefAliasTable | None = None,
-        prehistory_source_authority_context_json: str | None = None,
-        paired_appraisal_proposal: object | None = None,
-        paired_appraisal_materializer: (
-            Callable[[dict[str, object]], dict[str, object]] | None
-        ) = None,
-    ) -> _CognitionReselectionResult | None:
-        """Spend one corrective call naming the exact bounded violation.
+    def _reject_source_reselection(self, *, request, provider, raw, review) -> NoReturn:
+        """Keep the retired inner lane's typed failure; Core owns role correction."""
+        lane = self._source_closure_reselection_lane
+        model_id = lane.model_id if lane is not None else self._model_id_for_provider(request, provider)
+        error = SameContractRetryForbidden(
+            "same-contract validation reselection is disabled; discard the opportunity"
+        )
+        _trace_source_closure_rejection(
+            stage="reselection_provider_failed", raw=raw, review=review,
+        )
+        raise ValidationTechnicalFailure(
+            "authored_expression_reselection_invalid",
+            attempted_model_id=model_id,
+            attempted_model_version=self.VERSION,
+            **_role_failure_payload_kwargs(raw, error),
+        ) from error
 
-        Handles semantic source closure, claim-bookkeeping near-misses, and
-        non-claim draft-shape rejects. Returns validated expression bytes, or
-        ``None`` when the correction itself fails. This never loosens any
-        boundary: the corrected draft still passes the full materializer, and
-        only one role-model attempt is made.
-        """
-
-        if source_closure_review is not None and combined:
-            raise ValidationTechnicalFailure(
-                "authored_expression_reselection_invalid",
-                attempted_model_id=self._model_id_for_provider(request, provider),
-                attempted_model_version=self.VERSION,
-                **_role_failure_payload_kwargs(raw, violation),
-            )
-        prehistory_source_authority_context_json = (
-            prehistory_source_authority_context_json or request.model_content_json
-        )
-        is_private_state = is_private_turn_state_violation(violation)
-        violation_text = str(violation)
-        canonical_appraisal = (
-            _canonical_appraisal_reselection_context(raw=raw, request=request)
-            if combined and is_private_state
-            else None
-        )
-        effective_source_ref_aliases = source_ref_aliases
-        if source_closure_review is not None and effective_source_ref_aliases is None:
-            effective_source_ref_aliases = build_source_ref_alias_table(
-                request=request,
-                stable_identity_source_refs=self._stable_identity_source_refs,
-                model_visible_context_json=private_state_context_json,
-            )
-        if combined and is_private_state:
-            if canonical_appraisal is None:
-                shape = (
-                    "one complete replacement JSON object with appraisal_draft and "
-                    "expression_draft: select appraisal_draft from the pinned Context and "
-                    "completely reselect expression_draft"
-                )
-            else:
-                shape = (
-                    "one complete replacement JSON object with appraisal_draft and "
-                    "expression_draft: copy the immediately preceding canonical "
-                    "appraisal_draft unchanged and completely reselect expression_draft"
-                )
-        elif combined and source_closure_review is not None:
-            shape = (
-                "one complete replacement JSON object with appraisal_draft and "
-                "expression_draft: copy appraisal_draft unchanged and completely reselect "
-                "expression_draft"
-            )
-        else:
-            shape = (
-                "the same JSON object shape (appraisal_draft and expression_draft)"
-                if combined
-                else "one complete replacement ExpressionDraft JSON object only"
-            )
-        is_claim = _is_world_claim_violation(violation_text)
-        instruction = (
-            _source_closure_reselection_envelope(
-                raw=raw,
-                review=source_closure_review,
-                shape_line=shape,
-                companion_life_authority_availability=(
-                    _life_authority_availability_from_messages(messages)
-                ),
-                output_contract=expression_reselection_output_contract(
-                    capabilities=self._capabilities,
-                    allowed_source_ref_aliases=tuple(
-                        sorted(
-                            effective_source_ref_aliases.alias_for(source_ref) or source_ref
-                            for source_ref in effective_source_ref_aliases.canonical_refs
-                        )
-                    )
-                    if effective_source_ref_aliases is not None
-                    else (),
-                    world_claim_source_ref_aliases_by_scope=(
-                        world_claim_source_ref_aliases_by_scope(
-                            request=request,
-                            stable_identity_source_refs=self._stable_identity_source_refs,
-                            source_ref_aliases=effective_source_ref_aliases,
-                            model_visible_context_json=private_state_context_json,
-                            prehistory_source_authority_context_json=(
-                                prehistory_source_authority_context_json
-                            ),
-                        )
-                        if effective_source_ref_aliases is not None
-                        else {
-                            scope: ()
-                            for scope in (
-                                "current_world",
-                                "past_world",
-                                "counterpart_history",
-                                "shared_history",
-                                "stable_identity",
-                            )
-                        }
-                    ),
-                    response_expectation_assessment_required=(
-                        request_requires_response_expectation_assessment(request)
-                    ),
-                    provider_message_bound=bool(
-                        request.trigger_message is not None
-                        and request.trigger_message.platform_message_id
-                    ),
-                    combined=False,
-                ),
-            )
-            if source_closure_review is not None
-            else (
-                private_turn_state_reselection_instruction(
-                    violation_text,
-                    shape_line=shape,
-                )
-                if is_private_state
-                else (
-                    claim_repair_instruction(violation_text, shape_line=shape)
-                    if is_claim
-                    else shape_repair_instruction(
-                        violation_text,
-                        shape_line=shape,
-                        companion_life_authority_availability=(
-                            _life_authority_availability_from_messages(messages)
-                        ),
-                    )
-                )
-            )
-        )
-        reselection_messages = [*messages]
-        if canonical_appraisal is not None:
-            reselection_messages.append({"role": "assistant", "content": canonical_appraisal})
-        reselection_lane = (
-            self._source_closure_reselection_lane if source_closure_review is not None else None
-        )
-        reselection_provider = reselection_lane.author if reselection_lane is not None else provider
-        reselection_model_id = (
-            reselection_lane.model_id
-            if reselection_lane is not None
-            else self._model_id_for_provider(request, provider)
-        )
-        expression_tool_kwargs = (
-            _expression_tool_reselection_kwargs(
-                request=request,
-                provider=reselection_provider,
-                capabilities=self._capabilities,
-                stable_identity_source_refs=self._stable_identity_source_refs,
-                source_ref_aliases=effective_source_ref_aliases,
-            )
-            if not combined
-            else {}
-        )
-        try:
-            reselection = await complete_bounded_validation_reselection(
-                model=reselection_provider,
-                messages=reselection_messages,
-                raw=raw,
-                instruction=instruction,
-                temperature=(0.0 if source_closure_review is not None else 0.2),
-                timeout_seconds=timeout_seconds,
-                parent_call_id=request.call_id,
-                include_invalid_raw=(source_closure_review is None and not is_private_state),
-                model_id=reselection_model_id,
-                source_closure_lane_used=reselection_lane is not None,
-                **(
-                    self._final_tool_reselection_kwargs(
-                        request=request,
-                        provider=reselection_provider,
-                        messages=reselection_messages,
-                    )
-                    if combined and reselection_lane is None
-                    else expression_tool_kwargs
-                ),
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            if source_closure_review is not None:
-                _trace_source_closure_rejection(
-                    stage="reselection_provider_failed",
-                    raw=raw,
-                    review=source_closure_review,
-                )
-            correction_kind = (
-                "source-closure"
-                if source_closure_review is not None
-                else ("world-claim" if is_claim else "draft-shape")
-            )
-            logger.warning(
-                "%s corrective retry failed error_type=%s",
-                correction_kind,
-                type(exc).__name__,
-            )
-            if source_closure_review is not None:
-                raise ValidationTechnicalFailure(
-                    "authored_expression_reselection_invalid",
-                    attempted_model_id=reselection_model_id,
-                    attempted_model_version=self.VERSION,
-                    **_role_failure_payload_kwargs(raw, exc),
-                ) from exc
-            return None
-
-        corrected_raw = reselection.raw
-        episode_disposition: str | None = None
-        corrected_appraisal_proposal: dict[str, object] | None = None
-        try:
-            if source_closure_review is not None or expression_tool_kwargs:
-                corrected_raw = normalize_realtime_expression_reselection_output(corrected_raw)
-            if combined:
-                corrected = _parse_combined(corrected_raw)
-                corrected_appraisal_proposal = (
-                    paired_appraisal_materializer(corrected["appraisal_draft"])
-                    if paired_appraisal_materializer is not None
-                    else materialize_appraisal_draft(
-                        raw=json.dumps(
-                            corrected["appraisal_draft"],
-                            ensure_ascii=False,
-                            separators=(",", ":"),
-                        ),
-                        request=request,
-                    )
-                )
-                expression_raw = json.dumps(
-                    corrected["expression_draft"], ensure_ascii=False, separators=(",", ":")
-                )
-            else:
-                expression_raw = corrected_raw
-            expression_raw, episode_disposition = _split_expression_episode_disposition(
-                expression_raw,
-                provisional=False,
-                allow_source_reselection_envelope=(
-                    source_closure_review is not None and not combined
-                ),
-            )
-            materialized_expression = materialize_expression_draft(
-                raw=expression_raw,
-                request=request,
-                capabilities=self._capabilities,
-                quick_recovery=False,
-                stable_identity_source_refs=self._stable_identity_source_refs,
-                private_state_context_json=private_state_context_json,
-                source_ref_aliases=source_ref_aliases,
-                prehistory_source_authority_context_json=(
-                    prehistory_source_authority_context_json
-                ),
-                require_explicit_authored_decision_fields=(
-                    self._require_explicit_authored_decision_fields
-                ),
-            )
-            effective_appraisal_proposal = (
-                corrected_appraisal_proposal
-                if corrected_appraisal_proposal is not None
-                else paired_appraisal_proposal
-            )
-            if effective_appraisal_proposal is not None:
-                _validate_materialized_cognition_visible_spans(
-                    appraisal_proposal=effective_appraisal_proposal,
-                    expression_proposal=materialized_expression,
-                )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            if source_closure_review is not None:
-                _trace_source_reselection_materialization_failure(
-                    raw=corrected_raw,
-                    error=exc,
-                    stage="pre_final_source_review",
-                )
-                _trace_source_closure_rejection(
-                    stage="reselection_output_invalid_before_review",
-                    raw=corrected_raw,
-                    review=source_closure_review,
-                )
-            correction_kind = (
-                "source-closure"
-                if source_closure_review is not None
-                else ("world-claim" if is_claim else "draft-shape")
-            )
-            logger.warning(
-                "%s corrective retry failed error_type=%s",
-                correction_kind,
-                type(exc).__name__,
-            )
-            if source_closure_review is not None:
-                raise ValidationTechnicalFailure(
-                    "authored_expression_reselection_invalid",
-                    model_call_id=reselection.winning_model_call_id,
-                    request_hash=reselection.winning_request_hash,
-                    attempted_model_id=reselection_model_id,
-                    attempted_model_version=self.VERSION,
-                    usage=reselection.usage,
-                    **_role_failure_payload_kwargs(corrected_raw, exc),
-                ) from exc
-            return None
-        if source_closure_review is not None:
-            logger.warning("source-closure corrective retry repaired the expression draft")
-            record_source_closure_reselection()
-        elif is_claim:
-            logger.warning("world-claim corrective retry repaired the expression draft")
-            record_claim_repair()
-        else:
-            logger.warning("draft-shape corrective retry repaired the expression draft")
-            record_shape_repair()
-        return _CognitionReselectionResult(
-            raw=expression_raw,
-            usage=reselection.usage,
-            corrective_used=True,
-            winning_model_call_id=reselection.winning_model_call_id,
-            winning_request_hash=reselection.winning_request_hash,
-            winning_model_id=reselection_model_id,
-            source_closure_lane_used=reselection_lane is not None,
-            episode_disposition=episode_disposition,
-            paired_appraisal_proposal=corrected_appraisal_proposal,
-        )
-
-    async def _reselect_invalid_private_recall_choice(
-        self,
-        *,
-        request: ModelInput,
-        provider: ChatCompletionModel,
-        messages: list[dict[str, str]],
-        raw: str,
-        violation: object,
-        timeout_seconds: float = _CLAIM_REPAIR_TIMEOUT_SECONDS,
-        private_state_context_json: str | None = None,
-        source_ref_aliases: SourceRefAliasTable | None = None,
-    ) -> ValidationReselectionResult | None:
-        """Replace a malformed Recall choice with one final paired cognition.
-
-        The corrective call consumes the turn's only secondary provider slot,
-        so its result must be the final appraisal/expression envelope rather
-        than another recall request.
-        """
-
-        canonical_appraisal = _canonical_appraisal_reselection_context(
-            raw=raw,
-            request=request,
-        )
-        appraisal_clause = (
-            "copy the immediately preceding canonical appraisal_draft unchanged and "
-            if canonical_appraisal is not None
-            else "select appraisal_draft from the pinned Context and "
-        )
-        shape_line = (
-            "one complete replacement JSON object with appraisal_draft and "
-            f"expression_draft; {appraisal_clause}choose the final expression now "
-            "without requesting another recall"
-        )
-        instruction = (
-            recall_choice_reselection_instruction(
-                violation,
-                shape_line=shape_line,
-            )
-            if isinstance(violation, RecallChoiceValidationError)
-            else private_turn_state_reselection_instruction(
-                str(violation),
-                shape_line=shape_line,
-            )
-        )
-        reselection_messages = [*messages]
-        if canonical_appraisal is not None:
-            reselection_messages.append({"role": "assistant", "content": canonical_appraisal})
-        try:
-            reselection = await complete_bounded_validation_reselection(
-                model=provider,
-                messages=reselection_messages,
-                raw=raw,
-                instruction=instruction,
-                temperature=self._temperature,
-                timeout_seconds=timeout_seconds,
-                parent_call_id=request.call_id,
-                include_invalid_raw=False,
-                **self._final_tool_reselection_kwargs(
-                    request=request,
-                    provider=provider,
-                    messages=reselection_messages,
-                ),
-            )
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            logger.warning(
-                "private recall-choice reselection failed error_type=%s",
-                type(exc).__name__,
-            )
-            return None
-
-        corrected_raw = reselection.raw
-        episode_disposition: str | None = None
-        try:
-            corrected = _parse_combined(corrected_raw)
-            expression_raw = json.dumps(
-                corrected["expression_draft"],
-                ensure_ascii=False,
-                separators=(",", ":"),
-            )
-            expression_raw, episode_disposition = _split_expression_episode_disposition(
-                expression_raw,
-                provisional=False,
-            )
-            materialize_expression_draft(
-                raw=expression_raw,
-                request=request,
-                capabilities=self._capabilities,
-                quick_recovery=False,
-                stable_identity_source_refs=self._stable_identity_source_refs,
-                private_state_context_json=private_state_context_json,
-                source_ref_aliases=source_ref_aliases,
-                require_explicit_authored_decision_fields=(
-                    self._require_explicit_authored_decision_fields
-                ),
-            )
-        except (TypeError, ValueError) as exc:
-            logger.warning(
-                "private recall-choice reselection returned another invalid result error_type=%s",
-                type(exc).__name__,
-            )
-            raise ValidationTechnicalFailure(
-                "recall_choice_reselection_invalid",
-                model_call_id=reselection.winning_model_call_id,
-                request_hash=reselection.winning_request_hash,
-                attempted_model_id=self._model_id_for_provider(request, provider),
-                attempted_model_version=self.VERSION,
-                usage=reselection.usage,
-                **_role_failure_payload_kwargs(corrected_raw, exc),
-            ) from exc
-        logger.warning("private recall-choice reselection produced a final paired cognition")
-        record_shape_repair()
-        return ValidationReselectionResult(
-            raw=corrected_raw,
-            usage=reselection.usage,
-            corrective_used=True,
-            winning_model_call_id=reselection.winning_model_call_id,
-            winning_request_hash=reselection.winning_request_hash,
-            episode_disposition=episode_disposition,
-        )
-
-    async def _retry_failed_expression_before_failsafe(
+    async def _resume_failed_expression(
         self, request: ModelInput, key: tuple[str, ...]
     ) -> ModelOutput | None:
-        """One violation-quoting main-provider retry before model-owned recovery.
-
-        The paired pass failed structurally and its bounded in-attempt repair
-        either did not fit the appraisal-lane budget or itself failed once.
-        The person is now already waiting on the failure path, so spending a
-        few more seconds on one corrective completion lets the same character
-        model make a valid choice without introducing host-authored speech.
-        Timeout-class failures never reach here: they leave no remembered
-        violation, so this method returns ``None`` immediately for them.
-        """
-
+        """A changed pin permits fresh authorship; an old reject is not a retry recipe."""
         detail = self._failed_details.pop(key, None)
         if detail is None:
             return None
@@ -4039,124 +3408,12 @@ class _InboundCharacterAuthor:
             or detail.origin_ledger_sequence != request.evaluated_ledger_sequence
         )
         if origin_identity_changed:
-            # The retained messages and invalid bytes belong to the old
+            # The retained invalid bytes belong to the old
             # Pinned Turn.  They are not a recovery recipe for the same
             # Observation at a later cursor: author a new Expression from the
             # current Context and give that provider invocation its own audit.
             return await self._selected_expression(request).propose(request)
-        repair_timeout = fit_secondary_call_timeout(_CLAIM_REPAIR_TIMEOUT_SECONDS)
-        if repair_timeout is None:
-            return None
-        provider = self._selected_provider(request)
-        repaired_result = await self._repair_expression_claims(
-            request=request,
-            provider=provider,
-            messages=detail.messages,
-            raw=detail.raw,
-            violation=detail.violation,
-            combined=True,
-            timeout_seconds=repair_timeout,
-            private_state_context_json=detail.private_state_context_json,
-            source_ref_aliases=detail.source_ref_aliases,
-        )
-        if repaired_result is None:
-            return None
-        usage = _combine_usage(detail.usage, repaired_result.usage, request.call_id)
-        try:
-            original = _parse_combined(detail.raw)
-            original_appraisal = materialize_appraisal_draft(
-                raw=json.dumps(
-                    original["appraisal_draft"],
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                ),
-                request=request,
-            )
-        except (TypeError, ValueError) as exc:
-            raise ValidationTechnicalFailure(
-                "paired_expression_reselection_invalid",
-                model_call_id=repaired_result.winning_model_call_id,
-                request_hash=repaired_result.winning_request_hash,
-                attempted_model_id=self._model_id_for_provider(request, provider),
-                attempted_model_version=self.VERSION,
-                usage=usage,
-                **_role_failure_payload_kwargs(detail.raw, exc),
-            ) from exc
-        if repaired_result.paired_appraisal_proposal != original_appraisal:
-            # The appraisal candidate has already left this materializer. A
-            # later expression-only recovery cannot silently combine its old
-            # semantic choice with a newly authored paired correction.
-            raise ValidationTechnicalFailure(
-                "paired_expression_reselection_invalid",
-                model_call_id=repaired_result.winning_model_call_id,
-                request_hash=repaired_result.winning_request_hash,
-                attempted_model_id=self._model_id_for_provider(request, provider),
-                attempted_model_version=self.VERSION,
-                usage=usage,
-                **_role_failure_payload_kwargs(
-                    detail.raw,
-                    "paired appraisal must stay unchanged during expression reselection",
-                ),
-            )
-        reviewer = self._source_closure_reviewer
-        if reviewer is not None:
-            review_result = await review_expression_with_candidate_external_coverage(
-                reviewer=reviewer,
-                inventory_model=None,
-                report_relative_reviewer=self._report_relative_reviewer,
-                request=request,
-                raw=repaired_result.raw,
-                identity_frame=self._identity_frame,
-                model_visible_context_json=detail.private_state_context_json,
-                source_ref_aliases=detail.source_ref_aliases,
-                review_claim_free_candidates=self._review_claim_free_candidates,
-            )
-            if review_result.usage is not None:
-                usage = _combine_usage(
-                    usage,
-                    review_result.usage,
-                    request.call_id,
-                )
-            review = review_result.review
-            if review is not None and review.decision == "unsupported":
-                _trace_source_closure_rejection(
-                    stage="corrected_rejection",
-                    raw=repaired_result.raw,
-                    review=review,
-                )
-                raise ValueError(source_closure_violation(review))
-        if (
-            repaired_result.winning_model_call_id is None
-            or repaired_result.winning_request_hash is None
-        ):
-            raise ValueError("paired delayed shape correction omitted provider identity")
-        logger.warning(
-            "pre-failsafe corrective retry recovered a genuine expression trigger=%s",
-            request.trigger_message.observation_ref
-            if request.trigger_message is not None
-            else request.trigger_ref,
-        )
-        return ModelOutput(
-            model_id=self._model_id_for_provider(request, provider),
-            model_version=self.VERSION,
-            raw_proposal=materialize_expression_draft(
-                raw=repaired_result.raw,
-                request=request,
-                capabilities=self._capabilities,
-                quick_recovery=False,
-                stable_identity_source_refs=self._stable_identity_source_refs,
-                private_state_context_json=detail.private_state_context_json,
-                source_ref_aliases=detail.source_ref_aliases,
-                require_explicit_authored_decision_fields=(
-                    self._require_explicit_authored_decision_fields
-                ),
-            ),
-            input_tokens=usage.input_tokens if usage is not None else None,
-            output_tokens=usage.output_tokens if usage is not None else None,
-            usage=usage,
-            winning_model_call_id=repaired_result.winning_model_call_id,
-            winning_request_hash=repaired_result.winning_request_hash,
-        )
+        return None
 
     async def _propose_appraisal(
         self,
@@ -4795,79 +4052,15 @@ class _InboundCharacterAuthor:
             self._failed_combined.add(_failed_cache_key(request))
             raise
         expression_request = request
-        repair_messages = messages
         recall_allowed = model_content_allows_recall(request.model_content_json)
-        recall_choice_corrective_spent = False
-        try:
-            parsed_recall_request = parse_character_recall_request(
-                raw,
-                request=provider_request,
-                capabilities=self._capabilities,
-                stable_identity_source_refs=self._stable_identity_source_refs,
-                model_visible_context_json=provider_request.model_content_json,
-                source_ref_aliases=source_ref_aliases,
-            )
-        except (TypeError, ValueError) as exc:
-            if expression_episode_provider_slots_active() or not (
-                is_private_turn_state_violation(exc) or is_recall_choice_violation(exc)
-            ):
-                raise
-            repair_timeout = fit_secondary_call_timeout(_CLAIM_REPAIR_TIMEOUT_SECONDS)
-            if repair_timeout is None:
-                raise
-            try:
-                corrected_result = await self._reselect_invalid_private_recall_choice(
-                    request=provider_request,
-                    provider=provider,
-                    messages=messages,
-                    raw=raw,
-                    violation=exc,
-                    timeout_seconds=repair_timeout,
-                    private_state_context_json=provider_request.model_content_json,
-                    source_ref_aliases=source_ref_aliases,
-                )
-            except ValidationTechnicalFailure as terminal:
-                self._terminal_failed_combined.add(_cache_key(request))
-                raise ValidationTechnicalFailure(
-                    "recall_choice_reselection_invalid",
-                    model_call_id=terminal.model_call_id,
-                    request_hash=terminal.request_hash,
-                    attempted_model_id=model_id,
-                    attempted_model_version=self.VERSION,
-                    usage=_combine_usage(usage, terminal.usage, request.call_id),
-                    original_failure_code=terminal.original_failure_code,
-                    failure_detail=terminal.failure_detail,
-                    rejected_raw_hash=terminal.rejected_raw_hash,
-                    rejected_raw_excerpt=terminal.rejected_raw_excerpt,
-                ) from terminal
-            if corrected_result is None:
-                raise
-            usage = _combine_usage(usage, corrected_result.usage, request.call_id)
-            raw = corrected_result.raw
-            forced_transport_error = None
-            if (
-                corrected_result.winning_model_call_id is None
-                or corrected_result.winning_request_hash is None
-            ):
-                raise ValueError("paired recall correction omitted provider identity")
-            winning_provider_identity = _ProviderInvocationIdentity(
-                model_call_id=corrected_result.winning_model_call_id,
-                request_hash=corrected_result.winning_request_hash,
-            )
-            recall_choice_corrective_spent = True
-            parsed_recall_request = parse_character_recall_request(
-                raw,
-                request=provider_request,
-                capabilities=self._capabilities,
-                stable_identity_source_refs=self._stable_identity_source_refs,
-                model_visible_context_json=provider_request.model_content_json,
-                source_ref_aliases=source_ref_aliases,
-            )
-            if parsed_recall_request is not None:
-                raise ValueError(
-                    "a private-state recall-choice correction must return final "
-                    "appraisal_draft and expression_draft"
-                )
+        parsed_recall_request = parse_character_recall_request(
+            raw,
+            request=provider_request,
+            capabilities=self._capabilities,
+            stable_identity_source_refs=self._stable_identity_source_refs,
+            model_visible_context_json=provider_request.model_content_json,
+            source_ref_aliases=source_ref_aliases,
+        )
         if not recall_allowed and parsed_recall_request is not None:
             raise ValueError("paired character recall budget is already consumed")
         if (
@@ -5022,7 +4215,6 @@ class _InboundCharacterAuthor:
                     ),
                 },
             ]
-            repair_messages = followup
             followup_tool = self._final_tool_reselection_kwargs(
                 request=provider_expression_request,
                 provider=provider,
@@ -5110,7 +4302,6 @@ class _InboundCharacterAuthor:
             winning_provider_identity = followup_identity
         else:
             provider_expression_request = provider_request
-        envelope_corrective_spent = False
         try:
             if forced_transport_error is not None:
                 raise forced_transport_error
@@ -5126,12 +4317,8 @@ class _InboundCharacterAuthor:
             self._failed_combined.add(failed_key)
             self._remember_failed_expression(
                 failed_key,
-                messages=repair_messages,
                 raw=raw,
                 violation=str(exc),
-                usage=usage,
-                private_state_context_json=(provider_expression_request.model_content_json),
-                source_ref_aliases=source_ref_aliases,
                 origin_request=expression_request,
             )
             # Same-contract retry on this lane is disabled. CharacterInterior
@@ -5164,7 +4351,7 @@ class _InboundCharacterAuthor:
             )
 
         appraisal_proposal: dict[str, object] | None = None
-        corrective_spent = recall_choice_corrective_spent or envelope_corrective_spent
+        retain_failure_for_repin = True
         try:
             appraisal_proposal = materialize_live_appraisal(value["appraisal_draft"])
         except AffectTargetBelowMinimumError as target_error:
@@ -5248,17 +4435,10 @@ class _InboundCharacterAuthor:
         if (
             not expression_valid
             and violation is not None
-            and not corrective_spent
             and not expression_episode_provider_slots_active()
         ):
-            # A structural near-miss (claim bookkeeping, beat shape, later
-            # contract) regularly arrives attached to a perfectly good visible
-            # reply. Spend one corrective call on the same selected role
-            # author that names the exact violation. The retry
-            # is deadline-aware: when the Deliberation attempt budget cannot
-            # fit another completion, defer the correction to the
-            # post-acceptance expression pass instead of timing out the whole
-            # attempt after the repair already succeeded.
+            # Preserve the installed deadline-sensitive failure disposition.
+            # This inner lane does not generate; Core owns any role correction.
             repair_timeout = fit_secondary_call_timeout(_CLAIM_REPAIR_TIMEOUT_SECONDS)
             if repair_timeout is None:
                 logger.warning(
@@ -5266,45 +4446,10 @@ class _InboundCharacterAuthor:
                     violation[:200],
                 )
             else:
-                corrective_spent = True
-                repaired_result = await self._repair_expression_claims(
-                    request=expression_request,
-                    provider=provider,
-                    messages=repair_messages,
-                    raw=raw,
-                    violation=(violation_object if violation_object is not None else violation),
-                    timeout_seconds=repair_timeout,
-                    private_state_context_json=(provider_expression_request.model_content_json),
-                    source_ref_aliases=source_ref_aliases,
-                    paired_appraisal_materializer=materialize_live_appraisal,
-                )
-                if repaired_result is not None:
-                    usage = _combine_usage(
-                        usage,
-                        repaired_result.usage,
-                        request.call_id,
-                    )
-                    expression_raw = repaired_result.raw
-                    episode_disposition = repaired_result.episode_disposition
-                    if repaired_result.paired_appraisal_proposal is None:
-                        raise ValueError("paired shape correction omitted appraisal result")
-                    appraisal_proposal = repaired_result.paired_appraisal_proposal
-                    if (
-                        repaired_result.winning_model_call_id is None
-                        or repaired_result.winning_request_hash is None
-                    ):
-                        raise ValueError("paired shape correction omitted provider identity")
-                    winning_provider_identity = _ProviderInvocationIdentity(
-                        model_call_id=repaired_result.winning_model_call_id,
-                        request_hash=repaired_result.winning_request_hash,
-                    )
-                    expression_valid = True
-                elif authored_field_violation:
-                    # The paired transport already spent this authored
-                    # candidate's only full structural reselection. A second
-                    # omission is a terminal technical validation failure,
-                    # not permission to materialize replay defaults or ask a
-                    # second character author to make a third semantic choice.
+                retain_failure_for_repin = False
+                # The inner retry is closed. Retain its terminal marker so
+                # materialization cannot silently reintroduce default fields.
+                if authored_field_violation:
                     self._terminal_authored_expression_combined.add(_cache_key(expression_request))
         if appraisal_proposal is None:
             raise ValidationTechnicalFailure(
@@ -5317,7 +4462,6 @@ class _InboundCharacterAuthor:
                 failure_detail="这一轮缺少 appraisal_draft。full_turn 请写 protocol/appraisal_draft/events；reply_only 可把心情写在 felt。",
             )
         if expression_valid:
-            self._terminal_failed_combined.discard(_cache_key(expression_request))
             self._terminal_authored_expression_combined.discard(_cache_key(expression_request))
             pending_expression = _PendingExpression(
                 raw=expression_raw,
@@ -5337,7 +4481,6 @@ class _InboundCharacterAuthor:
                 winning_model_call_id=winning_provider_identity.model_call_id,
                 winning_request_hash=winning_provider_identity.request_hash,
                 author_provider=provider,
-                corrective_spent=corrective_spent,
                 episode_disposition=episode_disposition,
                 recall_trace=recall_trace,
                 prefetch_trace=prefetch_trace,
@@ -5376,15 +4519,11 @@ class _InboundCharacterAuthor:
         # see paired_expression_reselection_invalid with a readable detail.
         failed_key = _failed_cache_key(expression_request)
         self._failed_combined.add(failed_key)
-        if violation is not None and not corrective_spent:
+        if violation is not None and retain_failure_for_repin:
             self._remember_failed_expression(
                 failed_key,
-                messages=repair_messages,
                 raw=raw,
                 violation=violation,
-                usage=usage,
-                private_state_context_json=(provider_expression_request.model_content_json),
-                source_ref_aliases=source_ref_aliases,
                 origin_request=expression_request,
             )
         extra = (
@@ -5414,22 +4553,14 @@ class _InboundCharacterAuthor:
         self,
         key: tuple[str, ...],
         *,
-        messages: list[dict[str, str]],
         raw: str,
         violation: str,
-        usage: ModelUsageProvenance | None,
-        private_state_context_json: str,
-        source_ref_aliases: SourceRefAliasTable,
         origin_request: ModelInput,
     ) -> None:
         self._failed_details.pop(key, None)
         self._failed_details[key] = _FailedExpressionDetail(
-            messages=messages,
             raw=raw,
             violation=violation,
-            usage=usage,
-            private_state_context_json=private_state_context_json,
-            source_ref_aliases=source_ref_aliases,
             origin_call_id=origin_request.call_id,
             origin_request_hash=_model_input_request_hash(origin_request),
             origin_world_revision=origin_request.evaluated_world_revision,
@@ -5457,61 +4588,6 @@ def _visible_expression_shape(value: dict[str, Any]) -> str:
     return ";".join(parts)
 
 
-def _canonical_appraisal_reselection_context(
-    *,
-    raw: str,
-    request: ModelInput,
-) -> str | None:
-    """Keep only a validated appraisal when a paired expression is discarded.
-
-    A private-state failure invalidates the causal path to the complete
-    expression.  Returning that expression to the role model would make its
-    old visible prose an accidental anchor.  A separately valid appraisal may
-    still be retained, but only as a compact canonical subobject whose fields
-    are understood by the AppraisalDraft materializer.
-    """
-
-    if not isinstance(raw, str):
-        return None
-    candidate = raw.strip()
-    if candidate.startswith("```"):
-        lines = candidate.splitlines()
-        if len(lines) < 3 or not lines[-1].strip().startswith("```"):
-            return None
-        candidate = "\n".join(lines[1:-1]).strip()
-    try:
-        value = json.loads(candidate)
-    except json.JSONDecodeError:
-        return None
-    if not isinstance(value, dict):
-        return None
-    appraisal = value.get("appraisal_draft", value.get("AppraisalDraft"))
-    if not isinstance(appraisal, dict):
-        return None
-
-    fields = set(_APPRAISAL_COMMON_FIELDS)
-    if appraisal.get("appraise") is True:
-        fields.update(_APPRAISAL_EVENT_FIELDS)
-        affect_operation = appraisal.get("affect")
-        if isinstance(affect_operation, str):
-            fields.update(_APPRAISAL_AFFECT_FIELDS.get(affect_operation, ()))
-    canonical_appraisal = {key: appraisal[key] for key in sorted(fields) if key in appraisal}
-    appraisal_raw = json.dumps(
-        canonical_appraisal,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
-    try:
-        materialize_appraisal_draft(raw=appraisal_raw, request=request)
-    except (TypeError, ValueError):
-        return None
-    return json.dumps(
-        {"appraisal_draft": canonical_appraisal},
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    )
 
 
 def _parse_combined(raw: str) -> dict[str, dict[str, Any]]:

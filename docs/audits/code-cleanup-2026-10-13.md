@@ -1,69 +1,70 @@
-# 代码清理盘点与第一批结果（2026-10-13）
+# 代码清理与主链路收敛记录
 
-基线：`fa6c3700`；工作目录：`codex/role-memory-qualification`。
-用户要求：先盘清楚，确定废弃的删除，重复的合并；保留现有功能和角色自主性，不因重构增加新层。
-这是本次清理的证据记录，不是第三份并列架构计划。
+本文件统一记录 2026-10-13 起的清理工作，取代分散、重复的清理报告；不是新的架构计划。
+分支：`codex/role-memory-qualification`。目标是降低实际复杂度，保留功能、角色自主性、
+来源/权限、CAS、effect-once、回执、重放和技术失败记录。行数含空行及注释，源码、测试、文档分别计数。
+生产部署、真实 QQ 与长期故事质量不能由离线回归代替，本系列均未进行生产重启或新增远程模型调用。
 
-## 盘点方法与适用范围
+## 已完成阶段与证据
 
-- 扫描基线全部受 Git 管理的 Python 文件，构建 AST import 图，包含相对 import 和包 `__init__`。
-- 根为 `pyproject.toml` 声明的 app/cli/napcat/test-economy/formal-evaluation 入口及 QQ host composition。
-  OneBot 入口与 NapCat 共用同一 Python Module。
-- 另计 `scripts/`、`configs/` 和测试的引用闭包。检查动态 import、配置字符串和公开类名引用。
-- 这是保守的文件级候选筛选，不是完整函数调用图：导入不等于执行，测试引用不等于生产功能，
-  没有入口引用也不自动证明可删。对实际删除项再核实职责、退役契约、替代者和序列化用途。
-- 源码行数包含注释和空行；不拿测试/脚本行数当生产代码量。
-- 一次性盘点程序、全量逐 Module import/importer 清单、前后计数、原始验证日志保存在
-  `output/private-audits/code-cleanup-20261013/`。没有把盘点程序做成新的生产框架。
+| 阶段 | 基线 / 实现 | 改动与限制 | 最终回归 |
+| --- | --- | --- | --- |
+| 废弃实现清退 | `fa6c3700` / `f83b3ec2`、`989e0bbd` | 源码−2885行，测试−1264行。删除下述六个孤立实现及两个旧 PinnedTurn 方法；合并历史UTC-only哈希及面板origin解析。 | 10617 passed / 19 skipped / 2 xfailed；1704 Python SHA不变 |
+| 检索与在用流程收敛 | `989e0bbd` / `37534a3b`、`f28f03d8`、`e818e506`、`f8de9b5b`、`4baab9de` | 源码−138，测试+147，文档+139，总计+148行。初始历史查询改读正文；预取接续归还Recall；两种Life审核共用重试循环；缓存响应跳过新检索/编码。 | 10629 passed / 19 skipped / 2 xfailed；1705 Python SHA不变 |
+| 聊天主链路 | `4baab9de` / 本轮 | 删除退役内层重试的请求准备、不可达成功分支和无效状态；有效纠正继续由Core负责。测试、文档一并收敛。 | 待本轮冻结验收 |
 
-| 基线分类 | 文件数 | Python 行数 |
-| --- | ---: | ---: |
-| src | 718 | 387302 |
-| tests | 798 | 347062 |
-| scripts | 184 | 76425 |
-| prototypes | 6 | 774 |
+证据均在 `output/private-audits/`：
+- `code-cleanup-20261013/`：完整 import/importer 图、六组AST等价、哈希固定向量、330+106项定向记录；
+  `final-regression/result.json` 为终态，pytest1209.71s，exit0。
+- `active-path-simplification-20261013/`：28组旧/新Life审核差分（包括请求、scope、失败/取消）逐项相同；
+  精确历史坐标19475/20421/39896保留1259前史，固定Memory/World-Life文档1282份。
+  查询1024字符元数据→463字符正文，可引用命中1→2；**不是独立相关性或故事质量证明**。
+  `final-regression-v4/result.json` 为终态，pytest1215.97s，exit0；先前中断/失败均保留。
+- `chat-mainline-consolidation-20261014/`：本轮基线、逐步回归、检查和冻结证据。
+两次已完成全库均有1条既有Starlette警告。源码冻结以各目录 `source-freeze.json` 为准。
 
-第一批代码提交 `f83b3ec2`：源码 718→712 个文件，387302→384417 行（净减 2885）；
-测试 798→797 个文件，347062→345798 行（净减 1264，删除两个专属测试文件、增加一个哈希兼容测试）。
-合计 Python 净减 4149 行，没有新增生产 Module。
+旧清理报告的完整历史文字可从 `989e0bbd:docs/audits/code-cleanup-2026-10-13.md` 和
+`4baab9de:docs/audits/active-path-simplification-2026-10-14.md` 恢复；下面保留处置清单及关键结果。
 
-718 个源码 Module 中：662 个从所选入口经 import 可达，29 个另由操作/评测脚本可达，
-23 个仅由测试可达，4 个不在任何上述 Python 根的闭包中。清除六个文件后，入口可达的
-**662 个 Module 集合保持相同**；操作/评测脚本的源码依赖也未减少。仍不能由此宣称
-每个分支都已证明等价；行为证据见验证项。
+## 删除依据及保留责任
 
-## 已核实并删除的实现
+| 已删实现 | 依据 / 仍保留的功能 |
+| --- | --- |
+| `acceptance_compilers.py`（1624行） | 仅专属测试引用、生产安装主动拒绝；现行Fact-v2 sealed registry/plan/recorder及历史manifest codec保留 |
+| `contextual_life_source_material.py`（447行） | 原作者已退役，仅专属测试引用；现行Life source view/readings/review及旧事件/重试/投影保留 |
+| `relationship_deliberation_worker.py`（164行） | 无调用者；现行同一角色回合的关系信号结算/验收/trigger保留 |
+| `read_only_tool_proposal_compiler.py`（223行）、`read_only_tool_query_reader.py`（81行）、`read_only_tool_authorization_resolver.py`（87行） | 退役独立工具作者的孤立链；显式注入工具的acceptance、最终授权、executor及回执保留 |
+| `PinnedTurnCompiler.audit_relationship_source` / `audit_appraisal_accepted` | 只为旧worker提供额外作者调用，不是历史codec；CharacterInterior的关系/Affect决定保留 |
 
-| 删除项 | 删除依据 | 保留的有效功能 |
-| --- | --- | --- |
-| `acceptance_compilers.py`（1624 行） | 只有自身测试导入；生产 registration 主动抛 `unsupported_key`，没有安装者；process-local handle 明确不可序列化 | 现行 Fact-v2 sealed registry、plan issuer、Manifest-v3 builder/atomic recorder、各领域 acceptance runtime 和历史 manifest codec |
-| `contextual_life_source_material.py`（447 行） | 原 contextual life inspiration author 已按 ADR 0016 退役；只有专属测试导入此编译器，没有当前 writer/reader 或持久化类型引用 | 当前 CharacterInterior Life source view/readings/review、ContextualLife 历史事件/重试/投影继续保留 |
-| `relationship_deliberation_worker.py`（164 行） | 没有源码/脚本/测试消费者；旧独立关系作者 worker 已由同一角色回合生成信号后结算的路径取代 | `character_interior/inbound_relationship.py` 和 `world_stimulus.py` 的同作者信号结算、relationship compiler/acceptance/trigger runtime |
-| `read_only_tool_proposal_compiler.py`（223 行） | 原 independent tool-author trigger 已确定退役；唯一源码消费者是同批删除的孤立 query reader | `ReadOnlyToolAcceptanceRuntime`、授权校验、工具 executor 和 Action/receipt/replay |
-| `read_only_tool_query_reader.py`（81 行） | 没有消费者；只负责从已退役作者的 proposal-audit 模式读取 query | 注入式 `ToolQueryReader` Interface 和现行工具验收链 |
-| `read_only_tool_authorization_resolver.py`（87 行） | 没有消费者；只为旧 proposal compiler 准备授权绑定 | 当前最终 dispatch 授权复核，撤回授权后禁止调用的测试 |
-| `PinnedTurnCompiler.audit_relationship_source` / `audit_appraisal_accepted` | 前者仅供旧 relationship worker；后者仅供前者。全仓源码、脚本、测试无其他引用；均是再次调用独立作者的方法，不是 replay codec | 当前 inbound 和 world-stimulus 仍由 CharacterInterior 作者决定关系/Affect，再进入原验收流程 |
+两个删除测试文件只覆盖对应旧实现；现行能力测试保留。`mechanism_closure.yaml` 的过期consumer改为
+实际 `ReadOnlyToolAcceptanceRuntime`。四份旧哈希canonicalizer合并时，特意保留UTC-only与modern
+两种真实契约；固定向量 `528a131bc8d9de471278c3cdac2516f685a2ebecb86e900f684cbdb24ace2474` 未变。
 
-删除两个专属测试文件：`test_acceptance_compilers.py`、`test_contextual_life_source_material.py`。
-它们只验证被删除的旧实现，没有其他测试/脚本导入其中的 fixture。未删现行 Fact-v2 recorder、
-同角色关系、来源权限、历史回放或只读工具资格测试。并将 `mechanism_closure.yaml` 中过期的
-`ReadOnlyToolProposalCompiler` consumer 改为实际受测试的 `ReadOnlyToolAcceptanceRuntime`，
-去掉把旧 claimed trigger 当当前必需来源的描述。
+## 本轮聊天主链路
 
-## 合并重复实现
+- `complete_bounded_validation_reselection` 已长期固定拒绝；wire还会在调用它之前直接抛出
+  typed failure，但旧请求/schema准备和“成功后”处理仍留在主函数里。删除这些不可达部分，
+  显式保留流取消、原错误/原文哈希/调用身份、来源审核及其费用、deadline相关失败分类。
+- paired作者的旧内部纠正只会返回None或抛错，不能成功。相应成功分支、无生产者标记、
+  多余回忆纠正状态、无效结果类型及纯重试载体删除。失败缓存只保存错误原文和准确pin身份；
+  换pin后由当前Context重新生成的路径保留，不把旧失败当新时点的角色决定。
+- `correct_role_result`、Core一次同角色纠正、最终来源复核、拒绝输出的完整调用审计均保留。
+  禁用的旧内层重试与当前有效的Core纠正是不同路径，不能混删。
+- 旧测试构造了从不执行的模拟响应。合并为plain/forced/metered三种零请求断言；原两种可选角色
+  字段情形改为直接执行schema验证和unwrap断言，测试数量保持，字段覆盖从不可达变成实际执行。
+  这也暴露旧样本漏掉life_intent字段，现显式给出null，未放宽生产schema。
+- 本轮456项基线与清理后定向回归一致通过；第一次精简误改变typed error分类、一次机械清理
+  留下旧局部变量引用，均被定向用例发现并修复，日志保留。新字段测试63项通过。
+- 扩展检查643项通过，Ruff/diff check通过。独立审查与最终全库结果待补充。
+- 结构变化：author→wire导入符号30→18；wire主处理1016→677行；同pin失败续接143→21行。
+  这些是删除不可能成功的流程和无生产者状态后的结果，未按行数拆文件。
+- 没有新增生产Module、注册器、备用角色或本地角色话术。
 
-1. Fact、Memory、Experience、Commitment 的四份 UTC-only JSON canonicalizer，收拢到已有
-   `schema_core.py` 的一个纯函数。没有增加类、注册器或新 Module。
-   **不能直接换成已有的 modern canonicalizer**：后者会额外归一化 `+08:00` 字符串，改变历史 hash。
-   本次保留两种真实存在的 codec 契约，固定基线向量四路哈希均为
-   `528a131bc8d9de471278c3cdac2516f685a2ebecb86e900f684cbdb24ace2474`。
-2. app 与 OneBot 面板完全相同的 origin parser 收拢到它们已共用的 Dashboard session Module。
-   两个 HTTP 入口各自的拒绝响应格式、loopback 校验和会话验证保持原实现。
+## 初始候选盘点
 
-## 无入口引用的全部候选及处置
-
-下面按基线大小列出全部 56 个候选，避免仅凭大文件或测试引用批量删除。最后一类需要进一步
-判断实验是否仍有价值、测试是否同时覆盖现行能力，以及有没有需保留的外部使用约定。
+`fa6c3700` 的718个源码Module中，662从所选入口import可达，29另由操作/评测脚本可达，
+23仅测试可达，4无上述Python根可达。首批删除后662入口集合不变。此为含包初始化器的保守文件级
+图，另查动态import、配置字符串和序列化责任；导入可达不等于运行，更不自动等于能删。
 
 | Module（相对 `src/companion_daemon/`） | 行数 | 本次处置 |
 | --- | ---: | --- |
@@ -124,35 +125,9 @@
 | `world_v2/social_action_draft.py` | 46 | 保留待复核：仅测试可达不足以证明废弃 |
 | `world_v2/legacy_deferred_reply_migration.py` | 25 | 保留：历史权重解释或旧事件回放夹具 |
 
-## 仍需深入的维护热点
+## 仍待处理
 
-- `reducers.py` 16510 行、`character_interior/inbound_wire.py` 11614 行、
-  `life_development_runtime.py` 8563 行：都在当前入口依赖链上，不能当死代码删除。
-  下一步应在各自内部查找重复的契约/状态转换和仅历史使用的分支；不机械按行数切文件。
-- `db.py` 的旧 `CompanionStore` 仍由预算、图片默认记账和脚本使用，不能整类删除。
-  必须先将实际需要的记账消费者收敛到已存在的窄账本，并证明预留/未知费用/重启语义一致。
-- `fact_v2_candidate_manifest.py` 虽只有测试导入，但同一个测试文件还覆盖现行生产 plan/recorder
-  的防伪造路径，不能将整个测试文件直接删除。
-- 只含试验用途的 memory representation、meaning fidelity、context retention 等保留待复核。
-  “尚未接入”与“确定废弃”不等同。
-- 历史 weight policy、legacy reply-later codec、旧 schema/reducer 保留；它们负责解释历史，
-  不重新引入角色作者或宿主行为脚本。
-- 历史文档中关于 `sealed_production_fact_registry_v2` 无引用的判断已过期：当前 Fact-v2
-  acceptance runtime/production plan 明确使用它，不能照旧表删除。
-
-## 验证记录
-
-- 第一批定向检查：330 passed，1 条既有 Starlette warning，32.40s。
-- `verify_mechanism_catalog.py`：schema=2，26 mechanisms，通过。
-- 合并前从四个原始 hash 函数生成固定向量；新增测试验证历史 hash、忽略 authority 包装字段、
-  实质数据变化必须改变 hash，以及 UTC-only/modern offset codec 不得混用。
-- 关系补充测试：106 passed，4.18s（此前一次命令误写测试文件名，0 tests；修正后以上述结果为准）。
-- Standards 审查：0 blocker，未发现需要改动的重复/过度抽象；独立验证四份 canonicalizer 与两份 origin parser 的 AST 主体一致。
-- Spec 审查：0 blocker；保留当前 CharacterInterior、Fact-v2、工具授权和历史回放。仅确认本批范围，不宣称整个仓库清理完。
-- 本地 `equivalence.json` 进一步固定六组 AST 主体等价及入口/操作脚本可达源码集合相同。
-- 最终冻结全量回归：**10617 passed / 19 skipped / 2 xfailed / 1 既有 Starlette warning**；
-  pytest 1209.71s，进程 exit 0。1704 个受版本管理的 Python 文件测试前后 SHA-256 完全相同。
-  验收终态：`output/private-audits/code-cleanup-20261013/final-regression/result.json`；
-  完整日志：同目录 `full.log`；冻结清单：同目录 `source-freeze.json`。
-- 修改文件 Ruff 与 `git diff --check` 均通过。没有配置新的类型检查工具或新的测试框架。
-- 无新增外部模型请求；未改运行配置、重启生产或调用 QQ。测试证据不代表生产 soak 资格。
+`production_turn_application` 的装配/health职责、其余在用聊天与Life实现仍需逐条收敛。
+`CompanionStore` 仍有预算和图片记账消费者；历史权重、旧schema/reducer和reply-later回放保留。
+仅测试可达的实验实现要逐项判断；Fact-v2 candidate测试同时覆盖现行防伪造，不能整文件删除。
+历史文档“sealed_production_fact_registry_v2无引用”的判断已过期，现行Fact验收确实依赖它。

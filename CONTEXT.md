@@ -1,27 +1,11 @@
-Active-path simplification (2026-10-14):
-Base989e0bbd; code37534a3b,f28f03d8,e818e506,f8de9b5b. Audit docs/audits/active-path-simplification-2026-10-14.md.
-Initial Outlook recall now reads displayed prose fields, excludes metadata/unavailable/withhold,
-and shares bounded query space; existing authored-thread cues and all anchor permissions stay.
-6fixed lexical cases0->6first hits; exact historical pin19475/20421/39896 keeps1259prehistory,
-1282fixed Memory/World-Life docs:query1024metadata->463prose,eligible1->2. Not relevance/story-quality proof.
-Chat prefetch adoption consolidated in existing Recall helper; unreachable None branch removed.
-Two Life review loops share one lifecycle;28original-vs-current vectors including purpose/action scopes equal.
-Cached Outlook recovery now skips fresh lookup/encoding;4red-first cold-recovery cases close SpecP2.
-No new production Module/author/behavior rule;source net-138lines. Reviewer scopes remain explicit for guard.
-Frozenfull10629pass/19skip/2xfail/1existingwarning,pytest1215.97s,exit0;1705PythonSHAunchanged.
-Evidence output/private-audits/active-path-simplification-20261013/final-regression-v4/. Prior interrupted/failed runs retained.
-No remote model calls/deployment/QQ;whole-chain restructuring and real cross-day quality remain open.
-
-Code cleanup first pass (2026-10-13):
-Base fa6c3700; code f83b3ec2. Inventory/disposition: docs/audits/code-cleanup-2026-10-13.md.
-Removed 6 orphan/retired modules +2 independent-author PinnedTurn methods and2 exclusive test files.
-Consolidated exact historical UTC-only hash codecs and dashboard origin parser in existing Modules;
-modern offset codec remains distinct. No new production Module or character behavior rule.
-Source718->712 files,387302->384417lines; tests798->797,347062->345798. Python net -4149lines.
-436 scoped pass; independent Standards/Spec0blockers. Frozenfull10617pass/19skip/2xfail/
-1existingwarning,pytest1209.71s,exit0;1704PythonSHAunchanged. Evidence output/private-audits/code-cleanup-20261013/.
-Entry import reachability same662Modules; operator-only29 remain. Not whole-repo cleanup completion.
-Keep replay/weight contracts; CompanionStore still has budget/image callers. No deploy/QQ/provider calls.
+Code simplification, current checkpoint (2026-10-14):
+Canonical inventory/results: docs/audits/code-cleanup-2026-10-13.md (includes prior active-path report).
+Last completed code37534a3b/f28f03d8/f8de9b5b, docs4baab9de: frozenfull10629pass/19skip/2xfail;
+1705PythonSHAunchanged, no deployment/QQ/provider calls. Query/prose and history recovery evidence scoped.
+Current chat cleanup starts4baab9de: remove retired inner-retry preparation/unreachable state,
+preserve Core correction, exact failure audits, source checks and fresh judgment on a changed pin.
+456scopedbaseline/candidate pass; final review/regression pending. No new production Module.
+Historical weights/codecs, current CompanionStore callers and real cross-day qualification remain open.
 
 cmdc-pak JSON carrier diagnosis and reading screen (2026-10-13):
 Base3717d8e2; code dbc3df3c +2d4a5aff. Design cmdc-json-carrier-and-quality-2026-10-13.md;

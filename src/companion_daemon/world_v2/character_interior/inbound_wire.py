@@ -18,7 +18,7 @@ import hashlib
 import json
 import logging
 from threading import Lock
-from typing import Any, Callable, Literal, NamedTuple, Protocol
+from typing import Any, Callable, Literal, NamedTuple, NoReturn, Protocol
 
 from pydantic import Field, ValidationError
 
@@ -30,7 +30,6 @@ from companion_daemon.llm import (
     model_turn_scope,
     provider_invocation_request_hash,
 )
-from .single_tool_transport import resolve_single_tool_transport
 from ..qq_face_render_catalog import (
     INBOUND_SURFACE_PROMPT_CLAUSE,
     INBOUND_SURFACE_PROMPT_CLAUSE_ZH,
@@ -84,11 +83,9 @@ from ..expression_draft import (
     is_world_claim_violation,
     materialize_expression_draft,
     normalize_expression_draft_wire,
-    request_requires_response_expectation_assessment,
     required_authored_expression_fields,
     single_report_epistemic_scope_boundary,
     validate_expression_private_turn_state,
-    world_claim_source_ref_aliases_by_scope,
     world_source_scope_boundary,
 )
 from ..expression_episode import validate_provisional_proposal
@@ -118,10 +115,7 @@ from ..visible_source_closure_protocol import (
 )
 from ..validation_failure_codes import sanitize_validation_technical_failure_code
 from ..production_reliability_metrics import (
-    record_claim_repair,
     record_compact_inbound_branch,
-    record_shape_repair,
-    record_source_closure_reselection,
 )
 from ..proposal_envelope import (
     CanonicalTypedPayload,
@@ -139,11 +133,6 @@ from ..source_closure_verdict import (
     adjudicate_visible_source_findings,
 )
 from ..source_closure_lane import SourceClosureReselectionLane
-from ..structured_expression_reselection_model import (
-    expression_reselection_output_contract,
-    expression_reselection_tool_contract,
-    normalize_realtime_expression_reselection_output,
-)
 from ..recall_index import RecallCursor
 from ..recall_runtime import (
     CharacterRecallRequest,
@@ -8171,86 +8160,6 @@ def _incremental_first_expression(
     raise ValueError("expression stream protocol is invalid")
 
 
-def _expression_tool_reselection_kwargs(
-    *,
-    request: ModelInput,
-    provider: ChatCompletionModel,
-    capabilities: ExpressionDraftCapabilities,
-    stable_identity_source_refs: frozenset[str],
-    source_ref_aliases: SourceRefAliasTable | None,
-) -> dict[str, object]:
-    """Compile the one required-tool route for an expression-only repair.
-
-    Both the paired author and the leaf expression wire use this seam.  The
-    caller supplies only the current capability/source coordinates; schema,
-    tool choice, identity, and lossless unwrapping stay in the canonical
-    expression compiler.
-    """
-
-    if not bool(getattr(provider, "supports_required_tool_choice", False)):
-        return {}
-    aliases = (
-        tuple(
-            sorted(
-                source_ref_aliases.alias_for(source_ref) or source_ref
-                for source_ref in source_ref_aliases.canonical_refs
-            )
-        )
-        if source_ref_aliases is not None
-        else ()
-    )
-    source_scopes = (
-        world_claim_source_ref_aliases_by_scope(
-            request=request,
-            stable_identity_source_refs=stable_identity_source_refs,
-            source_ref_aliases=source_ref_aliases,
-        )
-        if source_ref_aliases is not None
-        else {
-            scope: ()
-            for scope in (
-                "current_world",
-                "past_world",
-                "counterpart_history",
-                "shared_history",
-                "stable_identity",
-            )
-        }
-    )
-    output_contract = expression_reselection_output_contract(
-        capabilities=capabilities,
-        allowed_source_ref_aliases=aliases,
-        world_claim_source_ref_aliases_by_scope=source_scopes,
-        response_expectation_assessment_required=(
-            request_requires_response_expectation_assessment(request)
-        ),
-        provider_message_bound=bool(
-            request.trigger_message is not None and request.trigger_message.platform_message_id
-        ),
-        combined=False,
-    )
-    compiled = expression_reselection_tool_contract(output_contract)
-    transport = resolve_single_tool_transport(
-        provider=provider,
-        tools=compiled.provider_tools,
-        tool_choice=compiled.provider_tool_choice,
-        identity=compiled.identity.request_identity_material(),
-    )
-    return {
-        "tools": list(compiled.provider_tools),
-        "tool_choice": transport.tool_choice,
-        "tool_contract_identity": dict(transport.identity),
-        "unwrap_tool_result": compiled.unwrap,
-        # The provider request hash deliberately keeps this local identity
-        # out of the wire.  This compact typed carrier is the corresponding
-        # host-authored evidence handle for expression-only corrections; it
-        # contains no motive, wording, or behavior instruction.
-        "tool_contract_payload": {
-            "contract": "expression-reselection-transport.1",
-            "authority": "host_compiled_transport_only",
-            "output_contract": output_contract,
-        },
-    }
 
 
 class _ExpressionDraftWire:
@@ -8975,7 +8884,6 @@ class _ExpressionDraftWire:
             source_closure_failure=inherited_source_failure,
         )
         temperature = 0.25 if quick_recovery else self._temperature
-        repair_messages = messages
         initial_purpose = (
             "primary_stream"
             if stream_part is not None
@@ -9000,7 +8908,6 @@ class _ExpressionDraftWire:
         stream_complete_raw: str | None = None
         stream_provider_usage: ModelUsageProvenance | None = None
         winning_model_id = self._model_id
-        last_reselection: ValidationReselectionResult | None = None
         exact_request_emission = bool(getattr(self._model, "reports_exact_request_emission", False))
         if not exact_request_emission:
             # Test/dry-run models do not expose a transport seam. Retain the
@@ -9073,60 +8980,14 @@ class _ExpressionDraftWire:
         if self._recall is not None and len(presented_prefetch_traces) > prior_presentation_count:
             self._recall.record_prefetch_presentation(presented_prefetch_traces[-1])
         recall_allowed = model_content_allows_recall(request.model_content_json)
-        recall_choice_corrective_spent = False
-        prior_structural_correction: dict[str, str] | None = None
 
-        def terminal_recall_choice_reselection() -> ValidationTechnicalFailure:
-            return ValidationTechnicalFailure(
-                "recall_choice_reselection_invalid",
-                model_call_id=winning_identity.model_call_id,
-                request_hash=winning_identity.request_hash,
-                attempted_model_id=winning_model_id,
-                attempted_model_version=self.VERSION,
-                usage=usage,
-            )
 
-        def terminal_authored_expression_reselection() -> ValidationTechnicalFailure:
-            return ValidationTechnicalFailure(
-                "authored_expression_reselection_invalid",
-                model_call_id=winning_identity.model_call_id,
-                request_hash=winning_identity.request_hash,
-                attempted_model_id=winning_model_id,
-                attempted_model_version=self.VERSION,
-                usage=usage,
-            )
 
-        def source_review_route(
-            reselection: ValidationReselectionResult | None,
-        ) -> tuple[
-            ChatCompletionModel | None,
-            ChatCompletionModel | None,
-            ChatCompletionModel | None,
-        ]:
-            lane = self._source_closure_reselection_lane
-            if (
-                reselection is not None
-                and reselection.source_closure_lane_used
-                and lane is not None
-            ):
-                return (
-                    lane.reviewer,
-                    None,
-                    lane.report_relative_reviewer,
-                )
-            return (
-                self._source_closure_reviewer,
-                None,
-                self._report_relative_reviewer,
-            )
 
         async def extractable_effect_source_rejection(
             structural_violation: object,
-        ) -> tuple[
-            _ContextualClaimSupportReview | None,
-            _SourceClosureReselectionFailureStage | None,
-        ]:
-            """Review intact visible effects before spending the one role rechoice."""
+        ) -> _ContextualClaimSupportReview | None:
+            """Retain the existing evidence/usage check for an intact visible effect."""
 
             nonlocal usage
             if (
@@ -9135,7 +8996,7 @@ class _ExpressionDraftWire:
                 or self._source_closure_reviewer is None
                 or _sanitized_prior_correction(structural_violation) is None
             ):
-                return None, None
+                return None
             try:
                 review_result = await review_expression_with_candidate_external_coverage(
                     reviewer=self._source_closure_reviewer,
@@ -9151,7 +9012,7 @@ class _ExpressionDraftWire:
             except (TypeError, ValueError):
                 # The raw candidate has no independently parseable Expression
                 # effect. Keep the existing structure-only re-selection.
-                return None, None
+                return None
             if review_result.usage is not None:
                 usage = _combine_usage(
                     usage,
@@ -9160,21 +9021,14 @@ class _ExpressionDraftWire:
                 )
             review = review_result.review
             if review is None or review.decision != "unsupported":
-                return None, None
+                return None
             _trace_source_closure_rejection(
                 stage="initial_rejection",
                 raw=raw,
                 review=review,
                 prior_correction=_sanitized_prior_correction(structural_violation),
             )
-            return (
-                review,
-                (
-                    "candidate_inventory_incomplete"
-                    if review_result.visible_authority_terminal_rejection
-                    else None
-                ),
-            )
+            return review
 
         try:
             parsed_recall_request = parse_character_recall_request(
@@ -9195,43 +9049,10 @@ class _ExpressionDraftWire:
             repair_timeout = fit_secondary_call_timeout(_WORLD_CLAIM_REPAIR_TIMEOUT_SECONDS)
             if repair_timeout is None:
                 raise
-            source_review, source_failure_stage = await extractable_effect_source_rejection(exc)
-            correction_coordinate = _sanitized_prior_correction(exc)
-            reselection = await self._repair_structural_violation(
-                request=request,
-                messages=messages,
-                raw=raw,
-                violation=exc,
-                source_closure_review=source_review,
-                source_closure_failure_stage=source_failure_stage,
-                source_ref_aliases=source_ref_aliases,
-                timeout_seconds=repair_timeout,
-                allow_after_backup=quick_recovery,
-                parent_call_id=request.call_id,
+            source_review = await extractable_effect_source_rejection(exc)
+            self._reject_invalid_expression(
+                request=request, raw=raw, violation=exc, source_closure_review=source_review,
             )
-            raw = reselection.raw
-            usage = _combine_usage(usage, reselection.usage, request.call_id)
-            winning_identity = _required_reselection_identity(reselection)
-            winning_model_id = reselection.winning_model_id or self._model_id
-            last_reselection = reselection
-            recall_choice_corrective_spent = True
-            prior_structural_correction = correction_coordinate
-            try:
-                parsed_recall_request = parse_character_recall_request(
-                    raw,
-                    request=request,
-                    capabilities=self._expression_capabilities,
-                    stable_identity_source_refs=self._stable_identity_source_refs,
-                    model_visible_context_json=private_state_context_json,
-                    source_ref_aliases=source_ref_aliases,
-                )
-                if parsed_recall_request is not None:
-                    raise ValueError(
-                        "a private-state recall-choice correction must return the final "
-                        "ExpressionDraft without opening another model round trip"
-                    )
-            except (TypeError, ValueError) as exc:
-                raise terminal_recall_choice_reselection() from exc
         if not recall_allowed and parsed_recall_request is not None:
             raise ValueError("character recall budget is already consumed")
         recall_request = (
@@ -9333,7 +9154,6 @@ class _ExpressionDraftWire:
                     ),
                 },
             ]
-            repair_messages = followup
             second_usage: ModelUsageProvenance | None = None
             recall_timeout = fit_secondary_call_timeout(8.0)
             if recall_timeout is None:
@@ -9384,7 +9204,6 @@ class _ExpressionDraftWire:
                 purpose="recall_followup",
                 usage=second_usage,
             )
-            last_reselection = None
             prior_presentation_count = len(presented_prefetch_traces)
             presented_prefetch_traces = append_presented_prefetch(
                 presented_prefetch_traces,
@@ -9397,7 +9216,6 @@ class _ExpressionDraftWire:
                 and len(presented_prefetch_traces) > prior_presentation_count
             ):
                 self._recall.record_prefetch_presentation(presented_prefetch_traces[-1])
-        private_state_corrective_spent = recall_choice_corrective_spent
         if self._expression_capabilities.private_turn_state_mode == "required":
             try:
                 validate_expression_private_turn_state(
@@ -9411,39 +9229,12 @@ class _ExpressionDraftWire:
             except (TypeError, ValueError) as exc:
                 if provisional or expression_episode_provider_slots_active():
                     raise
-                if recall_choice_corrective_spent:
-                    raise terminal_recall_choice_reselection() from exc
                 repair_timeout = fit_secondary_call_timeout(_WORLD_CLAIM_REPAIR_TIMEOUT_SECONDS)
                 if repair_timeout is None:
                     raise
-                source_review, source_failure_stage = await extractable_effect_source_rejection(exc)
-                correction_coordinate = _sanitized_prior_correction(exc)
-                reselection = await self._repair_structural_violation(
-                    request=request,
-                    messages=repair_messages,
-                    raw=raw,
-                    violation=exc,
-                    source_closure_review=source_review,
-                    source_closure_failure_stage=source_failure_stage,
-                    source_ref_aliases=source_ref_aliases,
-                    timeout_seconds=repair_timeout,
-                    allow_after_backup=quick_recovery,
-                    parent_call_id=request.call_id,
-                )
-                raw = reselection.raw
-                usage = _combine_usage(usage, reselection.usage, request.call_id)
-                winning_identity = _required_reselection_identity(reselection)
-                winning_model_id = reselection.winning_model_id or self._model_id
-                last_reselection = reselection
-                private_state_corrective_spent = True
-                prior_structural_correction = correction_coordinate
-                validate_expression_private_turn_state(
-                    value=_expression_draft_object(raw),
-                    request=request,
-                    capabilities=self._expression_capabilities,
-                    stable_identity_source_refs=self._stable_identity_source_refs,
-                    model_visible_context_json=private_state_context_json,
-                    source_ref_aliases=source_ref_aliases,
+                source_review = await extractable_effect_source_rejection(exc)
+                self._reject_invalid_expression(
+                    request=request, raw=raw, violation=exc, source_closure_review=source_review,
                 )
         if quick_recovery and self._recovery_prompt_mode == "contextual_failure":
             self._validate_contextual_failure_draft(raw)
@@ -9453,15 +9244,10 @@ class _ExpressionDraftWire:
                 model_visible_context_json=private_state_context_json,
                 source_ref_aliases=source_ref_aliases,
             )
-        try:
-            raw, episode_disposition = _split_expression_episode_disposition(
-                raw,
-                provisional=provisional,
-            )
-        except ValueError as violation:
-            if recall_choice_corrective_spent:
-                raise terminal_recall_choice_reselection() from violation
-            raise
+        raw, episode_disposition = _split_expression_episode_disposition(
+            raw,
+            provisional=provisional,
+        )
         # A provisional slot is the turn's second and final provider call.
         # It therefore uses only deterministic parsing/claim/epistemic gates;
         # semantic review or corrective completion would be a forbidden third
@@ -9472,24 +9258,16 @@ class _ExpressionDraftWire:
         # into the visible draft.  That made a non-role model an unrecorded
         # co-author.  It is deliberately not invoked by any production path.
         # Complete source closure below remains the sole semantic effect gate.
-        source_corrective_spent = private_state_corrective_spent
-        source_corrected_preflight: dict[str, object] | None = None
-        report_relative_adjudication_used = False
         source_closure_completed = False
         if (
             not provisional
             and not expression_episode_provider_slots_active()
             and self._source_closure_reviewer is not None
         ):
-            active_reviewer, active_inventory, active_report_relative_reviewer = (
-                source_review_route(last_reselection)
-            )
-            if active_reviewer is None:
-                raise ValueError("source-closure review route is unavailable")
             review_result = await review_expression_with_candidate_external_coverage(
-                reviewer=active_reviewer,
-                inventory_model=active_inventory,
-                report_relative_reviewer=active_report_relative_reviewer,
+                reviewer=self._source_closure_reviewer,
+                inventory_model=None,
+                report_relative_reviewer=self._report_relative_reviewer,
                 request=request,
                 raw=raw,
                 identity_frame=self._identity_frame,
@@ -9497,7 +9275,6 @@ class _ExpressionDraftWire:
                 source_ref_aliases=source_ref_aliases,
                 review_claim_free_candidates=self._review_claim_free_candidates,
             )
-            report_relative_adjudication_used = review_result.report_relative_adjudication_used
             if review_result.usage is not None:
                 usage = _combine_usage(
                     usage,
@@ -9507,37 +9284,16 @@ class _ExpressionDraftWire:
             review = review_result.review
             if review is None or review.decision != "unsupported":
                 source_closure_completed = True
-            source_reselection_failure_stage: _SourceClosureReselectionFailureStage | None = (
-                "candidate_inventory_incomplete"
-                if review_result.visible_authority_terminal_rejection
-                else None
-            )
             if review is not None and review.decision == "unsupported":
                 _trace_source_closure_rejection(
                     stage="initial_rejection",
                     raw=raw,
                     review=review,
-                    prior_correction=prior_structural_correction,
+                    prior_correction=None,
                 )
             if review is not None and review.decision == "unsupported":
                 _mark_current_author_validation_rejected()
                 violation = source_closure_violation(review)
-                if source_corrective_spent:
-                    remember_source_failure(
-                        rejected_raw=raw,
-                        rejected_review=review,
-                        stage="candidate_after_prior_corrective",
-                    )
-                    _trace_source_closure_rejection(
-                        stage="reselection_not_attempted",
-                        raw=raw,
-                        review=review,
-                        prior_correction=prior_structural_correction,
-                    )
-                    invalid_candidate = ValueError(violation)
-                    if recall_choice_corrective_spent:
-                        raise terminal_recall_choice_reselection() from invalid_candidate
-                    raise terminal_authored_expression_reselection() from invalid_candidate
                 if not begin_validation_reselection_recovery():
                     remember_source_failure(
                         rejected_raw=raw,
@@ -9548,7 +9304,7 @@ class _ExpressionDraftWire:
                         stage="reselection_not_attempted",
                         raw=raw,
                         review=review,
-                        prior_correction=prior_structural_correction,
+                        prior_correction=None,
                     )
                     raise ValueError(violation)
                 repair_timeout = fit_secondary_call_timeout(_WORLD_CLAIM_REPAIR_TIMEOUT_SECONDS)
@@ -9562,21 +9318,12 @@ class _ExpressionDraftWire:
                         stage="reselection_not_attempted",
                         raw=raw,
                         review=review,
-                        prior_correction=prior_structural_correction,
+                        prior_correction=None,
                     )
                     raise ValueError(violation)
                 try:
-                    reselection = await self._repair_structural_violation(
-                        request=request,
-                        messages=repair_messages,
-                        raw=raw,
-                        violation=violation,
-                        source_closure_review=review,
-                        source_closure_failure_stage=source_reselection_failure_stage,
-                        source_ref_aliases=source_ref_aliases,
-                        timeout_seconds=repair_timeout,
-                        allow_after_backup=quick_recovery,
-                        parent_call_id=request.call_id,
+                    self._reject_invalid_expression(
+                        request=request, raw=raw, violation=violation, source_closure_review=review,
                     )
                 except asyncio.CancelledError:
                     raise
@@ -9587,101 +9334,19 @@ class _ExpressionDraftWire:
                         review=review,
                     )
                     raise
-                raw = reselection.raw
-                usage = _combine_usage(usage, reselection.usage, request.call_id)
-                winning_identity = _required_reselection_identity(reselection)
-                winning_model_id = reselection.winning_model_id or self._model_id
-                last_reselection = reselection
-                source_corrective_spent = True
-                try:
-                    raw, episode_disposition = _split_expression_episode_disposition(
-                        raw,
-                        provisional=False,
-                        allow_source_reselection_envelope=True,
-                    )
-                except ValueError as exc:
-                    raise terminal_authored_expression_reselection() from exc
-                try:
-                    source_corrected_preflight = _proposal_from_model_text(
-                        raw=raw,
-                        request=request,
-                        capabilities=self._expression_capabilities,
-                        quick_recovery=quick_recovery,
-                        stable_identity_source_refs=self._stable_identity_source_refs,
-                        private_state_context_json=private_state_context_json,
-                        source_ref_aliases=source_ref_aliases,
-                        require_explicit_authored_decision_fields=(
-                            self._require_explicit_authored_decision_fields
-                        ),
-                    )
-                except (TypeError, ValueError) as exc:
-                    _trace_source_reselection_materialization_failure(
-                        raw=raw,
-                        error=exc,
-                        stage="pre_final_source_review",
-                    )
-                    raise terminal_authored_expression_reselection() from exc
-                corrected_reviewer, corrected_inventory, corrected_report_relative = (
-                    source_review_route(reselection)
-                )
-                if corrected_reviewer is None:
-                    raise ValueError("corrected source-closure review route is unavailable")
-                corrected_review_result = await review_expression_with_candidate_external_coverage(
-                    reviewer=corrected_reviewer,
-                    inventory_model=corrected_inventory,
-                    report_relative_reviewer=corrected_report_relative,
-                    request=request,
-                    raw=raw,
-                    identity_frame=self._identity_frame,
-                    model_visible_context_json=private_state_context_json,
-                    source_ref_aliases=source_ref_aliases,
-                    review_claim_free_candidates=self._review_claim_free_candidates,
-                    # The corrected raw is a fresh authored candidate. Its
-                    # own primary finding may merit one narrow factual review;
-                    # a prior candidate's narrow decision cannot consume it.
-                    allow_report_relative_adjudication=True,
-                )
-                report_relative_adjudication_used = (
-                    report_relative_adjudication_used
-                    or corrected_review_result.report_relative_adjudication_used
-                )
-                if corrected_review_result.usage is not None:
-                    usage = _combine_usage(
-                        usage,
-                        corrected_review_result.usage,
-                        request.call_id,
-                    )
-                corrected_review = corrected_review_result.review
-                if corrected_review is not None and corrected_review.decision == "unsupported":
-                    _trace_source_closure_rejection(
-                        stage="corrected_rejection",
-                        raw=raw,
-                        review=corrected_review,
-                    )
-                    remember_source_failure(
-                        rejected_raw=raw,
-                        rejected_review=corrected_review,
-                        stage="corrected_candidate_final_rejection",
-                    )
-                    raise terminal_authored_expression_reselection() from ValueError(
-                        source_closure_violation(corrected_review)
-                    )
-                source_closure_completed = True
         try:
-            raw_proposal = source_corrected_preflight
-            if raw_proposal is None:
-                raw_proposal = _proposal_from_model_text(
-                    raw=raw,
-                    request=request,
-                    capabilities=self._expression_capabilities,
-                    quick_recovery=quick_recovery,
-                    stable_identity_source_refs=self._stable_identity_source_refs,
-                    private_state_context_json=private_state_context_json,
-                    source_ref_aliases=source_ref_aliases,
-                    require_explicit_authored_decision_fields=(
-                        self._require_explicit_authored_decision_fields
-                    ),
-                )
+            raw_proposal = _proposal_from_model_text(
+                raw=raw,
+                request=request,
+                capabilities=self._expression_capabilities,
+                quick_recovery=quick_recovery,
+                stable_identity_source_refs=self._stable_identity_source_refs,
+                private_state_context_json=private_state_context_json,
+                source_ref_aliases=source_ref_aliases,
+                require_explicit_authored_decision_fields=(
+                    self._require_explicit_authored_decision_fields
+                ),
+            )
             if episode_disposition is not None:
                 raw_proposal = {
                     **raw_proposal,
@@ -9695,26 +9360,10 @@ class _ExpressionDraftWire:
                 quick_recovery
                 or provisional
                 or expression_episode_provider_slots_active()
-                or source_corrective_spent
             ):
-                if recall_choice_corrective_spent:
-                    raise terminal_recall_choice_reselection() from exc
-                if source_corrective_spent:
-                    _trace_source_reselection_materialization_failure(
-                        raw=raw,
-                        error=exc,
-                        stage="post_source_acceptance",
-                    )
-                    raise terminal_authored_expression_reselection() from exc
                 raise
-            # A structural near-miss (claim bookkeeping, beat shape, later
-            # contract) regularly rides on a perfectly good visible reply.
-            # One corrective call naming the exact violation preserves the
-            # honest answer; the corrected draft still passes the full
-            # materializer, so no validation gate is loosened.  The retry is
-            # deadline-aware: when the Deliberation attempt budget cannot fit
-            # another completion, skip it so the recovery lane (which the
-            # host will actually deliver) gets the remaining time instead.
+            # Preserve the existing deadline-sensitive failure envelope. Core
+            # owns correction; this leaf only retires and rejects the draft.
             repair_timeout = fit_secondary_call_timeout(_WORLD_CLAIM_REPAIR_TIMEOUT_SECONDS)
             if repair_timeout is None:
                 logger.warning(
@@ -9722,88 +9371,9 @@ class _ExpressionDraftWire:
                     violation[:200],
                 )
                 raise
-            reselection = await self._repair_structural_violation(
-                request=request,
-                messages=repair_messages,
-                raw=raw,
-                violation=exc,
-                timeout_seconds=repair_timeout,
-                allow_after_backup=quick_recovery,
-                parent_call_id=request.call_id,
+            self._reject_invalid_expression(
+                request=request, raw=raw, violation=exc,
             )
-            raw = reselection.raw
-            usage = _combine_usage(usage, reselection.usage, request.call_id)
-            winning_identity = _required_reselection_identity(reselection)
-            winning_model_id = reselection.winning_model_id or self._model_id
-            last_reselection = reselection
-            try:
-                raw, episode_disposition = _split_expression_episode_disposition(
-                    raw,
-                    provisional=False,
-                )
-            except ValueError as second_error:
-                raise terminal_authored_expression_reselection() from second_error
-            raw_proposal = _proposal_from_model_text(
-                raw=raw,
-                request=request,
-                capabilities=self._expression_capabilities,
-                quick_recovery=quick_recovery,
-                stable_identity_source_refs=self._stable_identity_source_refs,
-                private_state_context_json=private_state_context_json,
-                source_ref_aliases=source_ref_aliases,
-                require_explicit_authored_decision_fields=(
-                    self._require_explicit_authored_decision_fields
-                ),
-            )
-            if self._source_closure_reviewer is not None:
-                final_reviewer, final_inventory, final_report_relative = source_review_route(
-                    last_reselection
-                )
-                if final_reviewer is None:
-                    raise ValueError("final source-closure review route is unavailable")
-                final_review_result = await review_expression_with_candidate_external_coverage(
-                    reviewer=final_reviewer,
-                    inventory_model=final_inventory,
-                    report_relative_reviewer=final_report_relative,
-                    request=request,
-                    raw=raw,
-                    identity_frame=self._identity_frame,
-                    model_visible_context_json=private_state_context_json,
-                    source_ref_aliases=source_ref_aliases,
-                    review_claim_free_candidates=self._review_claim_free_candidates,
-                    allow_report_relative_adjudication=True,
-                )
-                report_relative_adjudication_used = (
-                    report_relative_adjudication_used
-                    or final_review_result.report_relative_adjudication_used
-                )
-                if final_review_result.usage is not None:
-                    usage = _combine_usage(
-                        usage,
-                        final_review_result.usage,
-                        request.call_id,
-                    )
-                final_review = final_review_result.review
-                if final_review is not None and final_review.decision == "unsupported":
-                    _trace_source_closure_rejection(
-                        stage="corrected_rejection",
-                        raw=raw,
-                        review=final_review,
-                    )
-                    remember_source_failure(
-                        rejected_raw=raw,
-                        rejected_review=final_review,
-                        stage="structural_candidate_final_rejection",
-                    )
-                    raise terminal_authored_expression_reselection() from ValueError(
-                        source_closure_violation(final_review)
-                    )
-                source_closure_completed = True
-            if episode_disposition is not None:
-                raw_proposal = {
-                    **raw_proposal,
-                    "episode_disposition": episode_disposition,
-                }
         if source_closure_completed:
             mark_interactive_turn_milestone("source_closure_completed")
         if usage is not None:
@@ -9987,202 +9557,18 @@ class _ExpressionDraftWire:
                 "contextual failure recovery claim is not supported by pinned World context"
             )
 
-    async def _repair_structural_violation(
-        self,
-        *,
-        request: ModelInput,
-        messages: list[dict[str, str]],
-        raw: str,
-        violation: object,
+    def _reject_invalid_expression(
+        self, *, request: ModelInput, raw: str, violation: object,
         source_closure_review: _ContextualClaimSupportReview | None = None,
-        source_closure_failure_stage: _SourceClosureReselectionFailureStage | None = None,
-        source_ref_aliases: SourceRefAliasTable | None = None,
-        timeout_seconds: float = _WORLD_CLAIM_REPAIR_TIMEOUT_SECONDS,
-        allow_after_backup: bool = False,
-        parent_call_id: str,
-    ) -> ValidationReselectionResult:
-        # Once a complete candidate has failed an invariant, no continuation
-        # from its physical SSE may race the role model's one corrective choice.
-        # Match the exact pinned request; unrelated route work remains untouched.
+    ) -> NoReturn:
         self._cancel_unit_stream_for(request)
-        is_private_state = is_private_turn_state_violation(violation)
-        is_recall_choice = is_recall_choice_violation(violation)
-        violation_text = str(violation)
-        is_claim = _is_world_claim_structural_violation(violation)
-        effective_source_ref_aliases = source_ref_aliases
-        if source_closure_review is not None and effective_source_ref_aliases is None:
-            effective_source_ref_aliases = build_source_ref_alias_table(
-                request=request,
-                stable_identity_source_refs=self._stable_identity_source_refs,
-            )
-        instruction = (
-            _source_closure_reselection_envelope(
-                raw=raw,
-                review=source_closure_review,
-                failure_stage=source_closure_failure_stage,
-                companion_life_authority_availability=(
-                    _life_authority_availability_from_messages(messages)
-                ),
-                prior_correction=_sanitized_prior_correction(violation),
-                output_contract=expression_reselection_output_contract(
-                    capabilities=self._expression_capabilities,
-                    allowed_source_ref_aliases=tuple(
-                        sorted(
-                            effective_source_ref_aliases.alias_for(source_ref) or source_ref
-                            for source_ref in effective_source_ref_aliases.canonical_refs
-                        )
-                    )
-                    if effective_source_ref_aliases is not None
-                    else (),
-                    world_claim_source_ref_aliases_by_scope=(
-                        world_claim_source_ref_aliases_by_scope(
-                            request=request,
-                            stable_identity_source_refs=self._stable_identity_source_refs,
-                            source_ref_aliases=effective_source_ref_aliases,
-                        )
-                        if effective_source_ref_aliases is not None
-                        else {
-                            scope: ()
-                            for scope in (
-                                "current_world",
-                                "past_world",
-                                "counterpart_history",
-                                "shared_history",
-                                "stable_identity",
-                            )
-                        }
-                    ),
-                    response_expectation_assessment_required=(
-                        request_requires_response_expectation_assessment(request)
-                    ),
-                    provider_message_bound=bool(
-                        request.trigger_message is not None
-                        and request.trigger_message.platform_message_id
-                    ),
-                    combined=False,
-                ),
-            )
-            if source_closure_review is not None
-            else (
-                (
-                    recall_choice_reselection_instruction(violation)
-                    if isinstance(violation, RecallChoiceValidationError)
-                    else private_turn_state_reselection_instruction(violation_text)
-                )
-                if is_private_state or is_recall_choice
-                else (
-                    claim_repair_instruction(violation_text)
-                    if is_claim
-                    else shape_repair_instruction(
-                        violation_text,
-                        companion_life_authority_availability=(
-                            _life_authority_availability_from_messages(messages)
-                        ),
-                    )
-                )
-            )
-        )
-        reselection_lane = (
-            self._source_closure_reselection_lane if source_closure_review is not None else None
-        )
-        reselection_model = reselection_lane.author if reselection_lane is not None else self._model
-        reselection_model_id = (
-            reselection_lane.model_id if reselection_lane is not None else self._model_id
-        )
-        expression_tool_kwargs = _expression_tool_reselection_kwargs(
-            request=request,
-            provider=reselection_model,
-            capabilities=self._expression_capabilities,
-            stable_identity_source_refs=self._stable_identity_source_refs,
-            source_ref_aliases=effective_source_ref_aliases,
-        )
+        lane = self._source_closure_reselection_lane if source_closure_review is not None else None
         raise ValidationTechnicalFailure(
             "authored_expression_reselection_invalid",
-            attempted_model_id=reselection_model_id,
+            attempted_model_id=lane.model_id if lane is not None else self._model_id,
             attempted_model_version=self.VERSION,
             **rejected_role_payload_kwargs(raw, violation),
         )
-        corrected = await complete_bounded_validation_reselection(
-            model=reselection_model,
-            messages=messages,
-            raw=raw,
-            instruction=instruction,
-            # The original role-authored candidate already spent the turn's
-            # expressive randomness. A source-closure rechoice is a bounded
-            # truth correction, so additional sampling only encourages
-            # substituting one unsupported episode for another. Structural,
-            # recall, and claim-shape corrections retain their existing
-            # authored-reselection temperature.
-            temperature=(0.0 if source_closure_review is not None else 0.25),
-            timeout_seconds=timeout_seconds,
-            allow_after_backup=allow_after_backup,
-            parent_call_id=parent_call_id,
-            include_invalid_raw=(
-                source_closure_review is None and not is_private_state and not is_recall_choice
-            ),
-            model_id=reselection_model_id,
-            model_version=self.VERSION,
-            source_closure_lane_used=reselection_lane is not None,
-            **expression_tool_kwargs,
-        )
-        _capture_authored_candidate(
-            identity=_required_reselection_identity(corrected),
-            raw=corrected.raw,
-            model_id=reselection_model_id,
-            model_version=self.VERSION,
-            purpose="validation_reselection",
-            usage=corrected.usage,
-        )
-        if source_closure_review is not None or expression_tool_kwargs:
-            try:
-                normalized_reselection_raw = normalize_realtime_expression_reselection_output(
-                    corrected.raw
-                )
-                corrected_expression_raw, corrected_episode_disposition = (
-                    _split_expression_episode_disposition(
-                        normalized_reselection_raw,
-                        provisional=False,
-                        allow_source_reselection_envelope=True,
-                    )
-                )
-                corrected_expression = _parse_json_object(corrected_expression_raw)
-                if corrected_episode_disposition is not None:
-                    corrected_expression["episode_disposition"] = corrected_episode_disposition
-                corrected = corrected._replace(
-                    raw=json.dumps(
-                        corrected_expression,
-                        ensure_ascii=False,
-                        separators=(",", ":"),
-                    ),
-                    episode_disposition=corrected_episode_disposition,
-                )
-            except (TypeError, ValueError) as exc:
-                emit_source_closure_candidate_materialization_failure_trace(
-                    raw_candidate=corrected.raw,
-                    stage="pre_final_source_review",
-                    category="expression_draft_schema",
-                    code="strict_reselection_wire.invalid",
-                )
-                raise ValidationTechnicalFailure(
-                    "authored_expression_reselection_invalid",
-                    model_call_id=corrected.winning_model_call_id,
-                    request_hash=corrected.winning_request_hash,
-                    attempted_model_id=reselection_model_id,
-                    attempted_model_version=self.VERSION,
-                    usage=corrected.usage,
-                ) from exc
-            logger.warning("source-closure corrective retry produced a corrected draft")
-            record_source_closure_reselection()
-        elif is_recall_choice:
-            logger.warning("recall-choice corrective retry produced a final reselection")
-            record_shape_repair()
-        elif is_claim:
-            logger.warning("world-claim corrective retry produced a corrected draft")
-            record_claim_repair()
-        else:
-            logger.warning("draft-shape corrective retry produced a corrected draft")
-            record_shape_repair()
-        return corrected
 
     def _messages(
         self,

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 
 import httpx
@@ -1656,142 +1655,8 @@ def test_local_contract_identity_is_bound_into_provider_request_hash() -> None:
     assert bound.request_hash != unbound.request_hash
 
 
-@pytest.mark.asyncio
-async def test_nonmetered_correction_keeps_local_contract_identity_off_provider_wire() -> None:
-    contract = InboundToolContracts().contract_for(
-        phase="final",
-        capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,
-        recall_allowed=False,
-    )
-    expression = {
-        "timing_choice": "now",
-        "beats": [{"modality": "text", "text": "我重新选好了。"}],
-        "stance": "自然回应",
-        "brief_rationale": "结构修正不改变我的选择权。",
-        "confidence": 7000,
-        "world_claims": [],
-    }
-
-    class StrictProvider:
-        async def complete_json(
-            self,
-            messages: list[dict[str, str]],
-            *,
-            temperature: float,
-            tools: list[dict[str, object]],
-            tool_choice: object,
-        ) -> str:
-            del messages, temperature, tools, tool_choice
-            return json.dumps(
-                {
-                    "result_kind": "decision",
-                    "appraisal_draft": _appraisal(),
-                    "expression_draft": expression,
-                },
-                ensure_ascii=False,
-            )
-
-    with pytest.raises(SameContractRetryForbidden, match="same-contract"):
-        await asyncio.wait_for(
-            complete_bounded_validation_reselection(
-                model=StrictProvider(),  # type: ignore[arg-type]
-                messages=[{"role": "user", "content": "choose"}],
-                raw="{}",
-                instruction="choose again",
-                temperature=0.8,
-                timeout_seconds=1.0,
-                parent_call_id="call:local-contract-only",
-                tools=list(contract.provider_tools),
-                tool_choice=contract.provider_tool_choice,
-                tool_contract_identity=contract.identity.request_identity_material(),
-                unwrap_tool_result=contract.unwrap,
-            ),
-            timeout=1.5,
-        )
 
 
-@pytest.mark.asyncio
-async def test_metered_correction_emits_the_exact_durable_request_identity() -> None:
-    contract = InboundToolContracts().contract_for(
-        phase="final",
-        capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,
-        recall_allowed=False,
-    )
-    captured_headers: dict[str, str] = {}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        captured_headers.update(request.headers)
-        return httpx.Response(
-            200,
-            json={
-                "choices": [
-                    {
-                        "message": {
-                            "tool_calls": [
-                                {
-                                    "type": "function",
-                                    "function": {
-                                        "name": contract.identity.tool_name,
-                                        "arguments": json.dumps(
-                                            {
-                                                "result_kind": "decision",
-                                                "appraisal_draft": _appraisal(),
-                                                "expression_draft": {
-                                                    "timing_choice": "now",
-                                                    "beats": [
-                                                        {
-                                                            "modality": "text",
-                                                            "text": "我重新选好了。",
-                                                        }
-                                                    ],
-                                                    "stance": "自然回应",
-                                                    "brief_rationale": "结构修正不改变我的选择权。",
-                                                    "confidence": 7000,
-                                                    "world_claims": [],
-                                                },
-                                            },
-                                            ensure_ascii=False,
-                                        ),
-                                    },
-                                }
-                            ]
-                        }
-                    }
-                ],
-                "usage": {
-                    "prompt_tokens": 1,
-                    "completion_tokens": 1,
-                    "total_tokens": 2,
-                },
-            },
-        )
-
-    model = DeepSeekChatModel(
-        "key",
-        "http://127.0.0.1:32124",
-        "deepseek-v4-flash",
-        thinking_enabled=False,
-        transport=httpx.MockTransport(handler),
-    )
-    object.__setattr__(model, "_test_only_capture_exact_request_identity", True)
-    try:
-        with pytest.raises(SameContractRetryForbidden, match="same-contract"):
-            await complete_bounded_validation_reselection(
-                model=model,
-                messages=[{"role": "user", "content": "choose"}],
-                raw="{}",
-                instruction="choose again",
-                temperature=0.8,
-                timeout_seconds=1.0,
-                parent_call_id="call:metered-correction-identity",
-                tools=list(contract.provider_tools),
-                tool_choice=contract.provider_tool_choice,
-                tool_contract_identity=contract.identity.request_identity_material(),
-                unwrap_tool_result=contract.unwrap,
-            )
-    finally:
-        await model.aclose()
-    assert captured_headers == {}
 
 
 @pytest.mark.parametrize(
@@ -1799,8 +1664,7 @@ async def test_metered_correction_emits_the_exact_durable_request_identity() -> 
     [False, True],
     ids=["required-null-is-semantically-omitted", "both-selected-in-one-tool-call"],
 )
-@pytest.mark.asyncio
-async def test_deepseek_strict_forced_tool_transports_generic_role_changes(
+def test_deepseek_strict_contract_preserves_optional_role_changes(
     select_role_changes: bool,
 ) -> None:
     contract = InboundToolContracts().contract_for(
@@ -1839,6 +1703,7 @@ async def test_deepseek_strict_forced_tool_transports_generic_role_changes(
         "resolution_summary": None,
         "relationship_commitment": commitment if select_role_changes else None,
         "interaction_act": interaction_act if select_role_changes else None,
+        "life_intent": None,
     }
     arguments = {
         "result_kind": "decision",
@@ -1872,79 +1737,17 @@ async def test_deepseek_strict_forced_tool_transports_generic_role_changes(
         },
     }
     arguments_json = json.dumps(arguments, ensure_ascii=False, separators=(",", ":"))
-    captured: dict[str, object] = {}
-    captured_headers: dict[str, str] = {}
-    captured_paths: list[str] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        payload = json.loads(request.content)
-        captured.update(payload)
-        captured_headers.update(request.headers)
-        captured_paths.append(request.url.path)
-        assert payload["tools"] == list(contract.provider_tools)
-        assert payload["tool_choice"] == contract.provider_tool_choice
-        function = payload["tools"][0]["function"]
-        Draft202012Validator(function["parameters"]).validate(arguments)
-        appraisal_schema = function["parameters"]["properties"]["appraisal_draft"]
-        assert {"relationship_commitment", "interaction_act"} <= set(appraisal_schema["required"])
-        expression_schema = function["parameters"]["properties"]["expression_draft"]
-        for field_name in ("world_claims", "media_source_refs"):
-            assert expression_schema["properties"][field_name]["type"] == "array"
-            assert "anyOf" not in expression_schema["properties"][field_name]
-        return httpx.Response(
-            200,
-            json={
-                "choices": [
-                    {
-                        "message": {
-                            "tool_calls": [
-                                {
-                                    "type": "function",
-                                    "function": {
-                                        "name": contract.identity.tool_name,
-                                        "arguments": arguments_json,
-                                    },
-                                }
-                            ]
-                        }
-                    }
-                ],
-                "usage": {
-                    "prompt_tokens": 1,
-                    "completion_tokens": 1,
-                    "total_tokens": 2,
-                },
-            },
-        )
-
-    model = DeepSeekChatModel(
-        "key",
-        "http://127.0.0.1:32124",
-        "deepseek-v4-flash",
-        thinking_enabled=False,
-        transport=httpx.MockTransport(handler),
-    )
-    object.__setattr__(model, "_test_only_capture_exact_request_identity", True)
-    parent_call_id = f"call:strict-role-changes:{select_role_changes}"
-    messages = [{"role": "user", "content": "choose"}]
-    try:
-        with pytest.raises(SameContractRetryForbidden, match="same-contract"):
-            await complete_bounded_validation_reselection(
-                model=model,
-                messages=messages,
-                raw="{}",
-                instruction="choose again",
-                temperature=0.8,
-                timeout_seconds=1.0,
-                parent_call_id=parent_call_id,
-                tools=list(contract.provider_tools),
-                tool_choice=contract.provider_tool_choice,
-                tool_contract_identity=contract.identity.request_identity_material(),
-                unwrap_tool_result=contract.unwrap,
-            )
-    finally:
-        await model.aclose()
-    assert captured_paths == []
+    function = contract.provider_tools[0]["function"]
+    Draft202012Validator(function["parameters"]).validate(arguments)
+    appraisal_schema = function["parameters"]["properties"]["appraisal_draft"]
+    assert {"relationship_commitment", "interaction_act"} <= set(appraisal_schema["required"])
+    expression_schema = function["parameters"]["properties"]["expression_draft"]
+    for field_name in ("world_claims", "media_source_refs"):
+        assert expression_schema["properties"][field_name]["type"] == "array"
+        assert "anyOf" not in expression_schema["properties"][field_name]
+    decoded = _parse_combined(contract.unwrap(arguments_json))["appraisal_draft"]
+    assert decoded.get("relationship_commitment") == (commitment if select_role_changes else None)
+    assert decoded.get("interaction_act") == (interaction_act if select_role_changes else None)
 
 
 def test_later_branch_carries_the_stricter_capability_beat_limit() -> None:
@@ -2140,26 +1943,44 @@ def test_contract_preserves_later_and_silent_role_choices(
 
 
 @pytest.mark.asyncio
-async def test_same_contract_reselection_does_not_call_the_provider() -> None:
-    requested: list[object] = []
+@pytest.mark.parametrize("transport", ["plain", "forced", "metered"])
+async def test_retired_inner_reselection_never_emits_a_provider_request(transport):
+    calls = []
 
-    class _Provider:
-        async def complete(
-            self,
-            messages: list[dict[str, str]],
-            *,
-            temperature: float = 0.8,
-        ) -> str:
-            requested.append(messages)
-            return "should not run"
+    class Provider:
+        async def complete(self, *args, **kwargs):
+            calls.append((args, kwargs))
+            raise AssertionError("retired retry must not call any completion interface")
 
-    with pytest.raises((RuntimeError, TimeoutError, ValueError), match="same-contract"):
-        await complete_bounded_validation_reselection(
-            model=_Provider(),  # type: ignore[arg-type]
-            messages=[{"role": "user", "content": "choose"}],
-            raw="{}",
-            instruction="choose again",
-            temperature=0.8,
-            timeout_seconds=1.0,
+        complete_json = complete
+        complete_with_usage = complete
+        complete_json_with_usage = complete
+
+    def http_request(request):
+        calls.append(request)
+        raise AssertionError("retired retry must not emit HTTP")
+
+    model = (DeepSeekChatModel(
+        "offline-fixture", "http://127.0.0.1:9", "deepseek-v4-flash",
+        thinking_enabled=False, transport=httpx.MockTransport(http_request),
+    ) if transport == "metered" else Provider())
+    kwargs = {}
+    if transport != "plain":
+        contract = InboundToolContracts().contract_for(
+            phase="final", capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,
+            recall_allowed=False,
         )
-    assert requested == []
+        kwargs = dict(tools=list(contract.provider_tools), tool_choice=contract.provider_tool_choice,
+                      tool_contract_identity=contract.identity.request_identity_material(),
+                      unwrap_tool_result=contract.unwrap)
+    try:
+        with pytest.raises(SameContractRetryForbidden, match="same-contract"):
+            await complete_bounded_validation_reselection(
+                model=model, messages=[{"role": "user", "content": "choose"}],
+                raw="{}", instruction="choose again", temperature=0.8,
+                timeout_seconds=1.0, parent_call_id="call:retired-inner-reselection", **kwargs,
+            )
+    finally:
+        if transport == "metered":
+            await model.aclose()
+    assert calls == []
