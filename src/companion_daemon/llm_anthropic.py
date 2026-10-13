@@ -40,12 +40,58 @@ class AnthropicChatModel(DeepSeekChatModel):
     provider = "anthropic"
     supports_strict_tool_choice = False  # A compatible proxy is not a strict-schema guarantee.
 
-    def __init__(self, api_key, base_url, model, *, thinking_enabled=False, **kwargs):
+    def __init__(self, api_key, base_url, model, *, thinking_enabled=False,
+                 tool_result_carrier="native", **kwargs):
         if thinking_enabled:
             raise ValueError("Anthropic thinking controls require a separately qualified route")
+        if tool_result_carrier not in {"native", "native_or_json_object"}:
+            raise ValueError("unknown Anthropic tool result carrier")
+        self._tool_result_carrier = tool_result_carrier
+        if tool_result_carrier != "native":
+            self.model_version = model + ":json-object-carrier.1"
         # Do not share circuit state with the retired DeepSeek route.
         kwargs.setdefault("circuit_breaker", ProviderCircuitBreaker())
         super().__init__(api_key, base_url, model, thinking_enabled=False, **kwargs)
+
+    @property
+    def single_tool_response_carrier(self):
+        return self._tool_result_carrier
+
+    def _response_tool_content(self, message, *, tools, tool_choice, expected_tool_name):
+        native = super()._response_tool_content(
+            message, tools=tools, tool_choice=tool_choice, expected_tool_name=expected_tool_name,
+        )
+        if native is not None or message.get("tool_calls"):
+            return native
+        if self._tool_result_carrier == "native":
+            return None
+        if (len(tools) != 1 or expected_tool_name is None
+                or tools[0].get("function", {}).get("name") != expected_tool_name
+                or not isinstance(tool_choice, dict) or tool_choice.get("type") != "function"
+                or tool_choice.get("function", {}).get("name") != expected_tool_name
+                or message.get("native_stop_reason") != "end_turn"):
+            raise ValueError("JSON text carrier requires one explicitly named schema and end_turn")
+        text = message.get("content")
+        if not isinstance(text, str):
+            raise ValueError("JSON text carrier requires text")
+
+        def members(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("JSON text carrier contains duplicate keys")
+                result[key] = value
+            return result
+
+        def constant(value):
+            raise ValueError("JSON text carrier contains nonfinite values")
+
+        if not isinstance(json.loads(text, object_pairs_hook=members, parse_constant=constant), dict):
+            raise ValueError("JSON text carrier requires one complete object")
+        # Decode a declared carrier, not a successful native tool invocation.
+        # The caller's original schema/source validator still receives the exact
+        # bytes, including invalid fields so its same-role correction can run.
+        return text
 
     def _completion_url(self, tools):
         base = self.base_url.rstrip("/")
@@ -164,7 +210,8 @@ class AnthropicChatModel(DeepSeekChatModel):
                 )
             elif block.get("type") not in {"thinking", "redacted_thinking"}:
                 raise ValueError("unsupported Anthropic response block")
-        return {"content": "".join(text), "tool_calls": calls}
+        return {"content": "".join(text), "tool_calls": calls,
+                "native_stop_reason": payload.get("stop_reason")}
 
     def _stream_decoder(self):
         return _MessageStream(self.model)

@@ -80,6 +80,7 @@ async def run(args):
         PRIMARY_USER_ID='geoff', DEEPSEEK_API_KEY=None,
         WORLD_V2_BACKGROUND_PROVIDER='anthropic_subscription',
         WORLD_V2_BACKGROUND_API_KEY='local-proxy',
+        WORLD_V2_BACKGROUND_TOOL_RESULT_CARRIER=args.tool_result_carrier,
         WORLD_V2_REFERENCE_WIRE_ENABLED=True,
         WORLD_V2_MODEL_USAGE_BUDGET_DISABLED=False,
         WORLD_V2_LIFE_OUTLOOK_ENABLED=True,
@@ -99,7 +100,10 @@ async def run(args):
               'mode':'isolated_capture', 'quality_qualified':False,
               'initial_allowance':{'deepseek_requests':args.deepseek_requests,'deepseek_reserved_cny':0.30,
                                    'proxy_requests':args.proxy_requests}}
-    allowance = {'proxy':args.proxy_requests, 'deepseek':args.deepseek_requests, 'cny':0.30}
+    allowance = {'proxy':args.proxy_requests,
+                 'deepseek':0 if args.memory_only else args.deepseek_requests, 'cny':0.30}
+    result['tool_result_carrier'] = settings.world_v2_background_tool_result_carrier
+    result['background_output_tokens'] = settings.world_v2_background_output_tokens
     clock, delivery, entered = JourneyClock(origin), CaptureDelivery(), asyncio.Event()
     host = None
     memory = None
@@ -133,7 +137,8 @@ async def run(args):
             else app._turns._runtime._memory_consolidation.drain_one())
         await asyncio.wait_for(entered.wait(), 60)
         result['background_pending_at_chat_start'] = not memory.done()
-        result['chat'] = await session.inbound('刚忙完，想跟你聊会儿。你今天怎么样？', background_units=0)
+        if not args.memory_only:
+            result['chat'] = await session.inbound('刚忙完，想跟你聊会儿。你今天怎么样？', background_units=0)
         result['background_pending_at_first_chat_completion'] = not memory.done()
         save(root/'progress.json',result)
         background_result = await memory
@@ -141,7 +146,8 @@ async def run(args):
             result['outlook'] = background_result
         else:
             result['memory'] = background_result.model_dump(mode='json')
-            result['outlook'] = await outlook_once()
+            if not args.memory_only:
+                result['outlook'] = await outlook_once()
         result['subscription'] = composition.world_support_model.token_ledger.snapshot()
         result['final_prehistory'] = len(app._ledger.project().prehistory_records)
         result['completed'] = True
@@ -169,9 +175,13 @@ if __name__ == '__main__':
     parser.add_argument('--env-file',type=Path,action='append',default=[])
     parser.add_argument('--live',action='store_true')
     parser.add_argument('--outlook-only',action='store_true')
+    parser.add_argument('--memory-only',action='store_true')
+    parser.add_argument('--tool-result-carrier',choices=('native','native_or_json_object'),default='native')
     parser.add_argument('--proxy-requests',type=int,choices=(1,2,3,4),default=4)
     parser.add_argument('--deepseek-requests',type=int,choices=(1,2),default=2)
     args = parser.parse_args()
     if not args.live:
         parser.error('real requests require --live; use offline transport tests otherwise')
+    if args.memory_only and args.outlook_only:
+        parser.error('choose only one component')
     asyncio.run(run(args))

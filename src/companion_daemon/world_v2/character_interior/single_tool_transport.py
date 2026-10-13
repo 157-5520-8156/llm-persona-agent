@@ -1,8 +1,9 @@
 """Choose a provider-compatible carrier before request identity is compiled.
 
-The schema and its decoder continue to require one exact named tool. Auto is
-only the provider's selection mode, not permission to accept plain text or a
-different function. Nonthinking providers keep their original wire/identity.
+The schema and its decoder continue to bind one exact named result. Auto does
+not permit text. A separately configured JSON-object text carrier is versioned
+in request identity; it never repairs fields or bypasses host validation.
+Unconfigured providers keep their original wire/identity.
 """
 
 from __future__ import annotations
@@ -28,6 +29,25 @@ def resolve_single_tool_transport(
     identity: Mapping[str, str],
 ) -> SingleToolTransport:
     mode = getattr(provider, "single_tool_selection_mode", "forced")
+    carrier = getattr(provider, "single_tool_response_carrier", "native")
+    if carrier != "native":
+        if carrier != "native_or_json_object" or mode != "forced" or len(tools) != 1:
+            raise ValueError("unsupported single-schema JSON text carrier")
+        function = tools[0].get("function", {})
+        expected = tool_choice.get("function", {}) if isinstance(tool_choice, dict) else {}
+        name = function.get("name")
+        if (not isinstance(name, str) or re.fullmatch(r"[A-Za-z0-9_-]{1,64}", name) is None
+                or tools[0].get("type") != "function" or expected.get("name") != name
+                or tool_choice.get("type") != "function" or identity.get("tool_name") != name):
+            raise ValueError("JSON text carrier cannot change the expected schema")
+        material = {
+            "contract_id":"single-schema-json-text-carrier", "version":"1",
+            "selection_mode":mode, "response_carrier":carrier, "expected_tool_name":name,
+            "schema_contract_identity_json":json.dumps(dict(identity),sort_keys=True,separators=(",",":")),
+        }
+        material["contract_sha256"] = hashlib.sha256(
+            json.dumps(material,sort_keys=True,separators=(",",":")).encode()).hexdigest()
+        return SingleToolTransport(tool_choice=tool_choice,identity=material)
     if mode == "forced":
         return SingleToolTransport(tool_choice=tool_choice, identity=identity)
     if mode != "auto":

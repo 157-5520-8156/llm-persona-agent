@@ -1177,6 +1177,7 @@ def build_semantic_chat_composition(
                     token_ledger=subscription_ledger,
                     timeout_seconds=settings.world_v2_background_timeout_seconds,
                     max_completion_tokens=settings.world_v2_background_output_tokens,
+                    tool_result_carrier=settings.world_v2_background_tool_result_carrier,
                 )
                 owned.append(provider)
                 return provider

@@ -1287,6 +1287,12 @@ class DeepSeekChatModel:
             raise ValueError("model response choices must be a non-empty list")
         return choices[0].get("message") if isinstance(choices[0], dict) else None
 
+    def _response_tool_content(self, message, *, tools, tool_choice, expected_tool_name):
+        return _arguments_content(
+            message.get("tool_calls") if isinstance(message, dict) else None,
+            expected_tool_name=expected_tool_name,
+        )
+
     def _stream_decoder(self):
         return lambda event: event
 
@@ -1495,9 +1501,8 @@ class DeepSeekChatModel:
                         if not tools and isinstance(message, dict) and message.get("tool_calls"):
                             raise ValueError("model response used an unrequested tool")
                         if tools:
-                            calls = message.get("tool_calls") if isinstance(message, dict) else None
-                            content = _arguments_content(
-                                calls,
+                            content = self._response_tool_content(
+                                message, tools=tools, tool_choice=tool_choice,
                                 expected_tool_name=expected_tool_name,
                             )
                         if not isinstance(content, str) or not content:
@@ -1605,8 +1610,7 @@ class DeepSeekChatModel:
                 finish()
             content = "".join(pieces)
             if tools and is_event_stream:
-                content = _arguments_content(
-                    [
+                calls = [
                         {
                             "function": {
                                 "name": tool_names.get(index),
@@ -1614,9 +1618,19 @@ class DeepSeekChatModel:
                             }
                         }
                         for index in sorted(set(tool_names) | set(tool_args))
-                    ],
+                    ]
+                content = self._response_tool_content(
+                    {"content":content, "tool_calls":calls,
+                     "native_stop_reason":getattr(decode_event, "stop_reason", None)},
+                    tools=tools, tool_choice=tool_choice,
                     expected_tool_name=expected_tool_name,
                 )
+                # A JSON text carrier has no trustworthy partial tool head.
+                # Deliver it only after the complete stream and object checks.
+                if not calls and content and on_text_delta is not None:
+                    callback_result = on_text_delta(content)
+                    if inspect.isawaitable(callback_result):
+                        await callback_result
             if not content or not content.strip():
                 raise ValueError("model stream content must be a non-empty string")
         except asyncio.CancelledError as exc:
@@ -1811,9 +1825,8 @@ class DeepSeekChatModel:
             if not tools and isinstance(message, dict) and message.get("tool_calls"):
                 raise ValueError("model response used an unrequested tool")
             if tools:
-                calls = message.get("tool_calls") if isinstance(message, dict) else None
-                content = _arguments_content(
-                    calls,
+                content = self._response_tool_content(
+                    message, tools=tools, tool_choice=tool_choice,
                     expected_tool_name=expected_tool_name,
                 )
             if not isinstance(content, str) or not content.strip():

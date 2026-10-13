@@ -64,7 +64,10 @@ class Settings(BaseSettings):
         default=90, gt=0, le=300, alias='WORLD_V2_BACKGROUND_TIMEOUT_SECONDS'
     )
     world_v2_background_output_tokens: int = Field(
-        default=16384, ge=1024, le=65536, alias='WORLD_V2_BACKGROUND_OUTPUT_TOKENS'
+        default=64000, ge=1024, le=65536, alias='WORLD_V2_BACKGROUND_OUTPUT_TOKENS'
+    )
+    world_v2_background_tool_result_carrier: Literal['native', 'native_or_json_object'] = Field(
+        default='native', alias='WORLD_V2_BACKGROUND_TOOL_RESULT_CARRIER'
     )
     world_v2_background_tokens_5h: int = Field(
         default=150_000_000, gt=0, alias='WORLD_V2_BACKGROUND_TOKENS_5H'
