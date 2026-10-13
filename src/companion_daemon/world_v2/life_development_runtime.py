@@ -5322,11 +5322,6 @@ class LifeDevelopmentRuntime:
         label = "novel-origin critic" if novel else "source-closure reviewer"
         if reviewer is None:
             raise ValueError(f"life {label} is not configured")
-        purpose = (
-            "life_development_novel_origin_review" if novel
-            else "life_development_source_closure_review"
-        )
-        action_prefix = "life-development-critic" if novel else "life-development-review"
         parse_review = (
             parse_life_development_novel_origin_review if novel
             else parse_life_development_source_closure_review
@@ -5343,9 +5338,14 @@ class LifeDevelopmentRuntime:
                         tool_kwargs = novel_origin_review_tool_contract(draft)
                     elif any(outcome.world_consequence is not None for outcome in draft.outcomes):
                         tool_kwargs = source_closure_review_tool_contract()
-                with model_call_scope(
-                    purpose,
-                    action_id=f"{action_prefix}:{ordinal}",
+                with (
+                    model_call_scope(
+                        "life_development_novel_origin_review",
+                        action_id=f"life-development-critic:{ordinal}",
+                    ) if novel else model_call_scope(
+                        "life_development_source_closure_review",
+                        action_id=f"life-development-review:{ordinal}",
+                    )
                 ):
                     review_raw = await complete_json_object(
                         completion_reviewer,
