@@ -60,7 +60,13 @@ async def test_diagnostic_uses_original_memory_host_validation():
 
 
 @pytest.mark.asyncio
-async def test_real_text_carrier_preserves_core_schema_correction_and_sources():
+@pytest.mark.parametrize(
+    "invalid", ["{}", '{"status":', "[]", '{"status":"a","status":"b"}', '{"number":1e999}']
+)
+@pytest.mark.parametrize("second_invalid", [False, True])
+async def test_real_text_carrier_preserves_core_schema_correction_and_sources(
+    invalid, second_invalid
+):
     import httpx
     from companion_daemon.world_v2.character_interior.core import CharacterInterior
     from companion_daemon.world_v2.character_interior.contracts import InteriorOpportunity
@@ -79,7 +85,9 @@ async def test_real_text_carrier_preserves_core_schema_correction_and_sources():
                 "model": "fixture",
                 "stop_reason": "end_turn",
                 "usage": {"input_tokens": 10, "output_tokens": 5},
-                "content": [{"type": "text", "text": "{}" if len(calls) == 1 else good}],
+                "content": [
+                    {"type": "text", "text": invalid if len(calls) == 1 or second_invalid else good}
+                ],
             },
         )
 
@@ -107,12 +115,15 @@ async def test_real_text_carrier_preserves_core_schema_correction_and_sources():
     )
     try:
         result = await core.consider(opportunity)
-        assert result.status == "decided", result.failure_code
         assert len(calls) == 2
+        if second_invalid:
+            assert result.status == "technical_failure"
+            return
+        assert result.status == "decided", result.failure_code
         assert result.author_lineage.attempt_ordinal == 1
         assert result.author_lineage.parent_model_call_id
         assert result.author_lineage.model_version.endswith(":json-object-carrier.1")
-        assert list(result.decision['source_refs']) == list(manifest().source_refs)
+        assert list(result.decision["source_refs"]) == list(manifest().source_refs)
         assert (
             json.loads(calls[1]["messages"][-1]["content"])["correction"]["failure_code"]
             == "role_result_schema_invalid"

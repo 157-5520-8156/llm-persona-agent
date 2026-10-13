@@ -6,10 +6,11 @@ model names and token counts are its declarations, not upstream attestation.
 
 from copy import deepcopy
 import json
+import math
 
 import httpx
 
-from .llm import DeepSeekChatModel, ProviderCircuitBreaker, _expected_tool_name
+from .llm import DeepSeekChatModel, ProviderCircuitBreaker, ProviderResultFormatError, _expected_tool_name
 
 
 def _usage(raw, *, final=True):
@@ -86,8 +87,20 @@ class AnthropicChatModel(DeepSeekChatModel):
         def constant(value):
             raise ValueError("JSON text carrier contains nonfinite values")
 
-        if not isinstance(json.loads(text, object_pairs_hook=members, parse_constant=constant), dict):
-            raise ValueError("JSON text carrier requires one complete object")
+        def finite_float(value):
+            number = float(value)
+            if not math.isfinite(number):
+                raise ValueError("JSON text carrier contains a nonfinite number")
+            return number
+
+        try:
+            value = json.loads(text, object_pairs_hook=members, parse_constant=constant,
+                               parse_float=finite_float)
+            if not isinstance(value, dict):
+                raise ValueError("JSON text carrier requires one complete object")
+        except (ValueError, RecursionError) as exc:
+            raise ProviderResultFormatError(raw_result=text,
+                detail=f"invalid JSON object response carrier: {exc}") from exc
         # Decode a declared carrier, not a successful native tool invocation.
         # The caller's original schema/source validator still receives the exact
         # bytes, including invalid fields so its same-role correction can run.

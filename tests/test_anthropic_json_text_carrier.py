@@ -69,6 +69,9 @@ async def test_explicit_text_carrier_returns_exact_json_without_inventing_tool_c
         '{"status":"ok","status":"bad"}',
         '{"status":NaN}',
         "[]",
+        '{"status":1e999}',
+        '{"status":-1e999}',
+        '{"nested":[{"number":1e999}]}',
     ],
 )
 async def test_text_carrier_rejects_non_object_ambiguous_or_repaired_text(raw):

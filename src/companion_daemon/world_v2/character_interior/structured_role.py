@@ -1551,6 +1551,8 @@ class StructuredCharacterRoleFaculty:
         return await self._complete(request)
 
     async def _complete(self, request: _InteriorRoleRequest) -> Mapping[str, object]:
+        from companion_daemon.llm import ProviderResultFormatError
+
         contract = self._resolve_contract(request)
         messages, tool_contract, reference_bindings = self._prepare_request(request, contract=contract)
         transport = self._single_tool_transport(tool_contract=tool_contract)
@@ -1576,6 +1578,7 @@ class StructuredCharacterRoleFaculty:
                     "identity_extras": identity_extras,
                 },
             )
+        carrier_failure = None
         with model_call_scope(
             request.purpose,
             actor=request.subject_ref,
@@ -1583,17 +1586,25 @@ class StructuredCharacterRoleFaculty:
             request_hash=request_hash,
             identity_extras=identity_extras,
         ):
-            provider_raw = await complete_json_object(
-                self._model,
-                messages,
-                temperature=self._temperature,
-                tools=(list(tool_contract.provider_tools) if tool_contract is not None else None),
-                tool_choice=(
-                    transport.tool_choice if transport is not None else None
-                ),
-            )
+            try:
+                provider_raw = await complete_json_object(
+                    self._model,
+                    messages,
+                    temperature=self._temperature,
+                    tools=(list(tool_contract.provider_tools) if tool_contract is not None else None),
+                    tool_choice=(transport.tool_choice if transport is not None else None),
+                )
+            except ProviderResultFormatError as exc:
+                provider_raw, carrier_failure = exc.raw_result, exc
         raw = provider_raw
         try:
+            if carrier_failure is not None:
+                raise StructuredRoleResultError(
+                    "role_result_schema_invalid", detail=carrier_failure.detail,
+                    response_hash=_hash_text(provider_raw), rejected_raw=provider_raw,
+                    request_hash=request_hash, model_call_id=self._model_call_id(
+                        request=request, request_hash=request_hash),
+                ) from carrier_failure
             if tool_contract is not None:
                 try:
                     raw = tool_contract.unwrap(provider_raw)

@@ -1131,6 +1131,15 @@ class ChatModel(Protocol):
         """Return assistant text for chat messages."""
 
 
+class ProviderResultFormatError(ValueError):
+    """An authored result used an invalid carrier, retaining bytes for correction."""
+
+    def __init__(self, *, raw_result: str, detail: str):
+        self.raw_result = raw_result
+        self.detail = detail
+        super().__init__(detail)
+
+
 class DeepSeekChatModel:
     provider = "deepseek"
     mirrors_debug_spend = True
