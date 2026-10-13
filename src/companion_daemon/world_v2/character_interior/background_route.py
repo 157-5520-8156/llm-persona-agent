@@ -9,6 +9,7 @@ BACKGROUND_CHARACTER_PURPOSES = frozenset({
     'private_impression_reflection', 'world_stimulus_appraisal', 'life_development_choice',
     'activity_lifecycle_choice', 'outcome_selection', 'fact_memory_retention',
     'experience_memory_retention', 'memory_consolidation', 'memory_withdrawal_review',
+    'prehistory_memory_batch',
 })
 
 

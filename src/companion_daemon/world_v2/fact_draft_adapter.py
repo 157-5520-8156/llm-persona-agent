@@ -161,8 +161,8 @@ class FactObservationProposalAdapter:
     ) -> None:
         if not 0 <= temperature <= 2:
             raise ValueError("FactDraft temperature must be between 0 and 2")
-        if not 0.1 <= timeout_seconds <= 30:
-            raise ValueError("FactDraft timeout must be between 0.1 and 30 seconds")
+        if not 0.1 <= timeout_seconds <= 300:
+            raise ValueError("FactDraft timeout must be between 0.1 and 300 seconds")
         self._model = model
         self._temperature = temperature
         self._timeout_seconds = timeout_seconds

@@ -387,13 +387,16 @@ def verify_life_review(result, snapshot, *, required=False):
 
 
 class LifeSourceReviewer:
-    def __init__(self, *, model, evidence_store):
+    def __init__(self, *, model, evidence_store, timeout_seconds=22.0):
         if not callable(getattr(model, 'complete_json_with_usage', None)):
             raise TypeError('Life review requires a metered model')
         if not callable(getattr(evidence_store, 'put_if_absent', None)):
             raise TypeError('Life review requires an immutable evidence store')
         self.model = model
         self.store = evidence_store
+        if not 0 < timeout_seconds <= 300:
+            raise ValueError('invalid Life review time budget')
+        self.timeout_seconds = timeout_seconds
 
     def _record(self, raw, kind):
         sha = digest(raw)
@@ -405,9 +408,9 @@ class LifeSourceReviewer:
         from ..deliberation import ModelUsageProvenance
         prepared, readings = prepare_review(candidate_json=candidate_body(result), provider_raw=provider_raw,
             view=result.life_source_view, snapshot=snapshot)
-        # A wire repair shares the original 22-second budget; a definite
+        # A wire repair shares the whole configured review budget; a definite
         # rejection goes back to the character once, never back to the critic.
-        async with asyncio.timeout(22.0):
+        async with asyncio.timeout(self.timeout_seconds):
             for ordinal in range(2):
                 self._record(prepared, 'raw_model_request')
                 request = json.loads(prepared)['request']

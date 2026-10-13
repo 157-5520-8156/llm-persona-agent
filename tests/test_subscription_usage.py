@@ -23,6 +23,26 @@ def test_reservations_survive_restart_and_unknown_usage_keeps_capacity(tmp_path)
     assert token
 
 
+def test_rolling_windows_and_cross_connection_admission_are_atomic(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    now = [1_000_000.0]
+    first = ledger(tmp_path, five_hour_tokens=100, weekly_tokens=150, clock=lambda:now[0])
+    second = ledger(tmp_path, five_hour_tokens=100, weekly_tokens=150, clock=lambda:now[0])
+    def reserve(store):
+        try:
+            return store.reserve(purpose='memory_consolidation', model='fixture', tokens=90)
+        except ValueError:
+            return None
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(reserve, [first,second]))
+    assert sum(r is not None for r in results) == 1
+    now[0] += 5 * 3600 + 1
+    with pytest.raises(ValueError, match='subscription_token_limit'):
+        first.reserve(purpose='memory_consolidation',model='fixture',tokens=61)
+    now[0] += 7 * 86400
+    assert first.reserve(purpose='memory_consolidation',model='fixture',tokens=90)
+
+
 @pytest.mark.asyncio
 async def test_native_subscription_call_is_metered_without_monetary_pricing(tmp_path, monkeypatch):
     calls = []

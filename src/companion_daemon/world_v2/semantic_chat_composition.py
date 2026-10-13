@@ -1235,7 +1235,10 @@ def build_semantic_chat_composition(
                 path=str(settings.database_path), world_id=life_review_world_id,
             )
             owned_finalizers.append(evidence_store)
-            life_source_reviewer = LifeSourceReviewer(model=life_review_model, evidence_store=evidence_store)
+            life_source_reviewer = LifeSourceReviewer(
+                model=life_review_model, evidence_store=evidence_store,
+                timeout_seconds=settings.world_v2_background_timeout_seconds if subscription_background else 22.0,
+            )
         text_shadow_observer = None
         if settings.world_v2_ordinary_text_review_mode == "sampled":
             from .text_shadow_observer import TextShadowObserver
@@ -1243,6 +1246,7 @@ def build_semantic_chat_composition(
                 database=settings.database_path, world_id=life_review_world_id,
                 model=subscription_model or source_closure_model.source_model,
                 sample_every=settings.world_v2_text_review_sample_every,
+                timeout_seconds=settings.world_v2_background_timeout_seconds if subscription_background else 30,
             )
             owned_closeables.append(text_shadow_observer)
         character_interior = compose_production_character_interior(
@@ -1260,7 +1264,9 @@ def build_semantic_chat_composition(
             life_source_reviewer=life_source_reviewer,
             background_character_model=subscription_model,
             background_turn_lease_seconds=(
-                max(120, int(2 * settings.world_v2_background_timeout_seconds + 120))
+                # Initial + one correction + Recall follow-up; each can include
+                # one Life review budget (including its wire repair).
+                max(120, int(6 * settings.world_v2_background_timeout_seconds + 120))
                 if subscription_background else 120
             ),
             reference_wire=settings.world_v2_reference_wire_enabled,

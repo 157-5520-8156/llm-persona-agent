@@ -4320,7 +4320,10 @@ def build_sqlite_world_v2_turn_application(
             ),
             fact_acceptance=fact_acceptance,
             fact_adapter=(
-                FactObservationProposalAdapter(model=fact_model) if fact_model is not None else None
+                FactObservationProposalAdapter(
+                    model=fact_model,
+                    timeout_seconds=getattr(fact_model, 'background_timeout_seconds', 8.0),
+                ) if fact_model is not None else None
             ),
             fact_memory_lifecycle=(
                 FactMemoryCandidateLifecycle(

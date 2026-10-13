@@ -18,12 +18,16 @@ _LOG = logging.getLogger(__name__)
 
 
 class TextShadowObserver:
-    def __init__(self, *, database, world_id, model, sample_every=10, daily_limit=12):
+    def __init__(self, *, database, world_id, model, sample_every=10, daily_limit=12,
+                 timeout_seconds=30):
         if not world_id or type(sample_every) is not int or not 1 <= sample_every <= 1000 or not 1 <= daily_limit <= 100:
             raise ValueError("invalid observational deployment")
         self.database = Path(database).resolve()
         self.world_id, self.model = world_id, model
         self.sample_every, self.daily_limit = sample_every, daily_limit
+        if not 0 < timeout_seconds <= 300:
+            raise ValueError('invalid text observation time budget')
+        self.timeout_seconds = timeout_seconds
         self.path = self.database.with_suffix('.text-observation.sqlite')
         self._connection = sqlite3.connect(self.path, timeout=0.05)
         self._connection.execute("PRAGMA journal_mode=WAL")
@@ -156,7 +160,7 @@ class TextShadowObserver:
                     {'role':'user','content':canonical({'sent_beats':beats,'pinned_sources':source_view})}],
                 tools=[{'type':'function','function':{'name':'observe_sent_text','strict':True,'parameters':schema}}],
                 tool_choice={'type':'function','function':{'name':'observe_sent_text'}},temperature=0,
-            ), timeout=30)
+            ), timeout=self.timeout_seconds)
         value = json.loads(raw)
         if (set(value) != {'severity','findings'} or value['severity'] not in {'none','minor','major','uncertain'}
             or not isinstance(value['findings'], list) or any(not isinstance(x, dict) or set(x) != {'quote','reason'}

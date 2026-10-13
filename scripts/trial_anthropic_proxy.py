@@ -124,7 +124,8 @@ class CaptureTransport(httpx.AsyncBaseTransport):
             row.update(status="transport_failed", error_type=type(exc).__name__)
             raise
         finally:
-            save(self.allowance.root / "requests.json", self.allowance.requests)
+            if self.allowance is not None:
+                save(self.allowance.root / "requests.json", self.allowance.requests)
 
     async def aclose(self):
         await self.inner.aclose()
@@ -174,7 +175,8 @@ class MetadataStream(httpx.AsyncByteStream):
                         }
                 except (ValueError, TypeError):
                     pass  # SSE or malformed JSON is handled by the real adapter.
-            save(self.allowance.root / "requests.json", self.allowance.requests)
+            if self.allowance is not None:
+                save(self.allowance.root / "requests.json", self.allowance.requests)
 
     async def aclose(self):
         await self.inner.aclose()

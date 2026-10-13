@@ -93,6 +93,7 @@ class SubscriptionAnthropicModel(AnthropicChatModel):
     def __init__(self, *args, token_ledger, timeout_seconds=90, transport=None, **kwargs):
         self.token_ledger = token_ledger
         self.timeout_seconds = timeout_seconds
+        self.background_timeout_seconds = timeout_seconds
         super().__init__(*args, usage_observer=token_ledger.record, transport=transport,
                          client=httpx.AsyncClient(timeout=timeout_seconds, trust_env=False,
                                                   transport=transport), **kwargs)

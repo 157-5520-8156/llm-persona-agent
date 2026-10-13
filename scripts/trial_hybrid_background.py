@@ -15,9 +15,10 @@ import httpx
 from companion_daemon.config import Settings
 from companion_daemon.usage_metrics import estimate_provider_request_reserve_cny
 from companion_daemon.world_v2.longitudinal_journey import JourneyClock
+from companion_daemon.world_v2.interactive_turn_budget import InteractiveTurnBudgetPolicy
 from companion_daemon.world_v2.qq_c2c_host import build_qq_c2c_host
 from drive_production_lanes import CaptureDelivery, DriveSession
-from trial_anthropic_proxy import WORLD, digest, save
+from trial_anthropic_proxy import WORLD, MetadataStream, digest, save
 
 
 class BoundedTransport(httpx.AsyncBaseTransport):
@@ -51,6 +52,7 @@ class BoundedTransport(httpx.AsyncBaseTransport):
             response = await self.inner.handle_async_request(request)
             row.update(http_status=response.status_code,
                        response_headers_seconds=time.monotonic()-row['started_monotonic'])
+            response.stream = MetadataStream(response.stream, row, None)
             return response
         except BaseException as exc:
             row.update(status='transport_failure', error_type=type(exc).__name__)
@@ -95,9 +97,9 @@ async def run(args):
     os.environ['COMPANION_DISABLE_DEBUG_USAGE_LEDGER'] = '1'
     result = {'completed':False, 'requests':[], 'source_sha256':source_hash,
               'mode':'isolated_capture', 'quality_qualified':False,
-              'initial_allowance':{'deepseek_requests':2,'deepseek_reserved_cny':0.30,
-                                   'proxy_requests':4}}
-    allowance = {'proxy':4, 'deepseek':2, 'cny':0.30}
+              'initial_allowance':{'deepseek_requests':args.deepseek_requests,'deepseek_reserved_cny':0.30,
+                                   'proxy_requests':args.proxy_requests}}
+    allowance = {'proxy':args.proxy_requests, 'deepseek':args.deepseek_requests, 'cny':0.30}
     clock, delivery, entered = JourneyClock(origin), CaptureDelivery(), asyncio.Event()
     host = None
     memory = None
@@ -105,7 +107,11 @@ async def run(args):
         host = build_qq_c2c_host(settings=settings, recipient_id='world-v2-console-user',
             bootstrap_at=origin, delivery=delivery, ingress_now=clock.presentation_now,
             ingress_sleep=clock.presentation_sleep, action_due_now=clock.now,
-            action_due_sleep=clock.timer_sleep)
+            action_due_sleep=clock.timer_sleep,
+            interactive_turn_budget_policy=InteractiveTurnBudgetPolicy(
+                total_seconds=settings.world_v2_interactive_turn_budget_seconds,
+                hedge_after_seconds=settings.world_v2_interactive_hedge_after_seconds,
+                wall_clock=clock.presentation_now))
         composition = host._semantic_chat
         for model in composition._owned_models:
             if model.provider not in {'deepseek','anthropic'}:
@@ -117,18 +123,25 @@ async def run(args):
         result['initial_prehistory'] = len(app._ledger.project().prehistory_records)
         session = DriveSession(database=database, recipient_id='world-v2-console-user',
             delivery=delivery, host=host, clock=origin, journey_clock=clock)
-        memory = asyncio.create_task(app._turns._runtime._memory_consolidation.drain_one())
+        async def outlook_once():
+            projection = app._ledger.project()
+            wake = next(e for e in reversed(projection.committed_world_event_refs)
+                        if e.event_type == 'ClockAdvanced')
+            return await app._life_ecology._life_development_followup.prepare_outlook_once(
+                wake_event_ref=wake.event_id)
+        memory = asyncio.create_task(outlook_once() if args.outlook_only
+            else app._turns._runtime._memory_consolidation.drain_one())
         await asyncio.wait_for(entered.wait(), 60)
         result['background_pending_at_chat_start'] = not memory.done()
         result['chat'] = await session.inbound('刚忙完，想跟你聊会儿。你今天怎么样？', background_units=0)
         result['background_pending_at_first_chat_completion'] = not memory.done()
         save(root/'progress.json',result)
-        result['memory'] = (await memory).model_dump(mode='json')
-        projection = app._ledger.project()
-        wake = next(e for e in reversed(projection.committed_world_event_refs)
-                    if e.event_type == 'ClockAdvanced')
-        result['outlook'] = await app._life_ecology._life_development_followup.prepare_outlook_once(
-            wake_event_ref=wake.event_id)
+        background_result = await memory
+        if args.outlook_only:
+            result['outlook'] = background_result
+        else:
+            result['memory'] = background_result.model_dump(mode='json')
+            result['outlook'] = await outlook_once()
         result['subscription'] = composition.world_support_model.token_ledger.snapshot()
         result['final_prehistory'] = len(app._ledger.project().prehistory_records)
         result['completed'] = True
@@ -155,6 +168,9 @@ if __name__ == '__main__':
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--env-file',type=Path,action='append',default=[])
     parser.add_argument('--live',action='store_true')
+    parser.add_argument('--outlook-only',action='store_true')
+    parser.add_argument('--proxy-requests',type=int,choices=(1,2,3,4),default=4)
+    parser.add_argument('--deepseek-requests',type=int,choices=(1,2),default=2)
     args = parser.parse_args()
     if not args.live:
         parser.error('real requests require --live; use offline transport tests otherwise')
