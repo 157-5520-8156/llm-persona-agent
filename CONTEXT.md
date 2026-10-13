@@ -1,3 +1,34 @@
+cmdc-pak JSON carrier diagnosis and reading screen (2026-10-13):
+Base3717d8e2; code dbc3df3c +2d4a5aff. Design cmdc-json-carrier-and-quality-2026-10-13.md;
+audit docs/audits/cmdc-adaptation-and-reading-2026-10-13.md.
+User confirms closed Anthropic-only cmdc-pak. Official Gemini3.8Flash output65536,
+proxy /v1/models reports64000. Background candidate now64000 (not required output length).
+Frozen real memory input:3x4096/16384/64000=9 calls all end_turn JSONtext,0native-tool pass;
+all9 unchanged payloads pass original role/Core offline. 15 schema/mode/temp controls likewise
+no native-host pass (temp1 gave2 malformed native objects). This isolates a carrier gap,
+not proof that the model cannot understand these memories or needs64k to answer this batch.
+Explicit native_or_json_object mode only one forced named schema; exact raw object,
+no fences/field repair/fake tool_use; original host schema/source/permission/CAS stays.
+Versioned transport identity/model_version; native default unchanged. Complete text stream
+only at terminal. Typed carrier rejection retains raw/reason and gets one same-role correction;
+duplicate keys/nonfinite(exponent overflow too)/nonobject rejected. Two review findings closed.
+Actual3 full-history clones each1call/8MemoryCandidateReviewed=24;sourceSHA and39900original
+JSONevents unchanged;1259prehistory retained. Prior memory compatibility failure is superseded
+only for this tested batch/carrier, not all memory/understanding/forgetting quality.
+30 existing frozen reading cases x3 x2=180 final answers. Same full gold+distractor evidence;
+not retrieval/persona/long-story. Initialproxy4HTTP502 upstream-Google connection timeouts+
+81localcircuit/probe skips;serial recovery85/85 succeeded. Do not call85model reading errors
+or claim concurrency alone caused failures (time/route recovery confound).
+Current-assistant blind source grades sealed before unblind: proxy87/90no factual error and
+fullygroundedcomplete;DS84/90no factual error,81/90fullygroundedcomplete. Major1vs2,minor2vs4;
+small single-character sample with3repeats,not90independent tasks/no general model winner.
+TaskHTTP213=proxy121+DS92;proxy505307knownreportedtokens+4unknown284149reserve;
+DSallknownusageestimate.2436CNY under separate5CNY cap;not account bills.
+364initial/219reviewed scopedpass; final frozenfull10658pass/19skip/2xfail/1existingwarning,
+pytest1209.97s exit0;1711PythonSHAunchanged. All artifacts output/private-audits/cmdc-adaptation-20261013/.
+Production config/restart/QQ unchanged; hybrid env.example opts into carrier. Full life/story,
+stale-work completion under ongoing chat, network soak remain manual_only/qualification_incomplete.
+
 Hybrid background provider candidate (2026-10-13):
 Base e32eca51; initial35ec8927 + review fixes7526f83a.
 Design docs/design/hybrid-background-provider-2026-10-13.md;
