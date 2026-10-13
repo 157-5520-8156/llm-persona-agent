@@ -23,6 +23,10 @@
 | scripts | 184 | 76425 |
 | prototypes | 6 | 774 |
 
+第一批代码提交 `f83b3ec2`：源码 718→712 个文件，387302→384417 行（净减 2885）；
+测试 798→797 个文件，347062→345798 行（净减 1264，删除两个专属测试文件、增加一个哈希兼容测试）。
+合计 Python 净减 4149 行，没有新增生产 Module。
+
 718 个源码 Module 中：662 个从所选入口经 import 可达，29 个另由操作/评测脚本可达，
 23 个仅由测试可达，4 个不在任何上述 Python 根的闭包中。清除六个文件后，入口可达的
 **662 个 Module 集合保持相同**；操作/评测脚本的源码依赖也未减少。仍不能由此宣称
@@ -142,5 +146,13 @@
 - `verify_mechanism_catalog.py`：schema=2，26 mechanisms，通过。
 - 合并前从四个原始 hash 函数生成固定向量；新增测试验证历史 hash、忽略 authority 包装字段、
   实质数据变化必须改变 hash，以及 UTC-only/modern offset codec 不得混用。
-- 关系补充测试、独立 Standards/Spec 审查和最终冻结全量回归：待完成后更新。
+- 关系补充测试：106 passed，4.18s（此前一次命令误写测试文件名，0 tests；修正后以上述结果为准）。
+- Standards 审查：0 blocker，未发现需要改动的重复/过度抽象；独立验证四份 canonicalizer 与两份 origin parser 的 AST 主体一致。
+- Spec 审查：0 blocker；保留当前 CharacterInterior、Fact-v2、工具授权和历史回放。仅确认本批范围，不宣称整个仓库清理完。
+- 本地 `equivalence.json` 进一步固定六组 AST 主体等价及入口/操作脚本可达源码集合相同。
+- 最终冻结全量回归：**10617 passed / 19 skipped / 2 xfailed / 1 既有 Starlette warning**；
+  pytest 1209.71s，进程 exit 0。1704 个受版本管理的 Python 文件测试前后 SHA-256 完全相同。
+  验收终态：`output/private-audits/code-cleanup-20261013/final-regression/result.json`；
+  完整日志：同目录 `full.log`；冻结清单：同目录 `source-freeze.json`。
+- 修改文件 Ruff 与 `git diff --check` 均通过。没有配置新的类型检查工具或新的测试框架。
 - 无新增外部模型请求；未改运行配置、重启生产或调用 QQ。测试证据不代表生产 soak 资格。

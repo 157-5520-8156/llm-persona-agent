@@ -1,3 +1,14 @@
+Code cleanup first pass (2026-10-13):
+Base fa6c3700; code f83b3ec2. Inventory/disposition: docs/audits/code-cleanup-2026-10-13.md.
+Removed 6 orphan/retired modules +2 independent-author PinnedTurn methods and2 exclusive test files.
+Consolidated exact historical UTC-only hash codecs and dashboard origin parser in existing Modules;
+modern offset codec remains distinct. No new production Module or character behavior rule.
+Source718->712 files,387302->384417lines; tests798->797,347062->345798. Python net -4149lines.
+436 scoped pass; independent Standards/Spec0blockers. Frozenfull10617pass/19skip/2xfail/
+1existingwarning,pytest1209.71s,exit0;1704PythonSHAunchanged. Evidence output/private-audits/code-cleanup-20261013/.
+Entry import reachability same662Modules; operator-only29 remain. Not whole-repo cleanup completion.
+Keep replay/weight contracts; CompanionStore still has budget/image callers. No deploy/QQ/provider calls.
+
 cmdc-pak JSON carrier diagnosis and reading screen (2026-10-13):
 Base3717d8e2; code dbc3df3c +2d4a5aff. Design cmdc-json-carrier-and-quality-2026-10-13.md;
 audit docs/audits/cmdc-adaptation-and-reading-2026-10-13.md.
