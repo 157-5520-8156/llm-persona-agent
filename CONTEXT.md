@@ -1,3 +1,26 @@
+Hybrid background provider candidate (2026-10-13):
+Base e32eca51; initial35ec8927 + review fixes7526f83a.
+Design docs/design/hybrid-background-provider-2026-10-13.md;
+audit docs/audits/hybrid-background-provider-2026-10-13.md.
+Opt-in WORLD_V2_BACKGROUND_PROVIDER=anthropic_subscription assigns localhost:8788 /
+gemini-3.8-flash-medium to World/NPC/fact and noninteractive Character purposes,
+including prehistory batch; inbound/visible proactive/reconsideration stay existing DeepSeek.
+One logical Character author; actual provider/model lineage retained; no automatic fallback.
+Background90s includes fact/Life/text-observer outer budgets; lease6*T+120 includes
+initial/correction/Recall plus each Life-review envelope; old DS defaults unchanged.
+Independent persistent token admission keeps unknown reserves across restart; no CNY pricing
+or debug-spend mirroring for subscription. User-declared150M/5h,500M/rolling7d local limits.
+3 isolated runs,total4proxy+2DS calls. v1 Outlookready78.430s, memorytechnical_failure;
+v1 chat harness missed simulated wall clock; v2 optional capture sink error afterHTTP200.
+Both failures retained. v3 DSfirst5.468s,last5.988s while proxyawait58.523s; Outlookstale
+because chat changed World, correctly not installed. Not story-quality/p95/2-4s proof.
+1259prehistory and39900originaleventJSON unchanged in all3clones;sourceSHAunchanged.
+Proxy118845knownreportedtokens+130776unknownreserve;DS.0232knownCNY+.227442unknown.
+196scoped then53extendedpass; both review axes fixed. Frozenfull10631pass/19skip/2xfail/
+1existingwarning,pytest1237.60s,exit0;1706PythonSHAunchanged.
+Config template configs/hybrid-background.env.example. Production config/restart/QQ unchanged;
+memory compatibility and full-life/soak still open; manual_only/qualification_incomplete.
+
 Real story acceptance resumed; NOT qualified (2026-10-13):
 Base1d7b4e6a; design real-story-generation-contracts-2026-10-13.md;
 audit real-story-quality-and-contracts-2026-10-13.md. Same explicit5CNY/64request/

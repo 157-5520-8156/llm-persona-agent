@@ -6,7 +6,7 @@
 
 ## 实现范围
 
-基线 `e32eca51`；初始提交 `35ec8927`，后续复核修复另行提交。
+基线 `e32eca51`；初始提交 `35ec8927`，复核修复提交 `7526f83a`。
 沿用隔离工作区 `role-memory-qualification/Girl-Agent`。
 
 即时模型保持现有 `deepseek-flash`（配置中的 V4.1 路由标识）；没有改它的参数、
@@ -60,11 +60,23 @@ live-v1与live-v2的harness缺陷分别由显式模拟时钟接线和流式采�
 - SQLite双连接并发预留、滚动5小时/7天额度、发送后取消及重启保留未知预留通过。
 - Standards复核的lease/后台审核时限问题已修；Spec复核的事实8秒上限和批量
   前史遗漏已修，并补实际宿主测试。两轴复核未留具体实现阻塞。
-- 改动文件Ruff与diff检查通过。最终全库正在冻结Python源码运行，结果以
-  `final-regression/result.json` 与 `full.log` 为准，未完成前不宣称全绿。
+- 改动文件Ruff与diff检查通过。最终全库 **10631 passed / 19 skipped / 2 xfailed /
+  1既有Starlette依赖warning**；pytest1237.60秒，退出0。1706个Python文件SHA在测试
+  期间未变化。终态见 `final-regression/result.json` 与 `full.log`。
 
 ## 尚未通过
 
 后台记忆工具兼容性、真实生活全链路/跨日故事质量、稳定聊天p95/2—4秒、生产/QQ
 回执与长期运行均未通过。慢规划遭遇新状态时必须重新依据新快照评估；本次只验证
 stale拒绝，没有证明持续聊天下的后台完成率。保持 `manual_only / qualification_incomplete`。
+
+## Standards复核终态
+
+此前2项具体发现（lease覆盖不足、后台审核仍使用旧短时限）均已修复；fake-clock
+竞争领取/最终checkpoint及调用时限接线验证已补齐。未留具体Standards阻塞。
+
+## Spec复核终态
+
+此前2项实现发现（事实提取8秒上限、批量前史遗漏）及1项验证缺口均已关闭。
+实际宿主测试同时断言代理90秒和DeepSeek8秒；Core非法结果纠正留在同一后台
+模型。未留具体Spec实现阻塞，真实记忆质量仍按上方未通过项处理。
