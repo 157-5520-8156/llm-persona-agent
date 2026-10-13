@@ -2493,6 +2493,7 @@ class CharacterInterior:
                     validated = self._validate_role_result(
                         raw,
                         snapshot=current_request.snapshot,
+                        request=current_request,
                         allowed_statuses=allowed_statuses,
                         require_author_lineage=bool(
                             getattr(faculty, "requires_author_lineage", False)
@@ -2591,6 +2592,7 @@ class CharacterInterior:
                 validated = self._validate_role_result(
                     corrected_raw,
                     snapshot=current_request.snapshot,
+                    request=corrected_request,
                     allowed_statuses=allowed_statuses,
                     require_author_lineage=bool(getattr(faculty, "requires_author_lineage", False)),
                 )
@@ -2806,6 +2808,7 @@ class CharacterInterior:
         snapshot: InnerLifeSnapshot,
         allowed_statuses: set[str],
         require_author_lineage: bool = False,
+        request: _InteriorRoleRequest | None = None,
     ) -> _InteriorRoleResult:
         try:
             result = _InteriorRoleResult.model_validate(raw)
@@ -2824,12 +2827,15 @@ class CharacterInterior:
         if require_author_lineage and result.author_lineage is None:
             logger.warning("role result lacks author lineage status=%s", result.status)
             raise _InteriorTechnicalError("invalid_role_result", snapshot=snapshot)
-        if set(result.attended_source_refs) - set(snapshot.source_refs):
+        if request is not None and request.snapshot != snapshot:
+            raise _InteriorTechnicalError("invalid_role_result", snapshot=snapshot)
+        offered_attention = set(request.attention_source_refs if request is not None else snapshot.source_refs)
+        if set(result.attended_source_refs) - offered_attention:
             import logging
 
             logging.getLogger(__name__).warning(
                 "role result attended refs unpinned extra=%s",
-                sorted(set(result.attended_source_refs) - set(snapshot.source_refs))[:5],
+                sorted(set(result.attended_source_refs) - offered_attention)[:5],
             )
             raise _InteriorTechnicalError("invalid_role_result", snapshot=snapshot)
         return result

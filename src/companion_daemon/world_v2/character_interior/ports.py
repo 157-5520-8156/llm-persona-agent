@@ -173,6 +173,13 @@ class _InteriorRoleRequest(FrozenModel):
         default=None, exclude_if=lambda value: value is None,
     )
 
+    @property
+    def attention_source_refs(self) -> tuple[str, ...]:
+        """The complete pinned attention catalog, independent of effect authority."""
+        capability_refs = self.capability_manifest.source_refs if self.capability_manifest else ()
+        return tuple(dict.fromkeys((*capability_refs, *self.subject_source_refs,
+                                    self.trigger_ref, *self.snapshot.source_refs)))
+
     @model_validator(mode="after")
     def correction_lineage_is_explicit(self) -> "_InteriorRoleRequest":
         if self.correction_rejected_role_result is not None:

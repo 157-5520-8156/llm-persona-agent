@@ -234,6 +234,8 @@ def validate_draft(
     offered_history=(),
     location_refs=(),
     location_capabilities=(),
+    precise_errors=False,
+    precise_privacy_errors=False,
 ):
     if (
         draft.world_id != projection.world_id
@@ -277,14 +279,25 @@ def validate_draft(
         allowed_basis = set(basis_refs)
         if old_nodes.get(node.opportunity_id) == node:
             allowed_basis |= set(node.basis_refs) & existing_events
-        if node.closes_at <= now or not set(node.basis_refs) <= allowed_basis:
+        if not precise_errors and (node.closes_at <= now or not set(node.basis_refs) <= allowed_basis):
             raise ValueError("outlook opportunity has expired or lacks offered basis")
+        if node.closes_at <= now:
+            raise ValueError(f"outlook opportunity {node.opportunity_id!r}: closes_at must be after {now.isoformat()}")
+        invalid_basis = sorted(set(node.basis_refs) - allowed_basis)
+        if invalid_basis:
+            raise ValueError(
+                f"outlook opportunity {node.opportunity_id!r}: basis_refs contains unoffered references "
+                f"{invalid_basis!r}; choose exact event authority IDs from the request basis_refs list, "
+                "not occurrence/plan entity IDs"
+            )
         if node.npc_ref is not None and node.npc_ref not in npc_refs:
             raise ValueError("outlook NPC has no offered actor capability")
         if node.npc_ref is not None:
             npc = next(n for n in projection.npcs if f"npc:{n.npc_id}" == node.npc_ref)
             rank = ("public", "shareable", "personal", "private", "withhold")
             if rank.index(node.execution.privacy_class) < rank.index(npc.privacy_class):
+                if precise_privacy_errors:
+                    raise ValueError(f"outlook opportunity {node.opportunity_id!r}: NPC {node.npc_ref!r} requires privacy_class at least {npc.privacy_class}")
                 raise ValueError("outlook NPC script weakens source privacy")
         from .world_outlook_npc import validate_npc_execution
 

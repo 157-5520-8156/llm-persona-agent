@@ -2,7 +2,6 @@
 import hashlib
 import json
 from datetime import timedelta
-from types import SimpleNamespace
 
 import pytest
 from jsonschema import Draft202012Validator
@@ -57,6 +56,33 @@ async def test_memory_v2_attention_can_cover_nine_valid_sources_without_truncati
     assert result["attended_source_refs"] == tuple(refs)
     schema = model.tool_calls[0][0][0]["function"]["parameters"]
     Draft202012Validator(schema).validate(raw)
+
+
+@pytest.mark.asyncio
+async def test_attention_accepts_exact_capability_alias_advertised_in_same_request():
+    from companion_daemon.world_v2.character_interior.structured_role import _citeable_catalog_for_request
+    offered = manifest()
+    request = await _request(purpose="memory_consolidation", capability_manifest=offered)
+    selected = next(ref for ref in offered.source_refs if ref not in request.snapshot.source_refs)
+    catalog = _citeable_catalog_for_request(request)
+    token = next(key for key, value in catalog.token_to_ref.items() if value == selected)
+    raw = json.loads(_result(status="decision", decision={"payload": choices()}))
+    raw["attended_source_refs"] = [token]
+    role = StructuredCharacterRoleFaculty(model=_RequiredToolQueueModel(json.dumps(raw)), model_id="deepseek-flash")
+    result = await role.consider(request)
+    assert result["attended_source_refs"] == (selected,)
+    assert result["decision"]["payload"]["choices"] == choices()["choices"]
+    from companion_daemon.world_v2.character_interior.core import CharacterInterior, _InteriorTechnicalError
+    validated = CharacterInterior._validate_role_result(
+        result, snapshot=request.snapshot, request=request, allowed_statuses={"decision"},
+    )
+    assert validated.attended_source_refs == (selected,)
+    # Core must independently reject unoffered refs, even from another faculty.
+    with pytest.raises(_InteriorTechnicalError, match="invalid_role_result"):
+        CharacterInterior._validate_role_result(
+            {**result, "attended_source_refs": ("source:unoffered",)},
+            snapshot=request.snapshot, request=request, allowed_statuses={"decision"},
+        )
 
 
 @pytest.mark.asyncio

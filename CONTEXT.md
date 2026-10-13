@@ -1,3 +1,40 @@
+Real story acceptance resumed; NOT qualified (2026-10-13):
+Base1d7b4e6a; design real-story-generation-contracts-2026-10-13.md;
+audit real-story-quality-and-contracts-2026-10-13.md. Same explicit5CNY/64request/
+14day grant, same original origin; full1259prehistory retained, no production/QQ mutation.
+Livev4-v9: execution-kind schema mismatch -> basis ID confusion -> missing NPC privacy
+input -> first installed Outlook revision(v7) -> contradictory memory forget/synthesis ->
+attention catalog mismatch(v8) -> repeated memory quote/forget errors(v9).
+Current story4threads/6single-thread opportunities, all waiting,0realized sources;
+only40m30s simulated progress,0of5scheduled chats, no cross-day/choice/quality pass.
+First outline mostly environment/notice continuation; depth/interweaving still unproven.
+Final same budget64real requests/2.499094known/.529182unknown reserve/1.971724available;
+this turn57new real requests/2.361073known. Final stop=request_limit; no further paid calls.
+v7 capture includes1exact prior paid-response replay. Two unknown reserves retained:
+.289870oldHTTP400+.239312v11interrupted request. Scoped estimates,not platform bill.
+IMPORTANT harness config defect: alias-only Settings ignored lowercase reference_wire,
+budget_disabled and external-perception overrides in v10/v11 (and earlier off declaration).
+v11stopped after17requests when actual v2 tool exposed failure; intent flags invalid evidence.
+Rawv11result stop/error null after asyncio cancellation; halt-reason+terminal-assessment
+explicitly mark incomplete. DB path itself had noalias and remained isolated throughout.
+v12uses uppercase aliases plus preflight effective-settings assertions; actual7HTTP requests
+allmemoryv6,6batches/48MemoryCandidateReviewed;1missingstatus corrected once, no quote or
+forget conflicts in this small sample. Internal spend caps replaced only in this copy by
+original external5CNY/64request grant. Default production configuration unchanged.
+Author request now advertises legal kind shapes/current basis/NPC floors, precise errors
+are pinned by saved schema marker. Exact unchanged prior-node alternatives preserve old
+basis; edited/new nodes keep current authority. No host choice/prose/privacy repair.
+Memory schema advertises existing forget-vs-understanding consistency; v9/v11still violate
+it, no guaranteed first-pass claim. Faculty/Core share pinned request attention catalog,
+including correction; unseen refs and independent effect checks remain.
+60final scoped pass; review P2s closed. Frozenfull10586pass/19skip/2xfail/1existingwarning,
+pytest1258.65s,exit0;1507src/testsPythonSHAunchanged. Not model-quality proof.
+100000B cap unchanged; synthetic full-history +6prior enum=105599B flags size risk only,
+not a measured actual continuation request. Real continuation sizing remains a gate.
+Offline exact initial-query reconstruction: context JSON first1024chars is metadata/IDs,
+not narrative. Cue quality fix/comparison remains; do not claim sole cause of shallow story.
+No synchronous chat review added; manual_only/qualification_incomplete remains.
+
 Visible history / allowed anchor alignment (2026-10-13):
 Base7d5ae340; design outlook-visible-history-offer-2026-10-12.md;
 audit outlook-visible-history-offer-2026-10-13.md. New history_offer pins one allowed

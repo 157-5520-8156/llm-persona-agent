@@ -212,17 +212,11 @@ def _bound_proactive_attended_source_refs(decoded: dict[str, object]) -> None:
 
 
 def _citeable_catalog_for_request(request: _InteriorRoleRequest) -> PinnedSourceCatalog:
-    extra: list[str] = []
-    if request.capability_manifest is not None:
-        extra.extend(request.capability_manifest.source_refs)
-    extra.extend(request.subject_source_refs)
-    extra.append(request.trigger_ref)
-    refs = _unique_refs_in_order(extra, request.snapshot.source_refs)
     # The attention result has eight slots; that is not a limit on the
     # evidence she may read or cite. Keep the complete pinned catalog and
     # preserve its original prefix so existing source ids retain their meaning.
     return PinnedSourceCatalog.from_refs(
-        refs,
+        request.attention_source_refs,
         labels=citeable_source_labels(request.snapshot),
     )
 
@@ -2406,13 +2400,18 @@ class StructuredCharacterRoleFaculty:
             contract=contract,
             response_hash=response_hash,
         )
+        # Attention names what she noticed, including the capability and
+        # subject sources explicitly advertised beside the snapshot. Use the
+        # same pinned catalog that rendered/resolved the model's source ids.
+        # Decision and world-claim authority checks below remain separate.
+        catalog = _citeable_catalog_for_request(request)
+        offered_attention = set(catalog.token_to_ref.values())
         outside_attention = [
             ref
             for ref in result.attended_source_refs
-            if ref not in request.snapshot.source_refs
+            if ref not in offered_attention
         ]
         if outside_attention:
-            catalog = _citeable_catalog_for_request(request)
             _, failures = resolve_pinned_source_ref_list(outside_attention, catalog)
             self._raise(
                 "attended_source_unpinned",

@@ -281,6 +281,27 @@ def tool_contract(*, capability_payload, source_refs, recall_allowed, compact_sy
             }
     schema["properties"].pop("contract", None)
     schema["required"] = [key for key in schema.get("required", []) if key != "contract"]
+    if synthesis and not quote_handles:
+        # Expose the same cross-choice constraint as validate_payload before
+        # generation; never resolve it by editing the character's choices.
+        constraints = []
+        for token in capability_payload.get("offered_tokens", ()):
+            forgotten = {"type": "object", "required": ["disposition"],
+                         "properties": {"disposition": {"const": "forget"}}}
+            if named_choices:
+                choices = {"required": [token], "properties": {token: forgotten}}
+            else:
+                forgotten["required"].append("candidate_token")
+                forgotten["properties"]["candidate_token"] = {"const": token}
+                choices = {"contains": forgotten}
+            constraints.append({
+                "if": {"required": ["choices"], "properties": {"choices": choices}},
+                "then": {"properties": {"understandings": {"items": {"properties": {
+                    "evidence_quotes": {"items": {"properties": {"source_token": {"not": {"const": token}}}}},
+                }}}}},
+            })
+        if constraints:
+            schema["allOf"] = [*schema.get("allOf", ()), *constraints]
     return _compile_generic_decision_contract(
         purpose=PURPOSE, tool_name=("character_memory_consolidation_v6" if quote_handles
                                    else "character_memory_consolidation_v5" if named_choices
@@ -295,7 +316,9 @@ def tool_contract(*, capability_payload, source_refs, recall_allowed, compact_sy
                      "revise or merge existing aspects, retain only genuinely new aspects, or choose [] if unchanged. "
                      "understandings contains at most 3 updates TOTAL across the whole batch, not 3 per memory or facet. "
                      "Select which updates matter yourself. A source you choose to forget in choices cannot also support "
-                     "an understanding in this batch."
+                     "an understanding in this batch. The top-level summary can explain retention/forgetting "
+                     "choices; understandings are durable new memories, not explanations of why you forgot a source. "
+                     "You may choose [] when there is no consistent new understanding."
                      + (" evidence_quotes must copy an exact contiguous passage from "
                         "that token's supplied source prose; a paraphrase belongs in summary, never in quote."
                         if not quote_handles else "")

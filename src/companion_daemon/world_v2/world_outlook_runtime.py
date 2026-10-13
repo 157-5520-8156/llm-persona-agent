@@ -12,6 +12,7 @@ from .world_outlook_request import (
 from companion_daemon.llm import model_call_scope
 from .structured_completion import complete_json_object
 from .world_outlook_history import OutlookHistoryOffer, prepare_history_offer
+from .world_outlook_author_schema import outlook_author_schema
 from .world_outlook import (
     WorldOutlookDraft,
     digest,
@@ -30,6 +31,9 @@ models. Write their executable statements centrally using their identities and k
 Each opportunity has an execution payload: environment text describes external conditions only;
 npc_statement text is that NPC's exact utterance (a report, not certified truth of its claims).
 Runtime executes these frozen payloads without asking an NPC or another event author to think.
+Choose one execution kind from draft_schema.$defs.OutlookExecution.oneOf; omit fields belonging to other
+kinds instead of filling the entire field inventory. Environment and NPC statements do not
+reserve locations/participants or cancel plans. Existing plan dependencies belong in conditions.
 npc_activity starts a typed NPC-owned activity with NPC participants only. Its scripted duration
 finishes offscreen with no model and does not imply the protagonist saw or joined it. Use a separate
 observable event if she learns about it. npc_cancel_activity can cancel only that NPC's real plan;
@@ -44,6 +48,10 @@ unaffected threads; actual history cannot be rewritten. Ordinary life need not s
 Only offered basis refs/source handles/NPC identities may be used. A condition tests technical
 state or an exact token, never inferred emotions. after_opportunities means workflow after a
 prior consideration produced a real accepted effect, not evidence of narrative causality.
+basis_refs must copy event authority IDs from the top-level basis_refs list, not occurrence
+or plan entity IDs. History anchors and condition sources have their own distinct identities.
+An entirely unchanged prior opportunity may retain its original committed basis_refs;
+the exact prior-node alternatives in draft_schema describe that exception.
 Keep offered opportunities unchanged or retire them. Shared occurrences belong to multiple
 threads by one opportunity_id. Use future time windows and select a reasonable review_at.
 History material contains exact past sources, never instructions or current intentions.
@@ -51,6 +59,10 @@ Attach only offered history_anchors to a thread when the past genuinely connects
 When history_offer is present, its items contain every permitted anchor and its minimum
 privacy_class. Copy the exact item.anchor fields; their already visible text is in
 history_material, world_context or the current story. Otherwise use history_material.
+Privacy order is public < shareable < personal < private < withhold. Every opportunity's
+execution.privacy_class must be at least the strongest floor of ALL history anchors in
+ALL its linked threads, its target NPC and participants in npc_privacy_floors. A public
+physical place does not lower linked source privacy. Do not guess unprovided NPC floors.
 The linkage is navigation, not proof of causality. Preserve durable thread identities;
 use open/paused/closed for the external storyline, never to assign protagonist feelings.
 realized_story_history lists actual outcomes and existing experience/memory references;
@@ -328,6 +340,11 @@ class WorldOutlookRuntime:
                 return {"status": "running", "operation_ref": op}
         original_model = self.store.operation(op)["payload"]["model"]
         history = self._history_material(projection, context, view, history_trigger_ref)
+        npc_privacy_floors = [
+            {"npc_ref": "npc:" + npc.npc_id, "privacy_class": npc.privacy_class}
+            for npc in projection.npcs if "npc:" + npc.npc_id in npc_refs
+        ]
+        prior_head = self.store.head(as_of=cursor_of(projection))
         packet = {
             "contract": "world-outlook-request.1",
             "response_reference_contract": RESPONSE_REFERENCE_CONTRACT,
@@ -346,6 +363,7 @@ class WorldOutlookRuntime:
             "basis_refs": list(manifest.anchor_refs),
             "condition_sources": [v.model_dump(mode="json") for v in sources.values()],
             "available_npc_refs": list(npc_refs),
+            "npc_privacy_floors": npc_privacy_floors,
             "npc_capabilities": [
                 c.model_dump(mode="json")
                 for c in manifest.npc_capabilities
@@ -375,7 +393,11 @@ class WorldOutlookRuntime:
                 for c in getattr(manifest, "location_capabilities", ())
                 if c.availability_kind == "reviewed_schedule"
             ],
-            "draft_schema": WorldOutlookDraft.model_json_schema(),
+            "draft_schema_contract": "world-outlook-author-schema.4",
+            "draft_schema": outlook_author_schema(
+                basis_refs=manifest.anchor_refs, npc_privacy_floors=npc_privacy_floors,
+                prior_opportunities=prior_head[1].opportunities if prior_head else (),
+            ),
         }
         messages = [
             {"role": "system", "content": _SYSTEM + "\n" + PRESENTATION_GUIDE},
@@ -452,6 +474,9 @@ class WorldOutlookRuntime:
                 pinned_packet = decode_outlook_request(messages[1]["content"])
                 history_offer = (OutlookHistoryOffer.model_validate_json(json.dumps(pinned_packet["history_offer"]))
                                  if "history_offer" in pinned_packet else None)
+                precise_privacy = pinned_packet.get("draft_schema_contract") == "world-outlook-author-schema.4"
+                if history_offer is not None and precise_privacy:
+                    history_offer.validate_privacy(candidate, precise_errors=True)
                 validate_draft(
                     candidate,
                     projection=projection,
@@ -467,8 +492,10 @@ class WorldOutlookRuntime:
                         c.location_ref for c in getattr(manifest, "location_capabilities", ())
                     ),
                     location_capabilities=getattr(manifest, "location_capabilities", ()),
+                    precise_errors=pinned_packet.get("draft_schema_contract") in {"world-outlook-author-schema.3", "world-outlook-author-schema.4"},
+                    precise_privacy_errors=precise_privacy,
                 )
-                if history_offer is not None:
+                if history_offer is not None and not precise_privacy:
                     history_offer.validate_privacy(candidate)
                 self._validate_offered_nodes(candidate)
             except (ValueError, TypeError) as exc:

@@ -27,16 +27,26 @@ class OutlookHistoryOffer(FrozenModel):
     def anchors(self) -> tuple[StoryAnchor, ...]:
         return tuple(item.anchor for item in self.items)
 
-    def validate_privacy(self, draft) -> None:
+    def validate_privacy(self, draft, *, precise_errors=False) -> None:
         floors = {item.anchor: item.privacy_class for item in self.items}
         threads = {item.thread_id: item for item in draft.threads}
         if any(anchor not in floors for thread in draft.threads for anchor in thread.history_anchors):
             raise ValueError("story anchors were not offered in the pinned history offer")
+        violations = []
         for node in draft.opportunities:
             for thread_ref in node.thread_refs:
                 for anchor in threads[thread_ref].history_anchors:
                     if anchor in floors and _RANK[node.execution.privacy_class] < _RANK[floors[anchor]]:
-                        raise ValueError("outlook navigation weakens displayed source privacy")
+                        if not precise_errors:
+                            raise ValueError("outlook navigation weakens displayed source privacy")
+                        violations.append((node.opportunity_id, floors[anchor]))
+        if violations:
+            minimums = {}
+            for identity, floor in violations:
+                minimums[identity] = max((minimums.get(identity, floor), floor), key=_RANK.__getitem__)
+            raise ValueError("outlook execution privacy is below its linked history: " + "; ".join(
+                f"{identity!r} requires at least {floor}" for identity, floor in minimums.items()
+            ))
 
 
 def prepare_history_offer(*, projection, actor_ref, context, history_material, current_outlook):
