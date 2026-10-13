@@ -265,11 +265,15 @@ def test_auto_transport_cannot_change_the_original_schema_function():
 
 
 @pytest.mark.parametrize("thinking", [False, True])
-@pytest.mark.parametrize("phase", ["final", "expression_repair"])
-def test_final_and_expression_repair_keep_the_selected_transport(thinking, phase):
+@pytest.mark.parametrize("phase", ["final", "expression_schema"])
+def test_final_and_expression_schema_keep_the_selected_transport(thinking, phase):
     from types import SimpleNamespace
-    from companion_daemon.world_v2.character_interior.inbound_wire import (
-        _expression_tool_reselection_kwargs,
+    from companion_daemon.world_v2.character_interior.single_tool_transport import (
+        resolve_single_tool_transport,
+    )
+    from companion_daemon.world_v2.structured_expression_reselection_model import (
+        expression_reselection_output_contract,
+        expression_reselection_tool_contract,
     )
 
     provider = SimpleNamespace(
@@ -281,23 +285,37 @@ def test_final_and_expression_repair_keep_the_selected_transport(thinking, phase
     if phase == "final":
         author = InboundCharacterAuthor(flash_model=provider)
         invocation = author._final_tool_reselection_kwargs(request=request, provider=provider)
+        assert callable(invocation["unwrap_tool_result"])
+        tools, choice = invocation["tools"], invocation["tool_choice"]
+        identity = invocation["tool_contract_identity"]
     else:
-        invocation = _expression_tool_reselection_kwargs(
-            request=request,
-            provider=provider,
+        contract = expression_reselection_tool_contract(expression_reselection_output_contract(
             capabilities=QQ_NAPCAT_EXPRESSION_CAPABILITIES,
-            stable_identity_source_refs=frozenset(),
-            source_ref_aliases=None,
+            allowed_source_ref_aliases=(),
+            world_claim_source_ref_aliases_by_scope={
+                scope: () for scope in (
+                    "current_world", "past_world", "counterpart_history",
+                    "shared_history", "stable_identity",
+                )
+            },
+            response_expectation_assessment_required=False,
+            combined=False,
+        ))
+        transport = resolve_single_tool_transport(
+            provider=provider,
+            tools=contract.provider_tools,
+            tool_choice=contract.provider_tool_choice,
+            identity=contract.identity.request_identity_material(),
         )
-    assert callable(invocation["unwrap_tool_result"])
-    name = invocation["tools"][0]["function"]["name"]
-    identity = invocation["tool_contract_identity"]
+        assert callable(contract.unwrap)
+        tools, choice, identity = contract.provider_tools, transport.tool_choice, transport.identity
+    name = tools[0]["function"]["name"]
     if thinking:
-        assert invocation["tool_choice"] == "auto"
+        assert choice == "auto"
         assert identity["expected_tool_name"] == name
         base = json.loads(identity["schema_contract_identity_json"])
         assert base["tool_name"] == name
     else:
-        assert invocation["tool_choice"] == {"type": "function", "function": {"name": name}}
+        assert choice == {"type": "function", "function": {"name": name}}
         assert identity["tool_name"] == name
         assert "selection_mode" not in identity
