@@ -169,7 +169,14 @@ async def test_cold_history_stays_frozen_but_pending_deterministic_success_is_no
         return await current.advance_once(wake_event_ref=wake.event_id,
                                           trace_id="trace:semantic-cold", correlation_id="cold")
 
-    async def old_existence_review(*, messages, draft, cited_events):
+    current_review = runtime._review_world_source
+
+    async def old_existence_review(*, messages, draft, kind):
+        if kind != "source_closure":
+            return await current_review(messages=messages, draft=draft, kind=kind)
+        # Reconstruct the historical deterministic verdict at the current
+        # review seam, using the same exact cited-event reader as that lane.
+        cited_events = runtime._source_closure_cited_events(draft=draft)
         parsed = evaluate_general_source_closure(draft=draft, cited_events=cited_events)
         return module._LifeDevelopmentModelRun(
             model_id="deterministic:life-source-closure", parsed=parsed,
@@ -185,7 +192,7 @@ async def test_cold_history_stays_frozen_but_pending_deterministic_success_is_no
     try:
         with monkeypatch.context() as patch:
             if historical:
-                patch.setattr(runtime, "_source_closure_review", old_existence_review)
+                patch.setattr(runtime, "_review_world_source", old_existence_review)
                 # Reproduce the actual pre-repair request compiler. Neither the
                 # saved author manifest nor review bytes claimed semantic authority.
                 for name in ("life_development_source_closure_messages", "life_development_novel_origin_messages"):

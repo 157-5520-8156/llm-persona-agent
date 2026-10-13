@@ -70,6 +70,13 @@ Spec 审查复现了一个既有顺序缺口：即使已保存完整作者响应
 首轮全库测试因审查发现问题主动中止：1734 passed 后 SIGINT，exit2，113.768s；代码未漂移。
 该中间运行保留在 `final-regression/`，**不是完整验收**。最终回归使用新的目录，不覆盖它。
 
+第二次全库在约一半处发现两个历史 fixture 失败，均是此前漏迁的同一个 monkeypatch：
+`test_life_semantic_review_authority` 仍替换被合并的旧私有方法。主动中止留下 5631 passed /
+2 failed / 2 xfailed / exit2，证据 `final-regression-v2/`。现在让 fixture 在新审核入口重建
+旧确定性 verdict，继续通过原 cited-event reader 取证，其他 reviewer kind 仍调用正常实现。
+未改生产代码、删除旧历史/待处理/已提交的断言或恢复旧接口；23项相关测试通过。
+最终完整回归使用 `final-regression-v3/`。
+
 ## 5. 冻结对照
 
 证据目录沿用任务开始时的日期：`output/private-audits/active-path-simplification-20261013/`。
@@ -94,7 +101,8 @@ Spec 审查复现了一个既有顺序缺口：即使已保存完整作者响应
 - 初次跨链路定向：402 passed / 3 failed；三项均是已移除私有方法的旧测试调用。修改调用位置后
   查询/连续性/严格审核20项通过；180项扩展通过；108项作者/世界闭环通过。存在重叠，不累加为总数。
 - `reviewer-equivalence.log`：28组全相等；Ruff/diff check通过。
-- 初审 Standards 0 blocker；Spec 发现上述恢复 P2，已修复并完成82项针对性回归，等待复核。
+- 初审 Standards 0 blocker；Spec 发现上述恢复 P2，修复后82项通过，两路复核确认关闭。
+- 后续历史测试挂钩迁移：23项通过；审查及最终全库结果待补充。
 - 最终冻结全量回归：待收尾补充。
 
 本批没有拆文件、增加生产 Module、注册层或额外作者，也没有关闭事实/权限/来源/回执检查。
