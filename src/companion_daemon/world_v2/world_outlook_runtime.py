@@ -339,76 +339,82 @@ class WorldOutlookRuntime:
                 # Unknown/in-flight provider outcome must not be billed twice.
                 return {"status": "running", "operation_ref": op}
         original_model = self.store.operation(op)["payload"]["model"]
-        history = self._history_material(projection, context, view, history_trigger_ref)
-        npc_privacy_floors = [
-            {"npc_ref": "npc:" + npc.npc_id, "privacy_class": npc.privacy_class}
-            for npc in projection.npcs if "npc:" + npc.npc_id in npc_refs
-        ]
-        prior_head = self.store.head(as_of=cursor_of(projection))
-        packet = {
-            "contract": "world-outlook-request.1",
-            "response_reference_contract": RESPONSE_REFERENCE_CONTRACT,
-            "world_id": projection.world_id,
-            "actor_ref": self.actor_ref,
-            "logical_time": now.isoformat(),
-            "parent_revision": view["revision"],
-            "current_outlook": view,
-            "history_material": history,
-            "history_offer": prepare_history_offer(
-                projection=projection, actor_ref=self.actor_ref, context=context,
-                history_material=history, current_outlook=view,
-            ).model_dump(mode="json"),
-            "realized_story_history": self.story_history(projection=projection),
-            "world_context": context,
-            "basis_refs": list(manifest.anchor_refs),
-            "condition_sources": [v.model_dump(mode="json") for v in sources.values()],
-            "available_npc_refs": list(npc_refs),
-            "npc_privacy_floors": npc_privacy_floors,
-            "npc_capabilities": [
-                c.model_dump(mode="json")
-                for c in manifest.npc_capabilities
-                if c.npc_ref in npc_refs
-            ],
-            "plan_schedules": [
-                p.model_dump(
-                    mode="json",
-                    include={
-                        "plan_id",
-                        "owner_actor_ref",
-                        "status",
-                        "activity_kind",
-                        "scheduled_window",
-                        "location_ref",
-                        "participant_refs",
-                    },
+        if cached_attempts:
+            # Recovery owns the original complete request, including its
+            # history and reference offer. A changed query/compiler or an
+            # unavailable lookup cannot invalidate already paid work.
+            messages = cached_attempts[min(cached_attempts)]["messages"]
+        else:
+            history = self._history_material(projection, context, view, history_trigger_ref)
+            npc_privacy_floors = [
+                {"npc_ref": "npc:" + npc.npc_id, "privacy_class": npc.privacy_class}
+                for npc in projection.npcs if "npc:" + npc.npc_id in npc_refs
+            ]
+            prior_head = self.store.head(as_of=cursor_of(projection))
+            packet = {
+                "contract": "world-outlook-request.1",
+                "response_reference_contract": RESPONSE_REFERENCE_CONTRACT,
+                "world_id": projection.world_id,
+                "actor_ref": self.actor_ref,
+                "logical_time": now.isoformat(),
+                "parent_revision": view["revision"],
+                "current_outlook": view,
+                "history_material": history,
+                "history_offer": prepare_history_offer(
+                    projection=projection, actor_ref=self.actor_ref, context=context,
+                    history_material=history, current_outlook=view,
+                ).model_dump(mode="json"),
+                "realized_story_history": self.story_history(projection=projection),
+                "world_context": context,
+                "basis_refs": list(manifest.anchor_refs),
+                "condition_sources": [v.model_dump(mode="json") for v in sources.values()],
+                "available_npc_refs": list(npc_refs),
+                "npc_privacy_floors": npc_privacy_floors,
+                "npc_capabilities": [
+                    c.model_dump(mode="json")
+                    for c in manifest.npc_capabilities
+                    if c.npc_ref in npc_refs
+                ],
+                "plan_schedules": [
+                    p.model_dump(
+                        mode="json",
+                        include={
+                            "plan_id",
+                            "owner_actor_ref",
+                            "status",
+                            "activity_kind",
+                            "scheduled_window",
+                            "location_ref",
+                            "participant_refs",
+                        },
+                    )
+                    for p in projection.plans
+                    if p.plan_id in sources and p.status in {"planned", "active", "paused"}
+                ],
+                "location_refs": [
+                    c.location_ref for c in getattr(manifest, "location_capabilities", ())
+                ],
+                "npc_activity_location_capabilities": [
+                    c.model_dump(mode="json", exclude={"capability_ref"})
+                    for c in getattr(manifest, "location_capabilities", ())
+                    if c.availability_kind == "reviewed_schedule"
+                ],
+                "draft_schema_contract": "world-outlook-author-schema.4",
+                "draft_schema": outlook_author_schema(
+                    basis_refs=manifest.anchor_refs, npc_privacy_floors=npc_privacy_floors,
+                    prior_opportunities=prior_head[1].opportunities if prior_head else (),
+                ),
+            }
+            messages = [
+                {"role": "system", "content": _SYSTEM + "\n" + PRESENTATION_GUIDE},
+                {"role": "user", "content": encode_outlook_request(packet, byte_limit=100_000)},
+            ]
+            if len(messages[1]["content"].encode()) > 100_000:
+                self.store.finish(
+                    op, state="technical_failure", payload={"code": "outlook_input_too_large"}
                 )
-                for p in projection.plans
-                if p.plan_id in sources and p.status in {"planned", "active", "paused"}
-            ],
-            "location_refs": [
-                c.location_ref for c in getattr(manifest, "location_capabilities", ())
-            ],
-            "npc_activity_location_capabilities": [
-                c.model_dump(mode="json", exclude={"capability_ref"})
-                for c in getattr(manifest, "location_capabilities", ())
-                if c.availability_kind == "reviewed_schedule"
-            ],
-            "draft_schema_contract": "world-outlook-author-schema.4",
-            "draft_schema": outlook_author_schema(
-                basis_refs=manifest.anchor_refs, npc_privacy_floors=npc_privacy_floors,
-                prior_opportunities=prior_head[1].opportunities if prior_head else (),
-            ),
-        }
-        messages = [
-            {"role": "system", "content": _SYSTEM + "\n" + PRESENTATION_GUIDE},
-            {"role": "user", "content": encode_outlook_request(packet, byte_limit=100_000)},
-        ]
-        if len(messages[1]["content"].encode()) > 100_000:
-            self.store.finish(
-                op, state="technical_failure", payload={"code": "outlook_input_too_large"}
-            )
-            self._health = {"status": "technical_failure", "failure_code": "outlook_input_too_large"}
-            return self.health()
+                self._health = {"status": "technical_failure", "failure_code": "outlook_input_too_large"}
+                return self.health()
         draft = None
         for ordinal in range(2):
             raw = None

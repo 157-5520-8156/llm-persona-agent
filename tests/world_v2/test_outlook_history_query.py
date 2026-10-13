@@ -8,7 +8,7 @@ import pytest
 from companion_daemon.world_v2.recall_index import InMemoryRecallIndex
 from test_recall_short_cues import LexicalOnly, corpus
 from test_recall_index import CURSOR, _query
-from test_world_outlook import setup
+from test_world_outlook import draft_value, setup
 
 
 def _item(value, privacy="personal"):
@@ -83,5 +83,55 @@ def test_authored_thread_cues_stay_exact_and_empty_context_uses_a_neutral_cue(tm
     try:
         assert _capture(runtime, ledger, _context("陶艺"), threads) == "合唱团重聚 旧照片在哪里？"
         assert _capture(runtime, ledger, {"slices": {}}) == "生活"
+    finally:
+        runtime.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("preparation", ["history_lookup", "request_size"])
+@pytest.mark.parametrize("corrected", [False, True])
+async def test_saved_response_recovers_without_preparing_a_new_query_or_request(
+    tmp_path, monkeypatch, preparation, corrected,
+):
+    from companion_daemon.world_v2 import world_outlook_runtime as module
+    from companion_daemon.world_v2.world_outlook import digest
+    from companion_daemon.world_v2.world_outlook_store import SQLiteWorldOutlookStore
+    from test_life_development_runtime import OWNER, WORLD_ID, _manifest, _projection_cursor
+
+    class Interrupted(BaseException):
+        pass
+
+    ledger, wake, store, author, runtime = setup(
+        tmp_path, lambda w: ([{"invalid": True}] if corrected else [])
+        + [{"decision": "revise", "draft": draft_value(w)}],
+    )
+    kwargs = dict(projection=ledger.project(), context=_context("陶艺"),
+                  manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)))
+
+    def interrupt_install(*args, **kwargs):
+        raise Interrupted()
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(store, "install", interrupt_install)
+            with pytest.raises(Interrupted):
+                await runtime.refresh(**kwargs)
+        original_request_hash = digest(author.calls[-1])
+        store.close()
+        runtime.store = SQLiteWorldOutlookStore(
+            path=tmp_path / "outlook.sqlite", world_id=WORLD_ID, actor_ref=OWNER,
+        )
+
+        def must_not_prepare(*args, **kwargs):
+            raise ValueError("new query unavailable or new request would exceed 100000 bytes")
+
+        if preparation == "history_lookup":
+            monkeypatch.setattr(runtime, "_history_material", must_not_prepare)
+        else:
+            monkeypatch.setattr(module, "encode_outlook_request", must_not_prepare)
+        assert (await runtime.refresh(**kwargs))["status"] == "ready"
+        assert len(author.calls) == (2 if corrected else 1)
+        assert runtime.store.head()[2]["request_hash"] == original_request_hash
+        assert ledger.project() == kwargs["projection"]
     finally:
         runtime.close()
