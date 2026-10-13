@@ -11,7 +11,7 @@ from .world_outlook_request import (
 
 from companion_daemon.llm import model_call_scope
 from .structured_completion import complete_json_object
-from .world_outlook_history import OutlookHistoryOffer, prepare_history_offer
+from .world_outlook_history import OutlookHistoryOffer, history_query_text, prepare_history_offer
 from .world_outlook_author_schema import outlook_author_schema
 from .world_outlook import (
     WorldOutlookDraft,
@@ -597,15 +597,12 @@ class WorldOutlookRuntime:
         old_refs = (
             tuple(a.source_ref for t in old[1].threads for a in t.history_anchors) if old else ()
         )
-        cue = "\n".join(t["situation"] + " " + t["open_question"] for t in view["threads"])
-        if not cue:
-            cue = json.dumps(context, ensure_ascii=False)
         docs = (
             self._history_reader(
                 expected_cursor=RecallCursor(**cursor_of(projection)),
                 trigger_ref=trigger_ref,
                 actor_ref=self.actor_ref,
-                query_text=cue[:1024] or "生活",
+                query_text=history_query_text(context=context, current_outlook=view),
                 link_refs=old_refs[:32],
             )
             if self._history_reader and trigger_ref

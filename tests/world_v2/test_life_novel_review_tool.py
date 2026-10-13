@@ -72,7 +72,7 @@ async def test_focused_owner_uses_strict_tool_and_keeps_one_complete_reselection
     runtime._novel_origin_critic_model_id = adapter.model
     messages = [{'role':'system','content':'Review only the supplied truth origin.'},{'role':'user','content':'{"fixture":"same pinned subject"}'}]
     try:
-        run = await runtime._novel_origin_review(messages=messages,draft=draft,manifest=manifest)
+        run = await runtime._review_world_source(messages=messages,draft=draft,kind="novel_origin")
         assert run.succeeded is (invalid_count<2)
         assert len(requests)==len(usage)==(1 if invalid_count==0 else 2)
         assert run.attempts[0].raw_output is not None

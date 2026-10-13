@@ -4974,10 +4974,8 @@ class LifeDevelopmentRuntime:
                 reason_code="life_development.source_closure_evidence_unavailable",
             )
         if recovered is None:
-            review_run = await self._source_closure_review(
-                messages=messages,
-                draft=draft,
-                cited_events=cited_events,
+            review_run = await self._review_world_source(
+                messages=messages, draft=draft, kind="source_closure",
             )
             subject_hash = _source_closure_subject_hash(
                 raw=raw,
@@ -5168,10 +5166,8 @@ class LifeDevelopmentRuntime:
                 ),
             )
         if recovered is None:
-            review_run = await self._novel_origin_review(
-                messages=messages,
-                draft=draft,
-                manifest=manifest,
+            review_run = await self._review_world_source(
+                messages=messages, draft=draft, kind="novel_origin",
             )
             subject_hash = _novel_origin_subject_hash(
                 raw=raw,
@@ -5306,172 +5302,64 @@ class LifeDevelopmentRuntime:
             materials.append(material)
         return tuple(events), tuple(materials)
 
-    async def _novel_origin_review(
+    async def _review_world_source(
         self,
         *,
         messages: list[dict[str, str]],
         draft: LifeDevelopmentPossibilityDraft,
-        manifest: LifeDevelopmentCapabilityManifest,
+        kind: Literal["source_closure", "novel_origin"],
     ) -> _LifeDevelopmentModelRun:
-        critic = self._novel_origin_critic
-        if critic is None:
-            raise ValueError("life novel-origin critic is not configured")
-        attempts: list[_LifeDevelopmentAttempt] = []
-        completion_critic = critic
-        review_messages = list(messages)
-        for ordinal in range(2):
-            request_hash = _messages_hash(review_messages)
-            try:
-                with model_call_scope(
-                    "life_development_novel_origin_review",
-                    action_id=f"life-development-critic:{ordinal}",
-                ):
-                    review_raw = await complete_json_object(
-                        completion_critic,
-                        review_messages,
-                        temperature=0.0,
-                        **(
-                            novel_origin_review_tool_contract(draft)
-                            if getattr(completion_critic, "supports_strict_tool_choice", False) is True
-                            else {}
-                        ),
-                    )
-            except Exception as exc:
-                if not _is_expected_model_transport_failure(exc):
-                    raise
-                provider_traces = _source_review_attempt_traces(exc)
-                _LOG.warning(
-                    "Life Development novel-origin critic unavailable error_type=%s",
-                    type(exc).__name__,
-                )
-                status, failure_code, outcome = _model_provider_failure(
-                    exc,
-                    corrective=ordinal > 0,
-                    source_review=True,
-                )
-                if ordinal:
-                    first = attempts[0]
-                    attempts[0] = _LifeDevelopmentAttempt(
-                        request_hash=first.request_hash,
-                        raw_output=first.raw_output,
-                        status=first.status,
-                        failure_code=first.failure_code,
-                        slot="primary",
-                        outcome="invalid",
-                        source_review_attempts=first.source_review_attempts,
-                    )
-                attempts.append(
-                    _LifeDevelopmentAttempt(
-                        request_hash=request_hash,
-                        raw_output=None,
-                        status=status,
-                        failure_code=failure_code,
-                        slot="corrective" if ordinal else "primary",
-                        outcome=outcome,
-                        source_review_attempts=provider_traces,
-                    )
-                )
-                return _LifeDevelopmentModelRun(
-                    model_id=self._novel_origin_critic_model_id,
-                    parsed=None,
-                    attempts=tuple(attempts),
-                )
-            provider_traces = _source_review_attempt_traces(review_raw)
-            try:
-                parsed = parse_life_development_novel_origin_review(
-                    raw=review_raw,
-                    draft=draft,
-                )
-                attempts.append(
-                    _LifeDevelopmentAttempt(
-                        request_hash=request_hash,
-                        raw_output=review_raw,
-                        status=("main_invalid_recovered" if ordinal else "proposal_validated"),
-                        failure_code=("main_invalid_output" if ordinal else None),
-                        source_review_attempts=provider_traces,
-                    )
-                )
-                return _LifeDevelopmentModelRun(
-                    model_id=self._novel_origin_critic_model_id,
-                    parsed=parsed,
-                    attempts=tuple(attempts),
-                )
-            except LifeDevelopmentSourceClosureError as exc:
-                attempts.append(
-                    _LifeDevelopmentAttempt(
-                        request_hash=request_hash,
-                        raw_output=review_raw,
-                        status=("recovery_failed" if ordinal else "main_invalid"),
-                        failure_code=("corrective_invalid" if ordinal else "main_invalid_output"),
-                        slot="corrective" if ordinal else None,
-                        outcome="invalid" if ordinal else None,
-                        source_review_attempts=provider_traces,
-                    )
-                )
-                if ordinal:
-                    first = attempts[0]
-                    attempts[0] = _LifeDevelopmentAttempt(
-                        request_hash=first.request_hash,
-                        raw_output=first.raw_output,
-                        status=first.status,
-                        failure_code=first.failure_code,
-                        slot="primary",
-                        outcome="invalid",
-                        source_review_attempts=first.source_review_attempts,
-                    )
-                    return _LifeDevelopmentModelRun(
-                        model_id=self._novel_origin_critic_model_id,
-                        parsed=None,
-                        attempts=tuple(attempts),
-                    )
-                review_messages = [
-                    *review_messages,
-                    {"role": "assistant", "content": review_raw},
-                    life_development_novel_origin_correction_message(
-                        error=exc,
-                        draft=draft,
-                    ),
-                ]
-                completion_critic = _wire_reselection_route_or_self(critic)
-        raise AssertionError("novel-origin critic retry loop did not terminate")
+        """Keep both source-review purposes on one exact two-attempt lifecycle.
 
-    async def _source_closure_review(
-        self,
-        *,
-        messages: list[dict[str, str]],
-        draft: LifeDevelopmentPossibilityDraft,
-        cited_events: tuple[WorldEvent, ...],
-    ) -> _LifeDevelopmentModelRun:
-        del cited_events  # Exact event and typed material bytes are in messages.
-        reviewer = self._source_closure_reviewer
+        Each purpose retains its own provider, wire contract, correction text
+        and audit identity. This is technical review, never a character choice.
+        """
+        novel = kind == "novel_origin"
+        reviewer = self._novel_origin_critic if novel else self._source_closure_reviewer
+        model_id = (
+            self._novel_origin_critic_model_id if novel else self._source_closure_reviewer_model_id
+        )
+        label = "novel-origin critic" if novel else "source-closure reviewer"
         if reviewer is None:
-            raise ValueError("life source-closure reviewer is not configured")
+            raise ValueError(f"life {label} is not configured")
+        purpose = (
+            "life_development_novel_origin_review" if novel
+            else "life_development_source_closure_review"
+        )
+        action_prefix = "life-development-critic" if novel else "life-development-review"
+        parse_review = (
+            parse_life_development_novel_origin_review if novel
+            else parse_life_development_source_closure_review
+        )
         attempts: list[_LifeDevelopmentAttempt] = []
         completion_reviewer = reviewer
         review_messages = list(messages)
         for ordinal in range(2):
             request_hash = _messages_hash(review_messages)
             try:
+                tool_kwargs = {}
+                if getattr(completion_reviewer, "supports_strict_tool_choice", False) is True:
+                    if novel:
+                        tool_kwargs = novel_origin_review_tool_contract(draft)
+                    elif any(outcome.world_consequence is not None for outcome in draft.outcomes):
+                        tool_kwargs = source_closure_review_tool_contract()
                 with model_call_scope(
-                    "life_development_source_closure_review",
-                    action_id=f"life-development-review:{ordinal}",
+                    purpose,
+                    action_id=f"{action_prefix}:{ordinal}",
                 ):
                     review_raw = await complete_json_object(
                         completion_reviewer,
                         review_messages,
                         temperature=0.0,
-                        **(source_closure_review_tool_contract()
-                           if getattr(completion_reviewer, "supports_strict_tool_choice", False) is True
-                           and any(outcome.world_consequence is not None for outcome in draft.outcomes)
-                           else {}),
+                        **tool_kwargs,
                     )
             except Exception as exc:
                 if not _is_expected_model_transport_failure(exc):
                     raise
                 provider_traces = _source_review_attempt_traces(exc)
                 _LOG.warning(
-                    "Life Development source-closure reviewer unavailable error_type=%s",
-                    type(exc).__name__,
+                    "Life Development %s unavailable error_type=%s",
+                    label, type(exc).__name__,
                 )
                 status, failure_code, outcome = _model_provider_failure(
                     exc,
@@ -5501,13 +5389,13 @@ class LifeDevelopmentRuntime:
                     )
                 )
                 return _LifeDevelopmentModelRun(
-                    model_id=self._source_closure_reviewer_model_id,
+                    model_id=model_id,
                     parsed=None,
                     attempts=tuple(attempts),
                 )
             provider_traces = _source_review_attempt_traces(review_raw)
             try:
-                parsed = parse_life_development_source_closure_review(
+                parsed = parse_review(
                     raw=review_raw,
                     draft=draft,
                 )
@@ -5521,7 +5409,7 @@ class LifeDevelopmentRuntime:
                     )
                 )
                 return _LifeDevelopmentModelRun(
-                    model_id=self._source_closure_reviewer_model_id,
+                    model_id=model_id,
                     parsed=parsed,
                     attempts=tuple(attempts),
                 )
@@ -5549,21 +5437,20 @@ class LifeDevelopmentRuntime:
                         source_review_attempts=first.source_review_attempts,
                     )
                     return _LifeDevelopmentModelRun(
-                        model_id=self._source_closure_reviewer_model_id,
+                        model_id=model_id,
                         parsed=None,
                         attempts=tuple(attempts),
                     )
                 review_messages = [
                     *review_messages,
                     {"role": "assistant", "content": review_raw},
-                    life_development_source_closure_correction_message(
-                        error=exc,
-                        raw=review_raw,
-                        draft=draft,
-                    ),
+                    (life_development_novel_origin_correction_message(error=exc, draft=draft)
+                     if novel else life_development_source_closure_correction_message(
+                         error=exc, raw=review_raw, draft=draft,
+                     )),
                 ]
                 completion_reviewer = _wire_reselection_route_or_self(reviewer)
-        raise AssertionError("source-closure reviewer retry loop did not terminate")
+        raise AssertionError(f"{label} retry loop did not terminate")
 
     def _original_consequence_review_evidence(
         self, *, manifest, draft, raw: str, author_deliberation: _RecordedDeliberation,

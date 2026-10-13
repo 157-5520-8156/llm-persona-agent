@@ -14,6 +14,53 @@ from .world_life_context import WorldLifeContextItem
 _RANK = {value: rank for rank, value in enumerate(("public", "shareable", "personal", "private", "withhold"))}
 
 
+def history_query_text(*, context, current_outlook):
+    """Search already presented prose; query text grants no source authority.
+
+    Existing authored threads retain their exact cue. Initial lookup reads
+    only documented text fields of the trusted, bounded Context view, never
+    arbitrary JSON strings or metadata. Equal space prevents one long item
+    from hiding the other selected materials; no topic or motive is inferred.
+    """
+    cue = "\n".join(t["situation"] + " " + t["open_question"] for t in current_outlook["threads"])
+    if cue:
+        return cue[:1024]
+    fields = {
+        "world_life": (
+            ("content", "text"),
+            ("content", "world_consequence", "environment", "text"),
+            ("premise", "text"),
+            ("accepted_intention", "text"),
+        ),
+        "recent_dialogue": (("text",),),
+        "relevant_facts": (("source_excerpt",),),
+    }
+    parts = []
+    for name, paths in fields.items():
+        lane = context.get("slices", {}).get(name, {})
+        if lane.get("availability") != "available":
+            continue
+        for item in lane.get("items", ()):
+            if item.get("privacy_class") == "withhold":
+                continue
+            for path in paths:
+                value = item.get("value")
+                for key in path:
+                    if not isinstance(value, dict) or value.get("privacy_class") == "withhold":
+                        value = None
+                        break
+                    value = value.get(key)
+                if isinstance(value, str) and value.strip() and value not in parts:
+                    parts.append(value)
+    if not parts:
+        return "生活"
+    # The Context compiler already bounds item count. Keep the query bound
+    # even for a caller with more items than the usual compiled inventory.
+    parts = parts[:512]
+    width = (1024 - len(parts) + 1) // len(parts)
+    return "\n".join(text[:width] for text in parts)
+
+
 class OfferedStoryAnchor(FrozenModel):
     anchor: StoryAnchor
     privacy_class: PrivacyClass

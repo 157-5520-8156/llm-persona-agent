@@ -295,7 +295,10 @@ async def test_history_to_settled_life_link_enters_normal_recall_only_after_real
         before = ledger.project()
         result = await runtime.refresh(
             projection=before,
-            context={"current_source": row.record.statement},
+            context={"slices": {"world_life": {"availability": "available", "items": [
+                {"privacy_class": row.record.privacy_class,
+                 "value": {"content": {"text": row.record.statement}}},
+            ]}}},
             manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
             history_trigger_ref=wake.event_id,
         )

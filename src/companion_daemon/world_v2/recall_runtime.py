@@ -302,12 +302,23 @@ async def perform_character_recall_with_prefetch(
     trigger_ref: str,
     timeout_seconds: float,
     prefetch_job_token: PrefetchJobToken | None = None,
+    prefetch_trace: TrustedRecallTrace | None = None,
 ) -> tuple[TrustedRecallTrace | None, TrustedRecallTrace]:
     """Join preparatory local attention and the character's chosen pull."""
 
-    if prefetch_job_token is None:
+    # Both inbound transports may have shown local attention before the
+    # semantic job completed. Adopt an already ready result without a wait;
+    # the actor's explicit pull still runs exactly once under its own budget.
+    if prefetch_job_token is not None:
+        ready = coordinator.take_ready_scheduled_prefetch(
+            expected_cursor=expected_cursor, trigger_ref=trigger_ref,
+            job_token=prefetch_job_token,
+        )
+        if ready is not None:
+            prefetch_trace = ready
+    if prefetch_trace is not None or prefetch_job_token is None:
         return (
-            None,
+            prefetch_trace,
             await perform_character_recall(
                 coordinator,
                 request=request,

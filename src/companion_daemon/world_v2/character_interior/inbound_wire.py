@@ -155,7 +155,6 @@ from ..recall_runtime import (
     augment_model_content_with_recall,
     mark_recall_budget_consumed,
     model_content_allows_recall,
-    perform_character_recall,
     perform_character_recall_with_prefetch,
     recall_followup_evidence_json,
     verify_trusted_recall_trace,
@@ -9256,45 +9255,20 @@ class _ExpressionDraftWire:
                 raise TimeoutError("character recall completion budget exhausted")
             if not claim_secondary_provider_slot("recall"):
                 raise TimeoutError("character recall secondary provider slot is unavailable")
-            # The first author call may have received the bounded local
-            # fallback while the semantic query continued in parallel.  This
-            # branch is already about to make the character-requested follow-up
-            # call, so adopt an already-finished semantic prefetch at zero wait.
-            # Never add provider latency merely to improve automatic attention.
-            ready_prefetch = (
-                self._recall.take_ready_scheduled_prefetch(
-                    expected_cursor=expected_cursor,
-                    trigger_ref=request.trigger_ref,
-                    job_token=prefetch_job_token,
-                )
-                if prefetch_job_token is not None
-                else None
-            )
-            if ready_prefetch is not None:
-                prefetch_trace = ready_prefetch
             accessibility_seed = (
                 f"character-recall:{request.call_id}:"
                 f"{_digest(recall_request.model_dump(mode='json'))}"
             )
-            if prefetch_trace is None:
-                prefetch_trace, recall_trace = await perform_character_recall_with_prefetch(
-                    self._recall,
-                    request=recall_request,
-                    accessibility_seed=accessibility_seed,
-                    expected_cursor=expected_cursor,
-                    trigger_ref=request.trigger_ref,
-                    timeout_seconds=recall_timeout,
-                    prefetch_job_token=prefetch_job_token,
-                )
-            else:
-                recall_trace = await perform_character_recall(
-                    self._recall,
-                    request=recall_request,
-                    accessibility_seed=accessibility_seed,
-                    expected_cursor=expected_cursor,
-                    trigger_ref=request.trigger_ref,
-                    timeout_seconds=recall_timeout,
-                )
+            prefetch_trace, recall_trace = await perform_character_recall_with_prefetch(
+                self._recall,
+                request=recall_request,
+                accessibility_seed=accessibility_seed,
+                expected_cursor=expected_cursor,
+                trigger_ref=request.trigger_ref,
+                timeout_seconds=recall_timeout,
+                prefetch_job_token=prefetch_job_token,
+                prefetch_trace=prefetch_trace,
+            )
             audit_trace = verify_trusted_recall_trace(recall_trace)
             prefetch_audit = (
                 verify_trusted_recall_trace(prefetch_trace) if prefetch_trace is not None else None
