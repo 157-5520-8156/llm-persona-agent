@@ -13,12 +13,36 @@ import hashlib
 import hmac
 import secrets
 import time
+from urllib.parse import urlsplit
 
 from .dashboard_explorer_ui import EXPLORER_CSS, EXPLORER_HTML, EXPLORER_JS
 
 
 DASHBOARD_SESSION_COOKIE = "girl_agent_v2_dashboard_session"
 DASHBOARD_SESSION_TTL_SECONDS = 8 * 60 * 60
+
+
+def dashboard_http_origin(value: str) -> tuple[str, str, int] | None:
+    """Parse the exact origin accepted by both dashboard HTTP hosts."""
+
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError:
+        return None
+    scheme = parsed.scheme.lower()
+    host = (parsed.hostname or "").lower()
+    if (
+        scheme not in {"http", "https"}
+        or not host
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+        or parsed.path not in {"", "/"}
+    ):
+        return None
+    return scheme, host, port or (443 if scheme == "https" else 80)
 
 
 def _b64(value: bytes) -> str:

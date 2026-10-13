@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import UTC, datetime
 import hashlib
 import json
 from typing import Any
 
 from pydantic import Field, model_validator
 from pydantic_core import to_jsonable_python
+
+from .schema_core import canonicalize_utc_json_value
 
 from .life_events import DomainMutationPayload
 from .schemas import (
@@ -87,26 +88,9 @@ def experience_mutation_hash(
     for field in ("acceptance_id", "proposal_id", "accepted_change_hash"):
         material.pop(field, None)
     encoded = json.dumps(
-        _canonicalize(material),
+        canonicalize_utc_json_value(material),
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
     ).encode()
     return hashlib.sha256(encoded).hexdigest()
-
-
-def _canonicalize(value: Any) -> Any:
-    if isinstance(value, dict):
-        return {key: _canonicalize(item) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_canonicalize(item) for item in value]
-    if isinstance(value, datetime):
-        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
-    if isinstance(value, str) and (value.endswith("Z") or value.endswith("+00:00")):
-        try:
-            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            return value
-        if parsed.tzinfo is not None:
-            return parsed.astimezone(UTC).isoformat().replace("+00:00", "Z")
-    return value

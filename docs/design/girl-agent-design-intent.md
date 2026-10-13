@@ -729,6 +729,13 @@ RSS/NWS/USGS → hub 采集/去重/嵌入/聚类 → attention 影子/实时注�
 
 ### 6.2 更早的弃用/占位（2026-08-06 盘点）
 
+> 2026-10-13 复核：下表是历史快照，不能作为当前删除依据。
+> `sealed_production_fact_registry_v2` / `sealed_fact_commit_adapter_v2` 已由现行 Fact-v2 验收链使用。
+> 本轮删除无消费者的旧关系 worker、旧工具 proposal/query/resolver、未安装的 generic acceptance
+> compiler 和退役 contextual-life source compiler；保留现行角色、权限和历史回放能力。
+> 逐项证据见 [代码清理盘点](../audits/code-cleanup-2026-10-13.md)。
+
+
 - `sealed_production_fact_registry_v2`、`sealed_fact_commit_adapter_v2`：0 引用占位。
 - `scenario_runner.py`：孤儿（仅离线评测用途）；`shared_private_invitation.py`、
   `recent_dialogue.py`、`scenario_corpus.py`：孤儿。

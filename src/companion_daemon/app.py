@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 import secrets
 import time
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs
 
 from fastapi import FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -43,6 +43,7 @@ from companion_daemon.world_v2.world_v2_dashboard_ui import (
     DASHBOARD_SESSION_COOKIE,
     DASHBOARD_SESSION_TTL_SECONDS,
     DashboardSessionCodec,
+    dashboard_http_origin,
     LOGIN_HTML,
     UNAVAILABLE_HTML,
 )
@@ -552,30 +553,9 @@ def _require_safe_dashboard_host(request: Request) -> None:
         raise HTTPException(status_code=403, detail="invalid Dashboard host")
 
 
-def _http_origin_coordinate(value: str) -> tuple[str, str, int] | None:
-    try:
-        parsed = urlsplit(value)
-        port = parsed.port
-    except ValueError:
-        return None
-    scheme = parsed.scheme.lower()
-    host = (parsed.hostname or "").lower()
-    if (
-        scheme not in {"http", "https"}
-        or not host
-        or parsed.username is not None
-        or parsed.password is not None
-        or parsed.query
-        or parsed.fragment
-        or parsed.path not in {"", "/"}
-    ):
-        return None
-    return scheme, host, port or (443 if scheme == "https" else 80)
-
-
 def _require_same_dashboard_origin(request: Request) -> None:
-    supplied = _http_origin_coordinate(request.headers.get("origin", ""))
-    expected = _http_origin_coordinate(str(request.base_url))
+    supplied = dashboard_http_origin(request.headers.get("origin", ""))
+    expected = dashboard_http_origin(str(request.base_url))
     if supplied is None or supplied != expected:
         raise HTTPException(status_code=403, detail="invalid Dashboard origin")
 

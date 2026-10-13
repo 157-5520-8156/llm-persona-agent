@@ -348,11 +348,11 @@ mechanisms:
     status: closed
     runtime_activation: limited-production
     limitations: [requires-explicit-authorized-proposal-and-transport-injection, accepted-result-is-source-context-without-an-independent-result-author, vision-transcription-and-creative-media-remain-closed]
-    sources: [audited-tool-proposal, claimed-tool-trigger, enforcement-authorization, provider-result-descriptor]
+    sources: [explicit-authorized-tool-proposal, enforcement-authorization, provider-result-descriptor]
     events: [ToolRequestAccepted, ToolResultAccepted]
     reducers: [src/companion_daemon/world_v2/reducers.py]
     projections: [read-only-tool-requests, read-only-tool-results]
-    decision_consumers: [ReadOnlyToolProposalCompiler, ActionPump, CharacterInterior]
+    decision_consumers: [ReadOnlyToolAcceptanceRuntime, ActionPump, CharacterInterior]
     actions: [read-only-tool]
     terminal_states: [delivered, failed, cancelled, expired, unknown]
     adapters: [injected-read-only-tool-provider]

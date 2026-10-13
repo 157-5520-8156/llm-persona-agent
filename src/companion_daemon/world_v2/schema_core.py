@@ -147,3 +147,26 @@ def canonicalize_json_value(value: Any) -> Any:
         if parsed.tzinfo is not None:
             return parsed.astimezone(UTC).isoformat().replace("+00:00", "Z")
     return value
+
+
+def canonicalize_utc_json_value(value: Any) -> Any:
+    """Preserve the UTC-only codec used by persisted domain mutation hashes.
+
+    Unlike canonicalize_json_value, non-UTC offset strings stay byte-exact.
+    Broadening normalization would invalidate already-recorded hashes.
+    """
+
+    if isinstance(value, dict):
+        return {key: canonicalize_utc_json_value(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [canonicalize_utc_json_value(item) for item in value]
+    if isinstance(value, datetime):
+        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    if isinstance(value, str) and (value.endswith("Z") or value.endswith("+00:00")):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return value
+        if parsed.tzinfo is not None:
+            return parsed.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return value

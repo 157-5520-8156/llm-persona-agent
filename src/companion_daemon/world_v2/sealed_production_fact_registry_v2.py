@@ -1,23 +1,12 @@
 """Build-time sealed, inert preparation registry for Fact commit v2.
 
-This module is deliberately *not* an adapter for ``acceptance_compilers``.
-That registry consumes the frozen proposal/payload v1 contracts whereas the
-first accepted Fact vertical consumes proposal registry v2 and
-``FactCommitMaterializedPayloadV2``.  Bridging those contracts before the
-FactCommitted-v2 event lane and Manifest-v3 recorder exist would incorrectly
-turn an inert payload into production authority.
+The registry exposes the fixed Fact descriptor and binds the sealed adapter
+behind a process-local preparation capability. It accepts no caller-supplied
+registration, callable, or digest.
 
-The narrow interface here therefore has two responsibilities only:
-
-* expose the one build-time Fact commit descriptor, with no registration,
-  callable, or digest supplied by a caller; and
-* bind the already sealed Fact adapter behind a registry-owned, process-local
-  preparation capability.
-
-Prepared payloads remain inert.  In particular this module neither imports a
-ledger, an event catalog, ``acceptance_compilers``, nor the runtime planner.
-The future production compiler must consume this seam only after it can prove
-the recorded v2 proposal and accepted-manifest authority.
+Prepared payloads are inert. The production plan issuer and Manifest-v3
+recorder independently verify proposal authority before materializing events.
+This module has no ledger, event-catalog, or runtime-planner dependency.
 """
 
 from __future__ import annotations

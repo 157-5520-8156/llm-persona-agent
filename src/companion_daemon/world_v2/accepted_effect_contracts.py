@@ -76,9 +76,8 @@ class AcceptedEffectContractError(ValueError):
 class DurableDomainCompilerKeyV1(_ContractModel):
     """Closed v1 wire key for the first Fact commit vertical.
 
-    This is intentionally independent of ``acceptance_compilers.DomainCompilerKey``:
-    that runtime key is tied to the old proposal/payload v1 registry and importing it
-    here would create a dependency cycle once compilers consume these contracts.
+    This durable key binds the installed Fact-v2 proposal/payload contract.
+    It is independent of runtime compiler implementations.
     """
 
     proposal_schema_registry: Literal["world-v2-proposals.2"]
