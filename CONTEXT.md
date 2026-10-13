@@ -1,10 +1,11 @@
-Code simplification, current checkpoint (2026-10-14):
+Code simplification, completed checkpoint (2026-10-14):
 Canonical inventory/results: docs/audits/code-cleanup-2026-10-13.md (includes prior active-path report).
-Last completed code37534a3b/f28f03d8/f8de9b5b, docs4baab9de: frozenfull10629pass/19skip/2xfail;
-1705PythonSHAunchanged, no deployment/QQ/provider calls. Query/prose and history recovery evidence scoped.
-Current chat cleanup starts4baab9de: remove retired inner-retry preparation/unreachable state,
-preserve Core correction, exact failure audits, source checks and fresh judgment on a changed pin.
-456scopedbaseline/candidate pass; final review/regression pending. No new production Module.
+Chat base4baab9de; code2eccc9ba/f75e86cc: retired inner-retry preparation/unreachable state removed;
+Core correction, exact rejection audits, source checks and fresh judgment on changed pin preserved.
+Wire imports30→18, main function1016→677; test/docs duplication consolidated, no new production Module.
+643+38scopedpass,9old/newentrypointvectorsidentical;Standardsfindingfixed,Specnoblocker.
+Frozenfull10629pass/19skip/2xfail/1existingwarning;1705PythonSHAunchanged;pytest1207.12s,exit0.
+Evidence output/private-audits/chat-mainline-consolidation-20261014/. No deployment/QQ/provider calls.
 Historical weights/codecs, current CompanionStore callers and real cross-day qualification remain open.
 
 cmdc-pak JSON carrier diagnosis and reading screen (2026-10-13):

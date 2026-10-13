@@ -11,7 +11,7 @@
 | --- | --- | --- | --- |
 | 废弃实现清退 | `fa6c3700` / `f83b3ec2`、`989e0bbd` | 源码−2885行，测试−1264行。删除下述六个孤立实现及两个旧 PinnedTurn 方法；合并历史UTC-only哈希及面板origin解析。 | 10617 passed / 19 skipped / 2 xfailed；1704 Python SHA不变 |
 | 检索与在用流程收敛 | `989e0bbd` / `37534a3b`、`f28f03d8`、`e818e506`、`f8de9b5b`、`4baab9de` | 源码−138，测试+147，文档+139，总计+148行。初始历史查询改读正文；预取接续归还Recall；两种Life审核共用重试循环；缓存响应跳过新检索/编码。 | 10629 passed / 19 skipped / 2 xfailed；1705 Python SHA不变 |
-| 聊天主链路 | `4baab9de` / 本轮 | 删除退役内层重试的请求准备、不可达成功分支和无效状态；有效纠正继续由Core负责。测试、文档一并收敛。 | 待本轮冻结验收 |
+| 聊天主链路 | `4baab9de` / `2eccc9ba`、`f75e86cc` | 删除退役内层重试的请求准备、不可达成功分支和无效状态；有效纠正继续由Core负责。测试、文档一并收敛。 | 10629 passed / 19 skipped / 2 xfailed；1705 Python SHA不变 |
 
 证据均在 `output/private-audits/`：
 - `code-cleanup-20261013/`：完整 import/importer 图、六组AST等价、哈希固定向量、330+106项定向记录；
@@ -20,8 +20,9 @@
   精确历史坐标19475/20421/39896保留1259前史，固定Memory/World-Life文档1282份。
   查询1024字符元数据→463字符正文，可引用命中1→2；**不是独立相关性或故事质量证明**。
   `final-regression-v4/result.json` 为终态，pytest1215.97s，exit0；先前中断/失败均保留。
-- `chat-mainline-consolidation-20261014/`：本轮基线、逐步回归、检查和冻结证据。
-两次已完成全库均有1条既有Starlette警告。源码冻结以各目录 `source-freeze.json` 为准。
+- `chat-mainline-consolidation-20261014/`：本轮基线、逐步回归、检查和冻结证据；
+  `final-regression/result.json` 为终态，pytest1207.12s，exit0，源码HEAD `f75e86cc`。
+三次已完成全库均有1条既有Starlette警告。源码冻结以各目录 `source-freeze.json` 为准。
 
 旧清理报告的完整历史文字可从 `989e0bbd:docs/audits/code-cleanup-2026-10-13.md` 和
 `4baab9de:docs/audits/active-path-simplification-2026-10-14.md` 恢复；下面保留处置清单及关键结果。
@@ -55,10 +56,15 @@
   这也暴露旧样本漏掉life_intent字段，现显式给出null，未放宽生产schema。
 - 本轮456项基线与清理后定向回归一致通过；第一次精简误改变typed error分类、一次机械清理
   留下旧局部变量引用，均被定向用例发现并修复，日志保留。新字段测试63项通过。
-- 扩展检查643项通过，Ruff/diff check通过。独立审查与最终全库结果待补充。
+- 扩展检查643项通过；9组旧/新真实入口比较的输出、异常详情、请求及审计相同，见
+  `entrypoint-equivalence.json`，范围只限这些固定向量。Ruff/diff check通过。
+- 独立Standards审查发现一组传输测试引用已删私有helper；迁移至保留的final入口与canonical
+  expression schema，四项参数化用例及原选择/身份断言保留，相关38项通过，复审关闭。
+  Spec审查无阻塞。冻结全库结果见上表；用例数量与基线一致。
 - 结构变化：author→wire导入符号30→18；wire主处理1016→677行；同pin失败续接143→21行。
   这些是删除不可能成功的流程和无生产者状态后的结果，未按行数拆文件。
 - 没有新增生产Module、注册器、备用角色或本地角色话术。
+- 相对`4baab9de`的最终净变化：源码−1538行，测试−161行，文档−154行；总计−1853行。
 
 ## 初始候选盘点
 
