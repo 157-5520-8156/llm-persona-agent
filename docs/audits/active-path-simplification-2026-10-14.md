@@ -1,6 +1,8 @@
 # 历史检索输入与在用链路收敛（2026-10-14）
 
 基线 `989e0bbd`，分支 `codex/role-memory-qualification`。
+实现提交：`37534a3b`；恢复修复：`f28f03d8`；历史测试挂钩：`e818e506`；用途归属：`f8de9b5b`。
+
 用户要求：先解决历史检索输入，再收敛聊天和生活链路的重复与耦合；不能机械拆文件、增加层，
 不能丢掉现有功能和角色自主性。本文记录本批实施与证据，不另立架构计划。
 
@@ -111,7 +113,11 @@ Spec 审查复现了一个既有顺序缺口：即使已保存完整作者响应
 - `reviewer-equivalence.log`：28组全相等；Ruff/diff check通过。
 - 初审 Standards 0 blocker；Spec 发现上述恢复 P2，修复后82项通过，两路复核确认关闭。
 - 后续历史测试挂钩迁移：23项通过，Standards/Spec均确认断言未弱化，无剩余阻塞。
-- 最终冻结全量回归：待收尾补充。
+- 最终冻结全量回归（`f8de9b5b`，`final-regression-v4/`）：**10629 passed / 19 skipped /
+  2 xfailed / 1 既有 Starlette warning**，pytest1215.97s，进程exit0。1705个Python文件的
+  SHA-256在测试前后完全相同。相对本轮基线新增12项查询/恢复用例，没有删减已有测试数。
+- 两路审查最终均无剩余阻塞；最后的用途字面量调整保留原架构guard，33项定向和28组差分通过。
+- `final-regression-v4/result.json`是最终终态；v1/v2中断、v3完整失败均保留，不能与最终通过混算。
 
 本批没有拆文件、增加生产 Module、注册层或额外作者，也没有关闭事实/权限/来源/回执检查。
 大的 inbound wire、Life Runtime、装配/health 混杂问题没有全部解决；本次删除的是已证实重复的

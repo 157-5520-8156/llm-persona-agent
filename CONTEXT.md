@@ -1,3 +1,17 @@
+Active-path simplification (2026-10-14):
+Base989e0bbd; code37534a3b,f28f03d8,e818e506,f8de9b5b. Audit docs/audits/active-path-simplification-2026-10-14.md.
+Initial Outlook recall now reads displayed prose fields, excludes metadata/unavailable/withhold,
+and shares bounded query space; existing authored-thread cues and all anchor permissions stay.
+6fixed lexical cases0->6first hits; exact historical pin19475/20421/39896 keeps1259prehistory,
+1282fixed Memory/World-Life docs:query1024metadata->463prose,eligible1->2. Not relevance/story-quality proof.
+Chat prefetch adoption consolidated in existing Recall helper; unreachable None branch removed.
+Two Life review loops share one lifecycle;28original-vs-current vectors including purpose/action scopes equal.
+Cached Outlook recovery now skips fresh lookup/encoding;4red-first cold-recovery cases close SpecP2.
+No new production Module/author/behavior rule;source net-138lines. Reviewer scopes remain explicit for guard.
+Frozenfull10629pass/19skip/2xfail/1existingwarning,pytest1215.97s,exit0;1705PythonSHAunchanged.
+Evidence output/private-audits/active-path-simplification-20261013/final-regression-v4/. Prior interrupted/failed runs retained.
+No remote model calls/deployment/QQ;whole-chain restructuring and real cross-day quality remain open.
+
 Code cleanup first pass (2026-10-13):
 Base fa6c3700; code f83b3ec2. Inventory/disposition: docs/audits/code-cleanup-2026-10-13.md.
 Removed 6 orphan/retired modules +2 independent-author PinnedTurn methods and2 exclusive test files.
