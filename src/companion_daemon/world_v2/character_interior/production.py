@@ -1101,6 +1101,8 @@ def compose_production_character_interior(
     ordinary_text_review_mode: str = "blocking",
     text_shadow_observer=None,
     life_source_reviewer=None,
+    background_character_model=None,
+    background_turn_lease_seconds: int = 120,
     reference_wire: bool = False,
     turn_store: _CharacterInteriorTurnStore | None = None,
     turn_owner_id: str = "character-interior:production",
@@ -1165,13 +1167,25 @@ def compose_production_character_interior(
                                              character_disposition=character_disposition,
                                              life_source_reviewer=life_source_reviewer,
                                              reference_wire=reference_wire)
+    faculties = (inbound_turn,)
+    if background_character_model is not None:
+        from .background_route import BackgroundStructuredRoleFaculty
+        background_role = BackgroundStructuredRoleFaculty(
+            interactive=role, background_model=background_character_model,
+            character_disposition=character_disposition,
+            life_source_reviewer=life_source_reviewer, reference_wire=reference_wire,
+        )
+        # Freeze exactly one owner per purpose before installing the registry.
+        role.purposes = tuple(p for p in role.purposes if p not in background_role.purposes)
+        faculties = (*faculties, background_role)
     interior = CharacterInterior(
         projection=_DeferredProjection(),
         role=role,
-        faculties=(inbound_turn,),
+        faculties=faculties,
         authority=_DeferredInteriorAuthority(),
         turn_store=turn_store,
         turn_owner_id=turn_owner_id,
+        turn_lease_seconds=background_turn_lease_seconds,
     )
     # Immutable composition material used only by source-closure/capsule
     # authorities after the ledger is bound.  It is not an extractable role

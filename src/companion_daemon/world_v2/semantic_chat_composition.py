@@ -657,6 +657,13 @@ class SemanticChatComposition:
         """Expose the sole protagonist-author topology without private state."""
 
         value = self.character_interior.runtime_health()
+        ledger = getattr(self.world_support_model, 'token_ledger', None)
+        if ledger is not None:
+            value = {**value, 'background_compute': {
+                'provider': self.world_support_model.provider,
+                'model': self.world_support_model.model,
+                'usage': ledger.snapshot(),
+            }}
         if self.text_shadow_observer is not None:
             value = {**value, "ordinary_text_review": self.text_shadow_observer.health_snapshot()}
         return value
@@ -887,6 +894,19 @@ def build_semantic_chat_composition(
 
     if not model_id_prefix:
         raise ValueError("semantic chat composition requires a model id prefix")
+    subscription_background = settings.world_v2_background_provider == 'anthropic_subscription'
+    if subscription_background:
+        if not (settings.world_v2_background_api_key or '').strip():
+            raise ValueError('subscription background requires WORLD_V2_BACKGROUND_API_KEY')
+        if not settings.world_v2_background_model.strip():
+            raise ValueError('subscription background requires a nonempty model')
+        endpoint = urlsplit(settings.world_v2_background_base_url)
+        if endpoint.scheme not in {'http', 'https'} or not endpoint.hostname:
+            raise ValueError('subscription background requires an HTTP endpoint')
+        if endpoint.username or endpoint.password or endpoint.query or endpoint.fragment:
+            raise ValueError('subscription background endpoint cannot embed credentials or query')
+        if world_support_model is not None:
+            raise ValueError('configured subscription background conflicts with injected world support')
     if type(visible_source_review_version) is not str or visible_source_review_version not in SUPPORTED_REVIEW_VERSIONS:
         raise ValueError("unsupported visible source review version")
     if settings.world_v2_native_slim_core and visible_author_tool_version != "slim":
@@ -1137,6 +1157,35 @@ def build_semantic_chat_composition(
         _close_failed_construction_resources(owned, owned_finalizers)
         raise
     background_model = world_support_model
+    subscription_model = None
+    if subscription_background:
+        from companion_daemon.subscription_usage import (
+            SubscriptionAnthropicModel, SubscriptionTokenLedger,
+        )
+        try:
+            subscription_ledger = SubscriptionTokenLedger(
+                str(settings.database_path) + '.subscription.sqlite',
+                five_hour_tokens=settings.world_v2_background_tokens_5h,
+                weekly_tokens=settings.world_v2_background_tokens_7d,
+            )
+
+            def new_subscription_model():
+                provider = SubscriptionAnthropicModel(
+                    settings.world_v2_background_api_key,
+                    settings.world_v2_background_base_url,
+                    settings.world_v2_background_model,
+                    token_ledger=subscription_ledger,
+                    timeout_seconds=settings.world_v2_background_timeout_seconds,
+                    max_completion_tokens=settings.world_v2_background_output_tokens,
+                )
+                owned.append(provider)
+                return provider
+
+            subscription_model = new_subscription_model()
+            background_model = subscription_model
+        except BaseException:
+            _close_failed_construction_resources(owned, owned_finalizers)
+            raise
     if (
         background_model is None
         and auto_flash
@@ -1173,14 +1222,15 @@ def build_semantic_chat_composition(
             from .character_interior.life_source_review import LifeSourceReviewer
             from .life_content_store import SQLiteImmutableLifeContentStore
 
-            life_review_model = DeepSeekChatModel(
+            life_review_model = new_subscription_model() if subscription_background else DeepSeekChatModel(
                 api_key=effective_deepseek_key,
                 base_url=settings.deepseek_base_url,
                 model=settings.world_v2_life_candidate_review_model,
                 thinking_enabled=False, max_completion_tokens=8192,
                 usage_observer=usage_observer,
             )
-            owned.append(life_review_model)
+            if not subscription_background:
+                owned.append(life_review_model)
             evidence_store = SQLiteImmutableLifeContentStore(
                 path=str(settings.database_path), world_id=life_review_world_id,
             )
@@ -1191,7 +1241,7 @@ def build_semantic_chat_composition(
             from .text_shadow_observer import TextShadowObserver
             text_shadow_observer = TextShadowObserver(
                 database=settings.database_path, world_id=life_review_world_id,
-                model=source_closure_model.source_model,
+                model=subscription_model or source_closure_model.source_model,
                 sample_every=settings.world_v2_text_review_sample_every,
             )
             owned_closeables.append(text_shadow_observer)
@@ -1208,6 +1258,11 @@ def build_semantic_chat_composition(
             evidence_first_schema=visible_author_evidence_first_schema,
             visible_source_review_version=visible_source_review_version,
             life_source_reviewer=life_source_reviewer,
+            background_character_model=subscription_model,
+            background_turn_lease_seconds=(
+                max(120, int(2 * settings.world_v2_background_timeout_seconds + 120))
+                if subscription_background else 120
+            ),
             reference_wire=settings.world_v2_reference_wire_enabled,
             source_closure_model=None,
             report_relative_source_closure_model=None,

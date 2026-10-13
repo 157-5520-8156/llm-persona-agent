@@ -127,6 +127,11 @@ class ModelCallUsage:
     # ``unknown`` means the provider may have accepted or charged the call.
     # Only a concrete local/provider rejection may use ``not_billed``.
     billing_state: str = "unknown"
+    # Native cache accounting, when the provider distinguishes these amounts.
+    # None means unreported, not zero. Legacy cache_miss_tokens remains the
+    # aggregate used by existing metered-provider accounting.
+    uncached_input_tokens: int | None = None
+    cache_creation_tokens: int | None = None
 
 
 @dataclass
@@ -1128,6 +1133,7 @@ class ChatModel(Protocol):
 
 class DeepSeekChatModel:
     provider = "deepseek"
+    mirrors_debug_spend = True
     reports_exact_request_emission = True
     supports_required_tool_choice = True
     # DeepSeek's strict function-calling dialect is enabled by the provider
@@ -1261,6 +1267,31 @@ class DeepSeekChatModel:
             # only used on the plain (tool-free) path.
             payload["response_format"] = {"type": "json_object"}
         return payload
+
+    def _completion_url(self, tools):
+        return f"{self._completion_base_url(tools)}/chat/completions"
+
+    def _completion_headers(self):
+        return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+
+    def _stream_request(self, payload):
+        return {**payload, "stream": True, "stream_options": {"include_usage": True}}
+
+    def _response_usage(self, payload):
+        usage = payload.get("usage") if isinstance(payload, dict) else None
+        return usage if isinstance(usage, dict) else {}
+
+    def _response_message(self, payload):
+        choices = payload.get("choices") if isinstance(payload, dict) else None
+        if not isinstance(choices, list) or not choices:
+            raise ValueError("model response choices must be a non-empty list")
+        return choices[0].get("message") if isinstance(choices[0], dict) else None
+
+    def _stream_decoder(self):
+        return lambda event: event
+
+    def _expected_response_tool(self, tools, tool_choice):
+        return _expected_tool_name(tools, tool_choice)
 
     def _test_only_capture_identity_headers(
         self,
@@ -1406,7 +1437,7 @@ class DeepSeekChatModel:
         tool_names: dict[int, str] = {}
         forced_tool_head_released = False
         try:
-            expected_tool_name = _expected_tool_name(tools, tool_choice)
+            expected_tool_name = self._expected_response_tool(tools, tool_choice)
             request_payload = self.request_payload(
                 messages,
                 temperature=temperature,
@@ -1414,8 +1445,8 @@ class DeepSeekChatModel:
                 tools=tools,
                 tool_choice=tool_choice,
             )
-            request_payload["stream"] = True
-            request_payload["stream_options"] = {"include_usage": True}
+            request_payload = self._stream_request(request_payload)
+            decode_event = self._stream_decoder()
             admission_in_progress = True
             reservation_id = self._admit_world_v2_model_call(
                 purpose=purpose, call_meta=call_meta, request_payload=request_payload,
@@ -1438,10 +1469,9 @@ class DeepSeekChatModel:
             try:
                 async with self.client.stream(
                     "POST",
-                    f"{self._completion_base_url(tools)}/chat/completions",
+                    self._completion_url(tools),
                     headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
+                        **self._completion_headers(),
                         **capture_identity_headers,
                     },
                     json=request_payload,
@@ -1459,18 +1489,11 @@ class DeepSeekChatModel:
                         if not isinstance(payload, dict):
                             raise ValueError("model response must be a JSON object")
                         response_payload.update(payload)
-                        payload_usage = payload.get("usage")
-                        if isinstance(payload_usage, dict):
-                            usage = payload_usage
-                        choices = payload.get("choices")
-                        message = (
-                            choices[0].get("message")
-                            if isinstance(choices, list)
-                            and choices
-                            and isinstance(choices[0], dict)
-                            else None
-                        )
+                        usage = self._response_usage(payload)
+                        message = self._response_message(payload)
                         content = message.get("content") if isinstance(message, dict) else None
+                        if not tools and isinstance(message, dict) and message.get("tool_calls"):
+                            raise ValueError("model response used an unrequested tool")
                         if tools:
                             calls = message.get("tool_calls") if isinstance(message, dict) else None
                             content = _arguments_content(
@@ -1495,6 +1518,7 @@ class DeepSeekChatModel:
                             event = json.loads(data)
                             if not isinstance(event, dict):
                                 raise ValueError("stream event must be a JSON object")
+                            event = decode_event(event)
                             response_payload.update(event)
                             event_usage = event.get("usage")
                             if isinstance(event_usage, dict):
@@ -1517,6 +1541,8 @@ class DeepSeekChatModel:
                             tool_calls = (
                                 delta.get("tool_calls") if isinstance(delta, dict) else None
                             )
+                            if not tools and tool_calls:
+                                raise ValueError("model stream used an unrequested tool")
                             if isinstance(tool_calls, list):
                                 if tools and len(tool_calls) > 1:
                                     raise ValueError(
@@ -1574,6 +1600,9 @@ class DeepSeekChatModel:
                                         tool_arg_delivered[0] = len(deltas)
             finally:
                 mark_model_request_completed(request_span)
+            finish = getattr(decode_event, "finish", None)
+            if is_event_stream and callable(finish):
+                finish()
             content = "".join(pieces)
             if tools and is_event_stream:
                 content = _arguments_content(
@@ -1735,7 +1764,7 @@ class DeepSeekChatModel:
         request_emitted = False
         usage: dict[str, object] = {}
         try:
-            expected_tool_name = _expected_tool_name(tools, tool_choice)
+            expected_tool_name = self._expected_response_tool(tools, tool_choice)
             request_payload = self.request_payload(
                 messages,
                 temperature=temperature,
@@ -1764,10 +1793,9 @@ class DeepSeekChatModel:
             request_emitted = True
             try:
                 response = await self.client.post(
-                    f"{self._completion_base_url(tools)}/chat/completions",
+                    self._completion_url(tools),
                     headers={
-                        "Authorization": f"Bearer {self.api_key}",
-                        "Content-Type": "application/json",
+                        **self._completion_headers(),
                         **capture_identity_headers,
                     },
                     json=request_payload,
@@ -1777,14 +1805,11 @@ class DeepSeekChatModel:
                 mark_model_request_completed(request_span)
             _raise_for_provider_status(response)
             payload = response.json()
-            payload_usage = payload.get("usage") if isinstance(payload, dict) else None
-            if isinstance(payload_usage, dict):
-                usage = payload_usage
-            choices = payload.get("choices") if isinstance(payload, dict) else None
-            if not isinstance(choices, list) or not choices:
-                raise ValueError("model response choices must be a non-empty list")
-            message = choices[0].get("message") if isinstance(choices[0], dict) else None
+            usage = self._response_usage(payload)
+            message = self._response_message(payload)
             content = message.get("content") if isinstance(message, dict) else None
+            if not tools and isinstance(message, dict) and message.get("tool_calls"):
+                raise ValueError("model response used an unrequested tool")
             if tools:
                 calls = message.get("tool_calls") if isinstance(message, dict) else None
                 content = _arguments_content(
@@ -1982,7 +2007,8 @@ class DeepSeekChatModel:
         try:
             from companion_daemon.spend_account import maybe_record_debug_usage
 
-            maybe_record_debug_usage(usage, observer=self.usage_observer)
+            if self.mirrors_debug_spend:
+                maybe_record_debug_usage(usage, observer=self.usage_observer)
         except Exception:
             logger.warning("debug spend ledger hook failed", exc_info=True)
         if state is not None:
@@ -2342,7 +2368,7 @@ def _failed_call_billing_state(
 def _provider_usage_complete(usage: dict[str, object]) -> bool:
     """A successful response alone is not evidence of a known provider charge."""
 
-    return all(
+    return usage.get("_usage_final", True) is True and all(
         isinstance(usage.get(key), int)
         and not isinstance(usage.get(key), bool)
         and int(usage[key]) >= 0
@@ -2350,7 +2376,7 @@ def _provider_usage_complete(usage: dict[str, object]) -> bool:
     )
 
 
-def _model_usage_token_counts(usage: dict[str, object]) -> dict[str, int]:
+def _model_usage_token_counts(usage: dict[str, object]) -> dict[str, int | None]:
     """Keep reported billing evidence even if response validation later fails."""
 
     details = usage.get("completion_tokens_details")
@@ -2362,6 +2388,12 @@ def _model_usage_token_counts(usage: dict[str, object]) -> dict[str, int]:
         "cache_hit_tokens": _usage_int(usage, "prompt_cache_hit_tokens"),
         "cache_miss_tokens": _usage_int(usage, "prompt_cache_miss_tokens"),
         "total_tokens": _usage_int(usage, "total_tokens"),
+        "uncached_input_tokens": (
+            usage["uncached_input_tokens"] if type(usage.get("uncached_input_tokens")) is int else None
+        ),
+        "cache_creation_tokens": (
+            usage["cache_creation_tokens"] if type(usage.get("cache_creation_tokens")) is int else None
+        ),
     }
 
 

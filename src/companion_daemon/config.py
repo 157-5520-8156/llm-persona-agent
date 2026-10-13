@@ -48,6 +48,30 @@ class Settings(BaseSettings):
     deepseek_debug_api_key: str | None = Field(default=None, alias="DEEPSEEK_DEBUG_API_KEY")
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-v4-flash"
+    world_v2_background_provider: Literal['deepseek', 'anthropic_subscription'] = Field(
+        default='deepseek', alias='WORLD_V2_BACKGROUND_PROVIDER'
+    )
+    world_v2_background_base_url: str = Field(
+        default='http://localhost:8788', alias='WORLD_V2_BACKGROUND_BASE_URL'
+    )
+    world_v2_background_api_key: str | None = Field(
+        default=None, alias='WORLD_V2_BACKGROUND_API_KEY', repr=False
+    )
+    world_v2_background_model: str = Field(
+        default='gemini-3.8-flash-medium', alias='WORLD_V2_BACKGROUND_MODEL'
+    )
+    world_v2_background_timeout_seconds: float = Field(
+        default=90, gt=0, le=300, alias='WORLD_V2_BACKGROUND_TIMEOUT_SECONDS'
+    )
+    world_v2_background_output_tokens: int = Field(
+        default=16384, ge=1024, le=65536, alias='WORLD_V2_BACKGROUND_OUTPUT_TOKENS'
+    )
+    world_v2_background_tokens_5h: int = Field(
+        default=150_000_000, gt=0, alias='WORLD_V2_BACKGROUND_TOKENS_5H'
+    )
+    world_v2_background_tokens_7d: int = Field(
+        default=500_000_000, gt=0, alias='WORLD_V2_BACKGROUND_TOKENS_7D'
+    )
     # Historical reply/expression/thinking selectors described separate role
     # authors but have no production consumer after the CharacterInterior
     # cutover. Keep them only as rejected inputs so a stale deployment cannot
