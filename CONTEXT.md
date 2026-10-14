@@ -1,3 +1,10 @@
+Proxy Outlook validation (2026-10-14): code653c1fb7; 8proxy/0DS HTTP200 complete,221856reportedtokens.
+5memorybatches:3firstpass/1corrected/1unresolved;32reviewed. native empty/partial and text extra source_refs fail.
+Confirmed host conflict: memory schema/user omit decision.source_refs, system/correction still require it; unfixed.
+Full journey stopped after10simminutes,0chats. Separate Outlook1call50.65s accepted2threads/2opportunities;
+same-wake0extraHTTP, not multi-day qualification. Both full histories/originalevents unchanged; source unchanged.
+Evidence output/private-audits/proxy-outlook-validation-20261014/; appended hybrid-background audit. No deployment.
+
 Code simplification, completed checkpoint (2026-10-14):
 Canonical inventory/results: docs/audits/code-cleanup-2026-10-13.md (includes prior active-path report).
 Chat base4baab9de; code2eccc9ba/f75e86cc: retired inner-retry preparation/unreachable state removed;
