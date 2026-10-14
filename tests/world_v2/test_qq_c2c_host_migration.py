@@ -4059,8 +4059,11 @@ async def test_restart_waits_for_foreign_reclaimed_attempt_that_crashed_before_m
         use_configured_recall_embedding=False,
     )
     runtime = crashed._host._application._turns._runtime  # noqa: SLF001
+    crash_count = 0
 
     async def crash_before_retry_model(**_kwargs):  # type: ignore[no-untyped-def]
+        nonlocal crash_count
+        crash_count += 1
         raise RuntimeError("fault injection after reclaim")
 
     monkeypatch.setattr(
@@ -4074,10 +4077,17 @@ async def test_restart_waits_for_foreign_reclaimed_attempt_that_crashed_before_m
             max_action_units=8,
             max_background_units=1,
         )
-        # Expression retry still crashed; drain isolation lets later workers
-        # run in the same unit, so the host records that later worker's
-        # technical failure instead of bubbling RuntimeError from retry.
-        assert crashed_result.background_statuses == ("technical_failure",)
+        # The retry crash is isolated; the now-supported offline FactDraft
+        # worker can finish its independent no-change in the same unit.
+        assert crashed_result.background_statuses == ("no_change",)
+        assert crash_count == 1
+        crashed_projection = await crashed._host.action_due_projection()  # noqa: SLF001
+        crashed_episode = next(
+            item for item in crashed_projection.trigger_processes
+            if item.process_kind == "expression_episode"
+        )
+        assert crashed_episode.state == "claimed"
+        assert len(crashed_episode.attempt_ids) == 2
     finally:
         await crashed.aclose()
 
@@ -4105,6 +4115,8 @@ async def test_restart_waits_for_foreign_reclaimed_attempt_that_crashed_before_m
         assert waiting_episode.state == "claimed"
         assert len(waiting_episode.attempt_ids) == 2
         assert waiting_episode.claim_lease is not None
+        assert waiting_episode.claim_lease == crashed_episode.claim_lease
+        assert waiting_episode.attempt_ids == crashed_episode.attempt_ids
         assert _visible(delivered) == []
 
         # This is a different Runtime instance. With no durable ModelResult
