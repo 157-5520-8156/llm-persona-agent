@@ -1,3 +1,37 @@
+Release freeze / proxy backlog investigation (2026-10-14), IN PROGRESS:
+User freezes new features and major refactors; retain all tasks/failures, role autonomy and source validators.
+Codea719282f fixes Life reviewer outer deadline misclassified as caller cancellation through nested budgets;
+whole configured review deadline and one wire correction unchanged, provider timeout now reaches circuit,
+real caller cancellation remains distinct, unknown token reservations retained. Bare technical_failure now
+marks scheduler health failing. Red2/control2;151scopedpass;Standards/Specclosed.
+Fullv1 stopped4585pass/1fail: honest health exposed FakeCompanionModel missing FactDraft protocol, not
+provider/production regression. b6062f4d adds explicit offline single/batch no-retain fixture and truthful
+nonready health diagnostic;2red ->9pass incl original real-process restart/zero-failure gate. Bothreviewsclosed.
+Fullv2 stopped7581pass/1fail: lease test depended on old fakeFactfailure. beab9c53 asserts actual injected
+crash and exact unchanged lease/attempts across restart; original zero/once delivery gates retained.
+772fake-relatedpass;finalfrozenfullv3 onbeab9c53:10640pass/19skip/2xfail/1warning,1200.06s,1705PythonSHAunchanged.
+No production/QQ/cmdc restart or config change.
+cmdc PID3371 version0.9.11, publisher advertises0.9.12 handshake improvements; not installed.
+Loopback endpoints milliseconds; Google lane follows local7897 proxy. Request66 sample CPU0–1%,RSS~22–25MiB,
+threads waiting(cond/kevent),upstream sockets established;does not distinguish remote queue/inference/network.
+Exactv5inventory:1373active,997due(949prehistory/46experience/2fact),998unacknowledged;
+1002duebyoriginal3dayhorizon;atleast125currentbatches ifallreadable.0suppressions,1259prehistory/sourcehashintact.
+OneSept25legacyfailure lacks both causal identity fields and exact saved turn;isolated pending,not deleted.
+New phase uses same65-row ledger;announcedcumulative512proxy/20Mtokens,128DS/5CNY,5400s/phase. Old64-request
+grant untouched. Newcapture preserves compressed rawbytes+decodedJSON;old5DSrawUTF8notreconstructable,
+oldunknownreservesretained;futuretypedcompleteDSusagecan settle atconservativepeakprice.
+Private run_backlog.py uses3failedserviceopportunities withoutdurableprogress asstop;oldstickyOutlookhealth
+not counted asnewfailure,onlynewdurablefailure markers.Offlinecounter[1,1,1,2,3],capture3cases/65oldexposuresunchanged.
+Livev6 manuallycancelledduringcoldstartup,0API,original41739events/sourceunchanged. Livev7 runsfromlivev5,
+sameoriginOct8T07:51:18Z,allhistory/failedtasksretained. Originalfailedmemorybatch already reviewed;
+livev7 terminal:36proxyHTTP=32complete+4timeout,208newMemoryCandidateReviewed;one localcircuit refusal.
+ClockOct8T13:32Z;3failedopportunitieswithoutprogress stopped phase. Original41739events/source unchanged.
+Simulation jump crossed30virtualminutes before30real-secondcircuitcooldown;v8 harness now waits actual
+Anthropic circuit naturally,worldclock/queues/circuit notmutated,wait charged to5400sphase andlogged separately.
+Offline3sleepchecks->half_open/0requests;Specclosed. Livev8runningfromv7,same3dayorigin/cumulativeledger.
+Full3-day acceptance still open. Evidence output/private-audits/proxy-backlog-20261014/ and
+output/private-audits/proxy-outlook-validation-20261014/live-v8/. No success claim until terminal review.
+
 Proxy Outlook repair and qualification (2026-10-14): source3594ea6c/26adfdd6, timing test14052136.
 Host-bound memory system/correction guidance now matches payload-only schema; role status/attention/choices
 remain model-owned. 179scopedpass,112baseline/currentacceptancevectorsidentical,bothreviewsclosed.
