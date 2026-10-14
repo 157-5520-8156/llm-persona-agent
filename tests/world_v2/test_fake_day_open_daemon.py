@@ -18,6 +18,36 @@ from test_world_stimulus_life_intent import NOW
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('batch', [False, True])
+async def test_daemon_fake_supports_installed_fact_protocol_without_retry(batch):
+    from companion_daemon.world_v2.fact_draft_adapter import FactObservationProposalAdapter, FactObservationSource
+    from test_fact_draft_adapter import _observation
+
+    observation, event = _observation()
+    model = FakeCompanionModel()
+    adapter = FactObservationProposalAdapter(model=model)
+    if batch:
+        second = observation.model_copy(update={'observation_id': observation.observation_id + ':2',
+                                                 'source_event_id': observation.source_event_id + ':2'})
+        second_event = type(event).from_payload(**{
+            **event.model_dump(exclude={'payload_json', 'payload_hash'}),
+            'event_id': event.event_id + ':2', 'idempotency_key': event.idempotency_key + ':2',
+            'payload': second.model_dump(mode='json'),
+        })
+        result = await adapter.propose_batch(
+            sources=(FactObservationSource(observation=observation, event=event, world_revision=1),
+                     FactObservationSource(observation=second, event=second_event, world_revision=1)),
+            evaluated_world_revision=1,
+        )
+        assert result == (None, None)
+    else:
+        assert await adapter.propose(observation=observation, observation_event=event,
+                                     source_world_revision=1) is None
+    # Scripted no-change exercises the protocol, not semantic fact extraction.
+    assert len(model.calls) == 1
+
+
+@pytest.mark.asyncio
 async def test_daemon_fake_handles_actual_empty_day_open_without_degrading(
     tmp_path,
     build_app,  # noqa: F811 - imported fixture

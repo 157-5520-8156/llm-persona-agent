@@ -1970,6 +1970,11 @@ def _wait_for_health(
                     and int(scheduler.get("passes_completed") or 0) >= 1
                 ):
                     return payload
+                last_error = (
+                    f"health status={payload.get('status') if isinstance(payload, dict) else 'invalid'}; "
+                    f"scheduler={scheduler.get('status') if isinstance(scheduler, dict) else 'missing'}; "
+                    f"scheduler_error={scheduler.get('last_error') if isinstance(scheduler, dict) else None}"
+                )
             except (httpx.HTTPError, ValueError) as exc:
                 last_error = f"{type(exc).__name__}: {exc}"
             time.sleep(0.1)

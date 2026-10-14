@@ -2615,6 +2615,20 @@ class FakeCompanionModel:
     async def complete(self, messages: list[dict[str, str]], *, temperature: float = 0.8) -> str:
         self.calls.append(messages)
         joined = "\n".join(message["content"] for message in messages)
+        if messages and messages[0].get("role") == "system" and messages[0]["content"].startswith(
+            "You maintain the long-term user-fact memory of a companion character."
+        ):
+            # Explicit offline fixture: exercise both installed FactDraft
+            # carriers without claiming semantic extraction quality.
+            packet = json.loads(messages[1]["content"])
+            if isinstance(packet.get("observations"), list):
+                return json.dumps({"decisions": [
+                    {"observation_id": item["observation_id"], "result": {"retain": False}}
+                    for item in packet["observations"]
+                ]})
+            if "observation_id" in packet:
+                return '{"retain":false}'
+            raise ValueError("fake FactDraft input shape is unsupported")
         # The unified inbound contract is both an appraisal and an expression
         # prompt.  Match its explicit simultaneous-pass marker before the
         # narrower historical fixture branches below; otherwise the word
