@@ -1114,6 +1114,10 @@ class CharacterInterior:
             return None
         return await _resolve(getattr(driver, "drain_reconsideration_once")())
 
+    async def _world_stimulus_retry_next_due(self):
+        reader = getattr(self._background_driver, "world_stimulus_retry_next_due", None)
+        return await _resolve(reader()) if callable(reader) else None
+
     async def _drain_world_stimulus_once(self):
         driver = self._background_driver
         if driver is None:

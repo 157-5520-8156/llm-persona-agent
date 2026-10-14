@@ -2384,29 +2384,48 @@ class CharacterInteriorWorldStimulusRuntime:
                     return process
         return None
 
+    async def retry_next_due(self):
+        """Expose existing paid-retry deadlines without authoring or claiming work."""
+        projection = await self._project()
+        if self._ledger.blocks_event_loop:
+            return await asyncio.to_thread(self._future_retry_due, projection)
+        return self._future_retry_due(projection)
+
+    def _future_retry_due(self, projection):
+        now = projection.logical_time
+        return min((due for _, due, unresolved in self._retry_waits(projection)
+                    if due is not None and not unresolved and (now is None or due > now)),
+                   default=None)
+
     def _durable_deferred_triggers(self, projection, identities=None) -> frozenset[str]:
+        now = projection.logical_time
+        return frozenset(trigger_id for trigger_id, due, unresolved in self._retry_waits(projection, identities)
+                         if unresolved or (due is not None and (now is None or now < due)))
+
+    def _retry_waits(self, projection, identities=None):
         processes = tuple(item for item in projection.trigger_processes
                           if item.process_kind in _PROCESS_PRIORITY
                           and item.source_evidence_ref is not None
                           and item.state != "terminal")
-        deferred = self._technical_retry_schedule.deferred_opportunities(
+        if not processes:
+            return ()
+        deadlines, unresolved = self._technical_retry_schedule.retry_deadlines(
             projection,
             attempt_ids=frozenset(attempt for process in processes for attempt in process.attempt_ids),
         )
-        unresolved = self._technical_retry_schedule.unresolved_attempt_ids
-        if not deferred and not unresolved:
-            return frozenset()
+        if not deadlines and not unresolved:
+            return ()
         if identities is None:
             identities = self._health_opportunity_identities(
                 projection=projection, processes=processes,
             )
-        return frozenset(
-            process.trigger_id for process in processes
-            if (identities[process.trigger_id].opportunity_ref in deferred
-                or unresolved.intersection(process.attempt_ids))
+        return tuple(
+            (process.trigger_id, deadlines.get(identities[process.trigger_id].opportunity_ref),
+             bool(unresolved.intersection(process.attempt_ids)))
+            for process in processes
             # Settlement recovery reuses accepted author output, with no paid
             # call. It must not wait behind model retry backoff.
-            and self._existing_audit_for_opportunity(
+            if self._existing_audit_for_opportunity(
                 projection, identity=identities[process.trigger_id],
                 source_ref=process.source_evidence_ref,
             ) is None

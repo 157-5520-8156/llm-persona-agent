@@ -38,10 +38,10 @@ class WorldStimulusRetrySchedule:
         self._identity_for_audit = identity_for_audit
         self._failures: dict[str, _FailedAttempt] = {}
         self._unreadable_event_refs: set[str] = set()
-        self.unresolved_attempt_ids: frozenset[str] = frozenset()
         self._reported_unresolved: set[str] = set()
 
-    def deferred_opportunities(self, projection, *, attempt_ids: frozenset[str]) -> frozenset[str]:
+    def retry_deadlines(self, projection, *, attempt_ids: frozenset[str]):
+        """Return deadlines and unresolved attempts from this exact read."""
         attempts: dict[str, dict[str, datetime]] = {}
         unresolved: set[str] = set()
         for item in projection.model_result_audits:
@@ -92,20 +92,15 @@ class WorldStimulusRetrySchedule:
             group[failed.attempt_id] = max(
                 group.get(failed.attempt_id, failed.failed_at), failed.failed_at
             )
-        self.unresolved_attempt_ids = frozenset(unresolved)
-        if not attempts:
-            return frozenset()
-        now = projection.logical_time
-        return frozenset(
-            opportunity_ref
-            for opportunity_ref, failures in attempts.items()
-            if now is None
-            or now < max(failures.values()) + timedelta(
+        deadlines = {
+            opportunity_ref: max(failures.values()) + timedelta(
                 seconds=CONTEXTUAL_LIFE_RETRY_DELAYS_SECONDS[
                     min(len(failures), len(CONTEXTUAL_LIFE_RETRY_DELAYS_SECONDS)) - 1
                 ]
             )
-        )
+            for opportunity_ref, failures in attempts.items()
+        }
+        return deadlines, frozenset(unresolved)
 
     def _failure(self, item, projection) -> _FailedAttempt:
         cached = self._failures.get(item.event_ref)

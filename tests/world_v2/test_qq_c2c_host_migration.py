@@ -94,6 +94,38 @@ class _NamedStrictFullReviewNoCallModel(_NamedNoCallModel):
 
 
 @pytest.mark.asyncio
+async def test_qq_snapshot_reads_retry_due_from_installed_world_stimulus(tmp_path, monkeypatch) -> None:
+    host = build_qq_c2c_host(
+        settings=Settings(database_path=tmp_path / "world-stimulus-due.sqlite"),
+        recipient_id="10001", bootstrap_at=NOW, model=_NamedNoCallModel("world-retry-author"),
+        source_closure_model=_NamedCompactReviewNoCallModel("world-retry-review"),
+        life_source_closure_model=_NamedNoCallModel("world-retry-life-review"),
+        use_configured_recall_embedding=False,
+    )
+    try:
+        app = host._host._application  # noqa: SLF001
+        runtime = app._character_interior._background_driver._world_stimulus  # noqa: SLF001
+        assert runtime is not None
+        due = NOW + timedelta(minutes=10)
+        calls = []
+
+        async def peek():
+            calls.append(due)
+            return due
+
+        monkeypatch.setattr(runtime, "retry_next_due", peek)
+        before = app._ledger.project()  # noqa: SLF001
+        snapshot = await host.scheduler_wake_snapshot()
+        assert [(d.kind, d.due_at) for d in snapshot.dues if d.kind == "world_stimulus.technical_retry"] == [
+            ("world_stimulus.technical_retry", due)
+        ]
+        assert calls == [due]
+        assert app._ledger.project() == before  # noqa: SLF001
+    finally:
+        await host.aclose()
+
+
+@pytest.mark.asyncio
 async def test_qq_composition_wires_compact_proactive_source_guard(
     tmp_path: Path,
 ) -> None:

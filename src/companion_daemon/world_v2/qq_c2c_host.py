@@ -2332,6 +2332,7 @@ class QQC2CHost:
         private_impression_due_reader = getattr(self._host, "private_impression_next_due", None)
         life_due_reader = getattr(self._host, "life_ecology_next_due", None)
         memory_due_reader = getattr(self._host, "memory_consolidation_next_due", None)
+        world_stimulus_due_reader = getattr(self._host, "world_stimulus_retry_next_due", None)
         due_projection = (
             await due_projection_reader() if callable(due_projection_reader) else None
         )
@@ -2340,6 +2341,7 @@ class QQC2CHost:
         dues = collect_clock_wake_dues(
             due_projection,
             computed={
+                "world_stimulus.technical_retry": (await world_stimulus_due_reader() if callable(world_stimulus_due_reader) else None),
                 "memory.candidate_consolidation": (await memory_due_reader() if callable(memory_due_reader) else None),
                 "social.initiative.cadence": (
                     await initiative_due_reader() if callable(initiative_due_reader) else None

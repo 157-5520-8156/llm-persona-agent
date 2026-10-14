@@ -29,6 +29,7 @@ COMPUTED_CLOCK_WAKE_KINDS = frozenset(
         "social.initiative.cadence",
         "private_impression.interval",
         "memory.candidate_consolidation",
+        "world_stimulus.technical_retry",
         "life.ecology",
     }
 )

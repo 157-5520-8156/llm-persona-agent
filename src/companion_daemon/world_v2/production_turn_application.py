@@ -2349,6 +2349,10 @@ class WorldV2TurnApplication:
             return {"status": "disabled"}
         return self._life_ecology.outlook_health()
 
+    async def world_stimulus_retry_next_due(self):
+        reader = getattr(self._character_interior, "_world_stimulus_retry_next_due", None)
+        return await reader() if callable(reader) else None
+
     async def memory_consolidation_next_due(self):
         return await self._turns.memory_consolidation_next_due()
 

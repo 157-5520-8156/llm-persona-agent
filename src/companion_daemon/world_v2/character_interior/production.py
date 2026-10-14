@@ -731,6 +731,9 @@ class _CharacterInteriorBackgroundDriver:
     def is_bound_to(self, ledger: LedgerPort) -> bool:
         return self._ledger is ledger
 
+    async def world_stimulus_retry_next_due(self):
+        return await self._world_stimulus.retry_next_due() if self._world_stimulus is not None else None
+
     async def drain_world_stimulus_once(self) -> object | None:
         if self._world_stimulus is None:
             return None

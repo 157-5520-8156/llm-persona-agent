@@ -1738,6 +1738,85 @@ async def test_provider_failure_defers_same_trigger_so_background_budget_can_mov
 
 
 @pytest.mark.asyncio
+async def test_qq_scheduler_wakes_world_stimulus_retry_without_unrelated_clock_work(tmp_path) -> None:
+    from companion_daemon.world_v2.contextual_life_retry import CONTEXTUAL_LIFE_RETRY_DELAYS_SECONDS
+    from companion_daemon.world_v2.qq_c2c_host import QQC2CHost
+    from companion_daemon.world_v2.qq_ingress_policy import SQLiteQQIngressStore
+
+    failed_model = _RoleModel(failure=ConnectionError("provider unavailable"))
+    runtime, ledger, _projection = _runtime(model=failed_model)
+    assert (await runtime.drain_one()).work_status == "technical_failure"
+    failed_at = ledger.project().logical_time
+    due = failed_at + timedelta(seconds=CONTEXTUAL_LIFE_RETRY_DELAYS_SECONDS[0])
+    recovered_model = _RoleModel(decision="no_change")
+    runtime, _, _ = _runtime_for_ledger(
+        ledger=ledger, issuer=ledger._accepted_batch_issuer, model=recovered_model,  # noqa: SLF001
+        source_ref=SOURCE_REF, companion_actor_ref="actor:companion",
+    )
+
+    class RetryOnlyPlatform:
+        async def current_logical_time(self):
+            return ledger.project().logical_time
+
+        async def action_due_projection(self):
+            return ledger.project()
+
+        async def world_stimulus_retry_next_due(self):
+            return await runtime.retry_next_due()
+
+        async def tick(self, tick):
+            commit(ledger, [event(tick.tick_id, "ClockAdvanced", {
+                "logical_time_from": tick.logical_time_from.isoformat(),
+                "logical_time_to": tick.logical_time_to.isoformat(),
+            }, at=tick.logical_time_to)])
+            return SimpleNamespace(status="observed_only")
+
+        async def drain_background_once(self):
+            result = await runtime.advance_due_once()
+            return None if result.status in {"idle", "owned_elsewhere"} else result
+
+        async def drain_scheduled_work(self, *, max_background_units, **_kwargs):
+            statuses = []
+            for _ in range(max_background_units):
+                result = await self.drain_background_once()
+                if result is None:
+                    break
+                statuses.append(str(result.work_status))
+            return SimpleNamespace(action_statuses=(), background_statuses=tuple(statuses))
+
+        def close(self):
+            pass
+
+    host = QQC2CHost(host=RetryOnlyPlatform(), recipient_id="10001", canonical_user_id="geoff",
+        ingress_store=SQLiteQQIngressStore(tmp_path / "world-retry.sqlite"), ingress_now=lambda: failed_at)
+    try:
+        await host.scheduler_once(observed_at=due-timedelta(microseconds=1), max_action_units=0, max_background_units=1)
+        assert recovered_model.calls == 0
+        await host.scheduler_once(observed_at=due, max_action_units=0, max_background_units=1)
+        assert ledger.project().logical_time == due
+        assert recovered_model.calls == 1
+        assert all(p.state == "terminal" for p in ledger.project().trigger_processes)
+        assert await runtime.retry_next_due() is None
+    finally:
+        await host.aclose()
+
+
+@pytest.mark.asyncio
+async def test_world_retry_due_keeps_unresolvable_failure_quarantined(monkeypatch) -> None:
+    model = _RoleModel(failure=ConnectionError("provider unavailable"))
+    runtime, ledger, _projection = _runtime(model=model)
+    assert (await runtime.drain_one()).work_status == "technical_failure"
+    before = ledger.project()
+    # Simulate a historical audit whose exact causal identity is unavailable.
+    monkeypatch.setattr(runtime._technical_retry_schedule, "_identity_for_audit", lambda _audit: None)  # noqa: SLF001
+    assert await runtime.retry_next_due() is None
+    pending = {p.trigger_id for p in before.trigger_processes if p.state != "terminal"}
+    assert pending <= runtime._durable_deferred_triggers(before)  # noqa: SLF001
+    assert ledger.project() == before
+    assert model.calls == 1
+
+
+@pytest.mark.asyncio
 async def test_restart_reuses_durable_character_result_without_calling_provider_twice() -> None:
     model = _RoleModel(decision="activate")
     runtime, ledger, _projection = _runtime(

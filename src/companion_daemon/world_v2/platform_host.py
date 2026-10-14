@@ -416,6 +416,10 @@ class WorldV2PlatformHost:
             return None
         return await reader()
 
+    async def world_stimulus_retry_next_due(self):
+        reader = getattr(self._application, "world_stimulus_retry_next_due", None)
+        return await reader() if callable(reader) else None
+
     async def memory_consolidation_next_due(self):
         reader = getattr(self._application, "memory_consolidation_next_due", None)
         return await reader() if callable(reader) else None
