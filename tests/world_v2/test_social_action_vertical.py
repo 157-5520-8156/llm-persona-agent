@@ -233,6 +233,75 @@ def _observation(*, suffix: str = "1", text: str = "你先忙，晚点再聊。"
     )
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("history_size", [16, 64])
+async def test_idle_social_scan_reads_observation_history_once(history_size):
+    from types import SimpleNamespace
+
+    observations = [_observation(suffix=f"{i:04x}") for i in range(history_size)]
+    events = [_event(f"event:scan:{i}", "ObservationRecorded", item.model_dump(mode="json"))
+              for i, item in enumerate(observations)]
+    # Last valid duplicate wins; an unreadable newer event does not replace it.
+    latest = _event("event:scan:latest", "ObservationRecorded",
+                    observations[0].model_copy(update={"text": "后来补充的原文"}).model_dump(mode="json"))
+    invalid = _event("event:scan:invalid", "ObservationRecorded", {})
+    by_id = {event.event_id: event for event in (*events, latest, invalid)}
+    refs = [SimpleNamespace(event_id=event.event_id, event_type=event.event_type)
+            for event in (*events, latest, invalid)]
+    projection = SimpleNamespace(trigger_processes=(), proposal_audits=(),
+        message_observations=observations, committed_world_event_refs=refs)
+    lookups = []
+
+    def lookup(ref):
+        lookups.append(ref)
+        return by_id[ref], None
+
+    worker = object.__new__(SocialActionWorker)
+    worker._ledger = SimpleNamespace(project=lambda: projection, lookup_event_commit=lookup)
+    worker._actor = "actor:companion"
+    seen = []
+    worker._resolve_audit = lambda **kw: (
+        seen.append(kw["trigger_ref"]) or SimpleNamespace(audit=None)
+    )
+    assert (await worker.drain_one()).status == "idle"
+    assert seen == [latest.event_id, *(event.event_id for event in events[1:])]
+    assert len(lookups) <= len(refs)
+    # A new drain must read again; nothing is cached across projection reads.
+    lookups.clear()
+    assert (await worker.drain_one()).status == "idle"
+    assert lookups and len(lookups) <= len(refs)
+
+
+@pytest.mark.asyncio
+async def test_social_scan_does_not_prefetch_past_the_first_selected_source():
+    from types import SimpleNamespace
+    from companion_daemon.world_v2.social_action_worker import SocialActionRunResult
+
+    observation = _observation()
+    event = _event("event:scan:ready", "ObservationRecorded", observation.model_dump(mode="json"))
+    projection = SimpleNamespace(trigger_processes=(), message_observations=(observation,),
+        committed_world_event_refs=(
+            SimpleNamespace(event_id="event:unrelated-unreadable", event_type="ObservationRecorded"),
+            SimpleNamespace(event_id=event.event_id, event_type=event.event_type),
+        ))
+
+    def lookup(ref):
+        assert ref == event.event_id, "Do not broaden the error frontier with eager history reads"
+        return event, None
+
+    worker = object.__new__(SocialActionWorker)
+    worker._ledger = SimpleNamespace(project=lambda: projection, lookup_event_commit=lookup)
+    worker._actor = "actor:companion"
+    worker._resolve_audit = lambda **kw: SimpleNamespace(audit=object(), choice="defer")
+
+    async def selected(identity):
+        assert identity == observation.observation_id
+        return SocialActionRunResult(status="deferred")
+
+    worker.run_observation = selected
+    assert (await worker.drain_one()).status == "deferred"
+
+
 async def _setup(
     *, output: str, budget_limit: int = 100, expression: bool = False
 ):

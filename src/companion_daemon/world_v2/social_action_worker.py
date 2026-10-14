@@ -100,12 +100,19 @@ class SocialActionWorker:
             and item.state == "terminal"
             and item.source_evidence_ref is not None
         }
+        source_events = self._iter_source_observations(projection=projection)
+        observed = {}
         for source in projection.message_observations:
             if source.actor == self._actor:
                 continue
-            observation = self._source_observation(
-                observation_id=source.observation_id, projection=projection
-            )
+            if source.observation_id not in observed:
+                # Scan lazily: keep the original first-match/error boundary,
+                # and reuse the latest valid records already read this pass.
+                for item in source_events:
+                    observed.setdefault(item[0].observation_id, item)
+                    if item[0].observation_id == source.observation_id:
+                        break
+            observation = observed.get(source.observation_id)
             if observation is None or observation[1].event_id in decided_sources:
                 continue
             # Production reuses the already-audited main reply proposal.  A
@@ -368,6 +375,10 @@ class SocialActionWorker:
         )
 
     def _source_observation(self, *, observation_id: str, projection) -> tuple[Observation, WorldEvent] | None:
+        return next((item for item in self._iter_source_observations(projection=projection)
+                     if item[0].observation_id == observation_id), None)
+
+    def _iter_source_observations(self, *, projection):
         for ref in reversed(projection.committed_world_event_refs):
             if ref.event_type != "ObservationRecorded":
                 continue
@@ -378,9 +389,7 @@ class SocialActionWorker:
                 observation = Observation.model_validate_json(located[0].payload_json)
             except ValueError:
                 continue
-            if observation.observation_id == observation_id:
-                return observation, located[0]
-        return None
+            yield observation, located[0]
 
     @staticmethod
     def _proposal_choice(proposal: MinimalProposal | DecisionProposal) -> str:
