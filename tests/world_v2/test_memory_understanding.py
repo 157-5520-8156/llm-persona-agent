@@ -157,12 +157,61 @@ async def test_paid_pending_batch_is_inert_and_crash_recovery_does_not_repay(tmp
 
 
 @pytest.mark.asyncio
+async def test_repeated_understanding_read_reuses_decoding_but_rechecks_effect_authority(tmp_path, monkeypatch):
+    import companion_daemon.world_v2.memory_understanding as module
+
+    async with _sources(tmp_path, extra=True) as case:
+        ledger = case.ledger
+        seed_memories(ledger)
+        store = SQLiteImmutableLifeContentStore(path=tmp_path / "content.sqlite", world_id=ledger.world_id)
+        assert (await worker(ledger, store, Learner()).drain_one()).work_status == "reviewed"
+        for name in ("_parse_audit", "_parse_candidate"):
+            decoder = getattr(module, name, None)
+            if decoder is not None:
+                decoder.cache_clear()
+        parses = {}
+
+        def instrument(model):
+            original = model.model_validate_json
+            parses[model.__name__] = 0
+
+            def validate(cls, raw, **kwargs):
+                parses[model.__name__] += 1
+                return original(raw, **kwargs)
+
+            monkeypatch.setattr(model, "model_validate_json", classmethod(validate))
+
+        for model in (module.ModelResultRecordedPayload, module.MemoryCandidateProjection):
+            instrument(model)
+        reader = MemoryUnderstandingReader(ledger=ledger, content_store=store, actor_ref="agent:companion")
+        projection = ledger.project()
+        first = reader.read(projection)
+        first_parses = parses.copy()
+        assert first.active and first.acknowledged and all(first_parses.values())
+        assert reader.read(projection) == first
+        assert parses == first_parses
+
+        # The decoded batch cannot stand in for its current immutable receipt/effects.
+        lookup = ledger.lookup_event_commit
+        with monkeypatch.context() as proof:
+            proof.setattr(ledger, "lookup_event_commit", lambda ref: (
+                None if ref.startswith("event:memory-consolidation:effect:") else lookup(ref)
+            ))
+            unavailable = reader.read(projection)
+            assert not unavailable.active and not unavailable.acknowledged
+            assert unavailable.suppressions
+        assert reader.read(projection) == first
+        store.close()
+
+
+@pytest.mark.asyncio
 async def test_sidecar_tamper_never_becomes_an_accepted_understanding(tmp_path,monkeypatch):
     async with _sources(tmp_path, extra=True) as case:
         ledger=case.ledger
         seed_memories(ledger)
         store=SQLiteImmutableLifeContentStore(path=tmp_path/"content.sqlite",world_id=ledger.world_id)
         assert (await worker(ledger,store,Learner()).drain_one()).work_status=="reviewed"
+        assert MemoryUnderstandingReader(ledger=ledger,content_store=store,actor_ref="agent:companion").read(ledger.project()).active
         original=store.read_exact
         def replaced(*,content_ref):
             body=original(content_ref=content_ref)

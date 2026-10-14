@@ -15,6 +15,7 @@ import math
 from .memory_consolidation_contract import MemoryReviewBatch, validate_payload
 from .memory_consolidation_contract import source_texts
 from .memory_retrieval import MemoryRetrievalCompiler
+from .immutable_value_cache import immutable_value_cache
 from .proposal_audit_schemas import ModelResultRecordedPayload
 from .schemas import MemoryCandidateProjection, ProjectionCursor
 
@@ -25,6 +26,16 @@ def canonical(value):
 
 def digest(value):
     return hashlib.sha256(canonical(value).encode()).hexdigest()
+
+
+@immutable_value_cache(maxsize=1024)
+def _parse_audit(raw):
+    return ModelResultRecordedPayload.model_validate_json(raw)
+
+
+@immutable_value_cache(maxsize=4096)
+def _parse_candidate(raw):
+    return MemoryCandidateProjection.model_validate_json(raw)
 
 
 def support_fingerprint(candidate):
@@ -151,7 +162,9 @@ class MemoryUnderstandingReader:
                     raise ValueError("understanding job identity changed")
                 decision = self._content("memory-review-decision:" + digest(process.trigger_id))
                 batch = MemoryReviewBatch.model_validate_json(canonical(decision["batch"]))
-                audit = ModelResultRecordedPayload.model_validate_json(canonical(decision["audit"]))
+                # Reuse only immutable decoding. Receipt/effect/current-source
+                # authority below is still resolved afresh on every read.
+                audit = _parse_audit(canonical(decision["audit"]))
                 lineage = json.loads(audit.audit_json).get("character_interior_lineage") or {}
                 if (decision["job_hash"] != digest(job)
                         or payload.get("character_interior_model_result") != audit.model_dump(mode="json")
@@ -165,10 +178,10 @@ class MemoryUnderstandingReader:
                         or lineage.get("causal_epoch") != process.trigger_ref):
                     raise ValueError("standing understanding author belongs to another actor or purpose")
                 candidates = {
-                    f"m{i}": MemoryCandidateProjection.model_validate_json(canonical(c))
+                    f"m{i}": _parse_candidate(canonical(c))
                     for i, c in enumerate(job["candidates"])
                 }
-                candidates.update({f"k{i}": MemoryCandidateProjection.model_validate_json(canonical(c))
+                candidates.update({f"k{i}": _parse_candidate(canonical(c))
                                    for i, c in enumerate(job.get("context_candidates", []))})
                 previous = {f"u{i}": ref for i, ref in enumerate(job.get("understanding_refs", []))}
                 known = {v.version_ref for v in versions if v.version_ref not in retired}
