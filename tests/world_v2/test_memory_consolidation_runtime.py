@@ -138,6 +138,30 @@ async def test_open_batch_rebalances_without_exposing_unreadable_sources(tmp_pat
             assert len(due_reads) == len(set(due_reads))
             assert [c["candidate_id"] for c in job["candidates"]] == [c.candidate_id for c in expected]
             assert all(r["source_excerpts"] for r in job["readings"])
+            if unreadable_mode == "one":
+                from companion_daemon.world_v2.runtime import WorldRuntime
+                from companion_daemon.world_v2.declared_due import (
+                    COMPUTED_CLOCK_WAKE_KINDS, collect_clock_wake_dues, select_clock_wake,
+                )
+                assert (await worker.drain_one()).work_status == "reviewed"
+                current = ledger.project()
+                # The unreadable old candidate remains overdue; the role has
+                # chosen a later review for the readable ones.
+                assert await worker.next_due() <= current.logical_time
+                future = min(module.review_due(c) for c in current.memory_candidates
+                             if module.review_due(c) > current.logical_time)
+                runtime = object.__new__(WorldRuntime)
+                runtime._memory_consolidation = worker
+                computed = dict.fromkeys(COMPUTED_CLOCK_WAKE_KINDS)
+                computed["memory.candidate_consolidation"] = await runtime.memory_consolidation_next_due()
+                wake = select_clock_wake(after=current.logical_time, through=future,
+                                         dues=collect_clock_wake_dues(None, computed=computed))
+                assert wake is not None and wake.due_at == future
+                _seed_clock(ledger, event_id="event:clock:future-readable-memory",
+                            logical_time=future, logical_time_from=current.logical_time)
+                assert (await worker.drain_one()).work_status == "reviewed"
+                blocked = next(c for c in ledger.project().memory_candidates if c.candidate_id in suppressed)
+                assert blocked == next(c for c in projection.memory_candidates if c.candidate_id in suppressed)
         finally:
             store.close()
 

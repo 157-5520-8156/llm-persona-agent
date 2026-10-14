@@ -669,7 +669,8 @@ class WorldRuntime:
         return result
 
     async def memory_consolidation_next_due(self):
-        return await self._memory_consolidation.next_due() if self._memory_consolidation is not None else None
+        # Overdue work is still drained; it must not hide the next clock boundary.
+        return await self._memory_consolidation.next_due(future_only=True) if self._memory_consolidation is not None else None
 
     async def drain_background_once(self):
         """Run background workers until one makes progress.

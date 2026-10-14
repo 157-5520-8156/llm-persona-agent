@@ -88,7 +88,7 @@ class MemoryConsolidationRuntime(MemoryReviewLease):
             return candidate.updated_at + timedelta(hours=4)
         return None
 
-    async def next_due(self):
+    async def next_due(self, *, future_only=False):
         projection = await self._project()
         pending = [p for p in projection.trigger_processes
                    if p.process_kind == self.PROCESS_KIND and p.state != "terminal"]
@@ -96,7 +96,9 @@ class MemoryConsolidationRuntime(MemoryReviewLease):
             return min(p.claim_lease.expires_at if p.claim_lease else projection.logical_time for p in pending)
         snapshot = await asyncio.to_thread(self._understandings.read, projection)
         return min((at for c in projection.memory_candidates
-                    for at in (review_due(c), self._incremental_due(c, snapshot)) if at is not None), default=None)
+                    for at in (review_due(c), self._incremental_due(c, snapshot))
+                    if at is not None and (not future_only or projection.logical_time is None
+                                           or at > projection.logical_time)), default=None)
 
     async def _open(self, projection):
         now = projection.logical_time
