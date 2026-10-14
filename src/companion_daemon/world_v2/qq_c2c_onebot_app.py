@@ -1011,7 +1011,8 @@ async def _scheduler_loop(
             technical_failures = tuple(
                 status
                 for status in background_statuses
-                if isinstance(status, str) and status.startswith("technical_failure:")
+                if isinstance(status, str)
+                and (status == "technical_failure" or status.startswith("technical_failure:"))
             )
             if technical_failures:
                 diagnostics.failures += 1

@@ -1089,10 +1089,11 @@ async def complete_with_timeout(
     task = asyncio.ensure_future(awaitable)
     try:
         done, _pending = await asyncio.wait((task,), timeout=max(0.0, float(timeout_seconds)))
-    except asyncio.CancelledError:
+    except asyncio.CancelledError as exc:
         await _cancel_with_grace(
             task,
-            reason="caller_cancelled",
+            # Nested operation budgets must keep the outer timeout's cause.
+            reason="provider_timeout" if exc.args == ("provider_timeout",) else "caller_cancelled",
             grace_seconds=cancellation_grace_seconds,
         )
         raise

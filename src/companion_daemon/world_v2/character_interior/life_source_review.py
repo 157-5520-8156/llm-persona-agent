@@ -404,39 +404,45 @@ class LifeSourceReviewer:
             content_kind=kind, content_payload_hash=sha, text=raw))
 
     async def review(self, *, result, snapshot, provider_raw):
-        from companion_daemon.llm import model_call_scope, model_provider_request_identity_scope, model_request_emission_scope, provider_invocation_request_hash
+        from companion_daemon.llm import complete_with_timeout, model_call_scope, model_provider_request_identity_scope, model_request_emission_scope, provider_invocation_request_hash
         from ..deliberation import ModelUsageProvenance
         prepared, readings = prepare_review(candidate_json=candidate_body(result), provider_raw=provider_raw,
             view=result.life_source_view, snapshot=snapshot)
         # A wire repair shares the whole configured review budget; a definite
         # rejection goes back to the character once, never back to the critic.
-        async with asyncio.timeout(self.timeout_seconds):
-            for ordinal in range(2):
-                self._record(prepared, 'raw_model_request')
-                request = json.loads(prepared)['request']
-                request_hash = provider_invocation_request_hash(**request)
-                call_id = 'model-call:life-review:' + digest(result.author_lineage.model_call_id + request_hash)
-                try:
-                    with model_call_scope('life_source_review'), model_request_emission_scope(provider_call_id=call_id,
-                            entry_marker=None, completion_marker=None), model_provider_request_identity_scope(request_hash=request_hash):
-                        raw, usage = await self.model.complete_json_with_usage(**request)
-                except BaseException as exc:
-                    self._record(canonical({'contract': CONTRACT, 'model_call_id': call_id,
-                        'request_hash': request_hash, 'outcome': 'technical_failure',
-                        'failure_type': type(exc).__name__, 'response_received': False}), 'raw_model_result')
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + self.timeout_seconds
+        for ordinal in range(2):
+            self._record(prepared, 'raw_model_request')
+            request = json.loads(prepared)['request']
+            request_hash = provider_invocation_request_hash(**request)
+            call_id = 'model-call:life-review:' + digest(result.author_lineage.model_call_id + request_hash)
+            try:
+                with model_call_scope('life_source_review'), model_request_emission_scope(provider_call_id=call_id,
+                        entry_marker=None, completion_marker=None), model_provider_request_identity_scope(request_hash=request_hash):
+                    remaining = deadline - loop.time()
+                    if remaining <= 0:
+                        raise TimeoutError('Life review exceeded its shared time budget')
+                    raw, usage = await complete_with_timeout(
+                        self.model.complete_json_with_usage(**request), timeout_seconds=remaining,
+                    )
+            except BaseException as exc:
+                self._record(canonical({'contract': CONTRACT, 'model_call_id': call_id,
+                    'request_hash': request_hash, 'outcome': 'technical_failure',
+                    'failure_type': type(exc).__name__, 'response_received': False}), 'raw_model_result')
+                raise
+            self._record(raw, 'raw_model_result')
+            review_contract = json.loads(request['messages'][1]['content'])['contract']
+            receipt = LifeSourceReviewReceipt(contract=review_contract, prepared_json=prepared, response_json=raw, request_hash=request_hash,
+                response_hash=digest(raw), model_id=str(getattr(self.model, 'model', type(self.model).__name__)),
+                model_call_id=call_id, usage_json=ModelUsageProvenance.model_validate(usage).model_dump_json())
+            self._record(canonical(receipt.model_dump(mode='json', exclude={'prepared_json', 'response_json'})), 'raw_model_result')
+            try:
+                outcome, failures = inspect_review(raw=raw, prepared_json=prepared, readings=readings)
+            except (ValueError, JsonSchemaValidationError) as invalid:
+                if ordinal or review_contract not in {NATIVE_REPAIR_CONTRACT, STATE_ALIGNMENT_CONTRACT, RUNTIME_READING_CONTRACT, COMPACT_RUNTIME_CONTRACT}:
                     raise
-                self._record(raw, 'raw_model_result')
-                review_contract = json.loads(request['messages'][1]['content'])['contract']
-                receipt = LifeSourceReviewReceipt(contract=review_contract, prepared_json=prepared, response_json=raw, request_hash=request_hash,
-                    response_hash=digest(raw), model_id=str(getattr(self.model, 'model', type(self.model).__name__)),
-                    model_call_id=call_id, usage_json=ModelUsageProvenance.model_validate(usage).model_dump_json())
-                self._record(canonical(receipt.model_dump(mode='json', exclude={'prepared_json', 'response_json'})), 'raw_model_result')
-                try:
-                    outcome, failures = inspect_review(raw=raw, prepared_json=prepared, readings=readings)
-                except (ValueError, JsonSchemaValidationError) as invalid:
-                    if ordinal or review_contract not in {NATIVE_REPAIR_CONTRACT, STATE_ALIGNMENT_CONTRACT, RUNTIME_READING_CONTRACT, COMPACT_RUNTIME_CONTRACT}:
-                        raise
-                    prepared = _repair_request(prepared, raw, _wire_error(invalid))
-                    continue
-                return receipt, outcome, failures
+                prepared = _repair_request(prepared, raw, _wire_error(invalid))
+                continue
+            return receipt, outcome, failures
         raise AssertionError('Life reviewer exited without a result')

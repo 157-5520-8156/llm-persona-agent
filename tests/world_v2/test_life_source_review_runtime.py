@@ -3,6 +3,7 @@
 Reviewer verdicts here are scripted transport responses, not semantic qualification.
 """
 from copy import deepcopy
+import asyncio
 import json
 import sqlite3
 import httpx
@@ -129,6 +130,83 @@ async def run_gate(tmp_path, monkeypatch, *, author, verdicts, fault=None):
         assert any(code in {'invalid_role_result_after_correction', 'life_source_review_unavailable', 'life_source_review_uncertain'} for code in failures)
         assert not evidence.projection.experiences
     return responses, checkpoints, audit, reviews
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('mode', ['timeout', 'caller_cancelled', 'repair_timeout'])
+async def test_life_deadline_reaches_subscription_circuit_without_losing_unknown_usage(
+    tmp_path, monkeypatch, mode,
+):
+    import companion_daemon.llm as llm
+    from companion_daemon.llm import ProviderCircuitBreaker
+    from companion_daemon.subscription_usage import SubscriptionAnthropicModel, SubscriptionTokenLedger
+    from companion_daemon.world_v2.life_content_store import InMemoryImmutableLifeContentStore
+    from companion_daemon.world_v2.character_interior.life_source_review import candidate_body
+
+    _, checkpoints, _, _ = await run_gate(
+        tmp_path, monkeypatch, author=_ResponseHTTP(text=FEELING), verdicts=['accepted'],
+    )
+    result, snapshot, _, _ = _restore_prepared_turn(canonical(checkpoints[0]), purpose='world_stimulus_appraisal')
+    entered, never = asyncio.Event(), asyncio.Event()
+    observed, requests, budgets = [], [], []
+    caller_cancelled = mode == 'caller_cancelled'
+
+    async def stalled(request):
+        requests.append(request)
+        entered.set()
+        if mode == 'repair_timeout' and len(requests) == 1:
+            await asyncio.sleep(.02)
+            body = json.loads(request.content)
+            return httpx.Response(200, json={
+                'id': 'fixture-incomplete-review', 'model': 'fixture', 'type': 'message',
+                'stop_reason': 'tool_use', 'content': [{'type': 'tool_use', 'id': 'tool-1',
+                    'name': body['tools'][0]['name'], 'input': {}}],
+                'usage': {'input_tokens': 1, 'output_tokens': 1},
+            })
+        await never.wait()
+
+    ledger = SubscriptionTokenLedger(tmp_path / 'subscription.sqlite')
+    original_record = ledger.record
+
+    def record(usage):
+        observed.append(usage)
+        original_record(usage)
+
+    monkeypatch.setattr(ledger, 'record', record)
+    original_timeout = llm.complete_with_timeout
+
+    async def timed(awaitable, **kwargs):
+        budgets.append(kwargs['timeout_seconds'])
+        return await original_timeout(awaitable, **kwargs)
+
+    monkeypatch.setattr(llm, 'complete_with_timeout', timed)
+    circuit = ProviderCircuitBreaker(failure_threshold=1)
+    model = SubscriptionAnthropicModel('fixture', 'http://localhost:8788', 'fixture',
+        token_ledger=ledger, timeout_seconds=1, circuit_breaker=circuit,
+        transport=httpx.MockTransport(stalled))
+    reviewer = LifeSourceReviewer(model=model, evidence_store=InMemoryImmutableLifeContentStore(),
+                                  timeout_seconds=1 if caller_cancelled else .2)
+    task = asyncio.create_task(reviewer.review(result=result, snapshot=snapshot, provider_raw=candidate_body(result)))
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=1)
+        if caller_cancelled:
+            task.cancel()
+        with pytest.raises(asyncio.CancelledError if caller_cancelled else TimeoutError):
+            await task
+        expected_calls = 2 if mode == 'repair_timeout' else 1
+        assert len(requests) == len(observed) == expected_calls
+        assert observed[-1].error == ('caller_cancelled' if caller_cancelled else 'provider_timeout')
+        assert observed[-1].billing_state == 'unknown'
+        if mode == 'repair_timeout':
+            assert observed[0].billing_state == 'known'
+            assert len(budgets) == 2 and budgets[1] < budgets[0] - .01
+        assert ledger.snapshot()['unknown_or_pending_requests'] == 1
+        assert ledger.snapshot()['reserved_or_used_tokens_5h'] > 0
+        assert circuit.snapshot().status == ('closed' if caller_cancelled else 'open')
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        await model.aclose()
 
 
 @pytest.mark.asyncio
