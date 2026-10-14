@@ -2803,11 +2803,16 @@ def test_proactive_tool_contract_hot_compile_is_cached_below_one_millisecond() -
 def test_proactive_tool_contract_first_capability_specialization_stays_outside_ttft_budget() -> (
     None
 ):
+    import gc
+
     StructuredRoleToolContracts.precompile()
     manifest = _proactive_manifest()
     unique_profile = dict(manifest.payload["expression_capabilities"])
     unique_profile["profile_id"] = "expression:cold-specialization-test.1"
 
+    # Measure this cold specialization, not garbage left by earlier tests.
+    # GC stays enabled during the call; this is not an end-to-end latency SLA.
+    gc.collect()
     started = perf_counter_ns()
     contract = StructuredRoleToolContracts().proactive_contact(
         capability_payload={"expression_capabilities": unique_profile},
