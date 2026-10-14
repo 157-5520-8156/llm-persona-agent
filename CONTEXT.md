@@ -1,9 +1,21 @@
-Proxy Outlook validation (2026-10-14): code653c1fb7; 8proxy/0DS HTTP200 complete,221856reportedtokens.
-5memorybatches:3firstpass/1corrected/1unresolved;32reviewed. native empty/partial and text extra source_refs fail.
-Confirmed host conflict: memory schema/user omit decision.source_refs, system/correction still require it; unfixed.
-Full journey stopped after10simminutes,0chats. Separate Outlook1call50.65s accepted2threads/2opportunities;
-same-wake0extraHTTP, not multi-day qualification. Both full histories/originalevents unchanged; source unchanged.
-Evidence output/private-audits/proxy-outlook-validation-20261014/; appended hybrid-background audit. No deployment.
+Proxy Outlook repair and qualification (2026-10-14): source3594ea6c/26adfdd6, timing test14052136.
+Host-bound memory system/correction guidance now matches payload-only schema; role status/attention/choices
+remain model-owned. 179scopedpass,112baseline/currentacceptancevectorsidentical,bothreviewsclosed.
+Frozenfullv3 on14052136:10634pass/19skip/2xfail/1existingwarning,pytest1182.38s,exit0;1705PythonSHAunchanged.
+Prior2fullruns fail30ms cold-specialization gate; prefixprofile proves142.3ms of146.7ms was gen2 GC
+of prior-test garbage. Test now gc.collect before timer; GC on,threshold30ms unchanged. Bothreviewsclosed.
+Real queue continuationv2-v5:18memorybatches/144reviews,2Outlook NPCfacts settled,5oldActionreceipts closed.
+Only3h40simulated progress toOct8 19:31+08;0day1/day3chats. Three-day qualification NOT complete.
+Backgroundmedium proxy;visible proactive/ordinarychatDS. No fallback/deletion/validator relaxation/deployment.
+50.646s original request:50.645s before headers,body<1ms,reported51943input/736output.
+Fixed Outlook medium26.7–28.4s vs low11.4–13.5s;low1/2unofferedbasis. Low factual-review screen lets
+both known false claims through,1valid accepted,1schemafailure: do not adopt low. Medium stream complete
+65.9/65.3s on2frozenfailedinputs;nonstream90stimeout/51.1sinvalid. Not a streaming latency fix.
+Total65HTTP=60proxy/5DS;proxy52completeHTTP200/7timeouts/1HTTP502(upstream500),not52semanticpasses.
+Proxy1503924reportedtokens+1273342unknownreserve=2777266under10M;DS1.218144CNY conservative reserve,
+not bills.60proxy still underinitial96;prospective256cap unused.1259prehistory and source/event bytes intact.
+Evidence output/private-audits/proxy-outlook-validation-20261014/terminal-summary.json; consolidated audit
+docs/audits/hybrid-background-provider-2026-10-13.md. No new live continuation beyondv5;manual_only/qualification_incomplete.
 
 Code simplification, completed checkpoint (2026-10-14):
 Canonical inventory/results: docs/audits/code-cleanup-2026-10-13.md (includes prior active-path report).
