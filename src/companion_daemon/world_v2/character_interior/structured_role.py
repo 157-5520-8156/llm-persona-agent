@@ -129,6 +129,11 @@ _EXPRESSION_RECONSIDERATION_DISPOSITIONS = frozenset(
     {"continue", "cancel", "defer", "merge", "supersede", "new_beat"}
 )
 
+_MEMORY_HOST_BOUND_DECISION_GUIDANCE = (
+    "For this memory review, decision contains only payload; do not supply source_refs. "
+    "The host binds the original capability sources. Your choices and attended_source_refs remain yours."
+)
+
 
 def _canonical(value: object) -> str:
     return json.dumps(
@@ -2099,8 +2104,7 @@ class StructuredCharacterRoleFaculty:
                 wire = user_payload["wire_contract"]
                 wire["decision_shape"] = {"payload": "one_json_object"}
                 wire["placement_rules"]["generic_decision"] = (
-                    "For this memory review, decision contains only payload. The host binds "
-                    "the complete ordered capability sources; do not repeat source_refs. "
+                    _MEMORY_HOST_BOUND_DECISION_GUIDANCE + " "
                     "Choose each offered memory's disposition and next_review_hours yourself. "
                     "attended_source_refs remains your optional selection of at most 32 "
                     "citeable sources, not a copy of the complete capability binding."
@@ -2396,9 +2400,17 @@ class StructuredCharacterRoleFaculty:
             )
             result = wire_model.model_validate(decoded)
         except ValidationError as exc:
+            detail = exc.json(include_url=False)
+            if memory_host_bound:
+                errors = json.loads(detail)
+                for error in errors:
+                    if error["loc"][:2] == ["decision", "source_refs"]:
+                        error.update(type="host_owned_field", msg=_MEMORY_HOST_BOUND_DECISION_GUIDANCE)
+                        error.pop("ctx", None)
+                detail = json.dumps(errors, ensure_ascii=False)
             raise StructuredRoleResultError(
                 "role_result_schema_invalid",
-                detail=exc.json(include_url=False),
+                detail=detail,
                 response_hash=response_hash,
             ) from exc
         allowed = self._allowed_statuses(request, contract=contract)
@@ -2450,7 +2462,7 @@ class StructuredCharacterRoleFaculty:
                 self._raise(
                     "decision_source_unpinned",
                     response_hash=response_hash,
-                    detail=unpinned_source_failure_detail(
+                    detail=_MEMORY_HOST_BOUND_DECISION_GUIDANCE if memory_host_bound else unpinned_source_failure_detail(
                         code="decision_source_unpinned",
                         field="decision.source_refs",
                         failures=failures,
@@ -2468,8 +2480,7 @@ class StructuredCharacterRoleFaculty:
                 self._raise(
                     "decision_source_unpinned", response_hash=response_hash,
                     detail=(
-                        "For this memory review, decision contains only payload; do not supply source_refs. "
-                        "The host binds the original capability sources. Your choices and attended_source_refs remain yours."
+                        _MEMORY_HOST_BOUND_DECISION_GUIDANCE
                         if memory_host_bound else
                         "decision.source_refs must preserve the complete ordered capability source_refs: "
                         + json.dumps(manifest.source_refs, ensure_ascii=False)

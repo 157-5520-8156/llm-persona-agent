@@ -46,7 +46,7 @@ async def test_memory_v2_binds_full_sources_without_model_echo_or_choice_changes
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failure", ["missing_status", "partial_binding"])
+@pytest.mark.parametrize("failure", ["missing_status", "partial_binding", "unknown", "empty", "null"])
 async def test_memory_correction_describes_provider_fields_without_requesting_host_bindings(failure):
     offered = manifest()
     good = _result(status="decision", decision={"payload": choices()})
@@ -54,7 +54,10 @@ async def test_memory_correction_describes_provider_fields_without_requesting_ho
     if failure == "missing_status":
         del bad["status"]
     else:
-        bad["decision"]["source_refs"] = list(offered.source_refs[:1])
+        bad["decision"]["source_refs"] = {
+            "partial_binding": list(offered.source_refs[:1]), "unknown": ["source:unknown"],
+            "empty": [], "null": None,
+        }[failure]
     raw = json.dumps(bad)
     model = _RequiredToolQueueModel(raw, good)
     role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-flash")
@@ -67,6 +70,10 @@ async def test_memory_correction_describes_provider_fields_without_requesting_ho
         errors = json.loads(error.detail)
         assert any(e["loc"] == ["status"] for e in errors)
         assert not any(e["loc"] == ["decision", "source_refs"] for e in errors)
+    elif failure in {"empty", "null"}:
+        assert error.code == "role_result_schema_invalid"
+        binding_errors = [e for e in json.loads(error.detail) if e["loc"] == ["decision", "source_refs"]]
+        assert binding_errors and all("do not supply source_refs" in e["msg"] for e in binding_errors)
     else:
         assert error.code == "decision_source_unpinned"
         assert "do not supply source_refs" in error.detail
