@@ -2263,7 +2263,10 @@ class StructuredCharacterRoleFaculty:
                     "when available. The capability manifest describes only choices the system can "
                     "carry out. Return exactly one JSON object with the supplied wire fields, never "
                     "Markdown. For a generic decision, use the nested shape "
-                    "decision:{source_refs:[...],payload:{...}} and put all purpose fields in "
+                    + ("decision:{source_refs:[...],payload:{...}}"
+                       if "source_refs" in user_payload["wire_contract"]["decision_shape"]
+                       else "decision:{payload:{...}}")
+                    + " and put all purpose fields in "
                     "payload. For a typed-proposal purpose, keep decision null and put the "
                     "complete proposal in proposals. Never flatten a purpose payload into the "
                     "outer decision field. Cite only supplied source refs and capability tokens. Do not return "
@@ -2464,9 +2467,14 @@ class StructuredCharacterRoleFaculty:
             ):
                 self._raise(
                     "decision_source_unpinned", response_hash=response_hash,
-                    detail="decision.source_refs must preserve the complete ordered capability source_refs: "
-                    + json.dumps(manifest.source_refs, ensure_ascii=False)
-                    + ". These bind this opportunity, including a decline; they do not require a particular choice.",
+                    detail=(
+                        "For this memory review, decision contains only payload; do not supply source_refs. "
+                        "The host binds the original capability sources. Your choices and attended_source_refs remain yours."
+                        if memory_host_bound else
+                        "decision.source_refs must preserve the complete ordered capability source_refs: "
+                        + json.dumps(manifest.source_refs, ensure_ascii=False)
+                        + ". These bind this opportunity, including a decline; they do not require a particular choice."
+                    ),
                 )
             self._validate_decision_payload(
                 result.decision.payload,
@@ -2508,11 +2516,12 @@ class StructuredCharacterRoleFaculty:
                 # two aliases for the same authority is identity canonicalization.
                 normalized["attended_source_refs"] = list(dict.fromkeys(token_map.get(ref,ref) for ref in attention))
             if (manifest.payload.get("source_binding") == HOST_SOURCE_BINDING
-                    and normalized.get("status") == "decision"
                     and isinstance(decision, dict) and set(decision) == {"payload"}):
                 # The v2 wire omits only a fixed request binding. Never fill a
                 # missing choice, alter an explicit source list, or infer the
-                # role's attention from these host-owned references.
+                # role's status/attention from these host-owned references.
+                # Bind even for an invalid outer result so its correction
+                # reports authored fields, not a missing host-only binding.
                 normalized["decision"] = {**decision, "source_refs": list(manifest.source_refs)}
         if contract.purpose == "world_stimulus_appraisal":
             catalog = _citeable_catalog_for_request(request)

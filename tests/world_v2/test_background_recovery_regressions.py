@@ -41,6 +41,44 @@ async def test_memory_v2_binds_full_sources_without_model_echo_or_choice_changes
     assert tool["name"] == "character_memory_consolidation_v2"
     Draft202012Validator(tool["parameters"]).validate(json.loads(raw))
     assert result["attended_source_refs"] == ("source:private_self",)
+    assert "decision:{payload:{...}}" in model.calls[0][0][0]["content"]
+    assert "decision:{source_refs:" not in model.calls[0][0][0]["content"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["missing_status", "partial_binding"])
+async def test_memory_correction_describes_provider_fields_without_requesting_host_bindings(failure):
+    offered = manifest()
+    good = _result(status="decision", decision={"payload": choices()})
+    bad = json.loads(good)
+    if failure == "missing_status":
+        del bad["status"]
+    else:
+        bad["decision"]["source_refs"] = list(offered.source_refs[:1])
+    raw = json.dumps(bad)
+    model = _RequiredToolQueueModel(raw, good)
+    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-flash")
+    request = await _request(purpose="memory_consolidation", capability_manifest=offered)
+    with pytest.raises(StructuredRoleResultError) as raised:
+        await role.consider(request)
+    error = raised.value
+    assert error.rejected_raw == raw
+    if failure == "missing_status":
+        errors = json.loads(error.detail)
+        assert any(e["loc"] == ["status"] for e in errors)
+        assert not any(e["loc"] == ["decision", "source_refs"] for e in errors)
+    else:
+        assert error.code == "decision_source_unpinned"
+        assert "do not supply source_refs" in error.detail
+        assert "complete ordered capability source_refs:" not in error.detail
+    corrected = await role.consider(request.model_copy(update={
+        "correction_ordinal": 1, "correction_failure_code": error.code,
+        "correction_failure_detail": error.detail,
+    }))
+    assert corrected["decision"]["payload"]["choices"] == choices()["choices"]
+    assert corrected["decision"]["source_refs"] == list(offered.source_refs)
+    assert len(model.calls) == 2
+    assert "decision:{source_refs:" not in model.calls[1][0][0]["content"]
 
 
 @pytest.mark.asyncio
