@@ -8,15 +8,24 @@ bc15427d removes repeated WorldStimulus audit scans; 4ce4845b reuses proactive r
 one projection read. Original identity, chronology, failure classification and role choices remain intact.
 WorldStimulus warm profile 1.6204s -> 0.7043s, audit reads 1,838,079 -> 20,800. Whole idle background
 probe after proactive fix 3.544s -> 2.471s, failure checks 96,376 -> 3,442; zero model calls, same events.
-52 WorldStimulus and 74 proactive checks pass; Standards/Spec reviews closed. Frozen full v4 on bc15427d:
-10641 pass/19 skip/2 xfail. Latest full v5 on 4ce4845b:10642 pass/19 skip/2 xfail/1 existing warning,
-1207.62s pytest, exit0,1705 Python hashes unchanged. All required code checks are complete.
+52 WorldStimulus and 74 proactive checks pass; Standards/Spec reviews closed. Full v5 on 4ce4845b:
+10642 pass/19 skip/2 xfail/1 existing warning,1207.62s pytest,exit0,1705 Python hashes unchanged.
+caf7e8d3 connects existing WorldStimulus retry deadlines to the existing computed QQ wake snapshot.
+Real scheduler red test stopped at the2-minute lease wake instead of the10-minute retry; now retries once
+at its original due. Same10/30/120-minute backoff, exact identities, accepted-output recovery and legacy
+quarantine. Deadline/unresolved data returned together per read; no new retry state or role rules.
+197 targeted checks, Ruff and both reviews pass. Full v6 on caf7e8d3:10645 pass/19 skip/2 xfail,
+1 existing warning,1286.38s pytest,exit0,1705 Python hashes unchanged. All source checks complete.
+Read-only replay of the real v9 queue at6 logical-time views preserves all old deferral sets, exposes
+the03:31:18/03:47 retry deadlines and keeps the unresolved legacy task isolated;0API, same43428 event bytes.
 
 User confirmed updating cmdc-pak only; network node unchanged. Current observed process is v0.9.12,
 PID55744 (started18:21:44+08). Agent did not install/restart it or change shared network configuration.
 Actual Google traffic uses daily-cloudcode-pa.googleapis.com via local7897/Mihomo/US Z01. Sampled proxy
 CPU0-4.2%, RSS22.4-26.7MiB. Earlier EOF/502 and later90s incomplete streams are distinct observations.
 Review134 traffic kept growing to the deadline; encrypted metadata cannot separate inference from transfer.
+v10 adds1224 process samples:CPU0-4.9%,RSS21.6-29.3MiB, sameUS Z01 chain; daily-cloudcode and its
+sandbox hostname both observed. This remains metadata correlation, not request-level upstream attribution.
 
 live-v9 ended at its admission wall bound (5458.8s including an already-admitted call): 47 proxy requests,
 40 completeHTTP200/7 provider timeouts; 238 retained-review events +2 role-authored forgetting events.
@@ -30,10 +39,20 @@ is explicit. Future driver counts new model-failure audits and HTTP terminal fai
 Final#158 wasHTTP200 but its quote override failed validation; correction was denied by phase wall bound,
 not another provider timeout. Malformed output and pending task remain.
 
-Cumulative ledger now153proxy +5DS:7,034,121 reported/reserved proxy tokens; oldDS reserve1.218144CNY remains.
+live-v10 ended at5405.2s wall bound:77proxy,70 completeHTTP200/6timeouts/1HTTP502;416 memory reviews,
+2CharacterLifeResponse+2ExperienceCommitted, both role-authored null extra responses. No new visible action.
+43428 original events/sourceSHA unchanged; independent cold replay matches. Due518 ->102
+(54prehistory/46experience/2fact), active1371/prehistory1259/suppressions0. Two prior Life aftermaths recovered;
+this proves settlement-to-response-to-experience, not rich narrative or later-choice impact.
+Two additional failed stages were invalid output after correction and an empty HTTP200 message;
+all9 new failed stages preserved, cumulative16/stalled1. Durable clockOct9T04:22+08 (4.178h of72),
+observed clock04:30; no day1/day3 chat yet. CompletedHTTP median41.99s (4.95-87.11s), not semantic pass rate.
+
+Cumulative ledger now230proxy +5DS:9,782,561 reported/reserved proxy tokens; oldDS reserve1.218144CNY remains.
 Limits512proxy/20Mtokens,128DS/5CNY,5400s admission per phase; no reset of unknowns or old64-request grant.
-live-v10 now continues from live-v9 with run_production_cadence.py: actual host.scheduler_once,30s heartbeat,
-8Action/1background, real circuit cooldown, stable chat IDs, same origin and cumulative reconciled counters.
+live-v11 now inherits live-v10's full state and reconciled checkpoint after caf7e8d3 full regression:
+actual host.scheduler_once,30s heartbeat,8Action/1background, real circuit cooldown, stable chat IDs,
+same origin and cumulative reconciled counters. Do not hot-change active runs.
 Idle coalescing was NOT adopted: UTC InnerTurn leases and other pending state need additional proof.
 Private evidence: output/private-audits/proxy-backlog-20261014/ and proxy-outlook-validation-20261014/.
 Details: docs/audits/hybrid-background-provider-2026-10-13.md. Full cross-day/production qualification remains open.
