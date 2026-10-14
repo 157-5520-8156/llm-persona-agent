@@ -1,61 +1,58 @@
-Release freeze / preserved-queue qualification (2026-10-14), IN PROGRESS:
-New features and major refactors remain frozen. CharacterInterior owns semantics; source/privacy,
-CAS, effect-once, receipts and exact failure records remain mandatory. No production/QQ deployment.
+Release freeze / preserved-queue qualification (2026-10-15), IN PROGRESS:
+Worktree: /Users/geoff/.codex/worktrees/role-memory-qualification/Girl-Agent, branch codex/role-memory-qualification.
+New features/major refactors remain frozen. CharacterInterior owns semantics; source/privacy, CAS,
+effect-once, receipts and exact failures remain mandatory. No production/QQ deployment or global network change.
 
-Source fixes: a719282f preserves provider_timeout through nested deadlines and reports bare scheduler
-technical_failure; b6062f4d/beab9c53 repair explicit offline fixtures without relaxing health/lease gates.
-bc15427d removes repeated WorldStimulus audit scans; 4ce4845b reuses proactive retry indexes only within
-one projection read. Original identity, chronology, failure classification and role choices remain intact.
-WorldStimulus warm profile 1.6204s -> 0.7043s, audit reads 1,838,079 -> 20,800. Whole idle background
-probe after proactive fix 3.544s -> 2.471s, failure checks 96,376 -> 3,442; zero model calls, same events.
-52 WorldStimulus and 74 proactive checks pass; Standards/Spec reviews closed. Full v5 on 4ce4845b:
-10642 pass/19 skip/2 xfail/1 existing warning,1207.62s pytest,exit0,1705 Python hashes unchanged.
-caf7e8d3 connects existing WorldStimulus retry deadlines to the existing computed QQ wake snapshot.
-Real scheduler red test stopped at the2-minute lease wake instead of the10-minute retry; now retries once
-at its original due. Same10/30/120-minute backoff, exact identities, accepted-output recovery and legacy
-quarantine. Deadline/unresolved data returned together per read; no new retry state or role rules.
-197 targeted checks, Ruff and both reviews pass. Full v6 on caf7e8d3:10645 pass/19 skip/2 xfail,
-1 existing warning,1286.38s pytest,exit0,1705 Python hashes unchanged. All source checks complete.
-Read-only replay of the real v9 queue at6 logical-time views preserves all old deferral sets, exposes
-the03:31:18/03:47 retry deadlines and keeps the unresolved legacy task isolated;0API, same43428 event bytes.
+Local fixes: a719282f preserves provider_timeout through nested deadlines and honest scheduler health;
+b6062f4d/beab9c53 repair explicit offline fixtures, retaining health/lease/effect-once gates;
+bc15427d/4ce4845b remove repeated WorldStimulus/proactive audit scans within a read;
+caf7e8d3 exposes existing10/30/120-minute WorldStimulus retries through QQ clock wakes;
+48dc91d6 reuses only immutable memory candidate/audit decoding, never source/receipt/current authority;
+fb8b4bca keeps overdue unreadable memory entries from hiding future candidate clock deadlines.
+Default worker.next_due(), pending leases, actual drain/role choices and all old records remain unchanged.
+Latest completed full regression v7 on48dc91d6:10646 pass/19 skip/2 xfail/1 existing warning,
+1693.52s pytest,exit0,1705 Python hashes unchanged. Full v8 onfb8b4bca also passes10646/19skip/2xfail,
+1 existing warning,1592.62s pytest,exit0,1705 Python hashes unchanged. All current code checks complete.
+Memory wake repair:156 scoped pass/Ruff/both reviews closed; real45051-event old/new proof0API,
+old work due remainsAug2 while clock now selectsOct10 07:41:18Z. No hot patch of active real runs.
 
-User confirmed updating cmdc-pak only; network node unchanged. Current observed process is v0.9.12,
-PID55744 (started18:21:44+08). Agent did not install/restart it or change shared network configuration.
-Actual Google traffic uses daily-cloudcode-pa.googleapis.com via local7897/Mihomo/US Z01. Sampled proxy
-CPU0-4.2%, RSS22.4-26.7MiB. Earlier EOF/502 and later90s incomplete streams are distinct observations.
-Review134 traffic kept growing to the deadline; encrypted metadata cannot separate inference from transfer.
-v10 adds1224 process samples:CPU0-4.9%,RSS21.6-29.3MiB, sameUS Z01 chain; daily-cloudcode and its
-sandbox hostname both observed. This remains metadata correlation, not request-level upstream attribution.
+Measured scopes: WorldStimulus warm1.6204->0.7043s, audit reads1838079->20800;
+one idle background drain3.544->2.471s, proactive failure checks96376->3442;
+memory understanding warm0.776->0.616s, candidates1927->0/audits161->0 parsed,
+while1614 event checks/503 content reads and complete snapshots remain identical. None is a production SLA.
 
-live-v9 ended at its admission wall bound (5458.8s including an already-admitted call): 47 proxy requests,
-40 completeHTTP200/7 provider timeouts; 238 retained-review events +2 role-authored forgetting events.
-42597 original events/sourceSHA unchanged; cold projection matches terminal. Remaining due758 ->518,
-active1371, prehistory1259, no understanding suppressions. No failed task was deleted.
-New72h origin stays Oct8T16:11:18.362893Z; durable clock Oct9T02:52+08, only2.678h advanced; no day1/day3 chat.
-Two Life-review failures remain. One Sept25 legacy task lacks exact causal identity and remains isolated.
-Raw runner counted6 failed steps; independent audit finds7, since a later memory success masked an earlier
-Life failure in one returned status. Original runner snapshot/raw checkpoint retained; reconciled checkpoint
-is explicit. Future driver counts new model-failure audits and HTTP terminal failures including body interruption.
-Final#158 wasHTTP200 but its quote override failed validation; correction was denied by phase wall bound,
-not another provider timeout. Malformed output and pending task remain.
+Proxy: user updated only cmdc-pak, node unchanged. Observed v0.9.12/PID55744 since18:21:44+08 Oct14;
+agent did not install/restart it. Google daily-cloudcode(+sandbox) traffic uses7897/Mihomo/US Z01.
+Proxy samples show low CPU; EOF/502 and90s incomplete streams remain distinct. Review134 traffic
+continued to the deadline; encrypted counters do not separate inference/transfer. No low-thinking adoption.
 
-live-v10 ended at5405.2s wall bound:77proxy,70 completeHTTP200/6timeouts/1HTTP502;416 memory reviews,
-2CharacterLifeResponse+2ExperienceCommitted, both role-authored null extra responses. No new visible action.
-43428 original events/sourceSHA unchanged; independent cold replay matches. Due518 ->102
-(54prehistory/46experience/2fact), active1371/prehistory1259/suppressions0. Two prior Life aftermaths recovered;
-this proves settlement-to-response-to-experience, not rich narrative or later-choice impact.
-Two additional failed stages were invalid output after correction and an empty HTTP200 message;
-all9 new failed stages preserved, cumulative16/stalled1. Durable clockOct9T04:22+08 (4.178h of72),
-observed clock04:30; no day1/day3 chat yet. CompletedHTTP median41.99s (4.95-87.11s), not semantic pass rate.
+Real cadence uses actual host.scheduler_once every30 simulated seconds (8Action/1background),
+real circuit cooldown, stable chat IDs, retained cumulative failure counts and original event prefixes.
+Fixed72h origin:2026-10-08T16:11:18.362893Z. Completed v10:77proxy/6timeout/1HTTP502,
+416 memory reviews and2 recovered LifeResponse->Experience chains, both role-selected null extra prose.
+v11:7proxy/7 completeHTTP200,54 reviews,0 new failure; stop wall_limit at5414.2s.
+44868 original events/source unchanged; cold projection matches45051-event terminal. Current window
+failed steps16/stalled0. Durable clockOct9 04:32+08, observed clock07:07:30+08; no day1/day3 chat yet.
+Due inventory997->758->518->102->48. Last48 are NOT payable backlog:30 experience+2 fact bindings
+only have legacy WorldStarted continuity authority;16 experiences are channel-authority-limited.
+All remain intact; understanding suppressions0 is a different measure.1259 prehistory/1371 active retained.
+One Sep25 plan task also lacks exact causal lineage and remains quarantined; do not invent identity.
 
-Cumulative ledger now230proxy +5DS:9,782,561 reported/reserved proxy tokens; oldDS reserve1.218144CNY remains.
-Limits512proxy/20Mtokens,128DS/5CNY,5400s admission per phase; no reset of unknowns or old64-request grant.
-live-v11 now inherits live-v10's full state and reconciled checkpoint after caf7e8d3 full regression:
-actual host.scheduler_once,30s heartbeat,8Action/1background, real circuit cooldown, stable chat IDs,
-same origin and cumulative reconciled counters. Do not hot-change active runs.
-Idle coalescing was NOT adopted: UTC InnerTurn leases and other pending state need additional proof.
-Private evidence: output/private-audits/proxy-backlog-20261014/ and proxy-outlook-validation-20261014/.
-Details: docs/audits/hybrid-background-provider-2026-10-13.md. Full cross-day/production qualification remains open.
+v11 business artifacts were saved, then CPython3.13.13 faulthandler watchdog hung in frame reading;
+main thread waited in cancel_dump_traceback_later. Native sample and official implementation agree on
+that wait. SIGTERM only the completed isolated child:child-15/parent241 recorded separately, original
+wall_limit result/database/WAL/sidecars byte-identical,SQLite quick_check ok. Not a clean process exit.
+Future private driver removes only the periodic diagnostic watchdog and adds per-pass timing.
+AST after stripping diagnostics equals the old runner; base runner unchanged; Spec review closed.
+No production diagnostic setting or Python installation changed. Idle coalescing remains unadopted.
+
+Ledger:237proxy+5 oldDS;9,956,314 reported/reserved proxy tokens; oldDS reserve1.218144CNY retained.
+Limits512proxy/20Mtokens,128DS/5CNY,5400s admission per phase; original64-request grant remains separate.
+live-v12 now continues through launch_continuation.py from complete live-v11 state/reconciled checkpoint,
+implementationfb8b4bca, same origin/budgets; monitor_v12.py accompanies it. No periodic faulthandler.
+Failure counters, historical unknown cost reserves and source identities must never be reset. Full cross-day/production gates remain open.
+Evidence: output/private-audits/proxy-backlog-20261014/ and proxy-outlook-validation-20261014/;
+consolidated details: docs/audits/hybrid-background-provider-2026-10-13.md.
 
 Proxy Outlook repair and qualification (2026-10-14): source3594ea6c/26adfdd6, timing test14052136.
 Host-bound memory system/correction guidance now matches payload-only schema; role status/attention/choices

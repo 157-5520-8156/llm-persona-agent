@@ -247,13 +247,32 @@ medium在v3—v5共有6次90秒无响应头超时。cmdc-pak只读`/api/logs/exp
   角色行为规则。197项定向检查、Ruff及两轴审查通过。
   真实v9库的6个只读时钟视图与旧实现的deferred集合完全相同，03:31:18/03:47既有期限
   正常进入新查询，身份不明旧项仍隔离；43428事件字节/sourceSHA不变、0API。
+- `48dc91d6`：正式调度副本采样定位MemoryUnderstandingReader重复解析历史候选/审计。
+  仅复用已有有界不可变缓存（1024审计/4096候选），不缓存授权或接纳结论。严格批次契约、
+  sidecar字节hash、精确receipt/effect、actor/world、当前来源与隐私全部每次重查。
+  相同视图反复解析的测试先红；20项定向检查及两轴审查通过，热缓存后缺失effect与内容
+  篡改仍拒绝。同一真实库完整理解快照相同，热态0.776秒→0.616秒；1927次候选/161次审计
+  解析降至0，1614次事件查证、503次内容读取不变，0API、原事件字节不变。
+- `fb8b4bca`：旧不可读候选的过期时间遮住未来复核唤醒。真实45051事件副本返回8月旧欠账，
+  selector漏掉10月10日07:41:18Z期限；扩展既有不可读来源测试也先在wake=None处失败。
+  默认worker.next_due仍显示旧欠账，只有现有WorldRuntime/QQ时钟入口选择未来候选期限；
+  pending租约分支、_open/drain、角色复核时间及旧候选均未改。156项定向检查、Ruff及两轴
+  审查通过；真实副本绿结果选中原期限、旧工作到期仍为8月，0API、无事件变化。
 
 Standards/Spec两轴无遗留具体问题。完整回归原v1在4585通过后暴露fake协议，v2在7581通过后
 暴露租约fixture，日志都保留；v3为10640通过，v4为10641通过。最新v5在`4ce4845b`上
 **10642 passed / 19 skipped / 2 xfailed**，1项既有Starlette warning，pytest1207.62秒、退出0，
 1705个Python文件SHA均未变化。新修复`caf7e8d3`的完整v6为**10645 passed / 19 skipped /
 2 xfailed**，1项既有warning，pytest1286.38秒、退出0，1705个Python文件SHA未变。
+`48dc91d6`的完整v7为**10646 passed / 19 skipped / 2 xfailed**，1项既有warning，
+pytest1693.52秒、退出0，1705个Python文件SHA未变；此轮未包含后续fb8b4bca唤醒修复。
+最终当前代码`fb8b4bca`的完整v8亦为**10646 passed / 19 skipped / 2 xfailed**，1项既有
+warning，pytest1592.62秒、退出0，1705个Python文件SHA未变。
 这些代码回归不等同于真实跨日或生产资格。
+
+补充调度采样不作为吞吐结论：初次把冷历史重放纳入逐函数计时，后中止（exit143），日志保留。
+预热后两轮返回状态不同（空列表/accepted），没有World事件增量、0API，不能把状态名当作
+新的持久接纳。采样与真实续跑并行，亦非隔离的性能SLA；局部优化采用上面的同库读取对照。
 
 代理运行证据：初始PID3371/v0.9.11；18:21:44+08后为PID55744/v0.9.12。用户确认只更新pak，
 网络节点未改。执行代理未替换/重启程序或调整共享网络。下载候选与现有二进制SHA相同；
@@ -277,6 +296,7 @@ v10再采样1224次：CPU0—4.9%、RSS21.6—29.3MiB；同一美国Z01链路出
 | v8 | 10 | 5HTTP200/5HTTP502，32记忆复核、1世界事件结算；无请求在途时停止以修驱动，42454原事件不变 |
 | v9 | 47 | 40完整HTTP200/7超时；238保留复核+2角色自主退出日常提取；5458.8秒达到本段准入时限 |
 | v10 | 77 | 70完整HTTP200/6超时/1HTTP502；416记忆复核、2Life反应及2经历；5405.2秒达到本段准入时限 |
+| v11 | 7 | 7完整HTTP200、54记忆复核、无新失败；5414.2秒达到本段准入时限，之后诊断线程退出挂起另记 |
 
 v9原42597事件逐字保留，sourceSHA不变，冷读取语义哈希与终态一致。40个HTTP200中也有被
 校验拒绝的草稿，不能算40次语义通过；完整响应中位42.99秒、范围8.88—75.10秒。最后158
@@ -299,10 +319,33 @@ v10原43428事件逐字保留，sourceSHA不变，冷投影与终态一致。完
 | v8终态 | 1373 | 758 | 758 | 1259 | 0 |
 | v9终态 | 1371 | 518 | 518 | 1259 | 0 |
 | v10终态 | 1371 | 102 | 102 | 1259 | 0 |
+| v11终态 | 1371 | 48 | 48 | 1259 | 0 |
 
 活跃数减少2来自角色的正常遗忘选择，原始事实/经历仍保留；不是清理失败任务。v10还有102项
 到期（54前史/46经历/2事实），若全可读至少13批；固定三天终点内106项。另有一条9月25日
 旧audit.3缺少两种causal identity、也无精确保存回合，仍隔离保留，未猜测身份或删除它。
+
+后续使用正式MemoryRetrievalCompiler在v10完整副本核验，102项中只有54项前史可读取。
+30项经历和2项事实的绑定均只指向旧WorldStarted连续性初始化记录，无法提供当前要求的
+逐条Fact/Experience权威；另16项经历由既有LifeContentUserChannelAuthorityLimited事件限制
+读取，并非正文遗失。原事件字节不变、0API；48项全部保留，未伪造权威或解除限制。
+表中“理解抑制0”与这些来源读取排除是不同指标。v11共7次代理调用完成全部54项可读
+积压，无新失败；冷投影与终态一致，44868原事件及sourceSHA不变。当前连续验收窗口累计
+16失败步骤、无进展计数0。其durable clock为Oct9 04:32+08、观察时钟07:07:30，尚未到
+第1/3日聊天；后续仍需走完正常生活时钟、未来到期记忆及聊天。
+
+v11保存业务终态后，进程卡在CPython3.13.13的诊断线程退出：原生sample显示主线程等待
+cancel_dump_traceback_later，watchdog停在_PyFrame_SafeGetCode，业务线程在空闲队列中。
+[官方文档](https://docs.python.org/3.13/library/faulthandler.html#dumping-the-tracebacks-after-a-timeout)
+说明定时采样使用watchdog；[对应版本实现](https://github.com/python/cpython/blob/v3.13.13/Modules/faulthandler.c#L571-L583)
+确认取消会等待它结束。精确触发帧读取问题的条件尚未独立复现，不据此断言某个上游修复版本。
+py-spy要求root，未提权；现有原生sample已足以定位等待边界。仅停止已完成的隔离子进程，
+child返回-15/父241单独记录；原wall_limit结果、SQLite/WAL/旁库停止前后逐字不变，
+quick_check通过、45051事件完整，未伪装干净退出或删除失败任务。
+后续私有驱动移除定时faulthandler启停，保留全部请求/事件/计费/checkpoint，增加每轮计时。
+剥除这些诊断项后AST与旧runner完全相同，base runner字节未变，Spec复核关闭。
+没有改生产诊断配置、Python安装或心跳/校验。该阶段有并行检查及异常诊断线程，不能用其
+墙钟耗时宣称产品吞吐或归因全部本地成本。
 
 验收驱动已纠正三个问题：旧sticky Outlook health不能算新失败；加速日历不能跳过真实
 provider circuit冷却；旧direct tick+穷尽drain会漏生产Life心跳。当前直接调用
@@ -318,11 +361,11 @@ provider circuit冷却；旧direct tick+穷尽drain会漏生产Life心跳。当�
 新驱动纳入新增model failure和HTTP终态失败（含body_interrupted），进行中/采集错误分开；
 7项零API检查及Spec复核关闭。显式reconciled checkpoint供后续继承，World事件和任务不改。
 
-累计230次代理+5次旧DS；代理占用9782561 reported/reserved tokens，旧DS未知预留1.218144CNY
+累计237次代理+5次旧DS；代理占用9956314 reported/reserved tokens，旧DS未知预留1.218144CNY
 保留。旧5次DS压缩正文因采集问题无法逐字重建，不冒充已知账单；新采集器保存原bytes与解码
 JSON，identity/gzip/坏gzip检查通过，旧65行计费占用不变。512代理/2000万token、128DS/5CNY、
-每段5400秒准入上限，费用/请求持续累计，旧64请求专项账本不动。caf7e8d3全量回归通过后，
-live-v11从v10全副本及显式reconciled checkpoint继续同一窗口，不热改正在运行的验收。
+每段5400秒准入上限，费用/请求持续累计，旧64请求专项账本不动。fb8b4bca完整v8已通过，
+live-v12从v11全副本及显式reconciled checkpoint继续同一窗口，不热改正在运行的验收。
 
 证据集中在 `output/private-audits/proxy-backlog-20261014/`（进程/网络/盘点/红绿与完整回归）及
 `output/private-audits/proxy-outlook-validation-20261014/`（原请求响应/各段World/终态与独立复核）。
