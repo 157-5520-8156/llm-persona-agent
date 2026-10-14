@@ -3206,6 +3206,40 @@ async def test_new_user_observation_keeps_an_unfinished_legacy_threads_retry() -
     assert next_proactive_retry_due(ledger.project()) == current + timedelta(minutes=10)
 
 
+def test_proactive_retry_history_lookup_grows_linearly() -> None:
+    class CountedEvents:
+        def __init__(self, size):
+            self.size = size
+            self.reads = 0
+
+        def __iter__(self):
+            for index in range(self.size):
+                self.reads += 1
+                yield SimpleNamespace(event_id=f"event:{index}")
+
+    reads = []
+    for size in (16, 64):
+        events = CountedEvents(size)
+        processes = tuple(SimpleNamespace(
+            trigger_id=ProactiveActionRuntime._trigger_id_for_world(  # noqa: SLF001
+                world_id="world:retry-scale", consideration_id=f"consideration:{index}",
+                retry_ordinal=0,
+            ),
+            process_kind=ProactiveActionRuntime.PROCESS_KIND,
+            trigger_ref=f"proactive-consideration:consideration:{index}",
+            state="terminal", runtime_outcome_ref=f"proactive:deliberation-failed:model:{index}",
+        ) for index in range(size))
+        projection = SimpleNamespace(
+            world_id="world:retry-scale", trigger_processes=processes,
+            completed_trigger_ids=tuple(p.trigger_id for p in processes),
+            committed_world_event_refs=events, model_result_audits=(),
+        )
+        # A claimed failure without its exact audit still grants no retry.
+        assert proactive_technical_retry_states(projection) == ()
+        reads.append(events.reads)
+    assert reads[1] <= reads[0] * 5, reads
+
+
 @pytest.mark.asyncio
 async def test_proactive_retry_wait_does_not_starve_ready_background_cognition(
     tmp_path,

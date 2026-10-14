@@ -2904,12 +2904,29 @@ class ProactiveActionRuntime:
         )
 
     @classmethod
+    def _technical_retry_evidence(cls, projection):  # type: ignore[no-untyped-def]
+        """Index only this projection, for reuse within one retry-state read."""
+
+        refs = {item.event_id: item for item in projection.committed_world_event_refs}
+        processes_by_id = {item.trigger_id: item for item in projection.trigger_processes}
+        completion_positions = {
+            trigger_id: index for index, trigger_id in enumerate(projection.completed_trigger_ids)
+        }
+        durable_failures = {
+            (item.attempt_id, item.model_result_ref): item
+            for item in projection.model_result_audits
+            if item.proposal_hash is None and cls._is_durable_technical_failure(item)
+        }
+        return refs, processes_by_id, completion_positions, durable_failures
+
+    @classmethod
     def _technical_retry_state(
         cls,
         *,
         projection,
         consideration_id: str,
         fallback_failed_at: datetime | None = None,
+        retry_evidence=None,
     ) -> ProactiveTechnicalRetryState | None:  # type: ignore[no-untyped-def]
         """Validate one contiguous, stable proactive retry lineage.
 
@@ -2921,16 +2938,10 @@ class ProactiveActionRuntime:
         """
 
         trigger_ref = "proactive-consideration:" + consideration_id
-        refs = {item.event_id: item for item in projection.committed_world_event_refs}
-        processes_by_id = {item.trigger_id: item for item in projection.trigger_processes}
-        completion_positions = {
-            trigger_id: index for index, trigger_id in enumerate(projection.completed_trigger_ids)
-        }
-        durable_failures = {
-            (item.attempt_id, item.model_result_ref): item
-            for item in projection.model_result_audits
-            if item.proposal_hash is None and cls._is_durable_technical_failure(item)
-        }
+        refs, processes_by_id, completion_positions, durable_failures = (
+            cls._technical_retry_evidence(projection)
+            if retry_evidence is None else retry_evidence
+        )
         failures: list[tuple[datetime, int, str | None, str | None, str]] = []
         retry_ordinal = 0
         last_failure_completion_position: int | None = None
@@ -3555,6 +3566,9 @@ def proactive_technical_retry_states(projection) -> tuple[ProactiveTechnicalRetr
         and item.state == "terminal"
         and str(item.runtime_outcome_ref).startswith("proactive:deliberation-failed:")
     }
+    if not consideration_ids:
+        return ()
+    retry_evidence = ProactiveActionRuntime._technical_retry_evidence(projection)
     states = tuple(
         state
         for consideration_id in consideration_ids
@@ -3562,6 +3576,7 @@ def proactive_technical_retry_states(projection) -> tuple[ProactiveTechnicalRetr
             state := ProactiveActionRuntime._technical_retry_state(
                 projection=projection,
                 consideration_id=consideration_id,
+                retry_evidence=retry_evidence,
             )
         )
         is not None
