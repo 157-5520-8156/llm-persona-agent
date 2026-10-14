@@ -1,36 +1,42 @@
-Release freeze / proxy backlog investigation (2026-10-14), IN PROGRESS:
-User freezes new features and major refactors; retain all tasks/failures, role autonomy and source validators.
-Codea719282f fixes Life reviewer outer deadline misclassified as caller cancellation through nested budgets;
-whole configured review deadline and one wire correction unchanged, provider timeout now reaches circuit,
-real caller cancellation remains distinct, unknown token reservations retained. Bare technical_failure now
-marks scheduler health failing. Red2/control2;151scopedpass;Standards/Specclosed.
-Fullv1 stopped4585pass/1fail: honest health exposed FakeCompanionModel missing FactDraft protocol, not
-provider/production regression. b6062f4d adds explicit offline single/batch no-retain fixture and truthful
-nonready health diagnostic;2red ->9pass incl original real-process restart/zero-failure gate. Bothreviewsclosed.
-Fullv2 stopped7581pass/1fail: lease test depended on old fakeFactfailure. beab9c53 asserts actual injected
-crash and exact unchanged lease/attempts across restart; original zero/once delivery gates retained.
-772fake-relatedpass;finalfrozenfullv3 onbeab9c53:10640pass/19skip/2xfail/1warning,1200.06s,1705PythonSHAunchanged.
-No production/QQ/cmdc restart or config change.
-cmdc PID3371 version0.9.11, publisher advertises0.9.12 handshake improvements; not installed.
-Loopback endpoints milliseconds; Google lane follows local7897 proxy. Request66 sample CPU0–1%,RSS~22–25MiB,
-threads waiting(cond/kevent),upstream sockets established;does not distinguish remote queue/inference/network.
-Exactv5inventory:1373active,997due(949prehistory/46experience/2fact),998unacknowledged;
-1002duebyoriginal3dayhorizon;atleast125currentbatches ifallreadable.0suppressions,1259prehistory/sourcehashintact.
-OneSept25legacyfailure lacks both causal identity fields and exact saved turn;isolated pending,not deleted.
-New phase uses same65-row ledger;announcedcumulative512proxy/20Mtokens,128DS/5CNY,5400s/phase. Old64-request
-grant untouched. Newcapture preserves compressed rawbytes+decodedJSON;old5DSrawUTF8notreconstructable,
-oldunknownreservesretained;futuretypedcompleteDSusagecan settle atconservativepeakprice.
-Private run_backlog.py uses3failedserviceopportunities withoutdurableprogress asstop;oldstickyOutlookhealth
-not counted asnewfailure,onlynewdurablefailure markers.Offlinecounter[1,1,1,2,3],capture3cases/65oldexposuresunchanged.
-Livev6 manuallycancelledduringcoldstartup,0API,original41739events/sourceunchanged. Livev7 runsfromlivev5,
-sameoriginOct8T07:51:18Z,allhistory/failedtasksretained. Originalfailedmemorybatch already reviewed;
-livev7 terminal:36proxyHTTP=32complete+4timeout,208newMemoryCandidateReviewed;one localcircuit refusal.
-ClockOct8T13:32Z;3failedopportunitieswithoutprogress stopped phase. Original41739events/source unchanged.
-Simulation jump crossed30virtualminutes before30real-secondcircuitcooldown;v8 harness now waits actual
-Anthropic circuit naturally,worldclock/queues/circuit notmutated,wait charged to5400sphase andlogged separately.
-Offline3sleepchecks->half_open/0requests;Specclosed. Livev8runningfromv7,same3dayorigin/cumulativeledger.
-Full3-day acceptance still open. Evidence output/private-audits/proxy-backlog-20261014/ and
-output/private-audits/proxy-outlook-validation-20261014/live-v8/. No success claim until terminal review.
+Release freeze / preserved-queue qualification (2026-10-14), IN PROGRESS:
+New features and major refactors remain frozen. CharacterInterior owns semantics; source/privacy,
+CAS, effect-once, receipts and exact failure records remain mandatory. No production/QQ deployment.
+
+Source fixes: a719282f preserves provider_timeout through nested deadlines and reports bare scheduler
+technical_failure; b6062f4d/beab9c53 repair explicit offline fixtures without relaxing health/lease gates.
+bc15427d removes repeated WorldStimulus audit scans; 4ce4845b reuses proactive retry indexes only within
+one projection read. Original identity, chronology, failure classification and role choices remain intact.
+WorldStimulus warm profile 1.6204s -> 0.7043s, audit reads 1,838,079 -> 20,800. Whole idle background
+probe after proactive fix 3.544s -> 2.471s, failure checks 96,376 -> 3,442; zero model calls, same events.
+52 WorldStimulus and 74 proactive checks pass; Standards/Spec reviews closed. Frozen full v4 on bc15427d:
+10641 pass/19 skip/2 xfail. Latest full v5 on 4ce4845b:10642 pass/19 skip/2 xfail/1 existing warning,
+1207.62s pytest, exit0,1705 Python hashes unchanged. All required code checks are complete.
+
+User confirmed updating cmdc-pak only; network node unchanged. Current observed process is v0.9.12,
+PID55744 (started18:21:44+08). Agent did not install/restart it or change shared network configuration.
+Actual Google traffic uses daily-cloudcode-pa.googleapis.com via local7897/Mihomo/US Z01. Sampled proxy
+CPU0-4.2%, RSS22.4-26.7MiB. Earlier EOF/502 and later90s incomplete streams are distinct observations.
+Review134 traffic kept growing to the deadline; encrypted metadata cannot separate inference from transfer.
+
+live-v9 ended at its admission wall bound (5458.8s including an already-admitted call): 47 proxy requests,
+40 completeHTTP200/7 provider timeouts; 238 retained-review events +2 role-authored forgetting events.
+42597 original events/sourceSHA unchanged; cold projection matches terminal. Remaining due758 ->518,
+active1371, prehistory1259, no understanding suppressions. No failed task was deleted.
+New72h origin stays Oct8T16:11:18.362893Z; durable clock Oct9T02:52+08, only2.678h advanced; no day1/day3 chat.
+Two Life-review failures remain. One Sept25 legacy task lacks exact causal identity and remains isolated.
+Raw runner counted6 failed steps; independent audit finds7, since a later memory success masked an earlier
+Life failure in one returned status. Original runner snapshot/raw checkpoint retained; reconciled checkpoint
+is explicit. Future driver counts new model-failure audits and HTTP terminal failures including body interruption.
+Final#158 wasHTTP200 but its quote override failed validation; correction was denied by phase wall bound,
+not another provider timeout. Malformed output and pending task remain.
+
+Cumulative ledger now153proxy +5DS:7,034,121 reported/reserved proxy tokens; oldDS reserve1.218144CNY remains.
+Limits512proxy/20Mtokens,128DS/5CNY,5400s admission per phase; no reset of unknowns or old64-request grant.
+live-v10 now continues from live-v9 with run_production_cadence.py: actual host.scheduler_once,30s heartbeat,
+8Action/1background, real circuit cooldown, stable chat IDs, same origin and cumulative reconciled counters.
+Idle coalescing was NOT adopted: UTC InnerTurn leases and other pending state need additional proof.
+Private evidence: output/private-audits/proxy-backlog-20261014/ and proxy-outlook-validation-20261014/.
+Details: docs/audits/hybrid-background-provider-2026-10-13.md. Full cross-day/production qualification remains open.
 
 Proxy Outlook repair and qualification (2026-10-14): source3594ea6c/26adfdd6, timing test14052136.
 Host-bound memory system/correction guidance now matches payload-only schema; role status/attention/choices
