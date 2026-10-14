@@ -1590,11 +1590,15 @@ class CharacterInteriorWorldStimulusRuntime:
         self,
         projection: object,
         source_ref: str | None,
+        *,
+        model_audits=None,
     ) -> CausalOpportunityIdentity | None:
         if source_ref is None:
             return None
         identities: dict[str, CausalOpportunityIdentity] = {}
-        for model_audit in reversed(projection.model_result_audits):
+        for model_audit in reversed(
+            projection.model_result_audits if model_audits is None else model_audits
+        ):
             identity = self._audited_opportunity_identity(model_audit)
             if identity is None or source_ref not in identity.source_refs:
                 continue
@@ -2313,6 +2317,16 @@ class CharacterInteriorWorldStimulusRuntime:
         # the same batch. If the process crashes before its authored Affect is
         # accepted, resume from the immutable audit instead of silently losing
         # that part of the same CharacterInterior decision.
+        # Group this projection's audits once. Scanning the complete journal
+        # twice for every terminal process makes an idle pass quadratic in
+        # history size. Keep journal order and every matching audit so exact,
+        # merged and ambiguous identities retain their existing interpretation.
+        audits_by_source: dict[str, list] = {}
+        for model_audit in projection.model_result_audits:
+            identity = self._audited_opportunity_identity(model_audit)
+            if identity is not None:
+                for source_ref in identity.source_refs:
+                    audits_by_source.setdefault(source_ref, []).append(model_audit)
         for kind in _PROCESS_PRIORITY:
             for process in projection.trigger_processes:
                 if (
@@ -2326,7 +2340,10 @@ class CharacterInteriorWorldStimulusRuntime:
                 ):
                     continue
                 source_ref = process.source_evidence_ref
-                durable_identity = self._durable_opportunity_identity(projection, source_ref)
+                model_audits = audits_by_source.get(source_ref, ())
+                durable_identity = self._durable_opportunity_identity(
+                    projection, source_ref, model_audits=model_audits,
+                )
                 identity = (
                     durable_identity
                     if durable_identity is not None
@@ -2344,6 +2361,7 @@ class CharacterInteriorWorldStimulusRuntime:
                         projection,
                         identity=identity,
                         source_ref=source_ref,
+                        model_audits=model_audits,
                     )
                     if source_ref is not None and identity is not None
                     else None
@@ -3124,12 +3142,15 @@ class CharacterInteriorWorldStimulusRuntime:
         *,
         identity: CausalOpportunityIdentity,
         source_ref: str,
+        model_audits=None,
     ):
         """Find a proposal only through an exact or contained durable identity."""
 
         exact_matches = []
         contained_matches = []
-        for model_audit in reversed(projection.model_result_audits):
+        for model_audit in reversed(
+            projection.model_result_audits if model_audits is None else model_audits
+        ):
             durable_identity = self._audited_opportunity_identity(model_audit)
             if durable_identity is None or source_ref not in durable_identity.source_refs:
                 continue

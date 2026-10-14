@@ -1354,6 +1354,42 @@ def _replay_projection_with_causal_lineage(ledger, identity):  # type: ignore[no
 
 
 @pytest.mark.asyncio
+async def test_terminal_recovery_audit_work_grows_linearly_with_history(monkeypatch) -> None:
+    runtime, ledger, _projection = _runtime(model=_RoleModel(decision="no_change"))
+    await runtime.drain_one()
+    projection = ledger.project()
+    terminal = next(p for p in projection.trigger_processes if p.state == "terminal")
+    real_reader = runtime._audited_opportunity_identity  # noqa: SLF001
+    reads = 0
+
+    def counted(audit):
+        nonlocal reads
+        reads += 1
+        return real_reader(audit)
+
+    monkeypatch.setattr(runtime, "_audited_opportunity_identity", counted)
+    counts = []
+    for size in (16, 64):
+        # Old identity-less failures remain unresolvable. Their existence must
+        # not make every settled source re-scan the entire audit history.
+        history = SimpleNamespace(
+            trigger_processes=tuple(terminal.model_copy(update={
+                "trigger_id": f"historical:{n}", "source_evidence_ref": f"source:{n}",
+            }) for n in range(size)),
+            model_result_audits=tuple(SimpleNamespace(
+                event_ref=f"legacy:{n}", audit_hash=f"hash:{n}", audit_json="{}",
+                model_result_ref=f"model:{n}", attempt_id=f"attempt:{n}",
+            ) for n in range(size)),
+            proposal_audits=(), logical_time=projection.logical_time,
+            ledger_sequence=projection.ledger_sequence,
+        )
+        reads = 0
+        assert runtime._next_process(history) is None  # noqa: SLF001 - production recovery seam
+        counts.append(reads)
+    assert counts[1] <= counts[0] * 5, counts
+
+
+@pytest.mark.asyncio
 async def test_existing_audit_reuses_only_exact_or_provable_merged_identity() -> None:
     runtime, ledger, _projection = _runtime(model=_RoleModel(decision="no_change"))
     await runtime.drain_one()
