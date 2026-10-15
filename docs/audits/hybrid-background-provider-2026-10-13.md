@@ -400,7 +400,7 @@ v12保留45051原事件与sourceSHA，独立冷投影与终态一致。书店事
 完整HTTP中位24.63秒、范围11.84—75.42秒，不是15次语义通过。累计失败18、连续无进展0。
 耐久时钟Oct9 11:19:45+08，观察时钟11:23:15，只完成11.14/72小时；第1/3日聊天仍未到。
 506个返回空闲的调度轮次累计4640秒、中位8.82秒，占此段绝大多数墙钟；不是纯代理耗时。
-同库零API剖析定位到历史解码、世界刺激扫描和记忆证明读取；上述解码优化正在最终验证，
+同库零API剖析定位到历史解码、世界刺激扫描和记忆证明读取；上述解码优化已通过完整回归，
 未采用心跳合并或减频。
 
 累计253次代理+5次旧DS；代理占用10469834 reported/reserved tokens，旧DS未知预留1.218144CNY
@@ -409,5 +409,27 @@ JSON，identity/gzip/坏gzip检查通过，旧65行计费占用不变。512代�
 每段5400秒准入上限，费用/请求持续累计，旧64请求专项账本不动。v12在fb8b4bca上结束；
 完整v11通过后，live-v13从完整v12库/原reconciled checkpoint继续，继承18/0失败计数。
 启动器另存真实子进程退出码，原准入守卫、预算、节奏和业务结果不变，Spec复核关闭。
+
+v13在已通过完整10655项回归的8a148e15上运行，因本地输入超限人工停止，当前无付费测试
+运行。仅新增两次代理记忆整理调用，16.31/24.82秒完成并各提交一条MemoryCandidateReviewed；
+没有新DS或命运刷新HTTP。17:36命运刷新在发送前报outlook_input_too_large，17:46新wake
+再次返回同一缓存失败。旧runner漏后者，原19/1保留，独立复核与续跑checkpoint记20/2。
+私有计数改为稳定(trigger,wake)差集；同wake的outcome变化不重复计数。新接纳必须有同
+world/actor/revision及evidence.operation_ref绑定，才独立重置连续失败；旧marker含义不变。
+零API控制与Spec审查关闭，刷新后的cadence-sidecar-evidence.diff保留实际差异。
+
+SIGINT期间18:16的ClockAdvanced已提交，但无对应ecology lease或HTTP。原final-counts
+停在45182，原result仍是exception/CancelledError，真实进程退出码0单列；均不覆盖。
+停止后独立冷投影到45183，时钟Oct9 18:16+08，完成18.078/72小时；源SHA、45153条原事件
+逐字一致，1259前史保留，48条不可读旧任务保留。post-stop-integrity与independent-terminal-audit
+保存该差异；inflight checkpoint仍在，不能伪装完成或从零重跑。当前启动器继续阻止这个
+operator-stop，精确续跑守卫尚待实现，不能把退出码0作为验收成功。
+
+零API重建原失败cursor45175及17:36 wake，保持完整ledger，仅在只读诊断中暴露精确历史
+投影并绕过失败operation缓存，在编码后、HTTP/finish前停止。原编码113942字节超过100000；
+共享字符串阈值从64降到8仍需109003字节。现有表格化对照也不足，尚未提交生产修复，
+没有扩大上限、删除来源或放宽校验。下一步先解决该阻塞，再完成源代码验证和受守卫续跑。
+累计255代理+5旧DS，代理10499893 reported/reserved tokens，旧DS预留1.218144CNY不变。
+第1/3日聊天、完整跨日来源/行为/回执验收均未完成，仍不可宣称可发布。
 证据集中在 `output/private-audits/proxy-backlog-20261014/`（进程/网络/盘点/红绿与完整回归）及
 `output/private-audits/proxy-outlook-validation-20261014/`（原请求响应/各段World/终态与独立复核）。

@@ -82,11 +82,22 @@ No heartbeat coalescing/provider calls. Invalid concurrentcProfile diagnostic ke
 control proved profiler conflict and the corrected single-profiler run completed. No Python upgrade.
 Ledger:253proxy+5 oldDS;10,469,834 reported/reserved proxy tokens; oldDS reserve1.218144CNY retained.
 Limits512proxy/20Mtokens,128DS/5CNY,5400s admission per phase; original64-request grant remains separate.
-Live-v13 now continues from v12 fullcopy/reconciled checkpoint through guarded launch_continuation.py,
-implementation8a148e15 qualified byfullv11. Sameorigin/limits; failed18/stalled0 inherited.
-monitor_v13.py observes proxy; process-exit.json now persists real subprocess exit separately from
-business result. No source hotpatch. Failure counters, unknown reserves and source identities must
-never reset. Full cross-day/production gates remain open.
+Live-v13 stopped for local outlook_input_too_large on frozen qualified8a148e15; no paid run active.
+Two new proxy memory calls completed in16.31/24.82s; no newDS or Outlook HTTP. Exact failed
+pin45175/wake17:36 reconstructed offline: existing lossless carrier113942B >100000B; lowering
+string threshold to8 still109003B. Input overflow remains UNFIXED; no cap/validator/source change.
+17:46 cached failure is another service wake. Private driver now counts stable(trigger,wake) diffs;
+new accepted refresh resets streak only with matching revision/evidence.operation/actor/world.
+Old marker meaning unchanged; zeroAPI controls/Spec review closed. Raw19/1 retained; independent
+terminal audit/checkpoint20/2. SIGINT raw business result exception/CancelledError and process exit0
+remain separate. In-flight18:16 Clock committed during shutdown after rawfinal-counts45182:
+independent cold terminal45183/18.078h matches stable DB; all45153old event bytes/sourceSHA retained,
+1259prehistory/1373active candidates,48unreadable dues retained. In-flight checkpoint remains.
+Ledger255proxy+5oldDS;10499893proxyreported/reserved tokens, oldDS1.218144CNY unchanged.
+Launcher still safely rejects this operator stop; any narrow exception must require post-stop evidence,
+actual exit, no in-flight HTTP, full integrity and inherited20/2. No generic exception bypass.
+Next: resolve overflow without extra general layers; qualify final source and guarded continuation.
+No source hotpatch, failure reset, deployment or day1/day3chat yet. Full cross-day gates remain open.
 Evidence: output/private-audits/proxy-backlog-20261014/ and proxy-outlook-validation-20261014/;
 consolidated details: docs/audits/hybrid-background-provider-2026-10-13.md.
 
