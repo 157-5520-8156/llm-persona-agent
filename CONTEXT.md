@@ -12,7 +12,21 @@ fb8b4bca keeps overdue unreadable memory entries from hiding future candidate cl
 Default worker.next_due(), pending leases, actual drain/role choices and all old records remain unchanged.
 Latest completed full regression v7 on48dc91d6:10646 pass/19 skip/2 xfail/1 existing warning,
 1693.52s pytest,exit0,1705 Python hashes unchanged. Full v8 onfb8b4bca also passes10646/19skip/2xfail,
-1 existing warning,1592.62s pytest,exit0,1705 Python hashes unchanged. All current code checks complete.
+1 existing warning,1592.62s pytest,exit0,1705 Python hashes unchanged.
+ac10f453 social recovery optimization scans Observation history lazily once per drain; original
+candidate order/latest-valid duplicate/error frontier and fresh run_observation/CAS remain intact.
+16/64-source red reads152/2144;109 scoped/Ruff/both reviews pass. Real warm0.425->0.071s,
+lookups9045->134, same idle result and event bytes,0API. Full v9 onac10f453 failed after7040 pass/2xfail:
+test_public_proactive_correction_survives_expired_author_window_and_is_reviewed got source_review_timeout
+before the second author call. Same-order prefix passes; GC was NOT proved causal. Stronger offline
+control makes first review cross the author deadline: recovery_deadline=null/review_inflight=false,
+then cancellation at author deadline+1.8ms. Legacy visible_source_runtime omitted the existing review
+phase seam. Narrow fix enters run_validation_review_once(46s), no retry or deadline-policy change;
+existing public test now requires both initial review and same-role correction to cross author deadline.
+Cancellation fixture explicitly closes before its1s review phase (host close grace .01s only in test).
+96 public gate/budget and92 composed/independent/grounded checks pass; Ruff clean; final full pending.
+Both review axes closed. Original failure, invalid first diagnostic and all controls retained.
+Live-v12 completed on frozenfb8b4bca; no hot patch.
 Memory wake repair:156 scoped pass/Ruff/both reviews closed; real45051-event old/new proof0API,
 old work due remainsAug2 while clock now selectsOct10 07:41:18Z. No hot patch of active real runs.
 
@@ -46,11 +60,18 @@ Future private driver removes only the periodic diagnostic watchdog and adds per
 AST after stripping diagnostics equals the old runner; base runner unchanged; Spec review closed.
 No production diagnostic setting or Python installation changed. Idle coalescing remains unadopted.
 
-Ledger:237proxy+5 oldDS;9,956,314 reported/reserved proxy tokens; oldDS reserve1.218144CNY retained.
+v12 completed atwall_limit5409.7s onfb8b4bca:16proxy,15completeHTTP200/1review timeout.
+CompleteHTTP median24.63s/range11.84–75.42s, not15semantic passes. Bookstore commits/activates/settles,
+1role LifeResponse and1Experience; later appraisal first times out, then correction still adds unsupported
+quiet-morning claim, then existing30min retry succeeds after its one correction. Both failures retained.
+Failedtotal18/stalled0. Original45051events/sourceSHA unchanged; cold replay matches45148-event terminal.
+DurableOct9 11:19:45+08, observed11:23:15; only11.14/72h, no day1/day3 chat. Active1373/prehistory1259;
+48old unreadable dues retained,54within fixed horizon. 506empty scheduler passes total4640s/median8.82s;
+thread-level offline profiling inprogress (no heartbeat coalescing or provider calls).
+Ledger:253proxy+5 oldDS;10,469,834 reported/reserved proxy tokens; oldDS reserve1.218144CNY retained.
 Limits512proxy/20Mtokens,128DS/5CNY,5400s admission per phase; original64-request grant remains separate.
-live-v12 now continues through launch_continuation.py from complete live-v11 state/reconciled checkpoint,
-implementationfb8b4bca, same origin/budgets; monitor_v12.py accompanies it. No periodic faulthandler.
-Failure counters, historical unknown cost reserves and source identities must never be reset. Full cross-day/production gates remain open.
+No active paid continuation while final code qualification pending. Failure counters, unknown reserves
+and source identities must never reset. Full cross-day/production gates remain open.
 Evidence: output/private-audits/proxy-backlog-20261014/ and proxy-outlook-validation-20261014/;
 consolidated details: docs/audits/hybrid-background-provider-2026-10-13.md.
 
