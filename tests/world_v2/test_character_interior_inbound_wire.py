@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import Future
 import json
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -2185,9 +2186,11 @@ class _ReleaseSemanticSequenceJsonModel(_SequenceJsonModel):
         replies: list[str],
         *,
         semantic: _ControlledSemanticPrefetchEmbedding,
+        prefetch_future: Future,
     ) -> None:
         super().__init__(replies)
         self._semantic = semantic
+        self._prefetch_future = prefetch_future
 
     async def complete_json(
         self, messages: list[dict[str, str]], *, temperature: float = 0.8
@@ -2196,8 +2199,9 @@ class _ReleaseSemanticSequenceJsonModel(_SequenceJsonModel):
         reply = self._replies.pop(0)
         if len(self.calls) == 1:
             self._semantic.release.set()
-            if not await asyncio.to_thread(self._semantic.finished.wait, 0.5):
-                raise TimeoutError("semantic prefetch fixture did not finish")
+            # Embedding completion precedes search and trusted trace publication.
+            # This fixture promises the whole prefetch is ready before followup.
+            await asyncio.wait_for(asyncio.wrap_future(self._prefetch_future), 0.5)
         return reply
 
 
@@ -3792,6 +3796,7 @@ async def test_character_recall_followup_absorbs_ready_semantic_prefetch_without
             ),
         ],
         semantic=semantic,
+        prefetch_future=coordinator._prefetch_futures[(cursor, "trigger:1")].future,
     )
     request = _qq_request().model_copy(
         update={
