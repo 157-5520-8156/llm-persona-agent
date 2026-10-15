@@ -99,4 +99,25 @@
 
 `final-regression-v12/result.json`：实现02511e9a，全量10680 passed /19 skipped /2 xfailed，
 1条既有Starlette弃用警告，1293.25s；1705个Python文件hash全程一致。Ruff与diff检查通过。
-这些离线结果不构成72小时或发布通过；下一步从原v13终态严格继承后续跑。
+这些离线结果不构成72小时或发布通过。
+
+## v14真实续跑结果：仍未完成跨日
+
+严格继承v13原始72h起点、20/2失败计数和费用后，首轮新请求261已通过本地输入检查。
+Anthropic Messages线路，gemini-3.8-flash-medium，max_tokens64000，实际HTTP体87177B；
+连接和发完请求2.84ms，此后90s未收到响应头，按原绝对deadline取消。代理0.9.13日志在
+取消时记录infer读取上游流context canceled与HTTP502；不能倒过来把该502认作超时前的原因。
+代理指标仅新增1infer_fail，无限流/内部重试/端点切换记录；尚不能拆分上游生成与传输时间。
+
+按未变的三次无恢复失败规则停止：累计21、连续3，18.0866/72h，day1/day3问答均未开始。
+未通过增时、改校验、换回DeepSeek或重置计数继续。此轮1proxy/0DeepSeek；未知用量保留
+152201token reservation。累计256proxy、10652094reported-or-reservedtokens，5旧DS及
+1.218144CNY保守预留保持。此数不是供应商账单。
+
+`live-v14/independent-terminal-audit.json`独立冷读取当前头与全量原事件前缀比较：
+45188条原all-World事件全部保留，终态45192；当前World45187/1259前史/1373活跃记忆。
+数据库quick_check正常，审计未改终态DB，实际进程exit0与业务失败分别记录，无in-flightHTTP。
+此审计未额外执行全量reducer rebuild；原始结果及21/3 checkpoint均已保存。
+
+本地修复资格已完成；剩余阻塞是代理长请求无法可靠完成，完整跨日和发布资格仍未通过。
+在没有新的原因证据或外部状态变化前，不重复相同付费试验，也不绕过停止门槛。

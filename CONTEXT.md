@@ -1,4 +1,25 @@
-Release freeze / preserved-queue qualification (2026-10-15), IN PROGRESS:
+Current checkpoint (2026-10-15): local working-set fixes qualified; cross-day BLOCKED by proxy timeout.
+Worktree/branch unchanged. Implementation02511e9a, frozen fullv12:10680passed/19skip/2xfail,
+1knownwarning,1293.25s,1705Pythonhashesunchanged. Ruff/diff/Standards/Spec closed. No paid run active.
+Outlook samefailedpin45175:113942->74496B under100000;14authority/context fields identical,
+conditions190->26, all current conditions and retained tokens preserved. Native archivedplans0/10/100/1000:
+1row/240B/146SQLiteVMsteps. Memoryreviewhistory3/30/300:1badbatch retained,2contentreads after unrelatedappend.
+Complete source+resource v12 clone:hotempty1.385s,firstworkindex6.497s,78dues/45153eventbytes unchanged,0paidAPI.
+First historical replay/startup is separate and still scales with archive; no sustained SLA claim.
+Earlier src-only snapshot lacked assets; scope notes disqualify those timings. All records/agency remain.
+Live-v14 strictly inheritedv13 20/2/original72hstart/expenses. One proxy0.9.13 call261 sent87177B in2.84ms,
+then no response headers before90s deadline. Pak logs infer context canceled/502 at cancellation;
+metrics+1infer_fail,0rate/transientretry,0endpoint switch. Upstream generation vs transport not distinguished.
+Businessstop=repeated_failure_without_durable_progress;actualexit0 recorded separately. Keep21/3;do notreset.
+Progress18.0866/72h,Oct9 18:16:30+08,coldverified45187,1259prehistory/1373activecandidates.
+All45188old all-World eventbytes preserved;terminal45192,quick_checkok,noinflightHTTP/day1/day3chat.
+NewDS0; cumulative256proxy/10652094reported-or-reservedtokens +5oldDS/1.218144CNYreserve.
+Unknown152201token reservation from this timeout remains. Current provider node/update confirmation pending.
+Do not restart unchanged qualification past the existing three-failure gate or bypass it with the v13-only exception.
+Sources:docs/design/long-horizon-working-sets-2026-10-15.md and live-v14/independent-terminal-audit.json.
+No production/QQ deployment, provider rerouting, validator relaxation, dropped task or fabricated role outcome.
+
+Earlier release-freeze qualification checkpoints (2026-10-15):
 Worktree: /Users/geoff/.codex/worktrees/role-memory-qualification/Girl-Agent, branch codex/role-memory-qualification.
 New features/major refactors remain frozen. CharacterInterior owns semantics; source/privacy, CAS,
 effect-once, receipts and exact failures remain mandatory. No production/QQ deployment or global network change.
@@ -3248,22 +3269,3 @@ _Avoid_: Completed intention, hidden experience
 
 One independently dispatchable and settleable fragment in an ordered, interruptible expression. A Beat may depend on an earlier receipt and may be cancelled or reconsidered when the user interjects.
 _Avoid_: Text chunk, random split
-
-2026-10-15 current candidate: local long-horizon working-set repair is under qualification.
-Memory schedule and WorldStimulus recovery use disposable verified-history indexes; Outlook bounds
-planning sources/history and incrementally delivers newly terminal sources without deleting history.
-Role decisions, cadence, validators, original failures and effects remain. Scoped272 tests passed;
-final frozen full suite and72h continuation are pending. See docs/design/long-horizon-working-sets-2026-10-15.md.
-Do not interpret this as released or reset v13's reconciled20/2 and original journey origin.
-
-Implementation02511e9a now passed frozen full regression-v12:10680passed/19skip/2xfail,
-1knownwarning,1293.25s;1705Python hashes unchanged. Ruff/diff and Spec/Standards closed.
-Full tracked source+resources probe: same v13 failedpin45175 request113942->74496B under100000,
-14authority/context fields identical, condition sources190->26 with all current conditions/tokens.
-Complete v12 clone: hotempty1.385s, initialindex6.497s, unchanged78dues and45153eventbytes,0paidAPI.
-Not a sustained latency/SLA claim. Earlier src-only snapshot omitted resources; scope notes invalidate
-its timing. Nativehistory0/10/100/1000 gives1row/240B/146SQLiteVMsteps; memoryreviews3/30/300
-retain1badbatch with2contentreads after unrelated append. All historical data/failures remain.
-Proxy read-only preflight now0.9.13,ready; user's latest node/update confirmation pending.
-Private launcher exactv13operatorstop guard reviewed with10negativecontrols; no generic bypass.
-Next authorized action: live-v14 fromv13, inherited20/2, original72hstart, cumulative accounting.

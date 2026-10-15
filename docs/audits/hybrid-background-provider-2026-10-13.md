@@ -433,3 +433,11 @@ operator-stop，精确续跑守卫尚待实现，不能把退出码0作为验收
 第1/3日聊天、完整跨日来源/行为/回执验收均未完成，仍不可宣称可发布。
 证据集中在 `output/private-audits/proxy-backlog-20261014/`（进程/网络/盘点/红绿与完整回归）及
 `output/private-audits/proxy-outlook-validation-20261014/`（原请求响应/各段World/终态与独立复核）。
+
+
+2026-10-15 latest: implementation02511e9a passed10680 full tests and bounded-history controls.
+The [long-horizon working-set record](../design/long-horizon-working-sets-2026-10-15.md) contains the
+frozen source/resource measurements and exact input comparison. Preserved live-v14 then timed out
+on its first cmdc-pak0.9.13 request at90s, stopping at18.0866/72h with21/3 retained failures.
+No day1/day3 chats or release pass. Canonical terminal evidence is
+`output/private-audits/proxy-outlook-validation-20261014/live-v14/independent-terminal-audit.json`.
