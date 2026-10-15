@@ -1,14 +1,20 @@
-Active continuation (2026-10-16): live-v16 running from v15, background180s, original72h origin/counters39/0/budgets intact.
-Runtime89d5e19c; test-only a29f1d86 fixes false ready-prefetch fixture premise (embedding finished is not trace published).
-Controlled100ms post-embedding delay: oldtestfails/newtestpasses; original assertions/production450ms join unchanged.
-226scoped/ruff/bothreviews pass. Machine reboot23:26 interruptedfullv13 at65% (raw log/hash retained,noresult).
-Fullv14 genuinely failed1/1851pass on fixture race, retained. Frozenfullv15 passes10680/19skip/2xfail/1knownwarning,
-1208.78s pytest /1211.003s wrapper,1705Python hashesunchanged,head a29f1d86.
-New180s overlap probe has distinct stable ':deadline-180' ID; old90s intent kept. Controls/reviewpassed; no pairedcomparison claim.
-User prepared QQ and asked production open: old release auto-runningPID1127/8787, NapCat3000online/good, no agentrestart orcandidate deployment.
-User will cooperate with login/new message when finalQQ stage ready. PrivateQQrunner is NOT ADMITTED: readiness.json=false.
-Need finish shared owner/inflight proof, supervisor restore, exact recipientbinding, host lifetime and crossday-evidence gate before anycandidate switch.
-Private paths output/private-audits/real-qq-release-20261015; only authenticated route inspect performed; callback remains8787.
+Active continuation (2026-10-16): 72h simulated release journey COMPLETE through live-v17, not a72h wall-clock soak.
+Runtime89d5e19c/test-only a29f1d86; fullv15:10680pass/19skip/2xfail/1knownwarning,1705Pythonhashes unchanged.
+v16 used180s background deadline:51proxy/0networkfailure,3 retained semantic failure windows; actual Outlook refresh accepted at123.664s.
+v17 adds3proxy/1DS, no newfailure; cold World72.0333h/seq46127, all46015 original eventbytes preserved, quick_checkok.
+Cumulative343proxy/14087298reported-or-reservedtokens +25DS/1.81634728CNY conservative exposure; unknown reserves retained.
+Mixed-lane failure counters42/0 are diagnostic, not proof every failure recovered. Day1/day3 completed; ordinary sampled review unchanged.
+48legacy source-gap memory dues remain (excludinglegacy0),3old processes plus1new day3 private-impression process remain.
+Overlap firstCapture7.251s whileproxy pending; day3host9.217s/4exact terminal Capture receipts. Not QQ or5sSLA.
+Day1/overlap unsupported just-woke claims remain semantic failures; day3 content review recorded separately.
+Profile example now180s, matching qualified settings;35focused tests pass. No application Python change after fullv15.
+User prepared QQ and authorized production: old packagePID1127/8787 remains online; QQ3000online/good.
+Latest healthdegraded for retained CharacterInterior technical failures; scheduler running, no activeAction/ingress/Corelease.
+No production stop/restart/callback switch/candidate launch yet. Private QQ supervisor and recovery controls prepared;
+real wire stage waits user's CURRENT availability to send one new message. Candidate handles first live push; restored
+old production handles same actual input once via native backfill (possible second reply round). Each World audited separately.
+Original service remains up while waiting. Readiness and final review artifacts under output/private-audits/real-qq-release-20261015.
+See docs/design/long-horizon-working-sets-2026-10-15.md and live-v17 independent-terminal-audit.json.
 
 Release recovery checkpoint (2026-10-15): feature freeze continues; real QQ is explicitly authorized last.
 User superseded the three-failure stop. All failure counters, records, validators, original72h origin,
