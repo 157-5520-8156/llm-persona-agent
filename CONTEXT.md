@@ -14,7 +14,7 @@ Businessstop=repeated_failure_without_durable_progress;actualexit0 recorded sepa
 Progress18.0866/72h,Oct9 18:16:30+08,coldverified45187,1259prehistory/1373activecandidates.
 All45188old all-World eventbytes preserved;terminal45192,quick_checkok,noinflightHTTP/day1/day3chat.
 NewDS0; cumulative256proxy/10652094reported-or-reservedtokens +5oldDS/1.218144CNYreserve.
-Unknown152201token reservation from this timeout remains. Current provider node/update confirmation pending.
+Unknown152201token reservation from this timeout remains. User confirmed software update to0.9.13; network node unchanged.
 Do not restart unchanged qualification past the existing three-failure gate or bypass it with the v13-only exception.
 Sources:docs/design/long-horizon-working-sets-2026-10-15.md and live-v14/independent-terminal-audit.json.
 No production/QQ deployment, provider rerouting, validator relaxation, dropped task or fabricated role outcome.
