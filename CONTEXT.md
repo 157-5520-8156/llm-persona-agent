@@ -10,7 +10,7 @@ caf7e8d3 exposes existing10/30/120-minute WorldStimulus retries through QQ clock
 48dc91d6 reuses only immutable memory candidate/audit decoding, never source/receipt/current authority;
 fb8b4bca keeps overdue unreadable memory entries from hiding future candidate clock deadlines.
 Default worker.next_due(), pending leases, actual drain/role choices and all old records remain unchanged.
-Latest completed full regression v7 on48dc91d6:10646 pass/19 skip/2 xfail/1 existing warning,
+Historical full regression v7 on48dc91d6:10646 pass/19 skip/2 xfail/1 existing warning,
 1693.52s pytest,exit0,1705 Python hashes unchanged. Full v8 onfb8b4bca also passes10646/19skip/2xfail,
 1 existing warning,1592.62s pytest,exit0,1705 Python hashes unchanged.
 ac10f453 social recovery optimization scans Observation history lazily once per drain; original
@@ -32,7 +32,7 @@ Live-v12 completed on frozenfb8b4bca; no hot patch.
 existing2048bound immutable cache; actual acceptance/source/permission/effect checks still run each time.
 Both codec registries compared against content snapshots; changed entries/whole tables bypass cache.
 39worker+175authority tests/Ruff/bothreviews pass; original worker red4decodes becomes2, preserving
-both exact descendant proof validations. Warm-cache missing receipt still rejects. Fullv11 running,
+both exact descendant proof validations. Warm-cache missing receipt still rejects. Fullv11 passes10655/19skip/2xfail,1existingwarning,1189.56s,exit0,1705Pythonhashes unchanged.
 Python source frozen. Raw1131-proposal microbenchmark .142->.006s is decode-only. Whole zeroAPI
 prototype same-empty-status cached6.15/6.65s vsrestored8.59s; initial accepted-status baselines excluded.
 Actualimplementation same-empty-status A/B5.80/6.37s vsrestored8.14s;78dues/45153eventbytes/source
@@ -82,8 +82,11 @@ No heartbeat coalescing/provider calls. Invalid concurrentcProfile diagnostic ke
 control proved profiler conflict and the corrected single-profiler run completed. No Python upgrade.
 Ledger:253proxy+5 oldDS;10,469,834 reported/reserved proxy tokens; oldDS reserve1.218144CNY retained.
 Limits512proxy/20Mtokens,128DS/5CNY,5400s admission per phase; original64-request grant remains separate.
-No active paid continuation while final code qualification pending. Failure counters, unknown reserves
-and source identities must never reset. Full cross-day/production gates remain open.
+Live-v13 now continues from v12 fullcopy/reconciled checkpoint through guarded launch_continuation.py,
+implementation8a148e15 qualified byfullv11. Sameorigin/limits; failed18/stalled0 inherited.
+monitor_v13.py observes proxy; process-exit.json now persists real subprocess exit separately from
+business result. No source hotpatch. Failure counters, unknown reserves and source identities must
+never reset. Full cross-day/production gates remain open.
 Evidence: output/private-audits/proxy-backlog-20261014/ and proxy-outlook-validation-20261014/;
 consolidated details: docs/audits/hybrid-background-provider-2026-10-13.md.
 
