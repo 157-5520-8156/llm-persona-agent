@@ -17,7 +17,8 @@ from .interaction_act_events import (
 )
 from .interaction_act_proposal_compiler import InteractionActProposalCompiler
 from .ledger import LedgerPort
-from .proposal_envelope import DecisionProposal, validate_proposal_envelope
+from .proposal_audit_schemas import decode_recorded_proposal
+from .proposal_envelope import DecisionProposal
 from .schema_core import FrozenModel
 from .schemas import CommitResult, ProjectionCursor
 from .stale_proposal_settlement import settle_stale_typed_proposal
@@ -78,7 +79,7 @@ class InteractionActWorker:
             if audit.proposal_kind != "decision":
                 continue
             try:
-                proposal = validate_proposal_envelope(json.loads(audit.proposal_json))
+                proposal = decode_recorded_proposal(audit)
             except (TypeError, ValueError, json.JSONDecodeError) as exc:
                 raise InteractionActWorkerError("source_proposal_invalid") from exc
             if not isinstance(proposal, DecisionProposal):

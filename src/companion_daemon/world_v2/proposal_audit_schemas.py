@@ -7,6 +7,8 @@ mutation or Action and intentionally have no dependency on Acceptance.
 from __future__ import annotations
 
 from .proposal_envelope import validate_proposal_envelope
+from . import proposal_envelope
+from .immutable_value_cache import immutable_value_cache
 
 import hashlib
 import json
@@ -1291,6 +1293,29 @@ class ProposalAuditProjection(ProposalRecordedV2Payload):
     event_payload_hash: str = Field(pattern=_HASH)
 
 
+_RECORDED_PAYLOAD_CODECS = proposal_envelope.PAYLOAD_MODEL_REGISTRY.copy()
+_RECORDED_TRANSITIONS = proposal_envelope.CHANGE_TRANSITION_REGISTRY.copy()
+
+
+@immutable_value_cache(maxsize=2048)
+def _decode_recorded_proposal(audit):
+    return validate_proposal_envelope(json.loads(audit.proposal_json))
+
+
+def decode_recorded_proposal(audit: ProposalAuditProjection) -> proposal_envelope.ProposalInput:
+    """Reuse immutable history decoding, never current authority or acceptance.
+
+    Payload model classes are static after import. Changed registry bindings
+    bypass reuse, including in-place edits and replacement of either table.
+    Callers still check current sources, permissions, receipts and effects.
+    """
+    decoder = _decode_recorded_proposal
+    if (proposal_envelope.PAYLOAD_MODEL_REGISTRY != _RECORDED_PAYLOAD_CODECS
+            or proposal_envelope.CHANGE_TRANSITION_REGISTRY != _RECORDED_TRANSITIONS):
+        decoder = decoder.__wrapped__
+    return decoder(audit)
+
+
 __all__ = [
     "LifeDevelopmentRecallResultRecordedPayload",
     "ModelResultAuditProjection",
@@ -1303,6 +1328,7 @@ __all__ = [
     "ProposalAuditProjection",
     "ProposalRecordedV2Payload",
     "canonical_json",
+    "decode_recorded_proposal",
     "model_audit_json",
     "physical_provider_terminal_matches",
     "recorded_physical_provider_audit",

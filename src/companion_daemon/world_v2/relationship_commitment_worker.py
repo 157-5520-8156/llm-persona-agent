@@ -17,7 +17,8 @@ from .audited_proposal_settlement import (
     settle_terminal_audited_change,
 )
 from .ledger import LedgerPort
-from .proposal_envelope import DecisionProposal, validate_proposal_envelope
+from .proposal_audit_schemas import decode_recorded_proposal
+from .proposal_envelope import DecisionProposal
 from .relationship_commitment_acceptance_runtime import (
     RelationshipCommitmentAcceptanceRuntime,
 )
@@ -91,7 +92,7 @@ class RelationshipCommitmentWorker:
             if audit.proposal_kind != "decision":
                 continue
             try:
-                proposal = validate_proposal_envelope(json.loads(audit.proposal_json))
+                proposal = decode_recorded_proposal(audit)
             except (TypeError, ValueError, json.JSONDecodeError) as exc:
                 raise RelationshipCommitmentWorkerError(
                     "source_proposal_invalid"

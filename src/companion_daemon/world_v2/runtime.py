@@ -127,6 +127,7 @@ from .memory_withdrawal_review import (
 )
 from .proposal_audit import ProposalAuditCommit
 from .proposal_envelope import DecisionProposal, MinimalProposal, validate_proposal_envelope
+from .proposal_audit_schemas import decode_recorded_proposal
 from .unified_inbound_decision import inspect_unified_inbound_decision
 from .chat_life_intent_runtime import ChatLifeIntentRuntime, chat_life_plan_id
 from .chat_life_intent_retry import acceptance_is_due
@@ -1475,7 +1476,7 @@ class WorldRuntime:
             if audit.proposal_kind not in {"decision", "minimal"}:
                 continue
             try:
-                proposal = validate_proposal_envelope(json.loads(audit.proposal_json))
+                proposal = decode_recorded_proposal(audit)
             except (TypeError, ValueError, json.JSONDecodeError):
                 continue
             if (
@@ -2336,9 +2337,7 @@ class WorldRuntime:
             ):
                 continue
             try:
-                proposal = validate_proposal_envelope(
-                    json.loads(selected.proposal_json)
-                )
+                proposal = decode_recorded_proposal(selected)
                 if not isinstance(proposal, DecisionProposal):
                     continue
                 shape = inspect_unified_inbound_decision(proposal)

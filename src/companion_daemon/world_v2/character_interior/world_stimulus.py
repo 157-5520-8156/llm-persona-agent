@@ -60,6 +60,7 @@ from ..proposal_audit_schemas import (
     RecordedModelResultAudit,
     RecordedModelRoute,
     canonical_json,
+    decode_recorded_proposal,
     model_audit_json,
     sha256,
 )
@@ -2433,7 +2434,7 @@ class CharacterInteriorWorldStimulusRuntime:
 
     @staticmethod
     def _world_life_response_is_pending(projection, *, audit) -> bool:
-        proposal = validate_proposal_envelope(json.loads(audit.proposal_json))
+        proposal = decode_recorded_proposal(audit)
         if not isinstance(proposal, DecisionProposal):
             return False
         accepted_refs = {ref.event_id for ref in projection.committed_world_event_refs
@@ -2458,7 +2459,7 @@ class CharacterInteriorWorldStimulusRuntime:
 
     @staticmethod
     def _world_life_intent_is_pending(projection, *, audit) -> bool:
-        proposal = validate_proposal_envelope(json.loads(audit.proposal_json))
+        proposal = decode_recorded_proposal(audit)
         if not isinstance(proposal, DecisionProposal):
             return False
         accepted_ids = {plan.plan_id for plan in projection.plans}
@@ -2520,7 +2521,7 @@ class CharacterInteriorWorldStimulusRuntime:
 
     def _affect_is_pending(self, projection: object, *, audit: object) -> bool:
         try:
-            proposal = validate_proposal_envelope(json.loads(audit.proposal_json))
+            proposal = decode_recorded_proposal(audit)
         except (TypeError, ValueError, json.JSONDecodeError):
             return False
         if not isinstance(proposal, DecisionProposal):
