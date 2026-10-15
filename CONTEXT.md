@@ -5,6 +5,7 @@ v17 adds3proxy/1DS, no newfailure; cold World72.0333h/seq46127, all46015 origina
 Cumulative343proxy/14087298reported-or-reservedtokens +25DS/1.81634728CNY conservative exposure; unknown reserves retained.
 Mixed-lane failure counters42/0 are diagnostic, not proof every failure recovered. Day1/day3 completed; ordinary sampled review unchanged.
 48legacy source-gap memory dues remain (excludinglegacy0),3old processes plus1new day3 private-impression process remain.
+New impression is not yet due: recent_user_observation gate, quiet boundary00:41:18 vs terminal00:13:18; future execution unobserved.
 Overlap firstCapture7.251s whileproxy pending; day3host9.217s/4exact terminal Capture receipts. Not QQ or5sSLA.
 Day1/overlap unsupported just-woke claims remain semantic failures; day3 content review recorded separately.
 Profile example now180s, matching qualified settings;35focused tests pass. No application Python change after fullv15.
