@@ -3255,3 +3255,15 @@ planning sources/history and incrementally delivers newly terminal sources witho
 Role decisions, cadence, validators, original failures and effects remain. Scoped272 tests passed;
 final frozen full suite and72h continuation are pending. See docs/design/long-horizon-working-sets-2026-10-15.md.
 Do not interpret this as released or reset v13's reconciled20/2 and original journey origin.
+
+Implementation02511e9a now passed frozen full regression-v12:10680passed/19skip/2xfail,
+1knownwarning,1293.25s;1705Python hashes unchanged. Ruff/diff and Spec/Standards closed.
+Full tracked source+resources probe: same v13 failedpin45175 request113942->74496B under100000,
+14authority/context fields identical, condition sources190->26 with all current conditions/tokens.
+Complete v12 clone: hotempty1.385s, initialindex6.497s, unchanged78dues and45153eventbytes,0paidAPI.
+Not a sustained latency/SLA claim. Earlier src-only snapshot omitted resources; scope notes invalidate
+its timing. Nativehistory0/10/100/1000 gives1row/240B/146SQLiteVMsteps; memoryreviews3/30/300
+retain1badbatch with2contentreads after unrelated append. All historical data/failures remain.
+Proxy read-only preflight now0.9.13,ready; user's latest node/update confirmation pending.
+Private launcher exactv13operatorstop guard reviewed with10negativecontrols; no generic bypass.
+Next authorized action: live-v14 fromv13, inherited20/2, original72hstart, cumulative accounting.

@@ -76,3 +76,27 @@
 - `scheduler-working-set-v12`和`...-v2-v12`仅为诊断：发现私有runner导入时把checkout src
   放在PYTHONPATH前，故不能作为源码冻结证据。已补显式package路径绑定；最终测量必须
   使用新的路径断言、源码hash和零API完整库副本。早期材料原样保留并加scope note。
+
+## 冻结实现02511e9a的离线证据
+
+- 完整跟踪仓库资源随源码冻结；之前src-only测量缺少资源，已加scope note，不作性能依据。
+- `scheduler-qualified-resources-v12/profile-result.json`：45153条事件、2890模型审计、1131提案、
+  2051流程保持；源SHA与全部原事件字节不变、付费API0。首次索引6.497s，最后热空闲1.385s，
+  中间两轮accepted分别0.749/0.490s，不把它们混作空闲样本。due数量四轮都是78。
+  该数是完整库诊断样本，含profiler开销及同机负载，不是聊天SLA或持续性能资格。
+- `source-history-growth-v2/result.json`：真实SQLite已结束计划0/10/100/1000，全部保留；
+  当前来源始终1行、240B、146 SQLite VM steps。固定活跃任务时，历史增长未增加该查询工作。
+- `memory-history-growth-result.json`：实际审核历史3/30/300批，均保留1个永久坏批次；
+  无关内容追加只读该坏批次的2份内容，与完整reader的acknowledgement一致。
+- `outlook-qualified-resources-v13/comparison.json`：相同失败pin45175，113942B ->74496B，
+  仍为100000B限制；条件来源190->26，所有当前条件与保留token一致。World Context、basis、
+  history material/offer、NPC能力/隐私、计划日程、地点权限等14个字段与原包完全相同。
+  原失败与全部事件保留。独立冷终态仍45183、1259前史、同一semantic_hash。付费API0。
+- Standards/Spec最终只读复核均无新增阻塞。v13私有续跑准入仅允许指定operator stop，
+  10个负例拒绝；原20/2、inflight、72h起点、结果和数据库SHA都须保持。
+- 代理只读预检发现版本已为0.9.13；后续数据应按新版本单列，不能归因于旧0.9.12或本地优化。
+  当前节点是否再次变化尚未得到用户确认；未更新、重启或更换代理设置。
+
+`final-regression-v12/result.json`：实现02511e9a，全量10680 passed /19 skipped /2 xfailed，
+1条既有Starlette弃用警告，1293.25s；1705个Python文件hash全程一致。Ruff与diff检查通过。
+这些离线结果不构成72小时或发布通过；下一步从原v13终态严格继承后续跑。
