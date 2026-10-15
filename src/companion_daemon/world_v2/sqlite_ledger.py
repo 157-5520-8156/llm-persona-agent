@@ -1056,6 +1056,15 @@ class SQLiteWorldLedger:
                 ON world_v2_events (world_id, commit_id, ledger_sequence);
             CREATE INDEX IF NOT EXISTS world_v2_events_type_sequence_lookup
                 ON world_v2_events (world_id, json_extract(event_json, '$.event_type'), ledger_sequence);
+            -- Scheduler interval/cap checks need an exact completion, without
+            -- scanning every historical completion for each trigger.
+            CREATE INDEX IF NOT EXISTS world_v2_events_trigger_completion_lookup
+                ON world_v2_events (
+                    world_id,
+                    json_extract(json_extract(event_json, '$.payload_json'), '$.trigger_id'),
+                    ledger_sequence DESC
+                )
+                WHERE json_extract(event_json, '$.event_type') = 'TriggerProcessCompleted';
             CREATE INDEX IF NOT EXISTS world_v2_head_trigger_identity_lookup
                 ON world_v2_head_state_items (world_id, json_extract(item_json, '$.trigger_id'))
                 WHERE field='trigger_processes';
