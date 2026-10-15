@@ -121,3 +121,32 @@ Anthropic Messages线路，gemini-3.8-flash-medium，max_tokens64000，实际HTT
 
 本地修复资格已完成；剩余阻塞是代理长请求无法可靠完成，完整跨日和发布资格仍未通过。
 在没有新的原因证据或外部状态变化前，不重复相同付费试验，也不绕过停止门槛。
+
+
+## 后续上线验收授权与标准（2026-10-15）
+
+用户明确要求继续冻结功能，允许异步偶发超时，观察自动恢复、积压消化和聊天延迟；
+撤销三次失败停止规则，保留所有失败与原校验，最后验证真实QQ。此授权取代上面的停试约束，
+不改写v14原始结果与21/3，不重置72h起点或费用。原512proxy/20Mtokens、128DS/5CNY、
+每段5400s准入预算保持。超时/冷却/退避仍由实际生产代码执行。
+
+本轮只新增私有验收驱动`run_release_recovery.py`和带独占锁的launcher；产品源码继续冻结于
+02511e9a的1705个Python文件hash。脚本沿原30秒节拍、8Action/1background推进，保留day1/day3
+固定问答；每小时及失败/Outlook接纳时记录积压。48项旧来源缺口继续计入总量并单列，不能
+靠排除它们宣称所有工作已完成。新增/可处理工作的数量和等待年龄须在恢复后回落。
+
+一个额外固定聊天探针在真实代理请求等待5秒后并发进入原QQC2CHost.inbound_text，仍为
+CaptureDelivery。稳定message_id与逐次dispatch证据保存；恢复投递不当作首次延迟。
+HTTP调用按ContextVar记录执行通道，ModelResult用精确request_hash匹配，未知归因单列。
+原失败窗口计数保留并明确为mixed-window，聊天进展不能当作后台恢复。发送窗口计时还须
+核对实际action/receipt；这不是同输入的配对因果试验，也不代表QQ网络耗时。
+
+收尾先标pre-close，再等待host任务静止，独立冷读取final-counts及terminal backlog。费用
+总账由整个子进程生命周期的launcher锁保护，原未知用量预留不清除。结构/事实/隐私、
+CAS、effect-once与真实回执仍为硬门槛，horizon结束不等于这些指标通过。
+
+零API控制：原21/3经历4次失败仍继续为25/7，真实进展后才成为25/0；原失败行全部保留。
+同一inflight在聊天写checkpoint期间仍保留；并发归因、冷恢复dispatch身份与双进程锁控制
+通过。4项真实host/background隔离回归通过，Spec/Standards最后复核均关闭。
+launcher锁FD由child继承，父进程异常退出也不会释放仍活动的子进程所持费用锁。
+真实QQ只在隔离恢复/积压/聊天验收之后进行，按已配置的个人测试目标及单出站owner执行。

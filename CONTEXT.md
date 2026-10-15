@@ -1,3 +1,12 @@
+Latest user instruction (2026-10-15): freeze new features and continue pre-release acceptance.
+Transient asynchronous timeouts are allowed. Verify eventual recovery, backlog drain and chat responsiveness;
+explicitly replace the three-failure stop, retain failures/counters/validators, then validate real QQ last.
+Continue from live-v14 21/3 and original72h origin/budget. Product Python remains frozen02511e9a.
+New private release-recovery.1 runner/launcher preserve 30s cadence and512proxy/20Mtokens,128DS/5CNY,
+5400s per-phase admission; observe current-source backlog and concurrent chat with exact request ownership.
+ZeroAPI control/4host-isolation tests and both review axes passed. Launch live-v15 with locked launcher.
+Read design/long-horizon-working-sets-2026-10-15.md for protocol; real QQ follows isolated gates.
+
 Current checkpoint (2026-10-15): local working-set fixes qualified; cross-day BLOCKED by proxy timeout.
 Worktree/branch unchanged. Implementation02511e9a, frozen fullv12:10680passed/19skip/2xfail,
 1knownwarning,1293.25s,1705Pythonhashesunchanged. Ruff/diff/Standards/Spec closed. No paid run active.
