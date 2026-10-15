@@ -11,6 +11,9 @@ from datetime import datetime
 import hashlib
 import json
 import math
+import sqlite3
+from threading import RLock
+from weakref import finalize
 
 from .memory_consolidation_contract import MemoryReviewBatch, validate_payload
 from .memory_consolidation_contract import source_texts
@@ -38,6 +41,7 @@ def _parse_candidate(raw):
     return MemoryCandidateProjection.model_validate_json(raw)
 
 
+@immutable_value_cache(maxsize=4096)
 def support_fingerprint(candidate):
     """Retention-review clocks/strength are not changes to remembered content."""
     values = candidate.values
@@ -121,6 +125,153 @@ class MemoryUnderstandingReader:
 
     def __init__(self, *, ledger, content_store, actor_ref):
         self.ledger, self.store, self.actor_ref = ledger, content_store, actor_ref
+        self._schedule_lock = RLock()
+        self._schedule_index = None
+        self._schedule_sequence = 0
+        self._schedule_generation = None
+
+    def schedule(self, projection):
+        """Incremental review acknowledgements, not a semantic/permission read.
+
+        Only the concrete verified append-only adapters may reuse old batch
+        proofs. Historical projections and substituted readers retain the full
+        independent reader. A private temporary SQLite index keeps historical
+        fingerprints off the Python heap; its page cache has a fixed budget.
+        """
+        from .sqlite_ledger import SQLiteWorldLedger
+        from .life_content_store import SQLiteImmutableLifeContentStore
+        from .context_read_scope import current_content_snapshot
+
+        if (type(self.ledger) is not SQLiteWorldLedger
+                or type(self.store) is not SQLiteImmutableLifeContentStore
+                or "lookup_event_commit" in vars(self.ledger)
+                or "read_exact" in vars(self.store)
+                or current_content_snapshot(self.store) is not None
+                or projection is not self.ledger.project()):
+            return self.read(projection)
+        if not self._schedule_lock.acquire(blocking=False):
+            return self.read(projection)
+        try:
+            try:
+                return self._schedule(projection)
+            except BaseException:
+                self._schedule_generation = None
+                raise
+        finally:
+            self._schedule_lock.release()
+
+    def _schedule(self, projection):
+        generation = (self.ledger.verified_history_generation(), *self.store.read_generations())
+        cursor = ProjectionCursor(world_revision=projection.world_revision,
+                                  deliberation_revision=projection.deliberation_revision,
+                                  ledger_sequence=projection.ledger_sequence)
+        if self._schedule_index is None:
+            self._schedule_index = sqlite3.connect("", isolation_level=None, check_same_thread=False)
+            finalize(self, self._schedule_index.close)
+            self._schedule_index.executescript("""
+                PRAGMA cache_size=-1024;
+                CREATE TABLE acknowledged(fingerprint TEXT PRIMARY KEY);
+                CREATE TABLE versions(ref TEXT PRIMARY KEY, active INTEGER NOT NULL);
+                CREATE TABLE pending(trigger_id TEXT PRIMARY KEY, blocked INTEGER NOT NULL DEFAULT 0,
+                                     receipt_ref TEXT);
+            """)
+        db = self._schedule_index
+        old = self._schedule_generation
+        if (old is None or generation[0] != old[0] or generation[2] != old[2]
+                or projection.ledger_sequence < self._schedule_sequence):
+            db.executescript("DELETE FROM acknowledged; DELETE FROM versions; DELETE FROM pending;")
+            self._schedule_sequence = 0
+        elif generation[1] != old[1]:
+            # New bytes may repair a missing immutable job. Check only those
+            # failed batches first; unrelated appends never re-fold good history.
+            for identity, in db.execute("SELECT trigger_id FROM pending WHERE blocked=1").fetchall():
+                process = self.ledger.trigger_processes_at((identity,), cursor=cursor).get(identity)
+                if process is None or not process.attempt_ids:
+                    continue
+                ref = "event:memory-review:completed:" + digest([identity, process.attempt_ids[-1]])
+                located = self.ledger.lookup_event_commit(ref)
+                if located is None or located[1].ledger_sequence > projection.ledger_sequence:
+                    continue
+                try:
+                    restored = self._validated_batch(projection, process, *located)
+                except (ValueError, KeyError, TypeError):
+                    continue
+                if restored is not None:
+                    # A repaired earlier batch can change later predecessor
+                    # validity. Rebuild in receipt order only on actual repair.
+                    self._schedule_generation = None
+                    return self._schedule(projection)
+        after = self._schedule_sequence
+        while after < projection.ledger_sequence:
+            page = self.ledger.events_after(
+                cursor=cursor, after_sequence=after,
+                event_types=frozenset({"TriggerProcessOpened", "TriggerProcessCompleted"}),
+            )
+            if not page:
+                break
+            identities = {event.payload().get("trigger_id") or event.payload().get("process", {}).get("trigger_id")
+                          for _, event in page}
+            identities.discard(None)
+            processes = self.ledger.trigger_processes_at(tuple(identities), cursor=cursor)
+            db.executemany("INSERT OR IGNORE INTO pending(trigger_id) VALUES(?)", (
+                (p.trigger_id,) for p in processes.values() if p.process_kind == "memory_consolidation_review"))
+            after = page[-1][0]
+        identities = [row[0] for row in db.execute("SELECT trigger_id FROM pending WHERE blocked=0")]
+        receipts = []
+        for offset in range(0, len(identities), 256):
+            processes = self.ledger.trigger_processes_at(identities[offset:offset + 256], cursor=cursor)
+            for identity, process in processes.items():
+                if process.state != "terminal":
+                    continue
+                if not (process.runtime_outcome_ref or "").startswith("memory-consolidation:reviewed:"):
+                    db.execute("DELETE FROM pending WHERE trigger_id=?", (identity,))
+                    continue
+                ref = ("event:memory-review:completed:" + digest([identity, process.attempt_ids[-1]])
+                       if process.attempt_ids else None)
+                located = self.ledger.lookup_event_commit(ref) if ref else None
+                if located is not None and located[1].ledger_sequence <= projection.ledger_sequence:
+                    receipts.append((process, *located))
+        for process, event, commit in sorted(receipts, key=lambda row: row[2].ledger_sequence):
+            blocked = 1
+            try:
+                verified = self._validated_batch(projection, process, event, commit)
+                if verified is None:
+                    db.execute("DELETE FROM pending WHERE trigger_id=?", (process.trigger_id,))
+                    continue
+                batch, sources, previous = verified
+                replacements = {previous[token] for update in batch.understandings for token in update.predecessor_tokens}
+                blocked = 2  # Immutable predecessor order cannot heal from unrelated new bytes.
+                if any(not db.execute("SELECT 1 FROM versions WHERE ref=? AND active=1", (ref,)).fetchone()
+                       for ref in replacements):
+                    raise ValueError("understanding predecessor is not accepted and active")
+                db.execute("BEGIN")
+                try:
+                    db.executemany("UPDATE versions SET active=0 WHERE ref=?", ((ref,) for ref in replacements))
+                    db.executemany("INSERT INTO versions VALUES(?,1)", (
+                        ("memory-understanding:" + digest([process.trigger_id, number]),)
+                        for number, _ in enumerate(batch.understandings)))
+                    db.executemany("INSERT OR IGNORE INTO acknowledged VALUES(?)", (
+                        (support_fingerprint(candidate),) for token, candidate in sources.items() if token.startswith("m")))
+                    db.execute("DELETE FROM pending WHERE trigger_id=?", (process.trigger_id,))
+                    db.execute("COMMIT")
+                except BaseException:
+                    db.execute("ROLLBACK")
+                    raise
+            except (ValueError, KeyError, TypeError):
+                db.execute("INSERT OR REPLACE INTO pending VALUES(?,?,?)", (process.trigger_id, blocked, event.event_id))
+        if (self.ledger.verified_history_generation(), *self.store.read_generations()) != generation:
+            self._schedule_generation = None
+            raise ValueError("memory schedule proof changed during its read")
+        self._schedule_generation = generation
+        self._schedule_sequence = projection.ledger_sequence
+        fingerprints = {support_fingerprint(c) for c in projection.memory_candidates if c.values.status == "active"}
+        acknowledged = frozenset(fp for fp in fingerprints
+                                 if db.execute("SELECT 1 FROM acknowledged WHERE fingerprint=?", (fp,)).fetchone())
+        failures = tuple((ref, "receipt_or_content_proof_failed")
+                         for ref, in db.execute("SELECT receipt_ref FROM pending WHERE blocked>0"))
+        pending = sum(c.values.status == "active" and support_fingerprint(c) not in acknowledged
+                      for c in projection.memory_candidates)
+        return UnderstandingSnapshot((), (), acknowledged, failures, pending)
 
     def _content(self, ref):
         body = self.store.read_exact(content_ref=ref)
@@ -128,6 +279,66 @@ class MemoryUnderstandingReader:
                 or hashlib.sha256(body.text.encode()).hexdigest() != body.content_payload_hash):
             raise ValueError("memory understanding content proof unavailable")
         return json.loads(body.text)
+
+    def _validated_batch(self, projection, process, event, receipt_commit, *, committed=None):
+        payload = event.payload()
+        if (event.world_id != projection.world_id or event.event_type != "TriggerProcessCompleted"
+                or payload.get("trigger_id") != process.trigger_id):
+            raise ValueError("completion receipt changed world or type")
+        job = self._content(process.trigger_ref)
+        if job.get("contract") != "memory-review-job.2":
+            return None  # Choice-only historical reviews authored no understanding.
+        if (job["world_id"] != projection.world_id or job["actor_ref"] != self.actor_ref
+                or process.trigger_ref != "memory-review-job:" + digest(job)
+                or job["clock_event_ref"] != process.source_evidence_ref):
+            raise ValueError("understanding job identity changed")
+        decision = self._content("memory-review-decision:" + digest(process.trigger_id))
+        batch = MemoryReviewBatch.model_validate_json(canonical(decision["batch"]))
+        # Reuse only immutable decoding. Receipt/effect/current-source
+        # authority below is still resolved afresh on every read.
+        audit = _parse_audit(canonical(decision["audit"]))
+        lineage = json.loads(audit.audit_json).get("character_interior_lineage") or {}
+        if (decision["job_hash"] != digest(job)
+                or payload.get("character_interior_model_result") != audit.model_dump(mode="json")
+                or audit.proposal_hash != "sha256:" + digest(batch.model_dump(mode="json"))
+                or payload.get("runtime_outcome_ref") != process.runtime_outcome_ref
+                or process.runtime_outcome_ref != "memory-consolidation:reviewed:" + digest(decision["batch"])):
+            raise ValueError("standing understanding has no exact successful author receipt")
+        if (lineage.get("purpose") != "memory_consolidation"
+                or lineage.get("causal_actor_ref") != self.actor_ref
+                or lineage.get("causal_world_id") != projection.world_id
+                or lineage.get("causal_epoch") != process.trigger_ref):
+            raise ValueError("standing understanding author belongs to another actor or purpose")
+        candidates = {
+            f"m{i}": _parse_candidate(canonical(c))
+            for i, c in enumerate(job["candidates"])
+        }
+        candidates.update({f"k{i}": _parse_candidate(canonical(c))
+                           for i, c in enumerate(job.get("context_candidates", []))})
+        previous = {f"u{i}": ref for i, ref in enumerate(job.get("understanding_refs", []))}
+        validate_payload(batch.model_dump(mode="json"), {f"m{i}" for i in range(len(job["candidates"]))},
+                         source_tokens=set(candidates), predecessor_tokens=set(previous),
+                         readings={**{f"m{i}": r for i, r in enumerate(job["readings"])},
+                                   **{f"k{i}": r for i, r in enumerate(job.get("context_readings", []))}})
+        if batch.understandings is None:
+            raise ValueError("new memory batch lacks explicit understanding decision")
+        # A saved model decision or a forged completion marker is not
+        # enough. Every retention choice must have its typed effect
+        # committed before this receipt under the very same author.
+        for choice in batch.choices:
+            candidate = candidates[choice.candidate_token]
+            effect_ref = "event:memory-consolidation:effect:" + digest([process.trigger_id, candidate.candidate_id])
+            located_effect = self.ledger.lookup_event_commit(effect_ref)
+            effect = (committed.get(effect_ref) if committed is not None else
+                      self.ledger.resolve_committed_event_refs((effect_ref,),
+                          at_world_revision=projection.world_revision).get(effect_ref))
+            if (effect is None or located_effect is None
+                    or located_effect[1].ledger_sequence >= receipt_commit.ledger_sequence
+                    or located_effect[0].world_id != projection.world_id
+                    or effect.payload_hash != located_effect[0].payload_hash
+                    or located_effect[0].payload().get("character_interior_model_result") != audit.model_dump(mode="json")):
+                raise ValueError("understanding batch has incomplete or differently authored effects")
+        return batch, candidates, previous
 
     def read(self, projection):
         if self.store is None:
@@ -151,59 +362,11 @@ class MemoryUnderstandingReader:
             if process is None:
                 continue
             try:
-                if event.world_id != projection.world_id or event.event_type != "TriggerProcessCompleted":
-                    raise ValueError("completion receipt changed world or type")
-                job = self._content(process.trigger_ref)
-                if job.get("contract") != "memory-review-job.2":
-                    continue  # Choice-only historical reviews authored no understanding.
-                if (job["world_id"] != projection.world_id or job["actor_ref"] != self.actor_ref
-                        or process.trigger_ref != "memory-review-job:" + digest(job)
-                        or job["clock_event_ref"] != process.source_evidence_ref):
-                    raise ValueError("understanding job identity changed")
-                decision = self._content("memory-review-decision:" + digest(process.trigger_id))
-                batch = MemoryReviewBatch.model_validate_json(canonical(decision["batch"]))
-                # Reuse only immutable decoding. Receipt/effect/current-source
-                # authority below is still resolved afresh on every read.
-                audit = _parse_audit(canonical(decision["audit"]))
-                lineage = json.loads(audit.audit_json).get("character_interior_lineage") or {}
-                if (decision["job_hash"] != digest(job)
-                        or payload.get("character_interior_model_result") != audit.model_dump(mode="json")
-                        or audit.proposal_hash != "sha256:" + digest(batch.model_dump(mode="json"))
-                        or payload.get("runtime_outcome_ref") != process.runtime_outcome_ref
-                        or process.runtime_outcome_ref != "memory-consolidation:reviewed:" + digest(decision["batch"])):
-                    raise ValueError("standing understanding has no exact successful author receipt")
-                if (lineage.get("purpose") != "memory_consolidation"
-                        or lineage.get("causal_actor_ref") != self.actor_ref
-                        or lineage.get("causal_world_id") != projection.world_id
-                        or lineage.get("causal_epoch") != process.trigger_ref):
-                    raise ValueError("standing understanding author belongs to another actor or purpose")
-                candidates = {
-                    f"m{i}": _parse_candidate(canonical(c))
-                    for i, c in enumerate(job["candidates"])
-                }
-                candidates.update({f"k{i}": _parse_candidate(canonical(c))
-                                   for i, c in enumerate(job.get("context_candidates", []))})
-                previous = {f"u{i}": ref for i, ref in enumerate(job.get("understanding_refs", []))}
+                verified = self._validated_batch(projection, process, event, receipt_commit, committed=committed)
+                if verified is None:
+                    continue
+                batch, candidates, previous = verified
                 known = {v.version_ref for v in versions if v.version_ref not in retired}
-                validate_payload(batch.model_dump(mode="json"), {f"m{i}" for i in range(len(job["candidates"]))},
-                                 source_tokens=set(candidates), predecessor_tokens=set(previous),
-                                 readings={**{f"m{i}": r for i, r in enumerate(job["readings"])},
-                                           **{f"k{i}": r for i, r in enumerate(job.get("context_readings", []))}})
-                if batch.understandings is None:
-                    raise ValueError("new memory batch lacks explicit understanding decision")
-                # A saved model decision or a forged completion marker is not
-                # enough. Every retention choice must have its typed effect
-                # committed before this receipt under the very same author.
-                for choice in batch.choices:
-                    candidate = candidates[choice.candidate_token]
-                    effect_ref = "event:memory-consolidation:effect:" + digest([process.trigger_id, candidate.candidate_id])
-                    effect = committed.get(effect_ref)
-                    located_effect = self.ledger.lookup_event_commit(effect_ref) if effect else None
-                    if (effect is None or located_effect is None
-                            or located_effect[1].ledger_sequence >= receipt_commit.ledger_sequence
-                            or effect.payload_hash != located_effect[0].payload_hash
-                            or located_effect[0].payload().get("character_interior_model_result") != audit.model_dump(mode="json")):
-                        raise ValueError("understanding batch has incomplete or differently authored effects")
                 additions, replacements = [], set()
                 prior_by_ref = {v.version_ref: v for v in versions}
                 for number, update in enumerate(batch.understandings):

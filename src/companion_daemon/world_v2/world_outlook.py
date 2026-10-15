@@ -176,11 +176,19 @@ class OutlookSource(FrozenModel):
     token: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
-def source_catalog(projection, *, actor_ref: str, npc_refs: tuple[str, ...] = ()):
-    """Only current technical entity state; no NPC/private psychological text."""
+def source_catalog(projection, *, actor_ref: str, npc_refs: tuple[str, ...] = (), required_refs=None,
+                   legacy_fact_status=True):
+    """Resolve technical state; a working catalog retains live and referenced history.
+
+    None retains the legacy full catalog for old pinned requests. A concrete
+    reference set scopes new planning reads, never deletes or retires entities.
+    """
     values = {}
     for p in getattr(projection, "plans", ()):
-        if p.owner_actor_ref == actor_ref or p.owner_actor_ref in npc_refs:
+        if (p.owner_actor_ref == actor_ref or p.owner_actor_ref in npc_refs) and (
+            required_refs is None or p.status in {"planned", "active", "paused"}
+            or p.plan_id in required_refs
+        ):
             values[p.plan_id] = OutlookSource(
                 source_ref=p.plan_id,
                 source_kind="plan",
@@ -189,7 +197,10 @@ def source_catalog(projection, *, actor_ref: str, npc_refs: tuple[str, ...] = ()
                 allowed_statuses=tuple(get_args(type(p).model_fields["status"].annotation)),
             )
     for o in getattr(projection, "world_occurrences", ()):
-        if actor_ref in o.participant_refs:
+        if actor_ref in o.participant_refs and (
+            required_refs is None or o.status in {"committed", "active"}
+            or o.occurrence_id in required_refs
+        ):
             values[o.occurrence_id] = OutlookSource(
                 source_ref=o.occurrence_id,
                 source_kind="occurrence",
@@ -200,13 +211,13 @@ def source_catalog(projection, *, actor_ref: str, npc_refs: tuple[str, ...] = ()
     # Fact content stays in the already actor-scoped World Context. An exact
     # token can invalidate a premise without inferring meaning from its prose.
     for f in getattr(projection, "facts", ()):
-        if f.values.subject_ref == actor_ref:
+        if f.values.subject_ref == actor_ref and (required_refs is None or f.fact_id in required_refs):
             values[f.fact_id] = OutlookSource(
                 source_ref=f.fact_id,
                 source_kind="fact",
-                status="current",
+                status="current" if legacy_fact_status or f.values.status == "active" else "withdrawn",
                 token=digest(f),
-                allowed_statuses=("current",),
+                allowed_statuses=("current",) if legacy_fact_status else ("current", "withdrawn"),
             )
     for n in getattr(projection, "npcs", ()):
         ref = f"npc:{n.npc_id}"

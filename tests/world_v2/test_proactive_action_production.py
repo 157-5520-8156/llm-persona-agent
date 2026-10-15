@@ -2282,6 +2282,11 @@ async def test_settled_occurrence_cannot_bypass_situation_change_schedule(
     runtime._social_initiative = _NotDueSituationInitiative()  # noqa: SLF001
     monkeypatch.setattr(runtime, "_lookup", lookup)
 
+    def unused_legacy_history(*args, **kwargs):
+        raise AssertionError("no legacy candidate exists; archived retry proofs must not be scanned")
+
+    monkeypatch.setattr("companion_daemon.world_v2.proactive_action.proactive_technical_retry_states", unused_legacy_history)
+    monkeypatch.setattr("companion_daemon.world_v2.proactive_action.technical_failure_point", unused_legacy_history)
     assert await runtime._next_opportunity(projection) is None  # noqa: SLF001
 
 

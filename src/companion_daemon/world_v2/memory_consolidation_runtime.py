@@ -94,7 +94,7 @@ class MemoryConsolidationRuntime(MemoryReviewLease):
                    if p.process_kind == self.PROCESS_KIND and p.state != "terminal"]
         if pending:
             return min(p.claim_lease.expires_at if p.claim_lease else projection.logical_time for p in pending)
-        snapshot = await asyncio.to_thread(self._understandings.read, projection)
+        snapshot = await asyncio.to_thread(self._understandings.schedule, projection)
         return min((at for c in projection.memory_candidates
                     for at in (review_due(c), self._incremental_due(c, snapshot))
                     if at is not None and (not future_only or projection.logical_time is None
@@ -102,7 +102,7 @@ class MemoryConsolidationRuntime(MemoryReviewLease):
 
     async def _open(self, projection):
         now = projection.logical_time
-        snapshot = await asyncio.to_thread(self._understandings.read, projection)
+        snapshot = await asyncio.to_thread(self._understandings.schedule, projection)
         def due_at(c):
             return min((at for at in (review_due(c), self._incremental_due(c, snapshot)) if at is not None), default=None)
         due = sorted((c for c in projection.memory_candidates if due_at(c) is not None and due_at(c) <= now),
@@ -140,6 +140,9 @@ class MemoryConsolidationRuntime(MemoryReviewLease):
         due = balanced_memory_batch([c for c in due if c.candidate_id in readable])
         if not due:
             return None
+        # Actual role cognition still resolves full receipt, source and privacy
+        # authority. Idle polling needs only the incremental review schedule.
+        snapshot = await asyncio.to_thread(self._understandings.read, projection)
         related = self._understandings.context_candidates(projection, due, snapshot)
         context_view = await asyncio.to_thread(
             MemoryRetrievalCompiler(ledger=self._ledger, life_content_store=self._content,

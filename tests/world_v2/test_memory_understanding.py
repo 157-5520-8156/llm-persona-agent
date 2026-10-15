@@ -9,13 +9,130 @@ from companion_daemon.world_v2.memory_consolidation_contract import (
     CONTRACT, source_texts, tool_contract, validate_payload,
 )
 from companion_daemon.world_v2.memory_consolidation_runtime import MemoryConsolidationRuntime
-from companion_daemon.world_v2.memory_understanding import MemoryUnderstandingReader, install_understanding_context
+from companion_daemon.world_v2.memory_understanding import MemoryUnderstandingReader, install_understanding_context, digest
 from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore, StoredLifeContent
 from companion_daemon.world_v2.replay_evaluator import ReplayEvaluator
 from character_interior import canonical_inner_decision
 from test_memory_consolidation_runtime import seed_memories
 from test_visible_selected_source_context import _sources
 from test_life_development_runtime import _seed_clock
+
+
+@pytest.mark.asyncio
+async def test_idle_memory_schedule_does_not_reread_completed_batches_on_clock_progress(tmp_path):
+    async with _sources(tmp_path, extra=True) as case:
+        ledger = case.ledger
+        seed_memories(ledger)
+        store = SQLiteImmutableLifeContentStore(path=tmp_path / "content.sqlite", world_id=ledger.world_id)
+        runtime = worker(ledger, store, Learner())
+        assert (await runtime.drain_one()).work_status == "reviewed"
+        due = await runtime.next_due()
+        reads = []
+        store._connection.set_trace_callback(lambda sql: reads.append(sql) if "SELECT content_kind" in sql else None)
+        try:
+            for hour in (1, 2, 3):
+                clock(ledger, f"idle-{hour}", hour)
+                assert await runtime.next_due() == due
+            assert reads == [], "idle scheduling reread historical author/receipt material"
+        finally:
+            store._connection.set_trace_callback(None)
+            store.close()
+
+
+@pytest.mark.asyncio
+async def test_memory_schedule_tracks_stable_identity_when_life_completion_removes_an_earlier_process(tmp_path):
+    from companion_daemon.world_v2.life_ecology_contract import life_ecology_trigger_id, life_ecology_trigger_ref
+    from companion_daemon.world_v2.schemas import TriggerProcess
+
+    async with _sources(tmp_path, extra=True) as case:
+        ledger = case.ledger
+        seed_memories(ledger)
+        store = SQLiteImmutableLifeContentStore(path=tmp_path / "content.sqlite", world_id=ledger.world_id)
+        runtime = worker(ledger, store, Learner())
+        state = ledger.project()
+        wake = ledger.lookup_event_commit(next(e.event_id for e in reversed(state.committed_world_event_refs)
+                                              if e.event_type == "ClockAdvanced"))[0]
+        ecology = TriggerProcess(
+            trigger_id=life_ecology_trigger_id(world_id=ledger.world_id, wake_event_ref=wake.event_id, catalog_version="test.1"),
+            trigger_ref=life_ecology_trigger_ref(wake_event_ref=wake.event_id, catalog_version="test.1"),
+            process_kind="life_ecology", source_evidence_ref=wake.event_id, state="open",
+        )
+        opened = runtime._event(event_id="event:test:ecology-open", event_type="TriggerProcessOpened",
+                                payload={"process": ecology.model_dump(mode="json")}, logical_time=state.logical_time,
+                                created_at=wake.created_at, trace_id=wake.trace_id, causation_id=wake.event_id,
+                                correlation_id=wake.correlation_id)
+        ledger.commit_at_cursor((opened,), expected_cursor=runtime._cursor(state), commit_id="commit:test:ecology-open")
+        claimed = await runtime._claim_or_reclaim(process=ecology, source_event=wake, projection=ledger.project())
+        try:
+            before = ledger.project()
+            assert not runtime._understandings.schedule(before).acknowledged
+            await runtime._complete(process=claimed, source_event=wake, outcome_ref="life-ecology:idle")
+            assert (await worker(ledger, store, Learner()).drain_one()).work_status == "reviewed"
+            after = ledger.project()
+            assert len(after.trigger_processes) == len(before.trigger_processes)
+            assert {p.trigger_id for p in after.trigger_processes} != {p.trigger_id for p in before.trigger_processes}
+            expected = runtime._understandings.read(after)
+            assert expected.acknowledged
+            assert runtime._understandings.schedule(after).acknowledged == expected.acknowledged
+        finally:
+            store.close()
+
+
+@pytest.mark.asyncio
+async def test_old_content_snapshot_cannot_populate_a_current_schedule_generation(tmp_path):
+    from companion_daemon.world_v2.context_read_scope import context_read_scope
+
+    async with _sources(tmp_path, extra=True) as case:
+        ledger = case.ledger
+        seed_memories(ledger)
+        store = SQLiteImmutableLifeContentStore(path=tmp_path / "content.sqlite", world_id=ledger.world_id)
+        assert (await worker(ledger, store, Learner()).drain_one()).work_status == "reviewed"
+        reader = MemoryUnderstandingReader(ledger=ledger, content_store=store, actor_ref="agent:companion")
+        projection = ledger.project()
+        original = reader.schedule(projection).acknowledged
+        assert original
+        try:
+            with context_read_scope(store, projection):
+                store._connection.execute("UPDATE world_v2_life_content SET text='broken' WHERE content_ref LIKE 'memory-review-decision:%'")
+                assert reader.schedule(projection).acknowledged == original
+            assert not reader.schedule(projection).acknowledged
+            assert not reader.read(projection).acknowledged
+        finally:
+            store.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("history_batches", [3, 12])
+async def test_unrelated_append_does_not_replay_valid_batches_around_a_permanent_bad_batch(tmp_path, history_batches):
+    from companion_daemon.world_v2.life_content_store import life_content_payload_hash
+
+    async with _sources(tmp_path, extra=True) as case:
+        ledger = case.ledger
+        seed_memories(ledger)
+        store = SQLiteImmutableLifeContentStore(path=tmp_path / "content.sqlite", world_id=ledger.world_id)
+        model = Learner()
+        for number in range(history_batches):
+            if number:
+                clock(ledger, f"review-{number}", 72)
+            assert (await worker(ledger, store, model).drain_one()).work_status == "reviewed"
+        processes = [p for p in ledger.project().trigger_processes if p.process_kind == "memory_consolidation_review"]
+        bad_ref = "memory-review-decision:" + digest(processes[0].trigger_id)
+        store._connection.execute("UPDATE world_v2_life_content SET text='broken' WHERE content_ref=?", (bad_ref,))
+        reader = MemoryUnderstandingReader(ledger=ledger, content_store=store, actor_ref="agent:companion")
+        expected = reader.read(ledger.project()).acknowledged
+        assert expected and reader.schedule(ledger.project()).acknowledged == expected
+        reads = []
+        store._connection.set_trace_callback(lambda sql: reads.append(sql) if "SELECT content_kind" in sql else None)
+        try:
+            store.put_if_absent(StoredLifeContent(content_ref="unrelated:audit", content_kind="capability_manifest_audit",
+                                                  text="{}", content_payload_hash=life_content_payload_hash("{}")))
+            reads.clear()
+            assert reader.schedule(ledger.project()).acknowledged == expected
+            assert len(reads) == 2  # Only the failed job and its bad decision are reconsidered.
+            assert any(bad_ref in sql for sql in reads)
+        finally:
+            store._connection.set_trace_callback(None)
+            store.close()
 
 
 class Learner:
@@ -299,3 +416,54 @@ async def test_later_public_character_turn_receives_the_accepted_standing_view(t
         assert outcome.work_status=="reviewed" and model.calls==1, (core.runtime_health().get("last_failure_code"), model.calls)
         assert not MemoryUnderstandingReader(ledger=ledger,content_store=store,actor_ref="agent:companion").read(ledger.project()).suppressions
         store.close()
+
+
+@pytest.mark.asyncio
+async def test_restored_early_receipt_content_rebuilds_later_predecessor_chain(tmp_path):
+    async with _sources(tmp_path, extra=True) as case:
+        ledger = case.ledger
+        seed_memories(ledger)
+        store = SQLiteImmutableLifeContentStore(path=tmp_path / "content.sqlite", world_id=ledger.world_id)
+        try:
+            assert (await worker(ledger, store, Learner()).drain_one()).work_status == "reviewed"
+            first = next(p for p in ledger.project().trigger_processes if p.process_kind == "memory_consolidation_review")
+            ref = "memory-review-decision:" + digest(first.trigger_id)
+            original = store.read_exact(content_ref=ref)
+            clock(ledger, "later-merge", 72)
+            assert (await worker(ledger, store, Learner("merge")).drain_one()).work_status == "reviewed"
+            expected = MemoryUnderstandingReader(ledger=ledger, content_store=store, actor_ref="agent:companion").read(ledger.project())
+            assert len(expected.active) == 1
+            store._connection.execute("DELETE FROM world_v2_life_content WHERE content_ref=?", (ref,))
+            reader = MemoryUnderstandingReader(ledger=ledger, content_store=store, actor_ref="agent:companion")
+            broken = reader.schedule(ledger.project())
+            assert not broken.acknowledged and len(broken.suppressions) == 2
+            store.put_if_absent(original)
+            restored = reader.schedule(ledger.project())
+            assert restored.acknowledged == expected.acknowledged and not restored.suppressions
+            assert reader.read(ledger.project()).active == expected.active
+        finally:
+            store.close()
+
+
+@pytest.mark.asyncio
+async def test_schedule_index_write_failure_invalidates_partial_fold(tmp_path):
+    import sqlite3
+
+    async with _sources(tmp_path, extra=True) as case:
+        ledger = case.ledger
+        seed_memories(ledger)
+        store = SQLiteImmutableLifeContentStore(path=tmp_path / "content.sqlite", world_id=ledger.world_id)
+        reader = MemoryUnderstandingReader(ledger=ledger, content_store=store, actor_ref="agent:companion")
+        try:
+            reader.schedule(ledger.project())
+            assert (await worker(ledger, store, Learner()).drain_one()).work_status == "reviewed"
+            reader._schedule_index.set_authorizer(lambda action, table, *_: sqlite3.SQLITE_DENY
+                                                  if action == sqlite3.SQLITE_INSERT and table == "versions"
+                                                  else sqlite3.SQLITE_OK)
+            with pytest.raises(sqlite3.DatabaseError):
+                reader.schedule(ledger.project())
+            assert reader._schedule_generation is None
+            reader._schedule_index.set_authorizer(None)
+            assert reader.schedule(ledger.project()).acknowledged == reader.read(ledger.project()).acknowledged
+        finally:
+            store.close()

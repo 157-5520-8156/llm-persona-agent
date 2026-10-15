@@ -10,6 +10,7 @@ appraisal and what that appraisal means.
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -17,6 +18,9 @@ import hashlib
 import json
 import logging
 import time
+import sqlite3
+from threading import RLock
+from weakref import finalize
 from typing import Protocol
 
 from ..affect_target_bounds import (
@@ -1368,6 +1372,12 @@ class CharacterInteriorWorldStimulusRuntime:
         # asks the same questions about the same audits on every scheduler pass
         # while nothing commits in between, so the answers cannot change.
         self._settlement_pending_memo: dict[tuple, bool] = {}
+        self._work_index_lock = RLock()
+        self._work_index = None
+        self._work_index_generation = None
+        self._work_index_projection = None
+        self._work_index_sequence = 0
+        self._work_model_count = self._work_proposal_count = self._work_acceptance_count = 0
         self._experience_settlement = experience_settlement or ExperienceTransitionSettlement(
             ledger=ledger,
             owner_id=owner_id,
@@ -1396,9 +1406,9 @@ class CharacterInteriorWorldStimulusRuntime:
         # can be written. Recorded model failures additionally use the durable
         # journal-derived schedule below, which survives a restart.
         self._technical_failure_deferred_until: dict[str, float] = {}
-        self._audited_opportunity_identities: dict[
+        self._audited_opportunity_identities: OrderedDict[
             tuple[str, str, str], CausalOpportunityIdentity | None
-        ] = {}
+        ] = OrderedDict()
         self._technical_retry_schedule = WorldStimulusRetrySchedule(
             ledger=ledger,
             identity_for_audit=self._retry_opportunity_identity,
@@ -1598,7 +1608,7 @@ class CharacterInteriorWorldStimulusRuntime:
             return None
         identities: dict[str, CausalOpportunityIdentity] = {}
         for model_audit in reversed(
-            projection.model_result_audits if model_audits is None else model_audits
+            self._indexed_models(projection, source_ref) if model_audits is None else model_audits
         ):
             identity = self._audited_opportunity_identity(model_audit)
             if identity is None or source_ref not in identity.source_refs:
@@ -1615,6 +1625,7 @@ class CharacterInteriorWorldStimulusRuntime:
         key = (getattr(model_audit, "event_ref", ""), getattr(model_audit, "audit_hash", ""),
                model_audit.audit_json)
         if key in self._audited_opportunity_identities:
+            self._audited_opportunity_identities.move_to_end(key)
             return self._audited_opportunity_identities[key]
         identity = None
         try:
@@ -1637,6 +1648,8 @@ class CharacterInteriorWorldStimulusRuntime:
         except (TypeError, ValueError):
             pass  # Preserve the existing invalid/legacy audit exclusion.
         self._audited_opportunity_identities[key] = identity
+        while len(self._audited_opportunity_identities) > 1024:
+            self._audited_opportunity_identities.popitem(last=False)
         return identity
 
     def _retry_opportunity_identity(
@@ -2278,12 +2291,200 @@ class CharacterInteriorWorldStimulusRuntime:
                 outcome_ref=outcome_ref,
             )
 
+    def _prepare_work_index(self, projection):
+        """Maintain recovery candidates over a verified append-only prefix.
+
+        This selects work only. Late audits and related acceptance changes put
+        old sources back into the set; execution still proves every authority.
+        Unknown ledgers, historical projections and substituted receipt readers
+        retain the original full scan.
+        """
+        from ..sqlite_ledger import SQLiteWorldLedger
+
+        if (type(self._ledger) is not SQLiteWorldLedger
+                or "lookup_event_commit" in vars(self._ledger)
+                or projection is not self._ledger.project()):
+            self._work_index_projection = None
+            return
+        generation = self._ledger.verified_history_generation()
+        contract = (self._companion_actor_ref, self._affect_is_pending, self._world_life_intent_is_pending,
+                    self._world_life_response_is_pending, self._relationship_is_pending, self._experience_is_pending)
+        with self._work_index_lock:
+            previous_generation = self._work_index_generation
+            self._work_index_generation = None
+            self._work_index_projection = None
+            if self._work_index is None:
+                self._work_index = sqlite3.connect("", isolation_level=None, check_same_thread=False)
+                finalize(self, self._work_index.close)
+                self._work_index.executescript("""
+                    PRAGMA cache_size=-1024;
+                    CREATE TABLE processes(trigger_id TEXT PRIMARY KEY, ordinal INTEGER, source_ref TEXT,
+                        terminal INTEGER, pending INTEGER, dirty_sequence INTEGER);
+                    CREATE INDEX processes_source ON processes(source_ref);
+                    CREATE INDEX processes_pending ON processes(pending,ordinal);
+                    CREATE TABLE models(source_ref TEXT, idx INTEGER, result_ref TEXT, PRIMARY KEY(source_ref,idx));
+                    CREATE INDEX models_result ON models(result_ref);
+                    CREATE TABLE attempts(attempt_id TEXT, idx INTEGER, PRIMARY KEY(attempt_id,idx));
+                    CREATE TABLE proposals(idx INTEGER PRIMARY KEY, result_ref TEXT, source_ref TEXT, event_ref TEXT UNIQUE);
+                    CREATE INDEX proposals_result ON proposals(result_ref,idx);
+                """)
+            db = self._work_index
+            reset = (previous_generation != (generation, contract)
+                     or projection.ledger_sequence < self._work_index_sequence)
+            if reset:
+                db.executescript("DELETE FROM processes; DELETE FROM models; DELETE FROM attempts; DELETE FROM proposals;")
+                self._work_index_sequence = 0
+                self._work_model_count = self._work_proposal_count = self._work_acceptance_count = 0
+                db.executemany("INSERT INTO processes VALUES(?,?,?,?,1,?)", (
+                    (p.trigger_id, i, p.source_evidence_ref, int(p.state == "terminal"), projection.ledger_sequence)
+                    for i, p in enumerate(projection.trigger_processes) if p.process_kind in _PROCESS_PRIORITY))
+            dirty = set()
+            for index in range(self._work_model_count, len(projection.model_result_audits)):
+                audit = projection.model_result_audits[index]
+                db.execute("INSERT INTO attempts VALUES(?,?)", (audit.attempt_id, index))
+                identity = self._audited_opportunity_identity(audit)
+                if identity is not None:
+                    db.executemany("INSERT INTO models VALUES(?,?,?)", (
+                        (source, index, audit.model_result_ref) for source in identity.source_refs))
+                    dirty.update(identity.source_refs)
+            for index in range(self._work_proposal_count, len(projection.proposal_audits)):
+                audit = projection.proposal_audits[index]
+                if audit.proposal_kind == "decision":
+                    db.execute("INSERT INTO proposals VALUES(?,?,?,?)", (
+                        index, audit.model_result_ref, audit.trigger_ref, audit.event_ref))
+                    dirty.add(audit.trigger_ref)
+                    dirty.update(row[0] for row in db.execute("SELECT source_ref FROM models WHERE result_ref=?",
+                                                             (audit.model_result_ref,)))
+            if not reset:
+                after = self._work_index_sequence
+                while after < projection.ledger_sequence:
+                    page = self._ledger.events_after(cursor=_cursor(projection), after_sequence=after,
+                        event_types=frozenset({"TriggerProcessOpened", "TriggerProcessCompleted"}))
+                    if not page:
+                        break
+                    identities = {}
+                    for sequence, event in page:
+                        identity = event.payload().get("trigger_id") or event.payload().get("process", {}).get("trigger_id")
+                        if identity is not None:
+                            identities.setdefault(identity, sequence)
+                    processes = self._ledger.trigger_processes_at(tuple(identities), cursor=_cursor(projection))
+                    for identity, process in processes.items():
+                        if process.process_kind not in _PROCESS_PRIORITY:
+                            continue
+                        db.execute("""INSERT INTO processes VALUES(?,?,?,?,1,?) ON CONFLICT(trigger_id) DO UPDATE SET
+                            terminal=excluded.terminal,pending=1,dirty_sequence=excluded.dirty_sequence""",
+                            (identity, identities[identity], process.source_evidence_ref,
+                             int(process.state == "terminal"), projection.ledger_sequence))
+                    after = page[-1][0]
+            for decision in projection.acceptance_decisions[self._work_acceptance_count:]:
+                if decision.manifest_version != "relationship-acceptance.1" or not decision.acceptance_event_ref:
+                    continue
+                accepted = self._ledger.lookup_event_commit(decision.acceptance_event_ref)
+                ref = accepted[0].payload().get("proposal_event_ref") if accepted else None
+                proposal = self._ledger.lookup_event_commit(ref) if isinstance(ref, str) else None
+                binding = proposal[0].payload().get("source_audit") if proposal else None
+                if isinstance(binding, dict):
+                    row = db.execute("SELECT result_ref,source_ref FROM proposals WHERE event_ref=?",
+                                     (binding.get("proposal_event_ref"),)).fetchone()
+                    if row:
+                        dirty.add(row[1])
+                        dirty.update(item[0] for item in db.execute("SELECT source_ref FROM models WHERE result_ref=?", (row[0],)))
+                    else:
+                        # An unindexed legacy proof cannot certify a closed work set.
+                        db.execute("UPDATE processes SET pending=1,dirty_sequence=?", (projection.ledger_sequence,))
+            db.executemany("UPDATE processes SET pending=1,dirty_sequence=? WHERE source_ref=?",
+                           ((projection.ledger_sequence, source) for source in dirty))
+            if self._ledger.verified_history_generation() != generation:
+                self._work_index_generation = None
+                self._work_index_projection = None
+                return
+            self._work_index_sequence = projection.ledger_sequence
+            self._work_model_count = len(projection.model_result_audits)
+            self._work_proposal_count = len(projection.proposal_audits)
+            self._work_acceptance_count = len(projection.acceptance_decisions)
+            self._work_index_generation = generation, contract
+            self._work_index_projection = projection
+
+    def _work_processes(self, projection, *, nonterminal=False):
+        if projection is not self._work_index_projection or not self._work_index_lock.acquire(blocking=False):
+            return projection.trigger_processes
+        try:
+            if projection is not self._work_index_projection:
+                return projection.trigger_processes
+            identities = [row[0] for row in self._work_index.execute(
+                "SELECT trigger_id FROM processes WHERE pending=1 AND (?=0 OR terminal=0) ORDER BY ordinal",
+                (int(nonterminal),))]
+        finally:
+            self._work_index_lock.release()
+        current = {}
+        for offset in range(0, len(identities), 256):
+            current.update(self._ledger.trigger_processes_at(identities[offset:offset+256], cursor=_cursor(projection)))
+        return tuple(current[identity] for identity in identities if identity in current)
+
+    def _indexed_models(self, projection, source_ref):
+        if projection is not self._work_index_projection or not self._work_index_lock.acquire(blocking=False):
+            return projection.model_result_audits
+        try:
+            if projection is not self._work_index_projection:
+                return projection.model_result_audits
+            indices = tuple(row[0] for row in self._work_index.execute(
+                "SELECT idx FROM models WHERE source_ref=? ORDER BY idx", (source_ref,)))
+        finally:
+            self._work_index_lock.release()
+        return tuple(projection.model_result_audits[index] for index in indices)
+
+    def _indexed_proposals(self, projection, model_result_ref):
+        if projection is not self._work_index_projection or not self._work_index_lock.acquire(blocking=False):
+            return projection.proposal_audits
+        try:
+            if projection is not self._work_index_projection:
+                return projection.proposal_audits
+            indices = tuple(row[0] for row in self._work_index.execute(
+                "SELECT idx FROM proposals WHERE result_ref=? ORDER BY idx", (model_result_ref,)))
+        finally:
+            self._work_index_lock.release()
+        return tuple(projection.proposal_audits[index] for index in indices)
+
+    def _indexed_attempt_audits(self, projection, attempt_ids):
+        if projection is not self._work_index_projection or not self._work_index_lock.acquire(blocking=False):
+            return projection.model_result_audits
+        try:
+            if projection is not self._work_index_projection:
+                return projection.model_result_audits
+            indices = set()
+            ids = tuple(attempt_ids)
+            for offset in range(0, len(ids), 256):
+                page = ids[offset:offset + 256]
+                placeholders = ",".join("?" for _ in page)
+                indices.update(row[0] for row in self._work_index.execute(
+                    f"SELECT idx FROM attempts WHERE attempt_id IN ({placeholders})", page))  # noqa: S608
+        finally:
+            self._work_index_lock.release()
+        return tuple(projection.model_result_audits[index] for index in sorted(indices))
+
+    def _close_recovery_candidate(self, projection, process):
+        if not self._work_index_lock.acquire(blocking=False):
+            return
+        try:
+            if projection is self._work_index_projection:
+                self._work_index.execute("UPDATE processes SET pending=0 WHERE trigger_id=? AND dirty_sequence<=?",
+                                         (process.trigger_id, projection.ledger_sequence))
+        finally:
+            self._work_index_lock.release()
+
     def _next_process(
         self,
         projection: object,
         *,
         wake_event_ref: str | None = None,
     ) -> TriggerProcess | None:
+        try:
+            self._prepare_work_index(projection)
+        except BaseException:
+            self._work_index_generation = None
+            self._work_index_projection = None
+            raise
+        processes = self._work_processes(projection)
         now = time.monotonic()
         self._technical_failure_deferred_until = {
             trigger_id: deferred_until
@@ -2307,7 +2508,7 @@ class CharacterInteriorWorldStimulusRuntime:
             match = next(
                 (
                     item
-                    for item in projection.trigger_processes
+                    for item in processes
                     if item.process_kind == kind and eligible(item)
                 ),
                 None,
@@ -2323,13 +2524,15 @@ class CharacterInteriorWorldStimulusRuntime:
         # history size. Keep journal order and every matching audit so exact,
         # merged and ambiguous identities retain their existing interpretation.
         audits_by_source: dict[str, list] = {}
-        for model_audit in projection.model_result_audits:
-            identity = self._audited_opportunity_identity(model_audit)
-            if identity is not None:
-                for source_ref in identity.source_refs:
-                    audits_by_source.setdefault(source_ref, []).append(model_audit)
+        indexed_read = projection is self._work_index_projection
+        if not indexed_read:
+            for model_audit in projection.model_result_audits:
+                identity = self._audited_opportunity_identity(model_audit)
+                if identity is not None:
+                    for source_ref in identity.source_refs:
+                        audits_by_source.setdefault(source_ref, []).append(model_audit)
         for kind in _PROCESS_PRIORITY:
-            for process in projection.trigger_processes:
+            for process in processes:
                 if (
                     process.process_kind != kind
                     or process.state != "terminal"
@@ -2341,7 +2544,8 @@ class CharacterInteriorWorldStimulusRuntime:
                 ):
                     continue
                 source_ref = process.source_evidence_ref
-                model_audits = audits_by_source.get(source_ref, ())
+                model_audits = (self._indexed_models(projection, source_ref)
+                                if indexed_read else audits_by_source.get(source_ref, ()))
                 durable_identity = self._durable_opportunity_identity(
                     projection, source_ref, model_audits=model_audits,
                 )
@@ -2383,6 +2587,8 @@ class CharacterInteriorWorldStimulusRuntime:
                     )
                 ):
                     return process
+                if audit is not None or (process.runtime_outcome_ref or "").startswith("outcome:causal-opportunity:expired:"):
+                    self._close_recovery_candidate(projection, process)
         return None
 
     async def retry_next_due(self):
@@ -2393,6 +2599,12 @@ class CharacterInteriorWorldStimulusRuntime:
         return self._future_retry_due(projection)
 
     def _future_retry_due(self, projection):
+        try:
+            self._prepare_work_index(projection)
+        except BaseException:
+            self._work_index_generation = None
+            self._work_index_projection = None
+            raise
         now = projection.logical_time
         return min((due for _, due, unresolved in self._retry_waits(projection)
                     if due is not None and not unresolved and (now is None or due > now)),
@@ -2404,15 +2616,17 @@ class CharacterInteriorWorldStimulusRuntime:
                          if unresolved or (due is not None and (now is None or now < due)))
 
     def _retry_waits(self, projection, identities=None):
-        processes = tuple(item for item in projection.trigger_processes
+        processes = tuple(item for item in self._work_processes(projection, nonterminal=True)
                           if item.process_kind in _PROCESS_PRIORITY
                           and item.source_evidence_ref is not None
                           and item.state != "terminal")
         if not processes:
             return ()
+        attempt_ids = frozenset(attempt for process in processes for attempt in process.attempt_ids)
         deadlines, unresolved = self._technical_retry_schedule.retry_deadlines(
             projection,
-            attempt_ids=frozenset(attempt for process in processes for attempt in process.attempt_ids),
+            attempt_ids=attempt_ids,
+            model_audits=self._indexed_attempt_audits(projection, attempt_ids),
         )
         if not deadlines and not unresolved:
             return ()
@@ -3169,7 +3383,7 @@ class CharacterInteriorWorldStimulusRuntime:
         exact_matches = []
         contained_matches = []
         for model_audit in reversed(
-            projection.model_result_audits if model_audits is None else model_audits
+            self._indexed_models(projection, source_ref) if model_audits is None else model_audits
         ):
             durable_identity = self._audited_opportunity_identity(model_audit)
             if durable_identity is None or source_ref not in durable_identity.source_refs:
@@ -3177,7 +3391,7 @@ class CharacterInteriorWorldStimulusRuntime:
             proposal = next(
                 (
                     item
-                    for item in reversed(projection.proposal_audits)
+                    for item in reversed(self._indexed_proposals(projection, model_audit.model_result_ref))
                     if item.model_result_ref == model_audit.model_result_ref
                     and item.proposal_kind == "decision"
                 ),

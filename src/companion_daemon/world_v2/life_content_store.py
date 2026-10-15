@@ -231,7 +231,40 @@ class SQLiteImmutableLifeContentStore:
                 )
                 """
             )
+            # Appending a new immutable record cannot change an already
+            # verified batch. Updates, deletions and replacement inserts can.
+            # SQLite triggers cover other connections as well as this writer.
+            self._connection.executescript("""
+                CREATE TABLE IF NOT EXISTS world_v2_life_content_epochs (
+                    singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+                    appended INTEGER NOT NULL, rewritten INTEGER NOT NULL);
+                INSERT OR IGNORE INTO world_v2_life_content_epochs VALUES(1,0,0);
+                CREATE TRIGGER IF NOT EXISTS world_v2_life_content_insert_epoch
+                BEFORE INSERT ON world_v2_life_content BEGIN
+                    UPDATE world_v2_life_content_epochs SET appended=appended+1,
+                        rewritten=rewritten+EXISTS(SELECT 1 FROM world_v2_life_content
+                            WHERE world_id=NEW.world_id AND content_ref=NEW.content_ref);
+                END;
+                CREATE TRIGGER IF NOT EXISTS world_v2_life_content_update_epoch
+                AFTER UPDATE ON world_v2_life_content BEGIN
+                    UPDATE world_v2_life_content_epochs SET rewritten=rewritten+1;
+                END;
+                CREATE TRIGGER IF NOT EXISTS world_v2_life_content_delete_epoch
+                AFTER DELETE ON world_v2_life_content BEGIN
+                    UPDATE world_v2_life_content_epochs SET rewritten=rewritten+1;
+                END;
+            """)
             self._connection.commit()
+
+    def read_generations(self) -> tuple[int, int]:
+        """Append/rewrite generations for disposable indexes, never source authority."""
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT appended,rewritten FROM world_v2_life_content_epochs WHERE singleton=1"
+            ).fetchone()
+            if row is None or any(type(value) is not int for value in row):
+                raise ValueError("life content change generation unavailable")
+            return tuple(row)
 
     def close(self) -> None:
         with self._lock:

@@ -42,6 +42,32 @@ def _advance(ledger, at):
 
 
 @pytest.mark.asyncio
+async def test_completed_stimulus_recovery_is_not_rescanned_on_unrelated_clock_progress(tmp_path, monkeypatch):
+    model = _RoleModel(decision="no_change")
+    ledger, runtime = _open(tmp_path / "closed-work.sqlite", model, seed=True)
+    try:
+        assert (await runtime.drain_one()).work_status == "no_change"
+        checks = []
+        original = runtime._affect_is_pending
+
+        def checked(projection, *, audit):
+            checks.append(audit.event_ref)
+            return original(projection, audit=audit)
+
+        monkeypatch.setattr(runtime, "_affect_is_pending", checked)
+        assert runtime._next_process(ledger.project()) is None
+        assert checks
+        checks.clear()
+        for _ in range(3):
+            _advance(ledger, ledger.project().logical_time + timedelta(minutes=1))
+            assert runtime._next_process(ledger.project()) is None
+        assert checks == [], "clock progress rescanned already completed authored effects"
+        assert model.calls == 1
+    finally:
+        ledger.close()
+
+
+@pytest.mark.asyncio
 async def test_sqlite_failure_backoff_survives_cold_reopen_and_no_change_stays_terminal(tmp_path):
     path = tmp_path / "retry.sqlite"
     failed_model = _RoleModel(failure=ConnectionError("provider unavailable"))
@@ -275,3 +301,58 @@ async def test_lineage_cache_preserves_projection_membership_and_original_audit_
     ) is None
     assert runtime._durable_opportunity_identity(projection, SOURCE_REF) == identity
     ledger.close()
+
+
+@pytest.mark.asyncio
+async def test_work_index_exception_never_publishes_partial_tables(tmp_path):
+    import sqlite3
+
+    ledger, runtime = _open(tmp_path / "partial-index.sqlite", _RoleModel(decision="no_change"), seed=True)
+    try:
+        runtime._prepare_work_index(ledger.project())
+        assert (await runtime.drain_one()).work_status == "no_change"
+        runtime._work_index.set_authorizer(lambda action, table, *_: sqlite3.SQLITE_DENY
+                                          if action == sqlite3.SQLITE_INSERT and table == "attempts"
+                                          else sqlite3.SQLITE_OK)
+        with pytest.raises(sqlite3.DatabaseError):
+            runtime._prepare_work_index(ledger.project())
+        assert runtime._work_index_projection is None and runtime._work_index_generation is None
+        runtime._work_index.set_authorizer(None)
+        assert runtime._next_process(ledger.project()) is None
+        assert runtime._work_index_projection is ledger.project()
+    finally:
+        ledger.close()
+
+
+@pytest.mark.asyncio
+async def test_work_index_preserves_open_order_when_completion_order_is_reversed(tmp_path):
+    from companion_daemon.world_v2.schemas import ClaimLease, TriggerProcess
+
+    ledger, runtime = _open(tmp_path / "ordered-index.sqlite", _RoleModel(), seed=True)
+    try:
+        assert (await runtime.drain_one()).work_status == "accepted"
+        source = next(e.event_id for e in ledger.project().committed_world_event_refs if e.event_type == "AppraisalAccepted")
+        runtime._prepare_work_index(ledger.project())
+        now = ledger.project().logical_time
+        processes = []
+        for name in ("a", "b"):
+            process = TriggerProcess(trigger_id="reflection:order:" + name, trigger_ref="reflection:order:" + name,
+                                     process_kind="life_reflection", source_evidence_ref=source, state="open")
+            claimed = process.model_copy(update={"state": "claimed", "attempt_ids": ("attempt:" + name,),
+                "claim_lease": ClaimLease(owner_id="worker:order", attempt_id="attempt:" + name,
+                                          acquired_at=now, expires_at=now + timedelta(minutes=1))})
+            commit(ledger, [event("opened:" + name, "TriggerProcessOpened", {"process": process.model_dump(mode="json")}, at=now),
+                            event("claimed:" + name, "TriggerProcessClaimed", {"process": claimed.model_dump(mode="json")}, at=now)])
+            processes.append(process)
+        for process in reversed(processes):
+            name = process.trigger_id[-1]
+            commit(ledger, [event("completed:" + name, "TriggerProcessCompleted", {
+                "trigger_id": process.trigger_id, "owner_id": "worker:order", "attempt_id": "attempt:" + name,
+                "completed_at": now.isoformat(), "runtime_outcome_ref": "role:no_change",
+            }, at=now)])
+        runtime._prepare_work_index(ledger.project())
+        selected = [p.trigger_id for p in runtime._work_processes(ledger.project()) if p.trigger_id.startswith("reflection:order:")]
+        assert selected == [p.trigger_id for p in processes]
+        assert ledger.rebuild() == ledger.project()
+    finally:
+        ledger.close()

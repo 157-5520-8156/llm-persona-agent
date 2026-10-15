@@ -2041,3 +2041,24 @@ def test_fact_history_subject_query_uses_ordered_index_without_temp_sort(
     assert any("world_v2_events_fact_history_lookup" in item for item in details)
     assert all("USE TEMP B-TREE" not in item for item in details)
     ledger.close()
+
+
+@pytest.mark.parametrize("sqlite", [False, True])
+def test_event_page_uses_event_sequence_when_one_commit_spans_pages(tmp_path, sqlite):
+    from companion_daemon.world_v2.ledger import WorldLedger
+
+    ledger = (SQLiteWorldLedger(path=tmp_path / "pages.sqlite", world_id="world-sqlite-test") if sqlite
+              else WorldLedger.in_memory(world_id="world-sqlite-test"))
+    try:
+        ledger.commit((event("page:a", "observation:a"), event("page:b", "observation:b")),
+                      expected_world_revision=0, expected_deliberation_revision=0)
+        state = ledger.project()
+        cursor = ProjectionCursor(world_revision=state.world_revision, deliberation_revision=state.deliberation_revision,
+                                  ledger_sequence=state.ledger_sequence)
+        first = ledger.events_after(cursor=cursor, after_sequence=0, event_types=frozenset({"ObservationRecorded"}), limit=1)
+        second = ledger.events_after(cursor=cursor, after_sequence=first[-1][0], event_types=frozenset({"ObservationRecorded"}), limit=1)
+        assert [(seq, e.event_id) for seq, e in (*first, *second)] == [(1, "page:a"), (2, "page:b")]
+        assert ledger.events_after(cursor=cursor, after_sequence=2, event_types=frozenset({"ObservationRecorded"}), limit=1) == ()
+    finally:
+        if sqlite:
+            ledger.close()

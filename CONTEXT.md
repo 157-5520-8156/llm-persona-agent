@@ -3248,3 +3248,10 @@ _Avoid_: Completed intention, hidden experience
 
 One independently dispatchable and settleable fragment in an ordered, interruptible expression. A Beat may depend on an earlier receipt and may be cancelled or reconsidered when the user interjects.
 _Avoid_: Text chunk, random split
+
+2026-10-15 current candidate: local long-horizon working-set repair is under qualification.
+Memory schedule and WorldStimulus recovery use disposable verified-history indexes; Outlook bounds
+planning sources/history and incrementally delivers newly terminal sources without deleting history.
+Role decisions, cadence, validators, original failures and effects remain. Scoped272 tests passed;
+final frozen full suite and72h continuation are pending. See docs/design/long-horizon-working-sets-2026-10-15.md.
+Do not interpret this as released or reset v13's reconciled20/2 and original journey origin.

@@ -591,6 +591,15 @@ class SQLiteWalMaintenanceResult:
     busy: bool = False
 
 
+_OUTLOOK_ENTITY_FIELDS = (
+    ("plans", "plan_id", ("planned", "active", "paused")),
+    ("world_occurrences", "occurrence_id", ("committed", "active")),
+    ("facts", "fact_id", ()),
+    ("npcs", "npc_id", ("active",)),
+    ("prehistory_records", "record.record_id", ()),
+)
+
+
 class SQLiteWorldLedger:
     """Independent crash-consistent persistence adapter for a single World v2 world."""
 
@@ -708,6 +717,7 @@ class SQLiteWorldLedger:
         # model objects instead of reparsing the tail a second time during
         # startup.
         self._recent_replay_event_cache: dict[str, WorldEvent] = {}
+        self._verified_history_generation = 0
         self._database_write_lock.acquire()
         connection: sqlite3.Connection | None = None
         try:
@@ -904,6 +914,16 @@ class SQLiteWorldLedger:
                 cold_history_replayed=self._cold_history_replayed,
             )
 
+    def verified_history_generation(self) -> int:
+        """Invalidate derived work indexes after external history verification.
+
+        Local verified appends preserve the immutable prefix. External writes
+        and explicit rebuilds require their readers to reconstruct derived work.
+        """
+        with self._thread_lock:
+            self._refresh_verified_external_history_locked()
+            return self._verified_history_generation
+
     def _sqlite_data_version_locked(self) -> int:
         row = self._connection.execute("PRAGMA data_version").fetchone()
         if row is None or type(row[0]) is not int:
@@ -956,6 +976,7 @@ class SQLiteWorldLedger:
         self._state_fragment_bytes = None
         self._semantic_fragment_cache = None
         self._verify_cold_ledger_history()
+        self._verified_history_generation += 1
         self._warm_encode_caches_locked()
         _LOG.warning(
             "world v2 cold ledger reverify duration_ms=%.1f",
@@ -1033,6 +1054,11 @@ class SQLiteWorldLedger:
             -- planner never falls back to the primary key scan for ordering.
             CREATE INDEX IF NOT EXISTS world_v2_events_commit_lookup
                 ON world_v2_events (world_id, commit_id, ledger_sequence);
+            CREATE INDEX IF NOT EXISTS world_v2_events_type_sequence_lookup
+                ON world_v2_events (world_id, json_extract(event_json, '$.event_type'), ledger_sequence);
+            CREATE INDEX IF NOT EXISTS world_v2_head_trigger_identity_lookup
+                ON world_v2_head_state_items (world_id, json_extract(item_json, '$.trigger_id'))
+                WHERE field='trigger_processes';
             CREATE INDEX IF NOT EXISTS world_v2_events_created_at_lookup
                 ON world_v2_events (
                     json_extract(event_json, '$.created_at'),
@@ -1246,6 +1272,18 @@ class SQLiteWorldLedger:
             self._connection.execute(
                 "ALTER TABLE world_v2_heads ADD COLUMN storage_epoch INTEGER NOT NULL DEFAULT 0"
             )
+        for field, identity, _states in _OUTLOOK_ENTITY_FIELDS:
+            self._connection.execute(
+                f"""CREATE INDEX IF NOT EXISTS world_v2_outlook_{field}_identity
+                    ON world_v2_head_state_items(world_id,json_extract(item_json,'$.{identity}'),idx)
+                    WHERE field='{field}'"""  # noqa: S608 - fixed internal field catalog
+            )
+            if _states:
+                self._connection.execute(
+                    f"""CREATE INDEX IF NOT EXISTS world_v2_outlook_{field}_status
+                        ON world_v2_head_state_items(world_id,json_extract(item_json,'$.status'),idx)
+                        WHERE field='{field}'"""  # noqa: S608 - fixed internal field catalog
+                )
 
     def _legacy_clock_compatibility_event_ids(self, source_bundle: str) -> frozenset[str]:
         """Find the bounded v30 observation envelopes with stale wall time.
@@ -5724,6 +5762,166 @@ class SQLiteWorldLedger:
                 verified.append(located[0])
         return tuple(verified)
 
+    def events_after(self, *, cursor: ProjectionCursor, after_sequence: int,
+                     event_types: frozenset[str], limit: int = 256):
+        """One verified event page in ledger order, pinned to a committed cursor.
+
+        Return event sequence, not batch-end sequence: a page may split a
+        multi-event commit and must not skip the remaining events in that batch.
+        """
+        if not 0 <= after_sequence <= cursor.ledger_sequence or not 1 <= limit <= 512:
+            raise ValueError("invalid event page bounds")
+        if not event_types:
+            return ()
+        with self._thread_lock:
+            self.project_at(cursor)  # Prove the cursor before using a derived SQL index.
+            types = tuple(sorted(event_types))
+            placeholders = ",".join("?" for _ in types)
+            rows = self._connection.execute(
+                f"""SELECT ledger_sequence,event_id FROM world_v2_events
+                    WHERE world_id=? AND ledger_sequence>? AND ledger_sequence<=?
+                      AND json_extract(event_json,'$.event_type') IN ({placeholders})
+                    ORDER BY ledger_sequence LIMIT ?""",  # noqa: S608 - generated placeholders
+                (self._world_id, after_sequence, cursor.ledger_sequence, *types, limit),
+            ).fetchall()
+            result = []
+            for row in rows:
+                located = self.lookup_event_commit(row["event_id"])
+                if located is None or located[1].ledger_sequence > cursor.ledger_sequence:
+                    raise LedgerIntegrityError("event page lost its pinned commit")
+                result.append((row["ledger_sequence"], located[0]))
+            return tuple(result)
+
+    def trigger_processes_at(self, identities: Sequence[str], *, cursor: ProjectionCursor):
+        """Read requested stable trigger identities; array positions are not cursors."""
+        identities = tuple(set(identities))
+        if len(identities) > 512:
+            raise ValueError("trigger page exceeds its bound")
+        if not identities:
+            return {}
+        with self._thread_lock:
+            projection = self.project_at(cursor)
+            owns_transaction = not self._connection.in_transaction
+            try:
+                if owns_transaction:
+                    self._connection.execute("BEGIN")
+                if self._ledger_mutation_epoch_locked() != self._verified_ledger_epoch:
+                    raise ConcurrencyConflict("trigger head changed while pinning its read")
+                if projection is not self._head_projection_cache:
+                    return {p.trigger_id: p for p in projection.trigger_processes if p.trigger_id in identities}
+                placeholders = ",".join("?" for _ in identities)
+                rows = self._connection.execute(
+                    f"""SELECT idx FROM world_v2_head_state_items WHERE world_id=?
+                        AND field='trigger_processes'
+                        AND json_extract(item_json,'$.trigger_id') IN ({placeholders})""",  # noqa: S608
+                    (self._world_id, *identities),
+                ).fetchall()
+                result = {}
+                for row in rows:
+                    if not 0 <= row["idx"] < len(projection.trigger_processes):
+                        raise LedgerIntegrityError("trigger index exceeds its verified head")
+                    process = projection.trigger_processes[row["idx"]]
+                    if process.trigger_id not in identities or process.trigger_id in result:
+                        raise LedgerIntegrityError("trigger identity index differs from its verified head")
+                    result[process.trigger_id] = process
+                return result
+            finally:
+                if owns_transaction:
+                    self._connection.execute("ROLLBACK")
+
+    def outlook_entities_at(self, required_refs, *, cursor: ProjectionCursor, include_live=True,
+                            actor_ref=None, npc_refs=(), fields=("plans", "world_occurrences", "facts", "npcs")):
+        """Indexed current planning entities plus explicitly referenced archive.
+
+        This is data lookup, not permission or a relevance decision. The caller
+        still applies actor/NPC scope and derives fresh exact entity tokens.
+        """
+        from operator import attrgetter
+
+        if set(fields) - {field for field, _, _ in _OUTLOOK_ENTITY_FIELDS}:
+            raise ValueError("unknown outlook entity field")
+        required_refs = frozenset(required_refs)
+        npc_refs = frozenset(npc_refs)
+        owners = (actor_ref, *npc_refs)
+        if len(required_refs) > 2048:
+            raise ValueError("outlook source reference working set exceeds its bound")
+        with self._thread_lock:
+            projection = self.project_at(cursor)
+            owns_transaction = not self._connection.in_transaction
+            try:
+                if owns_transaction:
+                    self._connection.execute("BEGIN")
+                if self._ledger_mutation_epoch_locked() != self._verified_ledger_epoch:
+                    raise ConcurrencyConflict("outlook source head changed while pinning its read")
+                result = {}
+                for field, identity, active in _OUTLOOK_ENTITY_FIELDS:
+                    if field not in fields:
+                        continue
+                    identify = attrgetter(identity)
+                    refs = (tuple(ref.removeprefix("npc:") for ref in required_refs | npc_refs if ref.startswith("npc:"))
+                            if field == "npcs" else tuple(required_refs))
+                    states = active if include_live and not (actor_ref and field == "npcs") else ()
+                    items = getattr(projection, field)
+
+                    def in_scope(item):
+                        if actor_ref is None:
+                            return True
+                        if field == "plans":
+                            return item.owner_actor_ref in owners
+                        if field == "world_occurrences":
+                            return actor_ref in item.participant_refs
+                        if field == "facts":
+                            return item.values.subject_ref == actor_ref
+                        if field == "prehistory_records":
+                            return item.actor_ref == actor_ref
+                        return f"npc:{item.npc_id}" in npc_refs
+
+                    if projection is not self._head_projection_cache:
+                        selected = tuple(item for item in items if in_scope(item) and (
+                            identify(item) in refs or getattr(item, "status", None) in states))
+                    else:
+                        indices = set()
+                        scope, scope_values = "", ()
+                        if actor_ref is not None:
+                            if field == "plans":
+                                scope = " AND json_extract(item_json,'$.owner_actor_ref') IN (" + ",".join("?" for _ in owners) + ")"
+                                scope_values = owners
+                            elif field == "world_occurrences":
+                                scope = " AND EXISTS(SELECT 1 FROM json_each(item_json,'$.participant_refs') WHERE value=?)"
+                                scope_values = (actor_ref,)
+                            elif field == "facts":
+                                scope = " AND json_extract(item_json,'$.values.subject_ref')=?"
+                                scope_values = (actor_ref,)
+                            elif field == "prehistory_records":
+                                scope = " AND json_extract(item_json,'$.actor_ref')=?"
+                                scope_values = (actor_ref,)
+                            else:
+                                scope = " AND json_extract(item_json,'$.npc_id') IN (" + ",".join("?" for _ in npc_refs) + ")"
+                                scope_values = tuple(ref.removeprefix("npc:") for ref in npc_refs)
+                        # Separate key and live-state reads avoid scanning archived rows.
+                        for suffix, key, values in (("identity", identity, refs), ("status", "status", states)):
+                            if not values:
+                                continue
+                            marks = ",".join("?" for _ in values)
+                            indices.update(row[0] for row in self._connection.execute(
+                                f"""SELECT idx FROM world_v2_head_state_items INDEXED BY world_v2_outlook_{field}_{suffix}
+                                    WHERE world_id=? AND field='{field}'
+                                      AND json_extract(item_json,'$.{key}') IN ({marks}) {scope} LIMIT 2049""",  # noqa: S608 - fixed field catalog
+                                (self._world_id, *values, *scope_values)))
+                        if any(not 0 <= index < len(items) for index in indices):
+                            raise LedgerIntegrityError("outlook entity index exceeds its verified head")
+                        selected = tuple(items[index] for index in sorted(indices))
+                        if any(not in_scope(item) or (identify(item) not in refs
+                               and getattr(item, "status", None) not in states) for item in selected):
+                            raise LedgerIntegrityError("outlook entity index differs from its verified head")
+                    if len(selected) + sum(len(value) for value in result.values()) > 2048:
+                        raise ValueError("outlook_source_working_set_too_large")
+                    result[field] = selected
+                return result
+            finally:
+                if owns_transaction:
+                    self._connection.execute("ROLLBACK")
+
     def recent_fact_transition_events(
         self,
         *,
@@ -6369,6 +6567,7 @@ class SQLiteWorldLedger:
         )
         if rebuilt != self._project_locked():
             raise LedgerIntegrityError("rebuilt projection does not match persisted head")
+        self._verified_history_generation += 1
         return rebuilt
 
     def _epoch_binding_replay_mode(self):

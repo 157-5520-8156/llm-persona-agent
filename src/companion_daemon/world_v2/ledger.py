@@ -134,6 +134,9 @@ class LedgerPort(Protocol):
 
     def lookup_event_commit(self, event_id: str) -> tuple[WorldEvent, CommitResult] | None: ...
 
+    def events_after(self, *, cursor: ProjectionCursor, after_sequence: int,
+                     event_types: frozenset[str], limit: int = 256): ...
+
     def recent_events_by_type(
         self,
         *,
@@ -712,6 +715,19 @@ class WorldLedger:
             ledger_sequence=len(self._events),
             state=self._state,
         )
+
+    def events_after(self, *, cursor: ProjectionCursor, after_sequence: int,
+                     event_types: frozenset[str], limit: int = 256):
+        if not 0 <= after_sequence <= cursor.ledger_sequence or not 1 <= limit <= 512:
+            raise ValueError("invalid event page bounds")
+        self.project_at(cursor)
+        result = []
+        for stored in self._events[after_sequence:cursor.ledger_sequence]:
+            if stored.event.event_type in event_types:
+                result.append((stored.ledger_sequence, stored.event))
+                if len(result) == limit:
+                    break
+        return tuple(result)
 
     def project_at(self, cursor: ProjectionCursor) -> LedgerProjection:
         head_cursor = ProjectionCursor(

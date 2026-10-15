@@ -7,6 +7,8 @@ inherit an old group's backoff. Delays reuse the Life post-processing policy.
 
 from __future__ import annotations
 
+from collections import OrderedDict
+
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import json
@@ -36,15 +38,22 @@ class WorldStimulusRetrySchedule:
     def __init__(self, *, ledger, identity_for_audit):
         self._ledger = ledger
         self._identity_for_audit = identity_for_audit
-        self._failures: dict[str, _FailedAttempt] = {}
+        self._failures: OrderedDict[str, _FailedAttempt] = OrderedDict()
         self._unreadable_event_refs: set[str] = set()
         self._reported_unresolved: set[str] = set()
+        self._history_generation = None
 
-    def retry_deadlines(self, projection, *, attempt_ids: frozenset[str]):
+    def retry_deadlines(self, projection, *, attempt_ids: frozenset[str], model_audits=None):
         """Return deadlines and unresolved attempts from this exact read."""
+        generation = getattr(self._ledger, "verified_history_generation", lambda: None)()
+        if generation != self._history_generation:
+            self._failures.clear()
+            self._unreadable_event_refs.clear()
+            self._reported_unresolved.clear()
+            self._history_generation = generation
         attempts: dict[str, dict[str, datetime]] = {}
         unresolved: set[str] = set()
-        for item in projection.model_result_audits:
+        for item in projection.model_result_audits if model_audits is None else model_audits:
             if item.attempt_id not in attempt_ids:
                 continue
             if item.event_ref in self._unreadable_event_refs:
@@ -105,6 +114,7 @@ class WorldStimulusRetrySchedule:
     def _failure(self, item, projection) -> _FailedAttempt:
         cached = self._failures.get(item.event_ref)
         if cached is not None:
+            self._failures.move_to_end(item.event_ref)
             return cached
         located = self._ledger.lookup_event_commit(item.event_ref)
         if located is None:
@@ -129,4 +139,6 @@ class WorldStimulusRetrySchedule:
             raise ValueError("world stimulus retry lacks its exact source process")
         failed = _FailedAttempt(identity.opportunity_ref, item.attempt_id, event.logical_time)
         self._failures[item.event_ref] = failed
+        while len(self._failures) > 1024:
+            self._failures.popitem(last=False)
         return failed

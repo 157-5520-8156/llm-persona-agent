@@ -3136,41 +3136,6 @@ class ProactiveActionRuntime:
         *,
         excluded_consideration_ids: frozenset[str] = frozenset(),
     ) -> ProactiveOpportunity | None:
-        active_retry_sources = {
-            item.source_evidence_ref for item in proactive_technical_retry_states(projection)
-        }
-        terminal_sources = {
-            item.source_evidence_ref
-            for item in projection.trigger_processes
-            if item.process_kind == self.PROCESS_KIND
-            and item.state == "terminal"
-            and (
-                not str(item.runtime_outcome_ref).startswith("proactive:deliberation-failed:")
-                or item.source_evidence_ref not in active_retry_sources
-            )
-        }
-        failed_source_revisions = {}
-        for item in projection.trigger_processes:
-            if (
-                item.process_kind != self.PROCESS_KIND
-                or item.state != "terminal"
-                or not str(item.runtime_outcome_ref).startswith("proactive:deliberation-failed:")
-                or item.source_evidence_ref is None
-            ):
-                continue
-            failure_revision, _failed_at = technical_failure_point(
-                projection=projection, process=item
-            )
-            if failure_revision is not None:
-                failed_source_revisions[item.source_evidence_ref] = max(
-                    failure_revision,
-                    failed_source_revisions.get(item.source_evidence_ref, 0),
-                )
-        latest_message_revision = (
-            projection.message_observations[-1].world_revision
-            if projection.message_observations
-            else 0
-        )
         logical_time = projection.logical_time
         if self._social_initiative is not None:
             social_exclusions = set(excluded_consideration_ids)
@@ -3225,7 +3190,7 @@ class ProactiveActionRuntime:
             and item.state != "terminal"
             and item.source_evidence_ref is not None
         }
-        for occurrence in projection.world_occurrences:
+        for occurrence in projection.world_occurrences if legacy_settlement_recovery_refs else ():
             if (
                 occurrence.status == "settled"
                 and occurrence.settlement_event_ref
@@ -3326,6 +3291,43 @@ class ProactiveActionRuntime:
                             latest.accepted_event_ref,
                         )
                     )
+        if not candidates:
+            return None
+        active_retry_sources = {
+            item.source_evidence_ref for item in proactive_technical_retry_states(projection)
+        }
+        terminal_sources = {
+            item.source_evidence_ref
+            for item in projection.trigger_processes
+            if item.process_kind == self.PROCESS_KIND
+            and item.state == "terminal"
+            and (
+                not str(item.runtime_outcome_ref).startswith("proactive:deliberation-failed:")
+                or item.source_evidence_ref not in active_retry_sources
+            )
+        }
+        failed_source_revisions = {}
+        for item in projection.trigger_processes:
+            if (
+                item.process_kind != self.PROCESS_KIND
+                or item.state != "terminal"
+                or not str(item.runtime_outcome_ref).startswith("proactive:deliberation-failed:")
+                or item.source_evidence_ref is None
+            ):
+                continue
+            failure_revision, _failed_at = technical_failure_point(
+                projection=projection, process=item
+            )
+            if failure_revision is not None:
+                failed_source_revisions[item.source_evidence_ref] = max(
+                    failure_revision,
+                    failed_source_revisions.get(item.source_evidence_ref, 0),
+                )
+        latest_message_revision = (
+            projection.message_observations[-1].world_revision
+            if projection.message_observations
+            else 0
+        )
         for _at, source_kind, source_id, event_ref in sorted(
             candidates, key=lambda item: (item[0], item[3])
         ):

@@ -14,8 +14,8 @@ from .accepted_ledger_batch import AcceptedLedgerBatchIssuer
 from .errors import ConcurrencyConflict
 from .event_identity import domain_idempotency_key
 from .expression_plan_acceptance import ExpressionPlanAcceptanceError
-from .proposal_audit_schemas import ProposalAuditProjection
-from .proposal_envelope import DecisionProposal, MinimalProposal, validate_proposal_envelope
+from .proposal_audit_schemas import ProposalAuditProjection, decode_recorded_proposal
+from .proposal_envelope import DecisionProposal, MinimalProposal
 from .schema_core import FrozenModel
 from .schemas import ClaimLease, Observation, ProjectionCursor, TriggerProcess, WorldEvent
 from .social_action_acceptance import (
@@ -148,7 +148,7 @@ class SocialActionWorker:
                 status="unavailable",
                 reason_code="social_action.shared_audit_unavailable",
             )
-        proposal = validate_proposal_envelope(json.loads(audit.proposal_json))
+        proposal = decode_recorded_proposal(audit)
         if not (
             isinstance(proposal, MinimalProposal)
             and (
@@ -410,7 +410,7 @@ class SocialActionWorker:
             if audit.trigger_ref != trigger_ref:
                 continue
             try:
-                proposal = validate_proposal_envelope(json.loads(audit.proposal_json))
+                proposal = decode_recorded_proposal(audit)
             except (ValueError, TypeError, json.JSONDecodeError):
                 continue
             if (
