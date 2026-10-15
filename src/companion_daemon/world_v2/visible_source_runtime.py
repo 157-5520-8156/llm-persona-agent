@@ -175,7 +175,10 @@ async def review_candidate(
         model_provider_request_identity_scope,
         model_request_emission_scope,
     )
-    from .deliberation import ModelUsageProvenance, ProviderSubcallAudit, ValidationTechnicalFailure
+    from .deliberation import (
+        ModelUsageProvenance, ProviderSubcallAudit, ValidationTechnicalFailure,
+        run_validation_review_once,
+    )
     from .proposal_envelope import DecisionProposal, validate_proposal_envelope
     from .visible_source_review_receipt import (
         prepare_visible_source_review,
@@ -285,7 +288,12 @@ async def review_candidate(
                 request_hash=value["request_hash"], identity_extras=value["identity_extras"]
             ),
         ):
-            raw, usage_value = await operation(**value["request"])
+            # Legacy whole-candidate reviews share the existing fixed review
+            # phase too. Without entering it, the outer author timer cancels
+            # a valid pending review before its own window can be used.
+            raw, usage_value = await run_validation_review_once(
+                lambda: operation(**value["request"]), timeout_seconds=46.0,
+            )
         usage = ModelUsageProvenance.model_validate(usage_value)
         binding = VisibleReviewInvocationBinding(
             parent_model_call_id=parent,

@@ -169,7 +169,18 @@ async def test_public_proactive_correction_survives_expired_author_window_and_is
                 marks.append("correction_returned_after_author_deadline")
         elif authors and name.startswith("visible_beat_source_verdict"):
             reviews += 1
-            await asyncio.sleep(0.08)
+            state = deliberation._VALIDATION_ATTEMPT.get()
+            assert state.review_inflight
+            if reviews == 1:
+                assert state.recovery_deadline is not None
+                assert state.reselection_deadline is None
+                # Initial review owns the existing validation window even
+                # before a semantic rejection opens the correction window.
+                await asyncio.sleep(max(0, original_author_deadline - state.budget.clock()) + 0.02)
+                assert original_author_deadline < state.budget.clock() < state.recovery_deadline
+                marks.append("initial_review_returned_after_author_deadline")
+            else:
+                await asyncio.sleep(0.08)
         return await original_http(self, request)
 
     monkeypatch.setattr(httpx.MockTransport, "handle_async_request", delayed_http)
@@ -177,5 +188,6 @@ async def test_public_proactive_correction_survives_expired_author_window_and_is
         tmp_path, monkeypatch, "reselect", review_version="6",
     )
     assert (authors, reviews) == (2, 2)
-    assert marks == ["correction_entered_with_phase", "correction_returned_after_author_deadline"]
+    assert marks == ["initial_review_returned_after_author_deadline",
+                     "correction_entered_with_phase", "correction_returned_after_author_deadline"]
     assert evidence.projection.semantic_hash == evidence.replay.semantic_hash

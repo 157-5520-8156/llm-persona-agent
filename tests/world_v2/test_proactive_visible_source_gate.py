@@ -438,6 +438,9 @@ async def _run_scenario(
             run_life_ecology=False,
         )
         if external_cancel:
+            # Shutdown must win this cancellation control. The default 1s
+            # close grace would let the fixture's 1s review phase expire first.
+            monkeypatch.setattr(host, "_owned_action_close_grace_seconds", 0.01)
             task = asyncio.create_task(host.drain(max_action_units=8, max_background_units=2))
             await asyncio.wait_for(provider_blocked.wait(), timeout=10)
             task.cancel("external-stop")
