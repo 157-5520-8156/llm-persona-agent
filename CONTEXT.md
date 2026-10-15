@@ -1,13 +1,27 @@
-Latest user instruction (2026-10-15): freeze new features and continue pre-release acceptance.
-Transient asynchronous timeouts are allowed. Verify eventual recovery, backlog drain and chat responsiveness;
-explicitly replace the three-failure stop, retain failures/counters/validators, then validate real QQ last.
-Continue from live-v14 21/3 and original72h origin/budget. Product Python remains frozen02511e9a.
-New private release-recovery.1 runner/launcher preserve 30s cadence and512proxy/20Mtokens,128DS/5CNY,
-5400s per-phase admission; observe current-source backlog and concurrent chat with exact request ownership.
-ZeroAPI control/4host-isolation tests and both review axes passed. Launch live-v15 with locked launcher.
-Read design/long-horizon-working-sets-2026-10-15.md for protocol; real QQ follows isolated gates.
+Release recovery checkpoint (2026-10-15): feature freeze continues; real QQ is explicitly authorized last.
+User superseded the three-failure stop. All failure counters, records, validators, original72h origin,
+30s public cadence,512proxy/20Mtokens,128DS/5CNY and5400s per-phase admission remain.
+Frozen02511e9a live-v15 ended at wall_limit after45calls (32proxy/13DS),5422s including shutdown.
+Observed33.84h; verifiedWorld33.8116/72h,45554seq,1259prehistory/1373active memories; day1done/day3pending.
+Independent terminal audit confirms all45192 old all-World events unchanged, quick_checkok, noactiveHTTP,
+no unassigned failure tails;39/0 diagnostic counters preserved. These mixed-lane counters are not recovery proof.
+One exact WorldStimulus failure45287 recovered at45297 through normal10min retry, same source/attempt lineage,
+role chose silent/no-change. Later review timeouts also completed; Outlook revision itself did not recover.
+Due memory48->48 (all known source gaps); original3 pending processes remain. New work drained back to baseline,
+not a claim that all historical debt recovered. Overlap firstCapture7.924s/provider2.091s while90sproxy pending;
+day1host8.867s. Capture is not QQ, no paired idle equivalence or5sSLA. Day1 unsupported 'just woke' remains
+semantic failure; subjective silence/topic choice allowed. Sampled ordinary-text mode remains per ADR0020.
+Implementation89d5e19c adds only9lines of SQLite exact-trigger-completion index; query/verification unchanged.
+3008 lookups equal, VM31729906->54172; full same-snapshot empty pass3.347->1.894s,80dues/all45433eventbytes
+unchanged,0API.95scoped tests/Ruff/both review axes pass; frozen fullv13 running, no result claimed yet.
+Exact failedOutlook request297 diagnostic replay307 returned complete at114.013s with180s read deadline;
+joined response isJSON, no World acceptance/effects. Old timeout reserves retained. Next livephase may use
+explicit existing BACKGROUND_TIMEOUT_SECONDS=180 override; foreground12s turn limit unchanged.
+QQ preflight: one allowlisted private recipient matching proactive target, groups off; production adapter8787
+still old, but QQ/NapCat3000 offline. No QQ send/service change. Await final isolated gates, then bounded realwire.
+Read docs/design/long-horizon-working-sets-2026-10-15.md and private live-v15 evidence before continuing.
 
-Current checkpoint (2026-10-15): local working-set fixes qualified; cross-day BLOCKED by proxy timeout.
+Historical checkpoint before the user superseded the failure-stop policy (2026-10-15): local working-set fixes qualified; cross-day BLOCKED by proxy timeout.
 Worktree/branch unchanged. Implementation02511e9a, frozen fullv12:10680passed/19skip/2xfail,
 1knownwarning,1293.25s,1705Pythonhashesunchanged. Ruff/diff/Standards/Spec closed. No paid run active.
 Outlook samefailedpin45175:113942->74496B under100000;14authority/context fields identical,

@@ -150,3 +150,50 @@ CAS、effect-once与真实回执仍为硬门槛，horizon结束不等于这些�
 通过。4项真实host/background隔离回归通过，Spec/Standards最后复核均关闭。
 launcher锁FD由child继承，父进程异常退出也不会释放仍活动的子进程所持费用锁。
 真实QQ只在隔离恢复/积压/聊天验收之后进行，按已配置的个人测试目标及单出站owner执行。
+
+
+## v15：继续恢复观察，而非三次失败即停
+
+用户2026-10-15明确覆盖此前三次失败停止规则，授权最终真实QQ验证；其他预算、校验、
+失败记录与角色决定权不变。私有runner保留原21/3，从原72h起点续跑，5400s阶段预算后
+完成quiescent收尾（5422s包含尾部）。实际45HTTP：32proxy/13DeepSeek；可见主动联系仍是
+既有DeepSeek作者及审核路线，生活、记忆和命运等后台推演走代理，不是超时后偷偷切供应商。
+
+- `live-v15/independent-terminal-audit.json`：World逻辑33.8116/72h，seq45554，
+  1259前史/1373活跃记忆。全部45192原all-World事件字节保持，终态45559，quick_check正常；
+  冷头hash与runner一致，未额外执行全量reducer rebuild。累计诊断39/0，未归属尾部失败为空。
+  累计费用到本阶段终态：288proxy/12785966reported-or-reservedtokens；18DS/1.60380128CNY
+  保守暴露量，不是供应商账单。单独诊断307随后追加，续跑必须从同一累计请求表计费。
+- 同源恢复：45287的life_source_review_unavailable保留；45293技术重试时钟在10分钟后唤醒，
+  45294追加第2次attempt，45295/45296模型与提案哈希/来源匹配，45297精确完成第二次lease。
+  角色选择silent、无变化，不把代码no-op或别的聊天进展当恢复。独立复核保存于
+  `day1-and-recovery-independent-review.json`。后续另一来源审核在多次90s超时后81.93s完成。
+- 命运刷新本身没有新accepted head，必须单列未恢复；旧Outlook中的环境机会仍正常发生，
+  江边事件产生1条Experience，随后角色自主发出两条经来源审核的消息并完成Capture回执。
+- 积压48条记忆始终保留，均为已知历史来源缺失；原2proactive+1plan_disruption流程仍在。
+  新工作可回落到这个基线，不等于全部旧债已消化。原始age/source标签全部记录。
+- 真实代理90s未返回时，重叠聊天DeepSeek2.091s，首Capture7.924s/host8.417s，背景请求仍pending。
+  day1固定聊天host8.867s，三条Capture；没有配对idle基线，也不是5s或真实QQ资格。
+  day1“刚起来没多久”缺少个人行为来源，是语义失败；不要求角色讲书店或强行展开。
+  既有ADR0020 sampled模式不变，此错误不能改标通过，也不擅自恢复普通聊天同步语义审核。
+
+### 仅增加精确完成记录索引
+
+真实聊天后profile定位：375次find_trigger_completion占2.138s。89d5e19c仅新增9行部分索引，
+保持查询、外部历史校验、lookup_event_commit证明路径与角色调度规则不变。实际冻结副本
+3008不同查询全部同结果，VM31729906->54172；建索引0.199s。完整同副本最后空闲扫描
+3.347->1.894s、80due、45433原事件字节及源SHA一致、0API；首轮索引/历史预热另计。
+95现有ledger/private-impression/prefix-proof测试及Ruff通过，Standards/Spec无finding。
+冻结fullv13仍在运行，未提前宣称全绿。索引不会消除所有剩余历史循环或证明长期SLA。
+
+### 90秒截止的区别性诊断
+
+对失败297的完全相同HTTP体仅将客户端等待上限设为180s，一次调用307在114.013s完整返回，
+57个text片段按现有适配器拼接可解析JSON（revise、1个机会）。未写入世界、未宣称语义验收，
+仍在原累计请求/费用预算内，旧未知timeout reservations不清除。证据位于
+`outlook-deadline-probe-180/result.json`。这一样本证明90s可能过早截断，不能证明180s必可靠。
+下一阶段用已有配置的180s后台上限；即时DeepSeek路线/12s交互预算不变。
+零API组合控制确认后台模型180s、lease1200s，前台client45s及交互预算12s保持。
+
+QQ只做准备读取：单一allowlist、匹配主动目标、群聊关闭；真实QQ/NapCat3000当前离线，
+只有旧生产适配器8787在运行。尚无真实QQ消息、生产替换或长期部署；最后仍需验证。
