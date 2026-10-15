@@ -1,3 +1,15 @@
+Active continuation (2026-10-16): live-v16 running from v15, background180s, original72h origin/counters39/0/budgets intact.
+Runtime89d5e19c; test-only a29f1d86 fixes false ready-prefetch fixture premise (embedding finished is not trace published).
+Controlled100ms post-embedding delay: oldtestfails/newtestpasses; original assertions/production450ms join unchanged.
+226scoped/ruff/bothreviews pass. Machine reboot23:26 interruptedfullv13 at65% (raw log/hash retained,noresult).
+Fullv14 genuinely failed1/1851pass on fixture race, retained. Frozenfullv15 passes10680/19skip/2xfail/1knownwarning,
+1208.78s pytest /1211.003s wrapper,1705Python hashesunchanged,head a29f1d86.
+New180s overlap probe has distinct stable ':deadline-180' ID; old90s intent kept. Controls/reviewpassed; no pairedcomparison claim.
+User prepared QQ and asked production open: old release auto-runningPID1127/8787, NapCat3000online/good, no agentrestart orcandidate deployment.
+User will cooperate with login/new message when finalQQ stage ready. PrivateQQrunner is NOT ADMITTED: readiness.json=false.
+Need finish shared owner/inflight proof, supervisor restore, exact recipientbinding, host lifetime and crossday-evidence gate before anycandidate switch.
+Private paths output/private-audits/real-qq-release-20261015; only authenticated route inspect performed; callback remains8787.
+
 Release recovery checkpoint (2026-10-15): feature freeze continues; real QQ is explicitly authorized last.
 User superseded the three-failure stop. All failure counters, records, validators, original72h origin,
 30s public cadence,512proxy/20Mtokens,128DS/5CNY and5400s per-phase admission remain.

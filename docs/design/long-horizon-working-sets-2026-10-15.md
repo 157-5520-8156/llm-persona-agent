@@ -197,3 +197,22 @@ launcher锁FD由child继承，父进程异常退出也不会释放仍活动的�
 
 QQ只做准备读取：单一allowlist、匹配主动目标、群聊关闭；真实QQ/NapCat3000当前离线，
 只有旧生产适配器8787在运行。尚无真实QQ消息、生产替换或长期部署；最后仍需验证。
+
+
+## 最终回归与v16续跑（2026-10-16）
+
+机器23:26重启，fullv13在约65%中断，无结果文件；原日志、源码hash和中断观察保留。
+重跑fullv14得到真实1 failed /1851 passed：测试把embedding.finished当成完整搜索/trace已发布。
+在实际失败测试上对trace发布加入100ms延迟，旧fixture稳定失败；a29f1d86仅等待真实prefetch
+future，仍用0.5s夹具截止，生产450ms join和全部语义/trace/winning-call断言不变。控制转绿，
+同文件226项通过，Ruff和双轴复核无finding。原失败不能改写成无故重跑后通过。
+
+冻结fullv15：10680 passed /19 skipped /2 xfailed /1既有warning，1208.78s pytest、1211.003s
+wrapper，1705Pythonhash保持；head a29f1d86（应用逻辑仍89d5e19c）。live-v16按180s后台配置
+从v15原终态续跑，费用表保留诊断307；原39/0、72h起点及day1/day3消息ID均保留。
+新增180配置的唯一并发probe用独立稳定ID后缀，按message_id恢复，不覆盖旧90s样本；这是
+不同上下文下的观察，不是配对因果对照。实际函数离线控制与Spec复核通过。
+
+用户已自行启动QQ环境并授权打开生产；检查时旧发布包PID1127/8787 running，NapCat3000
+online/good。未部署候选。私有候选QQ脚本仅为准备，readiness=false，审查出的切换/恢复、
+共享owner和在途验证、精确recipient绑定、跨日结果准入等缺口未闭合前不得执行。
