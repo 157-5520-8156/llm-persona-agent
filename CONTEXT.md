@@ -24,9 +24,19 @@ then cancellation at author deadline+1.8ms. Legacy visible_source_runtime omitte
 phase seam. Narrow fix enters run_validation_review_once(46s), no retry or deadline-policy change;
 existing public test now requires both initial review and same-role correction to cross author deadline.
 Cancellation fixture explicitly closes before its1s review phase (host close grace .01s only in test).
-96 public gate/budget and92 composed/independent/grounded checks pass; Ruff clean; final full pending.
+96 public gate/budget and92 composed/independent/grounded checks pass; Ruff clean. Commit0303af62;
+fullv10 on2160be2c:10649pass/19skip/2xfail,1existingwarning,1291.81s,1705Pythonhashesunchanged.
 Both review axes closed. Original failure, invalid first diagnostic and all controls retained.
 Live-v12 completed on frozenfb8b4bca; no hot patch.
+8a148e15 reuses historical ProposalAuditProjection decoding in7pending/recovery scan sites via the
+existing2048bound immutable cache; actual acceptance/source/permission/effect checks still run each time.
+Both codec registries compared against content snapshots; changed entries/whole tables bypass cache.
+39worker+175authority tests/Ruff/bothreviews pass; original worker red4decodes becomes2, preserving
+both exact descendant proof validations. Warm-cache missing receipt still rejects. Fullv11 running,
+Python source frozen. Raw1131-proposal microbenchmark .142->.006s is decode-only. Whole zeroAPI
+prototype same-empty-status cached6.15/6.65s vsrestored8.59s; initial accepted-status baselines excluded.
+Actualimplementation same-empty-status A/B5.80/6.37s vsrestored8.14s;78dues/45153eventbytes/source
+unchanged,0API;40161cachehits/1131misses. Only a frozen-sample speedup, not a release SLA.
 Memory wake repair:156 scoped pass/Ruff/both reviews closed; real45051-event old/new proof0API,
 old work due remainsAug2 while clock now selectsOct10 07:41:18Z. No hot patch of active real runs.
 
@@ -67,7 +77,9 @@ quiet-morning claim, then existing30min retry succeeds after its one correction.
 Failedtotal18/stalled0. Original45051events/sourceSHA unchanged; cold replay matches45148-event terminal.
 DurableOct9 11:19:45+08, observed11:23:15; only11.14/72h, no day1/day3 chat. Active1373/prehistory1259;
 48old unreadable dues retained,54within fixed horizon. 506empty scheduler passes total4640s/median8.82s;
-thread-level offline profiling inprogress (no heartbeat coalescing or provider calls).
+offline profiling attributes repeated proposal decoding/world-stimulus scans/memory proof reads.
+No heartbeat coalescing/provider calls. Invalid concurrentcProfile diagnostic kept separate; a minimal
+control proved profiler conflict and the corrected single-profiler run completed. No Python upgrade.
 Ledger:253proxy+5 oldDS;10,469,834 reported/reserved proxy tokens; oldDS reserve1.218144CNY retained.
 Limits512proxy/20Mtokens,128DS/5CNY,5400s admission per phase; original64-request grant remains separate.
 No active paid continuation while final code qualification pending. Failure counters, unknown reserves
