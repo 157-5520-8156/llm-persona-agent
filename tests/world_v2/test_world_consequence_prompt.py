@@ -116,7 +116,7 @@ def test_current_prompt_cannot_relabel_another_or_historical_manifest(wrong):
             user_context=context, authority=authority, execution_materials=(),
         )
 
-def test_current_prompt_example_uses_only_offered_refs_and_teaches_windows():
+def test_current_prompt_uses_one_offered_reference_list_and_teaches_windows():
     authority, context = _inputs()
     context["capability_manifest"].update(
         {
@@ -131,12 +131,14 @@ def test_current_prompt_example_uses_only_offered_refs_and_teaches_windows():
     )
     system = messages[0]["content"]
 
-    assert 'event:anchor:offered' in system
+    packet = json.loads(messages[1]['content'])
+    assert packet['capability_manifest']['anchor_refs'] == ['event:anchor:offered']
+    assert 'event:anchor:offered' not in system
     assert 'event:anchor:1' not in system
     assert 'location:reviewed-place' not in system
     assert "capability_manifest.max_window_minutes" in system
     assert "location_capability_coordinates" in system
-    assert '"dynamic_life_direction"' in system
+    assert 'dynamic_life_direction' in system
 
 
 def test_existing_pressure_does_not_turn_an_ordinary_opening_into_a_disturbance():
@@ -244,3 +246,169 @@ def test_recent_history_index_keeps_outcomes_separate_from_identity_and_current_
     assert row["truncated"] is False
     assert row["character_response"] == history["value"]["content"]["character_response"]
     assert texture["items"][1] == legacy
+
+
+def test_bound_detail_prompt_cannot_offer_a_new_character_choice_or_independent_scene():
+    from test_world_environment_attention import context as scene_context
+    authority, context = scene_context()
+    context['capability_manifest'].update(anchor_refs=['event:activated'], event_detail_capability={'source_kind':'world_occurrence'})
+    messages = compile_world_consequence_messages(user_context=context, authority=authority, execution_materials=())
+    packet = json.loads(messages[1]['content'])
+    assert '"causal_authority": "character_choice"' not in messages[0]['content']
+    assert 'environment_attention' not in packet
+    assert 'independent ordinary scene opening' not in messages[0]['content']
+    assert packet['capability_manifest'] == context['capability_manifest']
+    assert packet['pinned_world_context'] == context['pinned_world_context']
+    assert packet['output_contract']['propose']['properties']['causal_authority']['const'] == 'world_contingency'
+
+
+def test_current_prompt_deduplicates_identical_location_capabilities_only():
+    authority, context = _inputs()
+    capabilities = [{'location_ref':'room:one', 'capability_ref':'cap:one', 'privacy_class':'private'}]
+    context['capability_manifest']['location_capabilities'] = capabilities
+    context['cross_field_authority']['location_binding'] = {'available_capabilities':deepcopy(capabilities),'pairing':'both_or_neither'}
+    before = deepcopy(context)
+    packet = json.loads(compile_world_consequence_messages(user_context=context,authority=authority,execution_materials=())[1]['content'])
+    assert context == before
+    assert packet['capability_manifest']['location_capabilities'] == capabilities
+    assert 'available_capabilities' not in packet['cross_field_authority']['location_binding']
+    assert packet['cross_field_authority']['location_binding']['capabilities_source'] == 'capability_manifest.location_capabilities'
+    context['cross_field_authority']['location_binding']['available_capabilities'][0]['privacy_class']='withhold'
+    packet = json.loads(compile_world_consequence_messages(user_context=context,authority=authority,execution_materials=())[1]['content'])
+    assert packet['cross_field_authority']['location_binding']['available_capabilities'][0]['privacy_class']=='withhold'
+
+
+def test_detail_claim_correction_covers_the_same_fields_as_the_unchanged_validator():
+    from types import SimpleNamespace
+    from companion_daemon.world_v2.life_development_draft import LifeDevelopmentDraftError
+    from companion_daemon.world_v2.life_development_runtime import _world_author_repair_coordinates
+    error = LifeDevelopmentDraftError('invalid_shape','closure', violations=({'path':'<root>','message':'premise and outcomes must exactly close over claim declarations','type':'value_error'},))
+    coordinates = _world_author_repair_coordinates(raw='{}',error=error,
+        manifest=SimpleNamespace(event_detail_capability=object()),hard_boundary_contract={},logical_time=None)
+    assert 'event_details.*.claim_refs' in coordinates[0]['field_paths']
+    assert 'event_details[*].claim_refs' in coordinates[0]['required_relation']
+
+
+def test_result_claim_permission_is_consistent_with_the_offered_attempt():
+    from companion_daemon.world_v2.world_consequence_contract import ActivityExecutionBinding
+    from companion_daemon.world_v2.world_consequence_execution_context import WorldConsequenceAuthorizedIntention, WorldConsequenceExecutionMaterial
+    from companion_daemon.world_v2.life_development_runtime import _world_author_claim_classification_contract
+    authority, context = _inputs()
+    binding = ActivityExecutionBinding(actor_ref=authority.actor_ref,source_event_ref='start',source_world_revision=1,
+        source_payload_hash='a'*64,privacy_class='private',source_event_type='ActivityStarted',plan_id='plan',activity_id='activity',plan_entity_revision=2)
+    intention = WorldConsequenceAuthorizedIntention(text='整理书本',content_ref='text',content_payload_hash='b'*64,
+        proposal_event_ref='proposal',proposal_payload_hash='c'*64,model_result_event_ref='model-event',
+        model_result_payload_hash='d'*64,model_result_ref='model')
+    material = WorldConsequenceExecutionMaterial(execution_binding=binding,status='available',authorized_intention=intention)
+    authority = authority.model_copy(update={'execution_bindings':(binding,)})
+    context['capability_manifest']['active_attempt_consequence'] = {'execution_binding':binding.model_dump(mode='json')}
+    context['claim_classification_contract'] = _world_author_claim_classification_contract()
+    context['cross_field_authority']['claim_declarations'] = {'novel_world_generation':{'allowed_subject_scopes':['provisional_entity','world_environment']}}
+    packet = json.loads(compile_world_consequence_messages(user_context=context,authority=authority,execution_materials=(material,))[1]['content'])
+    assert 'authorized_attempt_result' in packet['claim_classification_contract']['proposal_scoped_novel_world']['requirements']['subject_scope']
+    assert 'authorized_attempt_result' in packet['cross_field_authority']['claim_declarations']['novel_world_generation']['allowed_subject_scopes']
+    assert packet['execution_authority'] == authority.model_dump(mode='json')
+    assert packet['execution_materials'] == [material.model_dump(mode='json')]
+    consequence=packet['output_contract']['propose']['$defs']['WorldConsequenceV2']
+    assert 'authorized_attempt_result' in consequence['required']
+    assert consequence['properties']['authorized_attempt_result']=={'$ref':'#/$defs/AuthorizedAttemptResult'}
+    timing=packet['output_contract']['propose']['$defs']['LifeDevelopmentTimingDraft']
+    assert 'duration_minutes' in timing['required']
+    assert timing['properties']['duration_minutes']['minimum']==5
+    assert timing['properties']['opens_at']==timing['properties']['closes_at']=={'type':'null'}
+
+
+def test_current_task_location_correction_cannot_change_to_later():
+    from types import SimpleNamespace
+    from test_life_development_runtime import _location_capability, NOW
+    from companion_daemon.world_v2.life_development_draft import LifeDevelopmentDraftError
+    from companion_daemon.world_v2.life_development_runtime import _world_author_repair_coordinates
+    location = _location_capability()
+    manifest = SimpleNamespace(location_capabilities=(location,),max_future_days=30,max_window_minutes=720,
+        event_detail_capability=object(),active_attempt_consequence=None,completed_activity_consequence=None)
+    failure=LifeDevelopmentDraftError('unsupported_location_window','test',failure_context={'selected_location_ref':location.location_ref})
+    coordinates=_world_author_repair_coordinates(raw='{}',error=failure,manifest=manifest,hard_boundary_contract={},logical_time=NOW)
+    assert coordinates[0]['selected_location_later_interval'] is None
+    assert not any('later' in item for item in coordinates[0]['legal_repairs'])
+
+
+def test_schema_compaction_preserves_domain_fields_and_validation_keywords():
+    from companion_daemon.world_v2.world_consequence_prompt import _without_schema_annotations
+    schema={'type':'object','title':'Display title','required':['title','default'],'additionalProperties':False,
+            'properties':{'title':{'type':'string','minLength':1,'title':'Title','default':'sample'},
+                          'default':{'type':'object','enum':[{'title':'literal','default':'literal'}]}},
+            '$defs':{'text':{'type':'string','pattern':'^[ab]+$','title':'Annotation','maxLength':3}}}
+    before=deepcopy(schema)
+    compact=_without_schema_annotations(schema)
+    assert schema==before
+    assert compact['properties']['title']=={'type':'string','minLength':1}
+    assert compact['properties']['default']['enum']==[{'title':'literal','default':'literal'}]
+    assert compact['$defs']['text']=={'type':'string','pattern':'^[ab]+$','maxLength':3}
+    assert compact['required']==schema['required'] and compact['additionalProperties'] is False
+
+
+def test_unoffered_attempt_schema_is_null_only_without_removing_general_choice():
+    from jsonschema import Draft202012Validator
+    authority,context=_inputs()
+    context['capability_manifest']['anchor_refs']=['event:offered']
+    packet=json.loads(compile_world_consequence_messages(user_context=context,authority=authority,execution_materials=())[1]['content'])
+    schema=packet['output_contract']['propose']
+    Draft202012Validator.check_schema(schema)
+    assert 'character_choice' in schema['properties']['causal_authority']['enum']
+    assert schema['$defs']['WorldConsequenceV2']['properties']['authorized_attempt_result']=={'type':'null'}
+    assert not {'AuthorizedAttemptResult','ActivityExecutionBinding','ReceiptExecutionBinding'} & schema['$defs'].keys()
+
+
+def test_location_reselection_keeps_the_parsers_unlocated_option_and_visual_obligation():
+    from companion_daemon.world_v2.ledger import WorldLedger
+    from companion_daemon.world_v2.life_development_draft import (
+        LifeDevelopmentDraftError, parse_world_author_draft,
+    )
+    from companion_daemon.world_v2.life_development_runtime import (
+        _world_author_repair_coordinates, _world_author_reselection_instruction,
+    )
+    from test_life_development_runtime import (
+        NOW, WORLD_ID, _manifest, _projection_cursor, _seed_clock,
+    )
+    from test_world_consequence_producer import _draft
+
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    manifest = _manifest(wake, pinned_cursor=_projection_cursor(ledger)).model_copy(
+        update={'outcome_contract': 'world-consequence.2'}
+    )
+    assert manifest.location_capabilities
+    value = _draft(wake)
+    # Removing only the visual remains invalid for an ordinary located event.
+    for outcome in value['outcomes']:
+        outcome['visual_evidence'] = None
+    with pytest.raises(LifeDevelopmentDraftError, match='must carry visual_evidence'):
+        parse_world_author_draft(raw=json.dumps(value), manifest=manifest, logical_time=NOW)
+
+    # A complete external alternative may genuinely have no location. Semantic
+    # source review remains a separate gate; this control proves structural legality.
+    value.update(location_ref=None, location_capability_ref=None, premise='本地交通票价公布调整。')
+    value['claim_declarations'][0]['summary'] = '本地交通票价调整。'
+    for outcome, text in zip(value['outcomes'], ('票价保持不变。', '票价上调一元。'), strict=True):
+        outcome['world_consequence']['environment_text'] = text
+    parsed = parse_world_author_draft(raw=json.dumps(value), manifest=manifest, logical_time=NOW)
+    assert parsed.location_ref is None
+    error = LifeDevelopmentDraftError('unsupported_location_window', 'closed')
+    repair = _world_author_repair_coordinates(
+        raw='{}', error=error, manifest=manifest, hard_boundary_contract={}, logical_time=NOW,
+    )[0]
+    assert 'complete_location_independent_replacement' in repair['legal_repairs']
+    assert repair['illegal_repair'] == 'drop_location_fields_but_retain_unsupported_place_dependent_content'
+    instruction = _world_author_reselection_instruction(failure_code=error.code)
+    assert 'only when location_capabilities is empty' not in instruction
+    assert 'place-dependent claims, prose and visuals' in instruction
+
+    visual_error = LifeDevelopmentDraftError('invalid_shape', 'visual', violations=({
+        'path': 'location_ref', 'message': 'outcome visual location must equal proposal',
+        'type': 'value_error',
+    },))
+    visual_repair = _world_author_repair_coordinates(
+        raw='{}', error=visual_error, manifest=manifest, hard_boundary_contract={}, logical_time=NOW,
+    )[0]
+    assert 'omit_visual_evidence' not in visual_repair['allowed_repairs']
+    assert 'omit_visual_evidence_only_if_unlocated_or_withhold' in visual_repair['allowed_repairs']

@@ -62,7 +62,7 @@ def environment_attention(context: dict) -> dict | None:
     manifest = context.get("capability_manifest", {})
     # Exact attempt-result requests must stay on that original causal scope.
     if any(manifest.get(key) is not None for key in (
-        "active_attempt_consequence", "completed_activity_consequence",
+        "active_attempt_consequence", "completed_activity_consequence", "event_detail_capability",
     )):
         return None
     if context.get("occasion_mode") == "disturbance":

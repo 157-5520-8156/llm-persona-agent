@@ -2169,7 +2169,8 @@ class LifeDevelopmentRuntime:
             )
         if recovered_world is None:
             if (world_manifest.completed_activity_consequence is None
-                    and world_manifest.active_attempt_consequence is None):
+                    and world_manifest.active_attempt_consequence is None
+                    and world_manifest.event_detail_capability is None):
                 occasion_draw = self._resolve_occasion_draw(
                     wake=wake, manifest=world_manifest,
                 )
@@ -7930,15 +7931,17 @@ def _world_author_reselection_instruction(*, failure_code: str) -> str:
     )
     if failure_code == "unsupported_location_window":
         instruction += (
-            " For this failure, repair only the location/timing pair. Copy "
+            " For a located replacement, copy "
             "location_ref and location_capability_ref from the pinned manifest, "
             "never from the system example. If repair_coordinates names a "
-            "selected_location_later_interval, keep that place and copy that "
-            "later window. Otherwise switch to a listed capability in covering_now. "
-            "Omit both location fields only when location_capabilities is empty. "
-            "Do not replace a place-bound draft with a location-independent filler "
-            "while listed capabilities remain. no_op remains available if no listed "
-            "capability fits. The system has not selected the replacement event, "
+            "selected_location_later_interval, that later window is available. "
+            "Otherwise use a listed capability in covering_now. You may instead "
+            "author a complete location-independent replacement and omit both "
+            "location fields, even when listed capabilities remain. Reauthor all "
+            "place-dependent claims, prose and visuals consistently; dropping "
+            "coordinates alone does not authorize unsupported place assertions. "
+            "Keep the original task binding, timing and source obligations. "
+            "no_op remains available. The system has not selected the replacement event, "
             "NPCs, direction, or outcome."
         )
     return instruction
@@ -7960,6 +7963,9 @@ def _world_author_repair_coordinates(
     """
 
     if error.code == "unsupported_location_window":
+        now_only = any(getattr(manifest, key, None) is not None for key in (
+            "active_attempt_consequence", "completed_activity_consequence", "event_detail_capability",
+        ))
         selected_ref = error.failure_context.get("selected_location_ref")
         covering_now: list[dict[str, object]] = []
         selected_later: dict[str, object] | None = None
@@ -7979,7 +7985,7 @@ def _world_author_repair_coordinates(
                         "maximum_now_duration_minutes": maximum_now,
                     }
                 )
-            if capability.location_ref == selected_ref:
+            if capability.location_ref == selected_ref and not now_only:
                 later = coord.get("near_term_later_interval")
                 if isinstance(later, dict):
                     selected_later = {
@@ -7987,24 +7993,16 @@ def _world_author_repair_coordinates(
                         "capability_ref": capability.capability_ref,
                         **later,
                     }
-        capabilities_listed = bool(manifest.location_capabilities)
         return [
             {
                 "rule": "location_capability_covers_proposal_window",
                 "field_paths": ["location_ref", "location_capability_ref", "timing"],
-                "legal_repairs": (
-                    ["omit_both_location_fields"]
-                    if not capabilities_listed
-                    else [
-                        "same_location_later_window_from_selected_location_later_interval",
-                        "different_listed_capability_that_covers_now",
-                    ]
-                ),
-                "illegal_repair": (
-                    None
-                    if not capabilities_listed
-                    else "omit_both_location_fields_while_listed_capabilities_remain"
-                ),
+                "legal_repairs": [
+                    *(["same_location_later_window_from_selected_location_later_interval"] if selected_later else []),
+                    *(["listed_capability_that_covers_now"] if covering_now else []),
+                    "complete_location_independent_replacement",
+                ],
+                "illegal_repair": "drop_location_fields_but_retain_unsupported_place_dependent_content",
                 "covering_now": covering_now,
                 "selected_location_later_interval": selected_later,
                 "no_op_remains_available": True,
@@ -8071,10 +8069,12 @@ def _world_author_repair_coordinates(
                         "premise_claim_refs",
                         "outcomes.*.claim_refs",
                         "claim_declarations.*.claim_id",
+                        *(["event_details.*.claim_refs"] if manifest.event_detail_capability is not None else []),
                     ],
                     "required_relation": (
-                        "set(premise_claim_refs union outcomes[*].claim_refs) "
-                        "equals set(claim_declarations[*].claim_id)"
+                        "set(premise_claim_refs union outcomes[*].claim_refs"
+                        + (" union event_details[*].claim_refs" if manifest.event_detail_capability is not None else "")
+                        + ") equals set(claim_declarations[*].claim_id)"
                     ),
                 }
             )
@@ -8140,7 +8140,7 @@ def _world_author_repair_coordinates(
                     "allowed_repairs": [
                         "omit_visual_location",
                         "copy_exact_proposal_location_ref",
-                        "omit_visual_evidence",
+                        "omit_visual_evidence_only_if_unlocated_or_withhold",
                     ],
                 }
             )

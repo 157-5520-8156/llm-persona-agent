@@ -28,6 +28,13 @@ attempts; retry technical failures without reauthoring. Missed content remains i
 The scheduler queries running work and maps overdue backlog to the next clock; completed
 history does not add one query per programme.
 
+World Author prompts use the existing task capabilities to show only applicable guidance.
+A bound event does not draw a new occasion or select an independent scene. Exact duplicate
+capability mirrors may reference the complete original manifest; presentation may omit
+schema annotations and unoffered branches. Canonical validation and native tool contracts
+remain unchanged, and recovery retains the original stored request. Correction guidance
+must expose legal alternatives without prescribing the author or character's decisions.
+
 The authenticated weekly dashboard reads published periods/classes, actual Experiences,
 subjective Plans, realized World events and private Outlook windows at one cursor.
 Known arrangements do not become history just because their date passed. Reading the

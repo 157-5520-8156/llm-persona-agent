@@ -2190,7 +2190,7 @@ def test_world_author_compliant_example_is_location_bound_not_weather() -> None:
     assert example["timing"]["mode"] == "later"
 
 
-def test_closed_hours_location_draft_repairs_window_instead_of_dropping_place() -> None:
+def test_closed_hours_location_draft_cannot_drop_coordinates_without_reauthoring() -> None:
     ledger = WorldLedger.in_memory(world_id=WORLD_ID)
     wake = _seed_clock(ledger)
     bookstore = LifeDevelopmentLocationCapability(
@@ -2245,7 +2245,7 @@ def test_closed_hours_location_draft_repairs_window_instead_of_dropping_place() 
         failure_code=raised.value.code,
     )
     assert "omit both location fields and freely author a location-independent possibility" not in instruction
-    assert "Omit both location fields only when location_capabilities is empty" in instruction
+    assert "dropping coordinates alone does not authorize unsupported place assertions" in instruction
 
     coordinates = life_runtime_module._world_author_repair_coordinates(
         raw=now_draft,
@@ -2261,7 +2261,7 @@ def test_closed_hours_location_draft_repairs_window_instead_of_dropping_place() 
     repair = coordinates[0]
     assert repair["rule"] == "location_capability_covers_proposal_window"
     assert repair["illegal_repair"] == (
-        "omit_both_location_fields_while_listed_capabilities_remain"
+        "drop_location_fields_but_retain_unsupported_place_dependent_content"
     )
     later = repair["selected_location_later_interval"]
     assert isinstance(later, dict)
