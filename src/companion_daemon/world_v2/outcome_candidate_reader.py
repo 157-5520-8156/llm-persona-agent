@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS
+
 from pydantic import Field, model_validator
 
 from .life_content_store import ImmutableLifeContentStore, life_content_payload_hash
@@ -105,7 +107,7 @@ class OutcomeCandidateReader:
                 candidate_result_ref=candidate.candidate_result_ref, reason="hash_mismatch"
             )
         reading = None
-        if candidate.result_contract == "world-consequence.2":
+        if candidate.result_contract in WORLD_CONSEQUENCE_CONTRACTS:
             try:
                 if candidate.result_payload_hash.removeprefix("sha256:") != stored.content_payload_hash:
                     raise ValueError("candidate result hash does not bind its body")

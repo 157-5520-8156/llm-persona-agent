@@ -153,7 +153,7 @@ class WorldOutlookExecutor:
             if existing is None:
                 # Only the currently selected script enters World, never the
                 # full private outlook or unchosen future branches.
-                body = node.execution.text
+                body = node.execution.planning.public_text() if node.execution.planning else node.execution.text
                 if node.lane == "npc":
                     npc = next(
                         (
@@ -181,6 +181,8 @@ class WorldOutlookExecutor:
                 from .lived_story import LivedStoryNavigation
 
                 consequence = WorldConsequenceV2(
+                    contract="world-consequence.3" if node.execution.planning else "world-consequence.2",
+                    world_planning=node.execution.planning,
                     environment_text=body,
                     story_navigation=LivedStoryNavigation.model_validate_json(
                         json.dumps(origin["story_navigation"])
@@ -203,7 +205,7 @@ class WorldOutlookExecutor:
                     result_id="result:outlook:" + identity,
                     result_payload_ref="payload:outlook:" + identity,
                     result_payload_hash=life_content_payload_hash(text),
-                    result_contract="world-consequence.2",
+                    result_contract=consequence.contract,
                     privacy_class=node.execution.privacy_class,
                     content_ref="content:outlook:" + identity,
                     text=text,
@@ -223,6 +225,14 @@ class WorldOutlookExecutor:
                     "occurrence_id": ref,
                     "no_model_call_at_execution": True,
                 }
+                if node.execution.prepare_details:
+                    from .world_outlook import source_catalog
+                    refs = {c.source_ref for c in node.conditions}
+                    sources = source_catalog(state, actor_ref=self._owner, required_refs=refs,
+                        npc_refs=tuple(f"npc:{n.npc_id}" for n in state.npcs), legacy_fact_status=False)
+                    payload["prepared_detail_source_tokens"] = [
+                        {"source_ref": ref, "token": sources[ref].token} for ref in sorted(refs)
+                    ]
                 event = WorldEvent.from_payload(
                     schema_version="world-v2.1",
                     event_id=proposal_id,
@@ -250,6 +260,7 @@ class WorldOutlookExecutor:
                     OccurrenceContentCommitRequest(
                         world_id=state.world_id,
                         occurrence=WorldOccurrenceProjection(
+                            activation_authority="world_outlook" if origin.get("event_detail_origin") else "clock",
                             occurrence_id=ref,
                             entity_revision=1,
                             trigger_ref=proposal_id,

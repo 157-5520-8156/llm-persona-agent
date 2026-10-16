@@ -7,6 +7,8 @@ outcome prose.
 
 from __future__ import annotations
 
+from .event_detail_contract import EventDetailCapability, EventDetailStep, validate_event_details
+
 from datetime import date, datetime, time, timedelta
 import hashlib
 import json
@@ -353,6 +355,7 @@ class LifeDevelopmentCapabilityManifest(FrozenModel):
     active_attempt_consequence: ActiveAttemptConsequence | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )
+    event_detail_capability: EventDetailCapability | None = Field(default=None, exclude_if=lambda value: value is None)
     max_future_days: int = Field(ge=1, le=366)
     max_window_minutes: int = Field(ge=5, le=7 * 24 * 60)
 
@@ -360,6 +363,22 @@ class LifeDevelopmentCapabilityManifest(FrozenModel):
     def refs_are_canonical(self) -> "LifeDevelopmentCapabilityManifest":
         completion = self.completed_activity_consequence
         active = self.active_attempt_consequence
+        detail = self.event_detail_capability
+        if detail is not None:
+            if self.outcome_contract != "world-consequence.2" or completion is not None or detail.source_event_ref not in self.anchor_refs:
+                raise ValueError("event details require a current source-bound World capability")
+            if detail.source_kind == "activity_execution" and (active is None or any((
+                detail.source_event_ref != active.execution_binding.source_event_ref,
+                detail.source_payload_hash != active.execution_binding.source_payload_hash,
+                detail.source_world_revision != active.execution_binding.source_world_revision,
+                detail.entity_ref != active.execution_binding.plan_id,
+                detail.entity_revision != active.active_plan_revision,
+                detail.starts_at != active.execution_started_at,
+                detail.privacy_class != active.execution_binding.privacy_class,
+            ))):
+                raise ValueError("prepared details changed the original active attempt")
+            if detail.source_kind == "world_occurrence" and active is not None:
+                raise ValueError("one event detail capability cannot combine unrelated sources")
         if active is not None and (
             completion is not None
             or self.outcome_contract != "world-consequence.2"
@@ -894,6 +913,7 @@ class LifeDevelopmentPossibilityDraft(FrozenModel):
     entity_refs: tuple[str, ...] = Field(default=(), max_length=8)
     privacy_class: PrivacyClass
     outcomes: tuple[LifeDevelopmentOutcomeDraft, ...] = Field(min_length=2, max_length=4)
+    event_details: tuple[EventDetailStep, ...] = Field(default=(), max_length=12, exclude_if=lambda value: not value)
 
     @field_validator(
         "anchor_refs",
@@ -924,6 +944,7 @@ class LifeDevelopmentPossibilityDraft(FrozenModel):
         used = {
             *self.premise_claim_refs,
             *(ref for outcome in self.outcomes for ref in outcome.claim_refs),
+            *(ref for step in self.event_details for ref in step.claim_refs),
         }
         if used != set(declaration_refs):
             raise ValueError("premise and outcomes must exactly close over claim declarations")
@@ -1129,6 +1150,12 @@ def _normalize_claim_identifiers(decoded: dict[str, object]) -> dict[str, object
                 }
             rebuilt.append(item)
         normalized["outcomes"] = rebuilt
+    details = decoded.get("event_details")
+    if isinstance(details, list):
+        normalized["event_details"] = [
+            {**step, "claim_refs": rewrite(step.get("claim_refs"))} if isinstance(step, dict) else step
+            for step in details
+        ]
     return normalized
 
 
@@ -1243,6 +1270,10 @@ def parse_world_author_draft(
                     claim_refs = outcome.get("claim_refs") if isinstance(outcome, dict) else None
                     if isinstance(claim_refs, list):
                         used_refs.update(item for item in claim_refs if isinstance(item, str))
+            for step in decoded.get("event_details", ()):
+                refs = step.get("claim_refs") if isinstance(step, dict) else None
+                if isinstance(refs, list):
+                    used_refs.update(item for item in refs if isinstance(item, str))
             declared_ids = {item["claim_id"] for item in declarations}
             # Drop only when every referenced declaration is actually declared.
             # If the draft references an undeclared id, filtering here would
@@ -1345,6 +1376,12 @@ def parse_world_author_draft(
                         "message": "provide an objective candidate result with the exact binding, or no_op",
                     },),
                 )
+    try:
+        validate_event_details(draft, manifest.event_detail_capability, logical_time=logical_time)
+    except ValueError as exc:
+        raise LifeDevelopmentDraftError("event_details_invalid", str(exc), violations=(
+            {"path": "event_details", "type": "event_detail_scope", "message": str(exc)},
+        )) from exc
     completion = manifest.completed_activity_consequence
     if completion is not None:
         if draft.causal_authority != "world_contingency" or draft.timing.mode != "now":

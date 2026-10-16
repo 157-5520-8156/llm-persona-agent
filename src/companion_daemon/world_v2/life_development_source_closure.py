@@ -457,6 +457,18 @@ class LifeDevelopmentWorldConsequenceReview(LifeDevelopmentNovelOriginReview):
     )
 
 
+class LifeDevelopmentPreparedDetailFinding(LifeDevelopmentWorldConsequenceFinding):
+    prose_path: str = Field(
+        pattern=r"^(outcomes\.(0|[1-9][0-9]*)\.world_consequence\.(environment_text|authorized_attempt_result\.text)|event_details\.(0|[1-9][0-9]*)\.text)$",
+        max_length=256,
+    )
+
+
+class LifeDevelopmentPreparedDetailReview(LifeDevelopmentWorldConsequenceReview):
+    # Only drafts with this newly offered capability gain future coordinates.
+    unsupported_outcome_prerequisites: tuple[LifeDevelopmentPreparedDetailFinding, ...] = Field(default=(), max_length=8)
+
+
 class LifeDevelopmentSourceClosureError(ValueError):
     def __init__(
         self,
@@ -907,6 +919,8 @@ def _uses_world_consequence(draft: LifeDevelopmentPossibilityDraft) -> bool:
 
 
 def _novel_review_model(draft: LifeDevelopmentPossibilityDraft):
+    if draft.event_details:
+        return LifeDevelopmentPreparedDetailReview
     return (
         LifeDevelopmentWorldConsequenceReview
         if _uses_world_consequence(draft)
@@ -924,9 +938,10 @@ def _novel_review_contract(draft: LifeDevelopmentPossibilityDraft) -> str:
 
 def _outcome_prose_coordinates(draft: LifeDevelopmentPossibilityDraft) -> dict[str, str]:
     return {
-        f"outcomes.{index}.{path}": text
-        for index, outcome in enumerate(draft.outcomes)
-        for path, text in outcome.prose_fields.items()
+        **{f"outcomes.{index}.{path}": text
+           for index, outcome in enumerate(draft.outcomes)
+           for path, text in outcome.prose_fields.items()},
+        **{f"event_details.{index}.text": step.text for index, step in enumerate(draft.event_details)},
     }
 
 
@@ -1505,6 +1520,9 @@ def _general_reviewed_surface(
     """Expose only prose/coordinates owned by the general reviewer."""
 
     return {
+        **({"prepared_event_details": [step.model_dump(mode="json") for step in draft.event_details],
+            "prepared_detail_scope": "future_external_context_only_not_happened_not_character_actions_or_feelings; independent steps must hold under every outcome; dependent steps wait for the exact outcome_index"}
+           if draft.event_details else {}),
         "authored_subject_ref": draft.authored_subject_ref,
         "premise": draft.premise,
         "premise_claim_refs": list(draft.premise_claim_refs),
@@ -1547,6 +1565,9 @@ def _novel_origin_reviewed_surface(
     """Expose the whole current premise as well as exact novel coordinates."""
 
     return {
+        **({"prepared_event_details": [step.model_dump(mode="json") for step in draft.event_details],
+            "prepared_detail_scope": "future_external_context_only_not_happened_not_character_actions_or_feelings; independent steps must hold under every outcome; dependent steps wait for the exact outcome_index"}
+           if draft.event_details else {}),
         "authored_subject_ref": draft.authored_subject_ref,
         "premise": draft.premise,
         "premise_claim_refs": list(draft.premise_claim_refs),

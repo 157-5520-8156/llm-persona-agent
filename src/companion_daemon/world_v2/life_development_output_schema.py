@@ -18,9 +18,22 @@ _HISTORICAL_OUTCOME_DESCRIPTION = (
 
 
 def life_possibility_output_schema(*, outcome_contract: str | None = None,
-                                  authorized_attempt_claims: bool = False) -> dict[str, object]:
+                                  authorized_attempt_claims: bool = False, event_details: bool = False) -> dict[str, object]:
     schema = LifeDevelopmentPossibilityDraft.model_json_schema(mode="validation")
     definitions = schema["$defs"]
+    if event_details:
+        for field in ("causal_authority", "outcome_resolution_authority"):
+            schema["properties"][field] = {"type": "string", "const": "world_contingency"}
+        definitions["LifeDevelopmentTimingDraft"]["properties"]["mode"] = {"type": "string", "const": "now"}
+    if not event_details:
+        schema["properties"].pop("event_details", None)
+        definitions.pop("EventDetailStep", None)
+    # This author's existing capability does not publish objective planning.
+    consequence = definitions["WorldConsequenceV2"]["properties"]
+    consequence.pop("world_planning", None)
+    consequence["contract"] = {"const": "world-consequence.2", "default": "world-consequence.2", "title": "Contract", "type": "string"}
+    for key in ("WorldPlanningDraft", "PlanningSlot", "PlanningException"):
+        definitions.pop(key, None)
     if not authorized_attempt_claims:
         # Frozen legacy/v1-v4 wire: adding a new live declaration must not
         # change the schema or request hash of already-recorded author calls.

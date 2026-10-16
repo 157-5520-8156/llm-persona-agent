@@ -63,11 +63,15 @@ def _event_at(
     event, commit = located
     event = WorldEvent.model_validate_json(event.model_dump_json())
     ref = refs[0]
+    if event_ref not in commit.event_ids:
+        raise ValueError("dashboard content event is outside its commit")
+    following = set(commit.event_ids[commit.event_ids.index(event_ref) + 1:])
+    revision = commit.world_revision - sum(r.event_id in following for r in projection.committed_world_event_refs)
     if (
         event.world_id != projection.world_id or event.event_id != event_ref
         or event.event_type != event_type or ref.event_type != event_type
         or event.payload_hash != ref.payload_hash or event.logical_time != ref.logical_time
-        or commit.world_revision != ref.world_revision
+        or revision != ref.world_revision
         or commit.world_revision > projection.world_revision
         or commit.deliberation_revision > projection.deliberation_revision
         or commit.ledger_sequence > projection.ledger_sequence

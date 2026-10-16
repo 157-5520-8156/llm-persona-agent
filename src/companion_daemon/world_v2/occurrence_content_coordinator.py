@@ -16,6 +16,8 @@ commit makes the candidate matrix atomic and replay-stable.
 
 from __future__ import annotations
 
+from .world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS
+
 from datetime import datetime
 import hashlib
 import json
@@ -55,7 +57,7 @@ class OutcomeCandidateContent(FrozenModel):
     result_id: str = Field(min_length=1)
     result_payload_ref: str = Field(min_length=1)
     result_payload_hash: str = Field(min_length=1)
-    result_contract: Literal["world-consequence.2"] | None = Field(
+    result_contract: Literal["world-consequence.2", "world-consequence.3"] | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )
     privacy_class: PrivacyClass
@@ -81,7 +83,7 @@ class OutcomeCandidateContent(FrozenModel):
                 consequence.model_dump(mode="json"), ensure_ascii=False,
                 sort_keys=True, separators=(",", ":"),
             )
-            if self.text != exact or self.result_payload_hash != self.content_payload_hash:
+            if self.result_contract != consequence.contract or self.text != exact or self.result_payload_hash != self.content_payload_hash:
                 raise ValueError("world consequence result must bind exact canonical content")
             if consequence.authorized_attempt_result is not None:
                 # This public environmental writer has no role execution or
@@ -95,12 +97,15 @@ class OutcomeCandidateContent(FrozenModel):
         return life_content_payload_hash(self.text)
 
     def descriptor(self) -> OutcomeCandidateDescriptor:
+        from .world_planning import planning_index
+        index = planning_index(WorldConsequenceV2.model_validate_json(self.text).world_planning) if self.result_contract == "world-consequence.3" else None
         return OutcomeCandidateDescriptor(
             candidate_result_ref=self.candidate_result_ref,
             result_id=self.result_id,
             result_payload_ref=self.result_payload_ref,
             result_payload_hash=self.result_payload_hash,
             result_contract=self.result_contract,
+            world_planning_index=index,
             privacy_class=self.privacy_class,
             content_ref=self.content_ref,
             content_payload_hash=self.content_payload_hash,
@@ -214,7 +219,14 @@ class OccurrenceContentCoordinator:
         if request.world_id != self._ledger.world_id:
             raise ValueError("occurrence content request belongs to another world")
         for candidate in request.candidate_contents:
-            if candidate.result_contract == "world-consequence.2":
+            if candidate.result_contract == "world-consequence.3":
+                from .world_planning import validate_planning_publication
+                planning = WorldConsequenceV2.model_validate_json(candidate.text).world_planning
+                if request.source != "world-outlook-execution.1" or request.actor != "worker:world-outlook":
+                    raise ValueError("planning publication requires its World Outlook execution")
+                validate_planning_publication(planning, projection=self._ledger.project(),
+                    actor_ref=request.occurrence.participant_refs[0], occurrence_ref=request.occurrence.occurrence_id, store=self._store)
+            if candidate.result_contract in WORLD_CONSEQUENCE_CONTRACTS:
                 navigation = WorldConsequenceV2.model_validate_json(candidate.text).story_navigation
                 if navigation is not None:
                     from .lived_story import validate_navigation

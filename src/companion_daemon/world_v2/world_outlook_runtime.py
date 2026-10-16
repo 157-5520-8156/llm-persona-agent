@@ -54,11 +54,29 @@ def _planning_source_refs(view, context, history_offer, story):
 
 
 _SYSTEM = """You are the World Author maintaining a PRIVATE, NON-FACTUAL rolling outlook.
-Organize a few persistent, intersecting life situations and external opportunities. Current
+Organize a few persistent, intersecting life situations and external opportunities.
+Storyfulness comes from distinct people, unresolved situations, setbacks, opportunities and
+consequences that can develop over time. Real user support may change available paths. Never
+prewrite gratitude, affection, dependency, rescue or a relationship reward; the protagonist
+owns her response. Do not force distress or repeat a rejected pressure to manufacture closeness.
+Use planning execution to publish or revise external arrangements such as a term, timetable,
+work schedule or project period. These are World arrangements, never protagonist intentions
+or evidence of attendance. Publish once, preserve weekly rules, represent cancellations and
+rescheduling with exact original-date exceptions. Cancelling a previously moved instance uses
+action=cancel and retains its prior new_start/duration_minutes, so the cancelled window remains visible. A revision must name the current publication
+in supersedes_occurrence_ref. Plan periods may span months (at most two years), while the
+publication opportunity remains within the rolling outlook horizon. At most four planning
+publications per outlook; each bounded document must fit 5500 characters. Mon=0..Sun=6.
+Use an empty slots list for a background period. Reuse current planning keys and published
+source refs when revising; do not mint duplicate independent timetables for the same arrangement. Current
 World facts are the only factual authority. This is not a completed story or anyone's plan.
 Never prescribe the PROTAGONIST's motives, emotions, choices, consent, participation or growth.
 The user delegates all NPCs and external-world authoring to YOU. NPCs do not call their own
 models. Write their executable statements centrally using their identities and knowledge.
+For an unfolding encounter, difficulty or other substantive event, set prepare_details=true.
+At activation, the existing World Author will prepare its concrete external progression using
+then-current evidence; private future details are released only as their time and conditions allow.
+A brief notice already complete in its text need not request another detail pass.
 Each opportunity has an execution payload: environment text describes external conditions only;
 npc_statement text is that NPC's exact utterance (a report, not certified truth of its claims).
 Runtime executes these frozen payloads without asking an NPC or another event author to think.
@@ -124,9 +142,12 @@ class WorldOutlookRuntime:
         npc_refs_reader=None,
         executor=None,
         history_reader=None,
+        content_store=None,
     ):
         self.ledger, self.store, self.author, self.actor_ref = ledger, store, author, actor_ref
         self._executor = executor
+        from .event_detail_runtime import EventDetailRuntime
+        self.event_details = EventDetailRuntime(ledger=ledger, store=store, executor=executor, actor_ref=actor_ref, content_store=content_store) if executor is not None and content_store is not None else None
         self._npc_refs_reader = npc_refs_reader or (lambda state: ())
         self._history_reader = history_reader
         self._health = {"status": "unprepared"}
@@ -574,7 +595,7 @@ class WorldOutlookRuntime:
                     for c in getattr(manifest, "location_capabilities", ())
                     if c.availability_kind == "reviewed_schedule"
                 ],
-                "draft_schema_contract": "world-outlook-author-schema.4",
+                "draft_schema_contract": "world-outlook-author-schema.5",
                 "draft_schema": outlook_author_schema(
                     basis_refs=manifest.anchor_refs, npc_privacy_floors=npc_privacy_floors,
                     prior_opportunities=prior_head[1].opportunities if prior_head else (),
@@ -653,6 +674,8 @@ class WorldOutlookRuntime:
                 # offered, also on correction/restart. Legacy requests retain
                 # their original history-material-only interpretation.
                 pinned_packet = decode_outlook_request(messages[1]["content"])
+                if pinned_packet.get("draft_schema_contract") != "world-outlook-author-schema.5" and any(n.execution.kind == "planning" or n.execution.prepare_details for n in candidate.opportunities):
+                    raise ValueError("the original outlook request did not offer planning or prepared details")
                 if pinned_packet.get("condition_source_scope") == _WORKING_SOURCES:
                     offered_sources = frozenset(s["source_ref"] for s in pinned_packet["condition_sources"])
                     if any(c.source_ref not in offered_sources for n in candidate.opportunities for c in n.conditions):
@@ -661,7 +684,7 @@ class WorldOutlookRuntime:
                     sources = {key: value for key, value in current.items() if key in offered_sources}
                 history_offer = (OutlookHistoryOffer.model_validate_json(json.dumps(pinned_packet["history_offer"]))
                                  if "history_offer" in pinned_packet else None)
-                precise_privacy = pinned_packet.get("draft_schema_contract") == "world-outlook-author-schema.4"
+                precise_privacy = pinned_packet.get("draft_schema_contract") in {"world-outlook-author-schema.4", "world-outlook-author-schema.5"}
                 if history_offer is not None and precise_privacy:
                     history_offer.validate_privacy(candidate, precise_errors=True)
                 validate_draft(
@@ -679,7 +702,7 @@ class WorldOutlookRuntime:
                         c.location_ref for c in getattr(manifest, "location_capabilities", ())
                     ),
                     location_capabilities=getattr(manifest, "location_capabilities", ()),
-                    precise_errors=pinned_packet.get("draft_schema_contract") in {"world-outlook-author-schema.3", "world-outlook-author-schema.4"},
+                    precise_errors=pinned_packet.get("draft_schema_contract") in {"world-outlook-author-schema.3", "world-outlook-author-schema.4", "world-outlook-author-schema.5"},
                     precise_privacy_errors=precise_privacy,
                 )
                 if history_offer is not None and not precise_privacy:
@@ -1116,6 +1139,8 @@ class WorldOutlookRuntime:
         return recovered
 
     def advance_prepaid_npcs(self, *, wake_event_ref):
+        if self.event_details is not None:
+            self.event_details.advance(wake_event_ref=wake_event_ref)
         if self._executor is not None:
             self._executor.advance_npcs(wake_event_ref=wake_event_ref)
 
@@ -1181,6 +1206,8 @@ class WorldOutlookRuntime:
         if view.get("review_at"):
             dates.append(datetime.fromisoformat(view["review_at"]))
         if self._executor is not None and (due := self._executor.next_npc_due()) is not None:
+            dates.append(due)
+        if self.event_details is not None and (due := self.event_details.next_due()) is not None:
             dates.append(due)
         return min((d for d in dates if d > state.logical_time), default=None)
 

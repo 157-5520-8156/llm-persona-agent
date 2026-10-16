@@ -12,6 +12,9 @@ advances life state.
 
 from __future__ import annotations
 
+from .world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS
+from .world_planning import WorldPlanningReading
+
 from datetime import datetime
 from typing import Literal, Protocol
 from zoneinfo import ZoneInfo
@@ -58,6 +61,7 @@ class WorldLifeContextItem(FrozenModel):
     # Projection fact: an available PhotoCandidate currently binds this
     # settlement.  False is the empty-album case, not a request to create one.
     photo_in_hand: bool = False
+    world_planning: WorldPlanningReading | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class ActiveWorldOccurrencePremise(FrozenModel):
@@ -400,6 +404,11 @@ class WorldLifeContextCompiler:
                     user_channel_limited_content_refs=user_channel_limited_content_refs,
                 ).settled_items
             }
+        planning = self._life_content.current_planning(
+            projection=projection, actor_ref=actor_ref, viewer_privacy_ceiling=viewer_privacy_ceiling,
+            user_channel_limited_content_refs=user_channel_limited_content_refs,
+        ) if self._life_content is not None and cursor is not None else {}
+        excerpts.update({ref: value[1] for ref, value in planning.items()})
         committed = {
             event.event_id: event for event in projection.committed_world_event_refs
         }
@@ -468,7 +477,7 @@ class WorldLifeContextCompiler:
                 item for item in occurrence.candidate_outcomes
                 if item.candidate_result_ref == occurrence.settled_outcome_ref
             ), None)
-            if selected is not None and selected.result_contract == "world-consequence.2":
+            if selected is not None and selected.result_contract in WORLD_CONSEQUENCE_CONTRACTS:
                 # The selected consequence may be more private than the
                 # opportunity. Its readable outer view must retain that floor.
                 ranks = {"public": 0, "shareable": 1, "personal": 2, "private": 3, "withhold": 4}
@@ -496,6 +505,7 @@ class WorldLifeContextCompiler:
                         authority_payload_hash=settlement.payload_hash,
                     ),
                     content=excerpts.get(occurrence.occurrence_id),
+                    world_planning=planning[occurrence.occurrence_id][0] if occurrence.occurrence_id in planning else None,
                     photo_in_hand=settlement_has_available_photo(
                         projection,
                         settlement_ref=settlement.event_id,
@@ -620,8 +630,10 @@ class WorldLifeContextCompiler:
                     historical_intentions.append(intention)
         return (
             ((biography,) if biography is not None else ())
-            + tuple(activities) + tuple(completed_activities) + tuple(planned_activities)
-            + lifecycle_states + tuple(historical_intentions) + active + settled
+            + tuple(activities) + tuple(i for i in settled if i.world_planning is not None)
+            + tuple(completed_activities) + tuple(planned_activities)
+            + lifecycle_states + tuple(historical_intentions) + active
+            + tuple(i for i in settled if i.world_planning is None)
         )
 
     def _biographical_item(

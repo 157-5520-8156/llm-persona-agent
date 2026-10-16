@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from .world_planning import WorldPlanningIndex
+from .event_detail_contract import EventDetailProgramIndex
+
 from .character_prehistory import PrehistoryArchiveProjection, PrehistoryRecordProjection, validate_prehistory_state
 
 from .chat_life_intent_contract import ChatLifeIntentFailure
@@ -3523,9 +3526,10 @@ class OutcomeCandidateDescriptor(FrozenModel):
     result_payload_hash: str = Field(min_length=1)
     # Absence is the historical prose carrier. Readers must never infer the
     # current contract from prose or add this marker during replay.
-    result_contract: Literal["world-consequence.2"] | None = Field(
+    result_contract: Literal["world-consequence.2", "world-consequence.3"] | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )
+    world_planning_index: "WorldPlanningIndex | None" = Field(default=None, exclude_if=lambda value: value is None)
     privacy_class: PrivacyClass
     content_ref: str | None = Field(default=None, min_length=1)
     content_payload_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
@@ -3547,6 +3551,8 @@ class OutcomeCandidateDescriptor(FrozenModel):
 
     @model_validator(mode="after")
     def content_binding_is_complete(self) -> OutcomeCandidateDescriptor:
+        if (self.result_contract == "world-consequence.3") != (self.world_planning_index is not None):
+            raise ValueError("planning result requires its exact index metadata")
         if (self.content_ref is None) != (self.content_payload_hash is None):
             raise ValueError("outcome candidate content binding is incomplete")
         provisional_refs = tuple(
@@ -3617,6 +3623,8 @@ class OutcomeCandidateDescriptor(FrozenModel):
 
 
 class WorldOccurrenceProjection(FrozenModel):
+    activation_authority: Literal["clock", "world_outlook"] = Field(default="clock", exclude_if=lambda value: value == "clock")
+    event_detail_program: EventDetailProgramIndex | None = Field(default=None, exclude_if=lambda value: value is None)
     occurrence_id: str = Field(min_length=1)
     entity_revision: int = Field(ge=1)
     trigger_ref: str = Field(min_length=1)

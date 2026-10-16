@@ -100,7 +100,7 @@ async def test_week_output_and_immutable_reads_stay_bounded_as_history_grows(tmp
     ledger.lookup_event_commit = lambda ref: (reads.append(ref), original(ref))[1]
     before = ledger.project().semantic_hash
     agenda = compile_dashboard_agenda(ledger=ledger, projection=state, cursor=_cursor(ledger),
-                                      store=None, actor_ref=ACTOR,
+                                      store=None, actor_ref=ACTOR, privacy_ceiling="private",
                                       week_start=week_start_date(first.logical_time.date()))
     assert agenda.known_count == 10_000 and agenda.truncated
     assert len(agenda.entries) == ENTRY_LIMIT and len(reads) <= ENTRY_LIMIT

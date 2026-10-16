@@ -16,6 +16,7 @@ from pydantic import Field, model_validator
 from pydantic.json_schema import SkipJsonSchema
 
 from .schema_core import FrozenModel, PrivacyClass
+from .world_planning import WorldPlanningDraft
 from .lived_story import LivedStoryNavigation
 
 if TYPE_CHECKING:
@@ -23,6 +24,7 @@ if TYPE_CHECKING:
     from .schemas import LedgerProjection, WorldEvent
 
 WORLD_CONSEQUENCE_CONTRACT = "world-consequence.2"
+WORLD_CONSEQUENCE_CONTRACTS = frozenset({"world-consequence.2", "world-consequence.3"})
 WORLD_CONSEQUENCE_AUTHORITY_CONTRACT = "world-consequence-authority.1"
 _HASH = r"^[0-9a-f]{64}$"
 
@@ -80,7 +82,8 @@ class AuthorizedAttemptResult(FrozenModel):
 
 
 class WorldConsequenceV2(FrozenModel):
-    contract: Literal["world-consequence.2"] = WORLD_CONSEQUENCE_CONTRACT
+    contract: Literal["world-consequence.2", "world-consequence.3"] = WORLD_CONSEQUENCE_CONTRACT
+    world_planning: WorldPlanningDraft | None = Field(default=None, exclude_if=lambda value: value is None)
     environment_text: str = Field(min_length=1, max_length=12_000)
     story_navigation: SkipJsonSchema[LivedStoryNavigation | None] = Field(
         default=None, exclude_if=lambda value: value is None,
@@ -88,6 +91,24 @@ class WorldConsequenceV2(FrozenModel):
     authorized_attempt_result: AuthorizedAttemptResult | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )
+
+
+    @model_validator(mode="after")
+    def planning_is_a_published_arrangement(self):
+        if (self.contract == "world-consequence.3") != (self.world_planning is not None):
+            raise ValueError("World.3 requires an explicit external planning publication")
+        if self.world_planning is not None and (
+            self.authorized_attempt_result is not None
+            or self.environment_text != self.world_planning.public_text()
+        ):
+            raise ValueError("planning publication must preserve its exact fields and cannot assert attendance")
+        return self
+
+
+def validate_consequence_descriptor(consequence, candidate):
+    from .world_planning import planning_index
+    if candidate.result_contract != consequence.contract or candidate.world_planning_index != planning_index(consequence.world_planning):
+        raise ValueError("consequence descriptor differs from its exact typed content")
 
 
 class WorldConsequenceAuthority(FrozenModel):

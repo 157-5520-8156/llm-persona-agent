@@ -7,6 +7,8 @@ redact its model view and must retain the same snapshot id and hash.
 
 from __future__ import annotations
 
+from ..world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS
+
 import hashlib
 import json
 from datetime import datetime, timedelta
@@ -69,7 +71,7 @@ def _has_scoped_world_material(value: object) -> bool:
         return False
     world = value.get("world_consequence")
     return (
-        isinstance(world, dict) and world.get("contract") == "world-consequence.2"
+        isinstance(world, dict) and world.get("contract") in WORLD_CONSEQUENCE_CONTRACTS
     ) or value.get("context_kind") == "active_world_occurrence" or any(
         _has_scoped_world_material(item) for item in value.values()
     )
@@ -612,6 +614,7 @@ def _experience_entry(
                 "privacy_class",
                 "content",
                 "photo_in_hand",
+                "world_planning",
             )
         )
         semantic = {key: value[key] for key in fields if key in value}
@@ -1416,6 +1419,14 @@ def compile_inner_life_snapshot(
     ]
     if planned_activities:
         materials["planned_activities"] = planned_activities
+
+    arrangements = [
+        entry for item in _slice_items(slices, "world_life")
+        if isinstance(item.get("value"), dict) and item["value"].get("world_planning") is not None
+        and (entry := _state_entry(item, fields=("world_planning", "settled_at")))
+    ]
+    if arrangements:
+        materials["world_planning"] = arrangements
 
     historical_intentions = [
         entry for item in _slice_items(slices, 'world_life')

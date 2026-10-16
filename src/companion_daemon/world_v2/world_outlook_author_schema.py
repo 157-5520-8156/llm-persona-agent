@@ -9,8 +9,9 @@ def outlook_author_schema(*, basis_refs=None, npc_privacy_floors=(), prior_oppor
     common = ("text", "privacy_class", "duration_minutes")
     variants = []
     for kind, extra, required in (
-        ("environment", (), ()),
-        ("npc_statement", (), ()),
+        ("environment", ("prepare_details",), ()),
+        ("planning", ("planning",), ("planning",)),
+        ("npc_statement", ("prepare_details",), ()),
         ("npc_activity", ("activity_kind", "location_ref", "participant_npc_refs"), ("activity_kind",)),
         ("npc_cancel_activity", ("target_plan_ref",), ("target_plan_ref",)),
         ("npc_status", ("target_status",), ("target_status",)),
@@ -41,7 +42,7 @@ def outlook_author_schema(*, basis_refs=None, npc_privacy_floors=(), prior_oppor
         }},
         "else": {"properties": {
             "npc_ref": {"type": "null"},
-            "execution": {"properties": {"kind": {"const": "environment"}}},
+            "execution": {"properties": {"kind": {"enum": ["environment", "planning"]}}},
         }},
     }]
     privacy_order = ("public", "shareable", "personal", "private", "withhold")

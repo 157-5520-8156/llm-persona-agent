@@ -8,6 +8,8 @@ reducer understands: acceptance, settlement, then the NPC appraisal trigger.
 
 from __future__ import annotations
 
+from .world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS
+
 from datetime import datetime
 import hashlib
 import json
@@ -361,10 +363,10 @@ class OutcomeAcceptanceRuntime:
                           if item.occurrence_id == proposal.occurrence_id)
         selected = next(item for item in occurrence.candidate_outcomes
                         if item.candidate_result_ref == proposal.candidate_result_ref)
-        if selected.result_contract == "world-consequence.2":
+        if selected.result_contract in WORLD_CONSEQUENCE_CONTRACTS:
             read_world_consequence_candidate(content_store=self._content_store, candidate=selected)
         accepted = self.ledger.commit_accepted(batch, expected_cursor=cursor)
-        if selected.result_contract == "world-consequence.2":
+        if selected.result_contract in WORLD_CONSEQUENCE_CONTRACTS:
             self.recover_result_content(occurrence_id=occurrence.occurrence_id)
         # This is the exact accepted batch, not the later publication commit.
         return accepted
@@ -380,7 +382,7 @@ class OutcomeAcceptanceRuntime:
                          if item.candidate_result_ref == occurrence.settled_outcome_ref), None)
         if selected is None:
             raise OutcomeAcceptanceError("settled_result_missing")
-        if selected.result_contract != "world-consequence.2":
+        if selected.result_contract not in WORLD_CONSEQUENCE_CONTRACTS:
             return None
         return OccurrenceResultContentRuntime(
             ledger=self.ledger, content_store=self._content_store,

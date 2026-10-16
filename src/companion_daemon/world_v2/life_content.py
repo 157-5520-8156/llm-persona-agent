@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS
+
 from pydantic import Field, model_validator
 
 from .context_read_scope import memoized_context_read
@@ -152,6 +154,45 @@ class LifeContentCompiler:
 
     def __init__(self, *, store: ImmutableLifeContentStore | None) -> None:
         self._store = store
+
+    def current_planning(self, *, projection, actor_ref, viewer_privacy_ceiling, user_channel_limited_content_refs):
+        """Current arrangements and near-term instances from exact published sources."""
+        from datetime import timedelta
+        from .world_planning import planning_publications, expand_planning, WorldPlanningReading
+        if self._store is None or projection.logical_time is None:
+            return {}
+        publications = planning_publications(
+            projection=projection, store=self._store, actor_ref=actor_ref,
+            privacy_ceiling=viewer_privacy_ceiling,
+            user_channel_limited_content_refs=user_channel_limited_content_refs, limit=4,
+        )
+        result = {}
+        for publication in publications:
+            descriptor = next(d for d in projection.life_content_descriptors
+                              if d.source_event_ref == publication.source_event_ref and d.source_kind == "occurrence_settlement")
+            occurrence = next(o for o in projection.world_occurrences if o.occurrence_id == publication.occurrence_ref)
+            consequence = selected_world_consequence(store=self._store, projection=projection, occurrence=occurrence,
+                actor_ref=actor_ref, viewer_privacy_ceiling=viewer_privacy_ceiling,
+                user_channel_limited_content_refs=user_channel_limited_content_refs)
+            reading = LifeContentReading(world_consequence=world_consequence_reading(consequence)).bounded(1200)
+            excerpt = LifeContentExcerpt(
+                content_id=descriptor.content_id, content_kind=descriptor.content_kind,
+                content_ref=descriptor.content_ref, content_payload_hash=descriptor.content_payload_hash,
+                truncated=reading.truncated, privacy_class=publication.privacy_class,
+                source_entity_id=occurrence.occurrence_id, source_entity_revision=occurrence.entity_revision,
+                authority_event_ref=publication.source_event_ref, authority_world_revision=publication.source_world_revision,
+                authority_payload_hash=publication.source_payload_hash,
+                descriptor_event_ref=descriptor.descriptor_event_ref, descriptor_world_revision=descriptor.descriptor_world_revision,
+                descriptor_payload_hash=descriptor.descriptor_payload_hash, world_consequence=reading.world_consequence,
+            )
+            planning = publication.planning
+            result[publication.occurrence_ref] = (WorldPlanningReading(
+                title=planning.title, summary=planning.summary, starts_on=planning.starts_on, ends_on=planning.ends_on,
+                upcoming=expand_planning(planning, world_id=projection.world_id,
+                    starts_at=projection.logical_time, ends_at=projection.logical_time + timedelta(days=7),
+                    effective_from=publication.published_at, effective_until=publication.effective_until, limit=12),
+            ), excerpt)
+        return result
 
     def read_exact_bound_text(
         self,
@@ -309,7 +350,7 @@ class LifeContentCompiler:
                 occurrence = occurrences.get(descriptor.source_entity_id)
                 structured_world = occurrence is not None and any(
                     item.candidate_result_ref == occurrence.settled_outcome_ref
-                    and item.result_contract == "world-consequence.2"
+                    and item.result_contract in WORLD_CONSEQUENCE_CONTRACTS
                     for item in occurrence.candidate_outcomes
                 )
                 related = occurrence is not None and (
@@ -422,7 +463,7 @@ class LifeContentCompiler:
                     )
                 elif descriptor.source_kind == "occurrence_settlement" and any(
                     candidate.candidate_result_ref == occurrence.settled_outcome_ref
-                    and candidate.result_contract == "world-consequence.2"
+                    and candidate.result_contract in WORLD_CONSEQUENCE_CONTRACTS
                     for candidate in occurrence.candidate_outcomes
                 ):
                     reading = LifeContentReading(world_consequence=world_consequence_reading(

@@ -7,6 +7,8 @@ or cold recovery reuses the original response audit, including an explicit null.
 
 from __future__ import annotations
 
+from .world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS
+
 import hashlib
 import json
 
@@ -112,7 +114,7 @@ def validate_character_life_experience_binding(*, state, world_id: str, binding)
             and occurrence.settlement_payload_hash != source.authority_payload_hash,
             occurrence is not None and response.actor_ref not in occurrence.participant_refs,
             selected is None,
-            selected is not None and selected.result_contract != "world-consequence.2",
+            selected is not None and selected.result_contract not in WORLD_CONSEQUENCE_CONTRACTS,
             selected is not None and selected.privacy_class == "withhold",
             selected is not None and selected.result_id != source.result_id,
             selected is not None and selected.result_payload_ref != source.result_payload_ref,

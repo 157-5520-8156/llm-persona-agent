@@ -9,6 +9,7 @@ from typing import Literal, get_args
 
 from pydantic import Field, model_validator
 
+from .world_planning import WorldPlanningDraft
 from .schema_core import FrozenModel
 from .schema_core import PrivacyClass
 from .lived_story import StoryAnchor, LivedStoryNavigation, validate_navigation
@@ -67,9 +68,11 @@ class OutlookExecution(FrozenModel):
     """A centrally authored external stimulus, never a protagonist action."""
 
     kind: Literal[
-        "environment", "npc_statement", "npc_activity", "npc_cancel_activity", "npc_status"
+        "environment", "planning", "npc_statement", "npc_activity", "npc_cancel_activity", "npc_status"
     ]
+    prepare_details: bool = Field(default=False, exclude_if=lambda value: not value)
     text: str = Field(min_length=1, max_length=2400)
+    planning: WorldPlanningDraft | None = Field(default=None, exclude_if=lambda value: value is None)
     privacy_class: PrivacyClass = "private"
     duration_minutes: int = Field(default=30, ge=1, le=720)
     activity_kind: str | None = Field(
@@ -90,6 +93,10 @@ class OutlookExecution(FrozenModel):
 
     @model_validator(mode="after")
     def action_fields_match_kind(self):
+        if self.prepare_details and self.kind not in {"environment", "npc_statement"}:
+            raise ValueError("only an observable event can request prepared details")
+        if (self.kind == "planning") != (self.planning is not None):
+            raise ValueError("planning execution requires its complete external arrangement")
         if (self.kind == "npc_activity") != (self.activity_kind is not None):
             raise ValueError("only NPC activities require an activity kind")
         if self.kind != "npc_activity" and (self.location_ref or self.participant_npc_refs):
@@ -140,6 +147,8 @@ class WorldOutlookDraft(FrozenModel):
 
     @model_validator(mode="after")
     def graph_is_closed(self):
+        if sum(n.execution.kind == "planning" for n in self.opportunities) > 4:
+            raise ValueError("one outlook may contain at most four planning publications")
         threads = {t.thread_id for t in self.threads}
         nodes = {n.opportunity_id: n for n in self.opportunities}
         if len(threads) != len(self.threads) or len(nodes) != len(self.opportunities):

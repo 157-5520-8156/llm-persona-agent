@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS
+
 from .event_identity import domain_idempotency_key
 from .life_content_store import StoredLifeContent, life_content_payload_hash
 from .life_content_events import LifeContentRecordedPayload
@@ -13,7 +15,7 @@ _PRIVACY = {"public": 0, "shareable": 1, "personal": 2, "private": 3, "withhold"
 
 
 def read_world_consequence_candidate(*, content_store, candidate) -> StoredLifeContent:
-    if candidate.result_contract != "world-consequence.2" or content_store is None:
+    if candidate.result_contract not in WORLD_CONSEQUENCE_CONTRACTS or content_store is None:
         raise ValueError("world consequence requires its configured immutable content store")
     stored = content_store.read_exact(content_ref=candidate.content_ref)
     if (
@@ -24,6 +26,8 @@ def read_world_consequence_candidate(*, content_store, candidate) -> StoredLifeC
     ):
         raise ValueError("world consequence candidate content is unavailable")
     parsed = WorldConsequenceV2.model_validate_json(stored.text)
+    from .world_consequence_contract import validate_consequence_descriptor
+    validate_consequence_descriptor(parsed, candidate)
     if canonical_json(parsed.model_dump(mode="json")) != stored.text:
         raise ValueError("world consequence candidate content is not canonical")
     return stored
@@ -77,7 +81,7 @@ class OccurrenceResultContentRuntime:
             (item for item in occurrence.candidate_outcomes if item.result_id == occurrence.result_id),
             None,
         )
-        if candidate is None or candidate.result_contract != "world-consequence.2":
+        if candidate is None or candidate.result_contract not in WORLD_CONSEQUENCE_CONTRACTS:
             raise ValueError("consequence publication cannot upgrade a legacy occurrence")
         stored = read_world_consequence_candidate(content_store=self._store, candidate=candidate)
         if (

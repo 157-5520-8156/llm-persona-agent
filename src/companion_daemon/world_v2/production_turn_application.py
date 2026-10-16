@@ -4571,7 +4571,7 @@ def build_sqlite_world_v2_turn_application(
             from .npc_identity_view import npc_identity_views
 
             world_outlook = WorldOutlookRuntime(
-                ledger=ledger,
+                ledger=ledger, content_store=life_content_store,
                 store=SQLiteWorldOutlookStore(
                     path=path, world_id=config.world_id, actor_ref=config.companion_actor_ref,
                 ),

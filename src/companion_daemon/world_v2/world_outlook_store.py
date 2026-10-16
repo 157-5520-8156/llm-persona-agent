@@ -323,6 +323,53 @@ class SQLiteWorldOutlookStore:
             {"state": s, "payload": json.loads(p), "operation_ref": op} for s, p, op in rows
         )
 
+    def pending_event_details(self, *, due_at=None, limit=64):
+        if not 1 <= limit <= 128:
+            raise ValueError("event detail queue read must be bounded")
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT operation_id,payload FROM world_outlook_operations WHERE world_id=? AND actor_ref=? "
+                "AND kind='event_detail' AND state='running' "
+                "AND (? IS NULL OR json_extract(payload,'$.next_due_at') IS NULL "
+                "OR julianday(json_extract(payload,'$.next_due_at'))<=julianday(?)) ORDER BY rowid LIMIT ?",
+                (*self._scope(), due_at, due_at, limit),
+            ).fetchall()
+        return tuple({"operation_ref": op, "payload": json.loads(payload)} for op, payload in rows)
+
+    def next_event_detail_due(self):
+        with self._lock:
+            row = self._db.execute(
+                "SELECT json_extract(payload,'$.next_due_at') FROM world_outlook_operations "
+                "WHERE world_id=? AND actor_ref=? AND kind='event_detail' AND state='running' "
+                "ORDER BY julianday(json_extract(payload,'$.next_due_at')) LIMIT 1", self._scope(),
+            ).fetchone()
+        if row and row[0]:
+            from datetime import datetime
+            return datetime.fromisoformat(row[0])
+        return None
+
+    def update_event_detail(self, operation_id, *, previous, payload):
+        with self._lock:
+            changed = self._db.execute(
+                "UPDATE world_outlook_operations SET payload=? WHERE world_id=? AND actor_ref=? "
+                "AND operation_id=? AND kind='event_detail' AND state='running' AND json(payload)=json(?)",
+                (json.dumps(payload, ensure_ascii=False, sort_keys=True), *self._scope(), operation_id,
+                 json.dumps(previous, ensure_ascii=False, sort_keys=True)),
+            ).rowcount
+        if changed != 1:
+            raise ValueError("event detail progress changed concurrently")
+
+    def wake_event_details(self, *, entity_ref, at):
+        # Source transitions wake existing preparations; they do not write facts.
+        with self._lock:
+            self._db.execute(
+                "UPDATE world_outlook_operations SET payload=json_set(payload,'$.next_due_at',?) "
+                "WHERE world_id=? AND actor_ref=? AND kind='event_detail' AND state='running' "
+                "AND (json_extract(payload,'$.program_index.capability.entity_ref')=? "
+                "OR json_extract(payload,'$.occurrence_ref')=?)",
+                (at, *self._scope(), entity_ref, entity_ref),
+            )
+
     def operation_generation(self):
         with self._lock:
             return self._db.execute("SELECT operation_epoch FROM world_outlook_rewrite_epoch WHERE singleton=1").fetchone()[0]

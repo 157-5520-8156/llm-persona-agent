@@ -3178,6 +3178,8 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                     rank_score_bp=(
                         10_000
                         if isinstance(item, BiographicalWorldContextItem)
+                        else 9_950
+                        if isinstance(item, WorldLifeContextItem) and item.world_planning is not None
                         else max(9_900, _rank(slice_name, item, query.logical_time))
                         if (slice_name, item_ref) in rank_overrides
                         else _rank(slice_name, item, query.logical_time)

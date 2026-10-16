@@ -2128,7 +2128,8 @@ A sourced, confirmed fact about the user. A current User Fact may supersede an o
 
 ## Plan
 
-An intention or scheduled future activity that has not happened. A Plan is never an Experience.
+A character-authored intention for a future activity (计划). A Plan expresses what she intends,
+not an institution's objective arrangement, and is never an Experience.
 
 An accepted self-directed Plan from chat, a World Life Response, day opening, or an Activity Continuation
 retains its original role-authored intention in `planned_activities` before it
@@ -2141,6 +2142,23 @@ Character-authorized intention to World Consequence authoring through its
 source-specific reader. That reading authorizes an attempt's scope, not the
 intention's embedded history or successful fulfillment. A recorded reader
 identity preserves the original source set when older requests are replayed.
+
+## World Planning
+
+A published, revisable external arrangement (客观规划), such as a term, class timetable or work
+schedule. It can establish what is scheduled; it cannot establish the character's attendance,
+choices, feelings or successful completion. A character may act to change an arrangement, but
+her private intention alone does not change the external arrangement.
+
+## Prepared Event Detail
+
+Privately prepared external event content, including its possible progression. Preparation is
+not occurrence or knowledge; content dependent on a character choice remains conditional.
+
+## Released Event Detail
+
+The part of prepared event content whose time, bound source and explicitly declared
+source dependencies have actually been satisfied. A released external fact and the character's own experience remain distinct.
 
 ## Activity Continuation
 

@@ -71,6 +71,8 @@ def build_occurrence_clock_events(
                 )
             )
             continue
+        if occurrence.activation_authority == "world_outlook":
+            continue  # Its executor must recheck the prepared source before activation.
         if occurrence.time_window.opens_at > clock.logical_time_to:
             continue
         satisfied = _satisfied_precondition_evidence(

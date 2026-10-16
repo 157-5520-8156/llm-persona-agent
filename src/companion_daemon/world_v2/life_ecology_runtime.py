@@ -573,13 +573,15 @@ class LifeEcologyRuntime:
                     activity_followup_status=activity_status,
                     aftermath_followup_status=aftermath_status,
                 )
+        pending_event = getattr(self._life_development_followup, "pending_world_event_detail_ref", None)
+        event_detail_ref = pending_event() if callable(pending_event) and is_clock_wake and completion_ref is None and active_attempt_ref is None else None
         outlook_node = None
         if self._world_outlook is not None:
             try:
                 self._world_outlook.reconcile_accepted_offers(wake_event_ref=wake_event_ref)
                 # Existing execution/settlement and causal NPC work keep priority.
                 if (
-                    development_due and completion_ref is None and active_attempt_ref is None
+                    development_due and completion_ref is None and active_attempt_ref is None and event_detail_ref is None
                     and not npc_has_due_work and not npc_has_stimulus
                 ):
                     prepare = getattr(self._life_development_followup, "prepare_outlook_once", None)
@@ -617,6 +619,11 @@ class LifeEcologyRuntime:
                 elif active_attempt_ref is not None:
                     development_result = await self._life_development_followup.advance_active_attempt_once(
                         execution_event_ref=active_attempt_ref, wake_event_ref=wake_event_ref,
+                        trace_id=trace_id, correlation_id=correlation_id,
+                    )
+                elif event_detail_ref is not None:
+                    development_result = await self._life_development_followup.advance_world_event_detail_once(
+                        event_ref=event_detail_ref, wake_event_ref=wake_event_ref,
                         trace_id=trace_id, correlation_id=correlation_id,
                     )
                 elif self._world_outlook is not None:
@@ -673,7 +680,7 @@ class LifeEcologyRuntime:
 
         if (
             self._life_development_followup is not None
-            and (completion_ref is not None or active_attempt_ref is not None or (
+            and (completion_ref is not None or active_attempt_ref is not None or event_detail_ref is not None or (
                 development_due and not (npc_has_due_work or npc_has_stimulus)
                 and activity_status != "transitioned"
                 and aftermath_status

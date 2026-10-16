@@ -74,6 +74,8 @@ def validate_world_consequence_offered_bindings(*, draft, messages) -> None:
     authority = WorldConsequenceAuthority.model_validate_json(json.dumps(declarations[0]))
     for index, outcome in enumerate(draft.outcomes):
         consequence = outcome.world_consequence
+        if consequence is not None and consequence.contract != "world-consequence.2":
+            raise ValueError("this author capability cannot publish objective planning")
         if consequence is None:
             raise ValueError("world consequence request cannot accept historical outcome text")
         attempt = consequence.authorized_attempt_result
@@ -214,7 +216,8 @@ def compile_world_consequence_messages(
         "prior_attempt": "not_evidence_of_success_or_of_embedded_historical_assertions",
         "user_channel_completion": "none",
     }
-    schema = life_possibility_output_schema(outcome_contract="world-consequence.2", authorized_attempt_claims=True)
+    schema = life_possibility_output_schema(outcome_contract="world-consequence.2", authorized_attempt_claims=True,
+                                              event_details=manifest.get("event_detail_capability") is not None)
     value["output_contract"] = {"no_op": {"decision": "no_op"}, "propose": schema}
     value["execution_authority"] = authority.model_dump(mode="json")
     value["execution_materials"] = [item.model_dump(mode="json") for item in execution_materials]
@@ -324,6 +327,20 @@ def compile_world_consequence_messages(
             "and its remaining or completed result. Use specific detail where the supplied authority "
             "permits it, without padding, inventing participants or future outcomes. Keep everything "
             "inside the elapsed interval; do not turn a generic routine into a real appointment.\n"
+        )
+    if manifest.get("event_detail_capability") is not None:
+        example_guidance += (
+            "This current event also offers event_detail_capability. Prepare its external details once, "
+            "in root event_details: up to 12 ordered entries with after_seconds (from starts_at), text, "
+            "claim_refs and optional outcome_index. These are PRIVATE PREPARATIONS, not happened facts. "
+            "Only world_environment claims may support them. Describe concrete external progress, "
+            "information or surroundings useful during this event; never prewrite the protagonist's "
+            "choices, actions, successful results, feelings, gratitude or relationship change. "
+            "An independent detail must be possible under every outcome; otherwise specify its exact "
+            "outcome_index and it will wait for that actual World settlement. Time alone cannot make "
+            "her attend. Pausing, leaving or a changed source stops unreleased detail. No detail may "
+            "extend beyond ends_at; leave at least 60 seconds for its publication. Total detail text "
+            "is at most 8000 characters. No-op remains valid when there is nothing supportable.\n"
         )
     tail_guidance = None
     if cache_stable_prefix:

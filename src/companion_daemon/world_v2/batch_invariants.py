@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS
+
 from collections.abc import Sequence
 from datetime import datetime, timedelta
 import hashlib
@@ -1036,6 +1038,8 @@ def _validate_world_consequence_possibility(*, proposal, possibility, manifest) 
         proposal.get("world_author_novel_origin_review"),
     )
     binding = proposal.get("world_author_deliberation", {})
+    if possibility.get("event_detail_program_hash") != binding.get("event_detail_program_hash"):
+        raise ValueError("prepared event detail differs from the original author audit")
     hashes = binding.get("world_consequence_content_hashes")
     if not isinstance(hashes, list) or len(hashes) != len(descriptors) or not 2 <= len(hashes) <= 4:
         raise ValueError("world consequence lacks the ordered original author content hashes")
@@ -1044,7 +1048,7 @@ def _validate_world_consequence_possibility(*, proposal, possibility, manifest) 
             not isinstance(expected_hash, str) or len(expected_hash) != 64
             or any(char not in "0123456789abcdef" for char in expected_hash)
             or not isinstance(descriptor, dict)
-            or descriptor.get("result_contract") != "world-consequence.2"
+            or descriptor.get("result_contract") not in WORLD_CONSEQUENCE_CONTRACTS
             or descriptor.get("content_payload_hash") != expected_hash
             or descriptor.get("result_payload_hash") != expected_hash
         ):
@@ -1694,6 +1698,14 @@ def _validate_life_development_subject_effect(
             raise ValueError(
                 "life-development occurrence participants exceed authored subject authority"
             )
+        from .event_detail_contract import event_detail_authority_hash
+        program = effect.occurrence.event_detail_program
+        expected_hash = possibility.get("event_detail_program_hash")
+        capability = proposal["world_author_deliberation"]["capability_manifest"].get("event_detail_capability")
+        if (program is None) != (expected_hash is None) or program is not None and (
+            event_detail_authority_hash(program) != expected_hash or program.capability.model_dump(mode="json") != capability
+        ):
+            raise ValueError("occurrence changed its prepared event authority")
         candidates = effect.occurrence.candidate_outcomes
         if possibility_version not in {"life-development-possibility.7", "life-development-possibility.8"} and any(
             candidate.objective_biographical_transition is not None for candidate in candidates

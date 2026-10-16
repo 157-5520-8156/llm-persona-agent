@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS
+
 from datetime import datetime
 
 from .life_events import (
@@ -585,7 +587,7 @@ def commit_experience(
                 raise ValueError("experience occurrence binding does not resolve exact settlement authority")
             selected = next((item for item in occurrence.candidate_outcomes
                              if item.candidate_result_ref == occurrence.settled_outcome_ref), None)
-            if (selected is not None and selected.result_contract == "world-consequence.2") != composite:
+            if (selected is not None and selected.result_contract in WORLD_CONSEQUENCE_CONTRACTS) != composite:
                 raise ValueError("experience consequence contract requires its exact response source")
             if composite and (
                 _PRIVACY_RANK[experience.values.privacy_class]

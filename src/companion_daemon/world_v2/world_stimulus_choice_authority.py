@@ -5,6 +5,8 @@ This module only proves their common immutable proposal, final role audit,
 settled source and original selection time.
 """
 
+from .world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS
+
 from dataclasses import dataclass
 from functools import lru_cache
 import json
@@ -55,7 +57,7 @@ def world_life_response_source_refs(
         )
         if (
             selected is not None
-            and selected.result_contract == "world-consequence.2"
+            and selected.result_contract in WORLD_CONSEQUENCE_CONTRACTS
             and occurrence.visibility != "withhold"
             and selected.privacy_class != "withhold"
         ):

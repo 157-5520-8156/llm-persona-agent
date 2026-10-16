@@ -24,12 +24,14 @@ from .life_development_output_schema import life_possibility_output_schema
 
 CONTRACT = "world-consequence-author-tool.5"
 TOOL_NAME = "author_world_consequence_v5"
+EVENT_CONTRACT = "world-consequence-author-tool.6"
 _CONTRACTS = {
     "world-consequence-author-tool.1": "author_world_consequence_v1",
     "world-consequence-author-tool.2": "author_world_consequence_v2",
     "world-consequence-author-tool.3": "author_world_consequence_v3",
     "world-consequence-author-tool.4": "author_world_consequence_v4",
     CONTRACT: TOOL_NAME,
+    EVENT_CONTRACT: "author_world_consequence_v6",
 }
 
 
@@ -54,10 +56,11 @@ def world_consequence_author_tool_contract(
 @lru_cache(maxsize=len(_CONTRACTS))
 def _static_author_tools(contract_id: str) -> list[dict[str, object]]:
     tool_name = _CONTRACTS[contract_id]
-    propose = life_possibility_output_schema(outcome_contract="world-consequence.2", authorized_attempt_claims=contract_id == CONTRACT)
-    if contract_id in {"world-consequence-author-tool.3", "world-consequence-author-tool.4", CONTRACT}:
+    propose = life_possibility_output_schema(outcome_contract="world-consequence.2", authorized_attempt_claims=contract_id in {CONTRACT, EVENT_CONTRACT},
+                                               event_details=contract_id == EVENT_CONTRACT)
+    if contract_id in {"world-consequence-author-tool.3", "world-consequence-author-tool.4", CONTRACT, EVENT_CONTRACT}:
         _bind_nonempty_visual_environment(propose)
-    if contract_id in {"world-consequence-author-tool.4", CONTRACT}:
+    if contract_id in {"world-consequence-author-tool.4", CONTRACT, EVENT_CONTRACT}:
         for kind in ("ProvisionalNpcDraft", "ProvisionalPlaceDraft"):
             propose["$defs"][kind]["properties"]["narrative_tags"]["items"]["pattern"] = _NARRATIVE_TAG.pattern
     # The two branches have disjoint source_kind literals. Keep that exact
@@ -183,7 +186,7 @@ def bind_world_consequence_author_tool(
     if "world_author_wire" in user:
         raise ValueError("World author wire is already bound")
     user["world_author_wire"] = _wire_identity(tool_contract)
-    if user["world_author_wire"]["contract"] in {"world-consequence-author-tool.4", CONTRACT}:
+    if user["world_author_wire"]["contract"] in {"world-consequence-author-tool.4", CONTRACT, EVENT_CONTRACT}:
         output = user.get("output_contract")
         if isinstance(output, dict) and isinstance(output.get("propose"), dict):
             # Native parameters already carry every shape, enum and description.
@@ -271,6 +274,6 @@ def _wire_identity(tool_contract: dict[str, object]) -> dict[str, object]:
         "tool_contract_sha256": hashlib.sha256(encoded.encode("utf-8")).hexdigest(),
         "arguments_contract": (
             "exact_replacement_envelope_of_native_tool_schema"
-            if contract_id in {"world-consequence-author-tool.4", CONTRACT} else "exact_replacement_envelope_of_output_contract"
+            if contract_id in {"world-consequence-author-tool.4", CONTRACT, EVENT_CONTRACT} else "exact_replacement_envelope_of_output_contract"
         ),
     }

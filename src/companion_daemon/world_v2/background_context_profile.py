@@ -156,6 +156,7 @@ _LIFE_ECOLOGY_MATERIALS = (
     "biographical_context",
     "day_sheet",
     "routine_background",
+    "world_planning",
     "week_diary",
     "situation",
     "relationship",
@@ -190,6 +191,7 @@ _CHARACTER_CONTINUITY_MATERIALS = (
     "biographical_context",
     "day_sheet",
     "routine_background",
+    "world_planning",
     "week_diary",
     "situation",
     "current_activities",
@@ -221,6 +223,7 @@ _CHARACTER_CONTINUITY_MATERIALS = (
     "logical_time",
 )
 _CHARACTER_CONTINUITY_LIMITS = {
+    "world_planning": 4,
     "historical_activity_intentions": 3,
     "recent_dialogue": 12,
     "folded_dialogue": 2,
@@ -261,7 +264,7 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
         profile_id="life_world_author",
         purposes=frozenset({"life_development_draft"}),
         snapshot_material_keys=_LIFE_ECOLOGY_MATERIALS,
-        snapshot_material_limits={"recent_self_experiences": 4, "relevant_facts": 8},
+        snapshot_material_limits={"world_planning": 4, "recent_self_experiences": 4, "relevant_facts": 8},
         capsule_slices=_LIFE_ECOLOGY_CAPSULE_SLICES,
         # This typed item carries the protagonist's accepted inner intention.
         # Her own continuity may read it; an external World Author may not.

@@ -1,0 +1,361 @@
+"""Prepared prose crosses the same public author/review path, then clock-gated publication."""
+import json
+from datetime import timedelta
+from contextlib import asynccontextmanager
+from types import SimpleNamespace
+
+import pytest
+
+from companion_daemon.world_v2.event_detail_runtime import EventDetailRuntime
+from companion_daemon.world_v2.life_content import LifeContentCompiler
+from companion_daemon.world_v2.occurrence_content_coordinator import OccurrenceContentCoordinator
+from companion_daemon.world_v2.world_outlook_execution import WorldOutlookExecutor
+from companion_daemon.world_v2.world_outlook_runtime import WorldOutlookRuntime
+from companion_daemon.world_v2.world_outlook_store import SQLiteWorldOutlookStore
+from test_day_open_world_consequence_material import (
+    _day_activity, _author_runtime, _wake, build_app as _build_app_fixture, ACTOR, WORLD,
+    SQLiteWorldLedger, SQLiteImmutableLifeContentStore,
+)
+from test_world_consequence_agency_qualification import _AttemptAuthor
+from test_life_development_runtime import _seed_clock
+from test_life_development_runtime import _novel_origin_review
+from test_life_development_runtime import _SequenceModel
+from test_world_consequence_aftermath import _aftermath, _NoCharacterCalls
+from test_world_consequence_producer import _advance as advance_aftermath
+
+build_app = _build_app_fixture
+
+FUTURE = "FUTURE_DETAIL_CANARY：走廊另一端响起短暂的脚步声。"
+
+
+class DetailAuthor(_AttemptAuthor):
+    privacy = "private"
+    conditional = False
+    async def complete(self, messages, **kwargs):
+        raw = await super().complete(messages, **kwargs)
+        value = json.loads(raw)
+        assert json.loads(messages[-1]["content"])["capability_manifest"]["event_detail_capability"]
+        value["privacy_class"] = self.privacy
+        for outcome in value["outcomes"]:
+            outcome["privacy_class"] = self.privacy
+        claim = "event-detail-claim"
+        value["claim_declarations"].append({**value["claim_declarations"][0], "claim_id": claim,
+            "summary": "周围环境声音的变化。"})
+        value["event_details"] = [
+            {"after_seconds": 0, "text": "窗外有一阵轻微的风声。", "claim_refs": [claim]},
+            {"after_seconds": 120, "text": FUTURE, "claim_refs": [claim]},
+        ]
+        if self.conditional:
+            value["timing"]["duration_minutes"] = 5
+            value["event_details"][1]["after_seconds"] = 600
+            value["event_details"][0]["outcome_index"] = 0
+        self.draft = value
+        return json.dumps(value, ensure_ascii=False)
+
+
+def detail_runtime(ledger, content, store):
+    return EventDetailRuntime(ledger=ledger, store=store, content_store=content, actor_ref=ACTOR,
+        executor=WorldOutlookExecutor(ledger=ledger, occurrence_content=OccurrenceContentCoordinator(ledger=ledger,store=content), actor_ref=ACTOR))
+
+
+@pytest.mark.parametrize("privacy", ["private", "withhold"])
+@pytest.mark.asyncio
+async def test_prepared_details_are_hidden_until_due_and_replay_once(tmp_path, monkeypatch, build_app, privacy):
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    monkeypatch.setattr(DetailAuthor, "privacy", privacy)
+    path = tmp_path / "details.sqlite"
+    plan = await _day_activity(path, build_app, monkeypatch, "started")
+    ledger = SQLiteWorldLedger(path=path, world_id=WORLD)
+    content = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD)
+    store = SQLiteWorldOutlookStore(path=path, world_id=WORLD, actor_ref=ACTOR)
+    try:
+        wake = _wake(ledger)
+        author = DetailAuthor(content, wake, plan.authority_origin.accepted_event_ref)
+        executor = WorldOutlookExecutor(ledger=ledger, occurrence_content=OccurrenceContentCoordinator(ledger=ledger,store=content), actor_ref=ACTOR)
+        outlook = WorldOutlookRuntime(ledger=ledger, store=store, author=author, actor_ref=ACTOR, executor=executor, content_store=content)
+        critic = _SequenceModel(model="fixture:focused", outputs=(_novel_origin_review(decision="supported"),))
+        runtime = _author_runtime(ledger, content, author, critic=critic)
+        runtime._world_outlook = outlook
+        result = await runtime.advance_active_attempt_once(execution_event_ref=plan.authority_origin.accepted_event_ref,
+            wake_event_ref=wake.event_id, trace_id="details", correlation_id="details")
+        assert result.status == "occurrence_committed", result
+        parent = next(o for o in ledger.project().world_occurrences if o.occurrence_id == result.occurrence_id)
+        assert parent.event_detail_program.step_count == 2
+        assert FUTURE in json.dumps(critic.messages,ensure_ascii=False), "semantic review must inspect private future prose too"
+        assert FUTURE not in content.read_exact(content_ref=parent.candidate_outcomes[0].content_ref).text
+        details = outlook.event_details
+        assert details.advance(wake_event_ref=wake.event_id) == 1
+        assert details.advance(wake_event_ref=wake.event_id) == 0
+        assert len(author.received) == 1
+        assert len(ledger.project().world_occurrences) == 2
+        assert ledger.project().world_occurrences[-1].visibility == privacy
+        clock = _seed_clock(ledger, event_id="clock:details-before", logical_time_from=wake.logical_time,
+                            logical_time=wake.logical_time + timedelta(seconds=60))
+        await advance_aftermath(_aftermath(ledger,content,_NoCharacterCalls()), clock)
+        assert details.advance(wake_event_ref=clock.event_id) == 0
+        before = ledger.project()
+        from companion_daemon.world_v2.schemas import ProjectionCursor
+        cursor = ProjectionCursor(**{k:getattr(before,k) for k in ("world_revision","deliberation_revision","ledger_sequence")})
+        reading = LifeContentCompiler(store=content).compile(cursor=cursor, actor_ref=ACTOR,
+            viewer_privacy_ceiling="private", projection=before)
+        assert FUTURE not in reading.model_dump_json()
+        # Cold reader/worker uses the same paid program and existing phase receipts.
+        details = detail_runtime(ledger, content, store)
+        assert details.advance(wake_event_ref=clock.event_id) == 0
+        later = _seed_clock(ledger,event_id="clock:details-after",logical_time_from=clock.logical_time,
+                            logical_time=wake.logical_time+timedelta(seconds=121))
+        assert details.advance(wake_event_ref=later.event_id) == 1
+        assert details.advance(wake_event_ref=later.event_id) == 0
+        assert len(author.received) == 1
+        child = ledger.project().world_occurrences[-1]
+        assert FUTURE in content.read_exact(content_ref=child.candidate_outcomes[0].content_ref).text
+        assert ledger.rebuild().semantic_hash == ledger.project().semantic_hash
+    finally:
+        store.close()
+        content.close()
+        ledger.close()
+
+
+@asynccontextmanager
+async def prepared(tmp_path, monkeypatch, build_app, *, conditional=False):
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    if conditional:
+        import test_day_open_world_consequence_material as fixture
+        monkeypatch.setattr(fixture.day_fixture, "INTENT", {**fixture.day_fixture.INTENT, "duration_seconds": 1800})
+    path = tmp_path / "prepared.sqlite"
+    plan = await _day_activity(path, build_app, monkeypatch, "started")
+    ledger = SQLiteWorldLedger(path=path, world_id=WORLD)
+    content = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD)
+    store = SQLiteWorldOutlookStore(path=path, world_id=WORLD, actor_ref=ACTOR)
+    try:
+        wake = _wake(ledger)
+        author = DetailAuthor(content, wake, plan.authority_origin.accepted_event_ref)
+        author.conditional = conditional
+        details = detail_runtime(ledger, content, store)
+        outlook = WorldOutlookRuntime(ledger=ledger, store=store, author=author, actor_ref=ACTOR,
+            executor=details.executor, content_store=content)
+        runtime = _author_runtime(ledger, content, author,
+            critic=_SequenceModel(model="fixture:focused", outputs=(_novel_origin_review(decision="supported"),)))
+        runtime._world_outlook = outlook
+        result = await runtime.advance_active_attempt_once(execution_event_ref=plan.authority_origin.accepted_event_ref,
+            wake_event_ref=wake.event_id, trace_id="details", correlation_id="details")
+        assert result.status == "occurrence_committed", result
+        parent = next(o for o in ledger.project().world_occurrences if o.occurrence_id == result.occurrence_id)
+        yield SimpleNamespace(**locals())
+    finally:
+        store.close()
+        content.close()
+        ledger.close()
+
+
+@pytest.mark.asyncio
+async def test_conditional_detail_wakes_after_real_parent_settlement(tmp_path, monkeypatch, build_app):
+    from companion_daemon.world_v2.event_detail_runtime import detail_operation
+    async with prepared(tmp_path, monkeypatch, build_app, conditional=True) as ctx:
+        assert ctx.details.advance(wake_event_ref=ctx.wake.event_id) == 0
+        op = detail_operation(ctx.parent.occurrence_id)
+        clock = _seed_clock(ctx.ledger, event_id="clock:conditional", logical_time_from=ctx.wake.logical_time,
+                            logical_time=ctx.wake.logical_time + timedelta(seconds=301))
+        await advance_aftermath(_aftermath(ctx.ledger,ctx.content,_NoCharacterCalls()), clock)
+        parent = next(o for o in ctx.ledger.project().world_occurrences if o.occurrence_id == ctx.parent.occurrence_id)
+        assert parent.status == "settled"
+        released = ctx.details.advance(wake_event_ref=clock.event_id)
+        phase = ctx.store.operation(op + ":phase:0")
+        assert phase["state"] == ("released" if parent.settled_outcome_ref == parent.candidate_outcome_refs[0] else "not_selected")
+        assert released == (phase["state"] == "released")
+        assert ctx.details.advance(wake_event_ref=clock.event_id) == 0
+        assert len(ctx.author.received) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("finish", ["recover", "expire", "pause"])
+async def test_partial_publication_retries_or_withdraws_without_duplicate_or_future_leak(tmp_path, monkeypatch, build_app, finish):
+    from companion_daemon.world_v2.event_detail_runtime import detail_operation
+    async with prepared(tmp_path, monkeypatch, build_app) as ctx:
+        original = ctx.ledger.commit_at_cursor
+        def interrupted(events, **kwargs):
+            events = tuple(events)
+            if any(e.event_type == "WorldOccurrenceActivated" for e in events):
+                raise OSError("injected interruption after exact child content commit")
+            return original(events, **kwargs)
+        with monkeypatch.context() as patch:
+            patch.setattr(ctx.ledger, "commit_at_cursor", interrupted)
+            assert ctx.details.advance(wake_event_ref=ctx.wake.event_id) == 0
+        child = ctx.ledger.project().world_occurrences[-1]
+        assert child.status == "committed"
+        op = detail_operation(ctx.parent.occurrence_id)
+        assert ctx.store.operation(op)["payload"]["failure_count"] == 1
+        if finish == "pause":
+            from test_day_open_world_consequence_material import _LifecycleHTTP, _model, _tick, InboundTurn
+            provider = _LifecycleHTTP()
+            provider.lifecycle_choice = "pause"
+            model = _model(provider)
+            app = build_app(ctx.path, model, ecology=True)
+            try:
+                await app.respond(InboundTurn(platform="test", platform_user_id="user.1", platform_message_id="pause-details",
+                    text="有空聊聊吗？", observed_at=ctx.wake.logical_time, trace_id="pause-details"))
+                await _tick(app,"pause-details",ctx.wake.logical_time + timedelta(seconds=31))
+                assert app.export_replay_evidence().projection.plans[0].status == "paused"
+            finally:
+                await app.aclose()
+                await model.aclose()
+            clock = ctx.ledger.lookup_event_commit("event:trigger:clock:pause-details")[0]
+        else:
+            clock = _seed_clock(ctx.ledger, event_id="clock:"+finish, logical_time_from=ctx.wake.logical_time,
+                logical_time=(ctx.parent.event_detail_program.capability.ends_at if finish == "expire"
+                              else ctx.wake.logical_time + timedelta(seconds=31)))
+        cold = detail_runtime(ctx.ledger, ctx.content, ctx.store)
+        count = cold.advance(wake_event_ref=clock.event_id)
+        child = next(o for o in ctx.ledger.project().world_occurrences if o.occurrence_id == child.occurrence_id)
+        assert child.status == ("active" if finish == "recover" else "cancelled")
+        assert count == (finish == "recover")
+        assert cold.advance(wake_event_ref=clock.event_id) == 0
+        assert len(ctx.author.received) == 1
+        assert ctx.store.operation(op)["payload"]["failure_count"] == 1
+        assert ctx.ledger.rebuild().semantic_hash == ctx.ledger.project().semantic_hash
+
+
+@pytest.mark.asyncio
+async def test_scheduler_work_does_not_query_each_finished_historical_program(tmp_path, monkeypatch, build_app):
+    async with prepared(tmp_path, monkeypatch, build_app) as ctx:
+        ctx.details.advance(wake_event_ref=ctx.wake.event_id)
+        queries = []
+        ctx.store._db.set_trace_callback(queries.append)
+        counts = []
+        for count in (16, 64):
+            for index in range(count):
+                identity = f"old-program:{index}"
+                ctx.store.claim(identity, kind="event_detail", payload={})
+                ctx.store.finish(identity, state="complete", payload={})
+            # Capture incremental release commits once, as a real worker does.
+            ctx.details.advance(wake_event_ref=ctx.wake.event_id)
+            queries.clear()
+            ctx.details.next_due()
+            counts.append(len(queries))
+        assert counts[1] <= counts[0] <= 2
+
+
+@pytest.mark.asyncio
+async def test_forged_operation_key_cannot_duplicate_a_reviewed_program(tmp_path, monkeypatch, build_app):
+    from companion_daemon.world_v2.event_detail_runtime import detail_operation
+    async with prepared(tmp_path, monkeypatch, build_app) as ctx:
+        assert ctx.details.advance(wake_event_ref=ctx.wake.event_id) == 1
+        original = ctx.store.operation(detail_operation(ctx.parent.occurrence_id))["payload"]
+        ctx.store.claim("forged-parent", kind="event_detail", payload={**original, "next_due_at":ctx.wake.logical_time.isoformat()})
+        before = ctx.ledger.project().semantic_hash
+        assert ctx.details.advance(wake_event_ref=ctx.wake.event_id) == 0
+        assert ctx.ledger.project().semantic_hash == before
+        assert ctx.store.operation("forged-parent")["payload"]["failure_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_overdue_backlog_still_has_a_future_scheduler_wake(tmp_path, monkeypatch, build_app):
+    async with prepared(tmp_path, monkeypatch, build_app) as ctx:
+        ctx.details.advance(wake_event_ref=ctx.wake.event_id)
+        ctx.details.advance(wake_event_ref=ctx.wake.event_id)
+        for i in range(65):
+            ctx.store.claim(f"overdue:{i}", kind="event_detail", payload={"next_due_at":ctx.wake.logical_time.isoformat()})
+        assert ctx.details.next_due() == ctx.wake.logical_time + timedelta(seconds=1)
+
+
+@pytest.mark.asyncio
+async def test_activated_outlook_scene_uses_existing_author_then_private_timed_release(tmp_path, monkeypatch):
+    from companion_daemon.world_v2.schemas import ProjectionCursor
+    from test_world_consequence_producer import _draft
+    from test_world_author_request_audit import _ReceivedAuthor
+    path = tmp_path / "scene.sqlite"
+    ledger = SQLiteWorldLedger(path=path, world_id=WORLD)
+    content = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD)
+    store = SQLiteWorldOutlookStore(path=path, world_id=WORLD, actor_ref=ACTOR)
+    try:
+        wake = _seed_clock(ledger)
+        details = detail_runtime(ledger, content, store)
+        state = ledger.project()
+        node = {"opportunity_id":"unfolding-scene", "thread_refs":["story"], "external_possibility":"院内有风。",
+                "lane":"world", "execution":{"kind":"environment","text":"院内有风。","duration_minutes":10,
+                                               "privacy_class":"shareable","prepare_details":True},
+                "opens_at":wake.logical_time.isoformat(),"closes_at":(wake.logical_time+timedelta(hours=1)).isoformat(),
+                "basis_refs":[wake.event_id]}
+        result = details.executor.execute(node=node, wake_event_ref=wake.event_id, origin={"world_id":WORLD,"actor_ref":ACTOR},
+            expected_cursor=ProjectionCursor(**{k:getattr(state,k) for k in ("world_revision","deliberation_revision","ledger_sequence")}))
+        assert result.status == "occurrence_committed"
+        value = _draft(wake)
+        value.update(authored_subject_ref=ACTOR, location_ref=None, location_capability_ref=None, privacy_class="private")
+        for outcome in value["outcomes"]:
+            outcome.update(experienced_by_ref=ACTOR, privacy_class="private", visual_evidence=None)
+        value["event_details"]=[{"after_seconds":120,"text":FUTURE,"claim_refs":[value["claim_declarations"][0]["claim_id"]]}]
+        author = _ReceivedAuthor(content,[json.dumps(value,ensure_ascii=False)])
+        runtime = _author_runtime(ledger,content,author,
+            critic=_SequenceModel(model="fixture:focused",outputs=(_novel_origin_review(decision="supported"),)))
+        runtime._world_outlook = WorldOutlookRuntime(ledger=ledger, store=store, author=author, actor_ref=ACTOR,
+            executor=details.executor, content_store=content)
+        source = runtime.pending_world_event_detail_ref()
+        assert source == "event:activate:"+result.occurrence_id
+        prepared_result = await runtime.advance_world_event_detail_once(event_ref=source,wake_event_ref=wake.event_id,
+            trace_id="scene",correlation_id="scene")
+        assert prepared_result.status == "occurrence_committed",prepared_result
+        assert runtime.pending_world_event_detail_ref() is None
+        assert details.advance(wake_event_ref=wake.event_id) == 0
+        clock = _seed_clock(ledger,event_id="scene-due",logical_time_from=wake.logical_time,logical_time=wake.logical_time+timedelta(seconds=120))
+        assert details.advance(wake_event_ref=clock.event_id) == 1
+        assert ledger.project().world_occurrences[-1].visibility == "private", "shareable source must not downgrade private authored details"
+    finally:
+        store.close()
+        content.close()
+        ledger.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fault", ["missing", "tampered"])
+async def test_original_program_body_failure_is_retained_and_recovers(tmp_path, monkeypatch, build_app, fault):
+    from companion_daemon.world_v2.event_detail_runtime import detail_operation
+    from dataclasses import replace
+    async with prepared(tmp_path, monkeypatch, build_app) as ctx:
+        original = ctx.content.read_exact
+        def broken(**kwargs):
+            value = original(**kwargs)
+            if value and value.content_kind == "raw_model_result" and FUTURE in value.text:
+                return None if fault == "missing" else replace(value, text=value.text.replace(FUTURE, "altered future"))
+            return value
+        with monkeypatch.context() as patch:
+            patch.setattr(ctx.content, "read_exact", broken)
+            assert ctx.details.advance(wake_event_ref=ctx.wake.event_id) == 0
+        op = detail_operation(ctx.parent.occurrence_id)
+        assert ctx.store.operation(op)["payload"]["failure_count"] == 1
+        assert len(ctx.ledger.project().world_occurrences) == 1
+        clock = _seed_clock(ctx.ledger,event_id="body-recovered",logical_time_from=ctx.wake.logical_time,
+                            logical_time=ctx.wake.logical_time+timedelta(seconds=31))
+        assert ctx.details.advance(wake_event_ref=clock.event_id) == 1
+        assert ctx.store.operation(op)["payload"]["failure_count"] == 1
+        assert len(ctx.author.received) == 1
+
+
+@pytest.mark.asyncio
+async def test_explicit_source_token_change_invalidates_detail_even_while_activity_stays_active(tmp_path, monkeypatch, build_app):
+    from companion_daemon.world_v2.event_detail_contract import EventDetailSourceToken
+    from companion_daemon.world_v2.world_outlook import source_catalog
+    async with prepared(tmp_path, monkeypatch, build_app) as ctx:
+        state = ctx.ledger.project()
+        plan = state.plans[0]
+        source = source_catalog(state, actor_ref=ACTOR)[plan.plan_id]
+        cap = ctx.parent.event_detail_program.capability.model_copy(update={
+            "source_tokens": (EventDetailSourceToken(source_ref=plan.plan_id, token=source.token),),
+        })
+        assert ctx.details._source_live(cap, state)
+        changed = state.model_copy(update={"plans":(plan.model_copy(update={"entity_revision":plan.entity_revision+1}),)})
+        assert changed.plans[0].status == "active"
+        assert not ctx.details._source_live(cap, changed)
+
+
+def test_detail_native_schema_and_correction_keep_world_authority_and_original_failed_body():
+    from companion_daemon.world_v2.world_consequence_author_tool import EVENT_CONTRACT, world_consequence_author_tool_contract, bind_world_consequence_author_tool
+    from companion_daemon.world_v2.life_development_output_schema import life_possibility_output_schema
+    from companion_daemon.world_v2.life_development_runtime import _world_consequence_structure_correction_messages
+    schema = life_possibility_output_schema(outcome_contract="world-consequence.2",event_details=True)
+    assert schema["properties"]["causal_authority"]["const"] == "world_contingency"
+    assert schema["properties"]["outcome_resolution_authority"]["const"] == "world_contingency"
+    assert schema["$defs"]["LifeDevelopmentTimingDraft"]["properties"]["mode"]["const"] == "now"
+    contract = world_consequence_author_tool_contract(provider="anthropic",contract_id=EVENT_CONTRACT)
+    messages = bind_world_consequence_author_tool(messages=[{"role":"system","content":"test"},{"role":"user","content":"{}"}],tool_contract=contract)
+    fixed = _world_consequence_structure_correction_messages(original_messages=messages,rejected_raw='{"invalid":"exact original"}',correction={"validation_failure":{"code":"test"}})
+    assert fixed[-2] == {"role":"assistant","content":'{"invalid":"exact original"}'}

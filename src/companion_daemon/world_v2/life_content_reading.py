@@ -7,6 +7,8 @@ null. Text clipping is a presentation budget, never a new semantic judgement.
 """
 
 from __future__ import annotations
+
+from .world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS
 from functools import lru_cache
 
 import json
@@ -38,7 +40,7 @@ class AuthorizedAttemptExcerpt(FrozenModel):
 
 
 class WorldConsequenceReading(FrozenModel):
-    contract: Literal["world-consequence.2"] = "world-consequence.2"
+    contract: Literal["world-consequence.2", "world-consequence.3"] = "world-consequence.2"
     environment: WorldEnvironmentExcerpt
     # Reader-internal association metadata; only corpus-filtered opaque links
     # may leave through Recall. Raw historical refs never reach model JSON.
@@ -110,6 +112,7 @@ class LifeContentReading(FrozenModel):
         response = bounded.pop(0) if bounded else self.character_response
         return LifeContentReading(
             world_consequence=WorldConsequenceReading(
+                contract=world.contract,
                 environment=environment, authorized_attempt_result=attempt,
                 story_navigation=world.story_navigation,
             ),
@@ -146,7 +149,7 @@ def selected_world_consequence(
         if item.candidate_result_ref == occurrence.settled_outcome_ref
     ), None)
     if candidate is None or (
-        candidate.result_contract != "world-consequence.2"
+        candidate.result_contract not in WORLD_CONSEQUENCE_CONTRACTS
         or candidate.result_id != occurrence.result_id
         or candidate.result_payload_ref != occurrence.result_payload_ref
         or _bare_sha256(candidate.result_payload_hash)
@@ -170,7 +173,10 @@ def selected_world_consequence(
         or life_content_payload_hash(stored.text) != candidate.content_payload_hash
     ):
         raise ValueError("world consequence exact selected body is unavailable")
-    return parse_world_consequence_content(stored.text)
+    consequence = parse_world_consequence_content(stored.text)
+    from .world_consequence_contract import validate_consequence_descriptor
+    validate_consequence_descriptor(consequence, candidate)
+    return consequence
 
 
 @lru_cache(maxsize=128)
@@ -190,6 +196,7 @@ def world_consequence_reading(
 ) -> WorldConsequenceReading:
     attempt = consequence.authorized_attempt_result
     return WorldConsequenceReading(
+        contract=consequence.contract,
         story_navigation=consequence.story_navigation,
         environment=WorldEnvironmentExcerpt(
             text=consequence.environment_text,

@@ -110,7 +110,7 @@ async def test_npc_privacy_floor_is_visible_before_generation(tmp_path):
         packet = decode_outlook_request(author.calls[0][1]["content"])
         npc = next(n for n in ledger.project().npcs if n.npc_id == "lin")
         assert packet["npc_privacy_floors"] == [{"npc_ref": "npc:lin", "privacy_class": npc.privacy_class}]
-        assert packet["draft_schema_contract"] == "world-outlook-author-schema.4"
+        assert packet["draft_schema_contract"] == "world-outlook-author-schema.5"
     finally:
         runtime.close()
 
@@ -127,3 +127,25 @@ def test_schema_applies_npc_floor_without_restricting_unrelated_world_events():
     node.update(lane="world", npc_ref=None)
     node["execution"].update(kind="environment", privacy_class="public")
     assert validator.is_valid(node)
+
+
+@pytest.mark.asyncio
+async def test_old_pinned_outlook_request_cannot_gain_prepared_details(tmp_path, monkeypatch):
+    import companion_daemon.world_v2.world_outlook_runtime as module
+    encode = module.encode_outlook_request
+    def legacy(value, **kwargs):
+        return encode({**value, "draft_schema_contract":"world-outlook-author-schema.4"}, **kwargs)
+    monkeypatch.setattr(module, "encode_outlook_request", legacy)
+    def output(wake):
+        value = draft_value(wake)
+        value["opportunities"][0]["execution"]["prepare_details"] = True
+        return [{"decision":"revise","draft":value}] * 2
+    ledger, wake, store, author, runtime = setup(tmp_path, output)
+    try:
+        result = await runtime.refresh(projection=ledger.project(), context={},
+            manifest=_manifest(wake,pinned_cursor=_projection_cursor(ledger)))
+        assert result["status"] != "ready"
+        assert store.head() is None and len(author.calls) == 2
+        assert "did not offer planning or prepared details" in author.calls[1][-1]["content"]
+    finally:
+        runtime.close()

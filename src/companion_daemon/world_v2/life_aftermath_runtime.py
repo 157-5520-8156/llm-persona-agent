@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from .world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS
+
 import asyncio
 from datetime import datetime, timedelta
 import hashlib
@@ -993,7 +995,7 @@ class LifeAftermathRuntime:
                 commit_id="commit:life-aftermath:settlement:" + suffix,
             )
 
-        if chosen.result_contract == "world-consequence.2":
+        if chosen.result_contract in WORLD_CONSEQUENCE_CONTRACTS:
             OccurrenceResultContentRuntime(
                 ledger=self._ledger, content_store=self._content_store,
             ).materialize(occurrence_id=occurrence.occurrence_id)
@@ -1917,7 +1919,7 @@ class LifeAftermathRuntime:
         """Offer one source-bound consequence decision to CharacterInterior."""
 
         structured_candidates = {}
-        if any(item.result_contract == "world-consequence.2" for item in occurrence.candidate_outcomes):
+        if any(item.result_contract in WORLD_CONSEQUENCE_CONTRACTS for item in occurrence.candidate_outcomes):
             # Keep the existing full-text ceiling, but validate each complete
             # carrier before exposing candidate facts to the role. A hidden or
             # unreadable offered branch cannot become an opaque selectable token.
@@ -1928,7 +1930,7 @@ class LifeAftermathRuntime:
                 item.candidate_result_ref: item.world_consequence
                 for item in readable.candidates if item.world_consequence is not None
             }
-            if any(item.result_contract == "world-consequence.2"
+            if any(item.result_contract in WORLD_CONSEQUENCE_CONTRACTS
                    and item.candidate_result_ref not in structured_candidates
                    for item in occurrence.candidate_outcomes):
                 raise ValueError("aftermath world consequence candidate is unavailable to the character")
@@ -1936,7 +1938,7 @@ class LifeAftermathRuntime:
             {
                 "token": item.candidate_result_ref,
                 **({"world_consequence": structured_candidates[item.candidate_result_ref].model_dump(mode="json")}
-                   if item.result_contract == "world-consequence.2"
+                   if item.result_contract in WORLD_CONSEQUENCE_CONTRACTS
                    else {"summary": self._candidate_text(item.content_ref, item.content_payload_hash)}),
                 "privacy_class": item.privacy_class,
                 "proposed_objective_direction": (
@@ -2636,7 +2638,7 @@ class LifeAftermathRuntime:
     @staticmethod
     def _is_world_consequence(occurrence) -> bool:
         return any(item.result_id == occurrence.result_id
-                   and item.result_contract == "world-consequence.2"
+                   and item.result_contract in WORLD_CONSEQUENCE_CONTRACTS
                    for item in occurrence.candidate_outcomes)
 
     def _response_for_occurrence(self, projection, occurrence) -> str | None:

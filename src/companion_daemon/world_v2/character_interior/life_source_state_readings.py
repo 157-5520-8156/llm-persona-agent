@@ -27,9 +27,9 @@ def life_source_profile(review_contract):
     profile = replace(
         profile,
         snapshot_material_keys=tuple(key for key in profile.snapshot_material_keys
-                                     if key != 'historical_activity_intentions'),
+                                     if key not in {'historical_activity_intentions', 'world_planning'}),
         snapshot_material_limits={key: value for key, value in profile.snapshot_material_limits.items()
-                                  if key != 'historical_activity_intentions'},
+                                  if key not in {'historical_activity_intentions', 'world_planning'}},
     )
     if review_contract in {f'life-source-review.{version}' for version in range(1, 17)}:
         # These immutable reviewer wires predate standing understandings.

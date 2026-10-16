@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS
+
 from .character_prehistory import PrehistoryArchiveProjection, PrehistoryRecordProjection, validate_prehistory_state
 from .character_prehistory_reducers import (
     archive_accepted as _prehistory_archive_accepted, record_imported as _prehistory_record_imported,
@@ -3743,6 +3745,8 @@ def _validate_one_life_development_deliberation(
         required.add("request_bindings")
         if "world_consequence_content_hashes" in binding:
             required.add("world_consequence_content_hashes")
+        if "event_detail_program_hash" in binding:
+            required.add("event_detail_program_hash")
     if set(binding) != required or binding.get("role") != expected_role:
         raise ValueError(f"life-development {expected_role} deliberation shape is invalid")
     audit_proposal = next(
@@ -3775,6 +3779,7 @@ def _validate_one_life_development_deliberation(
 
         validate_capability_manifest_binding(manifest_binding)
     metadata_binding = {
+        **({"event_detail_program_hash": metadata.get("event_detail_program_hash")} if "event_detail_program_hash" in required else {}),
         **(
             {"world_consequence_content_hashes": metadata.get("world_consequence_content_hashes")}
             if "world_consequence_content_hashes" in required else {}
@@ -3889,6 +3894,10 @@ def _validate_one_life_development_deliberation(
                        or any(char not in "0123456789abcdef" for char in value) for value in hashes)
             ):
                 raise ValueError("life-development world consequence output hashes are invalid")
+    if "event_detail_program_hash" in required:
+        value = binding["event_detail_program_hash"]
+        if not isinstance(value, str) or len(value) != 64 or any(c not in "0123456789abcdef" for c in value) or not manifest_value.get("event_detail_capability"):
+            raise ValueError("event detail programme hash lacks its original capability")
     return binding
 
 
@@ -12962,6 +12971,11 @@ def _world_occurrence_committed(state: ReducerState, event: WorldEvent) -> Reduc
 def _world_occurrence_activated(state: ReducerState, event: WorldEvent) -> ReducerState:
     _require_life_time(state, event)
     payload = _validated_life_payload(state, event, WorldOccurrenceActivatedPayload)
+    occurrence = next((o for o in state.world_occurrences if o.occurrence_id == payload.occurrence_id), None)
+    if occurrence is not None and occurrence.activation_authority == "world_outlook" and (
+        event.source != "world-outlook-execution.1" or event.actor != "worker:world-outlook"
+    ):
+        raise ValueError("prepared detail activation belongs to its source-checking executor")
     return state.model_copy(
         update={"world_occurrences": activate_occurrence(state.world_occurrences, payload)}
     )
@@ -13541,7 +13555,7 @@ def _life_content_recorded(state: ReducerState, event: WorldEvent) -> ReducerSta
             None,
         ) if occurrence is not None else None
         result_hash = occurrence.result_payload_hash if occurrence is not None else None
-        if selected is not None and selected.result_contract == "world-consequence.2":
+        if selected is not None and selected.result_contract in WORLD_CONSEQUENCE_CONTRACTS:
             result_hash = result_hash.removeprefix("sha256:") if result_hash else None
         if occurrence is None or (
             occurrence.status != "settled"
@@ -13554,7 +13568,7 @@ def _life_content_recorded(state: ReducerState, event: WorldEvent) -> ReducerSta
         ):
             raise ValueError("life content descriptor does not match settled occurrence")
         source_privacy = occurrence.visibility
-        if selected is not None and selected.result_contract == "world-consequence.2":
+        if selected is not None and selected.result_contract in WORLD_CONSEQUENCE_CONTRACTS:
             if _LIFE_CONTENT_PRIVACY_RANK[selected.privacy_class] > _LIFE_CONTENT_PRIVACY_RANK[source_privacy]:
                 source_privacy = selected.privacy_class
     elif payload.source_kind == "experience":
