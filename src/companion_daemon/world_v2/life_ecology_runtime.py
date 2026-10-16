@@ -331,8 +331,12 @@ class LifeEcologyRuntime:
             )
         if self._world_outlook is not None and any(
             ref.event_id == wake_event_ref and ref.event_type == "ClockAdvanced"
+            and ref.logical_time == projection.logical_time
             for ref in projection.committed_world_event_refs
         ):
+            # Historical task retries keep their original wake; they cannot
+            # release prepaid details at a newer time. The current clock owns
+            # that independent progression, including when budget is paused.
             # Completion of an already authored NPC activity has no model
             # expense. A spent planning budget must not freeze it mid-action.
             try:

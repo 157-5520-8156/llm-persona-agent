@@ -111,3 +111,29 @@ async def test_outlook_uses_clock_event_revision_from_multi_event_commit(
         assert len(author.calls) == 1
     finally:
         runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_retried_old_ecology_wake_does_not_release_prepaid_detail_with_stale_clock(tmp_path, monkeypatch):
+    from test_world_outlook import production_application, ProductionAuthor
+    app, _, now = production_application(tmp_path, ProductionAuthor())
+    try:
+        for ordinal in (1, 2):
+            await app.tick(tick_id=f'late-prepaid-{ordinal}', logical_time_from=now+timedelta(minutes=ordinal-1),
+                logical_time_to=now+timedelta(minutes=ordinal), observed_at=now+timedelta(minutes=ordinal),
+                trace_id='prepaid',causation_id='clock',correlation_id='prepaid',reason='test',run_life_ecology=False)
+        ecology=app._life_ecology
+        monkeypatch.setattr(ecology,'_background_budget_paused',lambda:True)
+        calls=[]
+        original=ecology._world_outlook.event_details.advance
+        def advance(**kwargs):
+            calls.append(kwargs['wake_event_ref'])
+            return original(**kwargs)
+        monkeypatch.setattr(ecology._world_outlook.event_details,'advance',advance)
+        await app.advance_life_ecology_once(wake_event_ref='event:trigger:clock:late-prepaid-1',trace_id='old',correlation_id='old')
+        assert calls==[], 'old retry must not borrow current time or poison the prepaid runtime with a stale clock'
+        await app.advance_life_ecology_once(wake_event_ref='event:trigger:clock:late-prepaid-2',trace_id='new',correlation_id='new')
+        assert calls==['event:trigger:clock:late-prepaid-2']
+        assert app.world_outlook_health()['status']!='technical_failure'
+    finally:
+        await app.aclose()
