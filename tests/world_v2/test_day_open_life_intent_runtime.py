@@ -42,7 +42,7 @@ def _seed(path):
 
 
 def _choice(ledger, first, *, selected=None, ordinal=1, identity="first", choose=True,
-            actor=ACTOR, mutate_cap=None):
+            actor=ACTOR, mutate_cap=None, agenda=None):
     selected = selected or first
     state = ledger.project()
     clock_refs = {x.event_id: x for x in state.committed_world_event_refs}
@@ -67,6 +67,9 @@ def _choice(ledger, first, *, selected=None, ordinal=1, identity="first", choose
             "selected_clock_payload_hash": selected_ref.payload_hash, "attempt_ordinal": ordinal,
         },
     }
+    if agenda is not None:
+        cap["contract"] = "character-interior-activity-lifecycle-capability.6"
+        cap["self_directed_intent"]["contract"] = "day-open-life-intent-capability.4"
     if mutate_cap:
         mutate_cap(cap)
     refs = tuple(sorted({first.event_id, selected.event_id}))
@@ -80,6 +83,9 @@ def _choice(ledger, first, *, selected=None, ordinal=1, identity="first", choose
                "decision": "self_directed_intent" if choose else "no_op"}
     if choose:
         payload["life_intent"] = INTENT
+    if agenda is not None:
+        payload = {"contract": "character-interior-activity-lifecycle-choice.4",
+                   "decision": "self_directed_agenda", "life_intents": agenda}
     result = canonical_inner_decision(opportunity, identity=identity, decision={
         "contract": "character-interior-purpose-decision.1", "purpose": "activity_lifecycle_choice",
         "capability_ref": "capability:day-open:" + digest(cap),
@@ -87,6 +93,49 @@ def _choice(ledger, first, *, selected=None, ordinal=1, identity="first", choose
         "payload": payload,
     })
     return result, cap, causal
+
+
+def test_agenda_is_atomic_replayable_and_each_plan_reads_its_own_intention(tmp_path):
+    from companion_daemon.world_v2.dashboard_life_intention import read_dashboard_life_intention
+
+    path = tmp_path / "agenda.sqlite"
+    ledger, first = _seed(path)
+    agenda = [INTENT, {**INTENT, "intention": "整理昨天的照片，选出想保留的几张。",
+                       "start_after_seconds": 3600, "duration_seconds": 1800}]
+    result, cap, causal = _choice(ledger, first, agenda=agenda)
+    proposal, cursor = _record(ledger, result, cap, causal)
+    receipt = _accept(ledger, proposal, cursor)
+    state = ledger.project()
+    assert len(state.plans) == 2
+    assert len(receipt.event_ids) == 2
+    runtime = DayOpenLifeIntentRuntime(ledger=ledger, owner_actor_ref=ACTOR)
+    assert {runtime.read_for_plan(plan_id=p.plan_id).character_intention for p in state.plans} == {
+        i["intention"] for i in agenda
+    }
+    assert {read_dashboard_life_intention(ledger=ledger, projection=state, plan=p).intention
+            for p in state.plans} == {i["intention"] for i in agenda}
+    assert all(p.status == "planned" and p.location_ref is None for p in state.plans)
+    assert state.experiences == () and state.world_occurrences == ()
+    from companion_daemon.world_v2.chat_life_plan_consideration import pending_opportunities, opportunity_from_state
+    opportunities = pending_opportunities(ledger, owner_actor_ref=ACTOR, projection=state)
+    assert len(opportunities) == 2
+    assert all(opportunity_from_state(state, world_id=WORLD_ID, opportunity=o) == o for o in opportunities)
+
+    ledger.close()
+    reopened = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
+    assert _accept(reopened, proposal, cursor) == receipt
+    assert reopened.rebuild().plans == state.plans
+    reopened.close()
+
+
+@pytest.mark.parametrize("agenda", [[], [INTENT] * 9])
+def test_agenda_has_a_bounded_nonempty_window(tmp_path, agenda):
+    ledger, first = _seed(tmp_path / "bounds.sqlite")
+    result, cap, _ = _choice(ledger, first, agenda=agenda)
+    with pytest.raises(ValueError):
+        materialize_day_open_proposal(result, cap, world_id=WORLD_ID)
+    assert ledger.project().plans == ()
+    ledger.close()
 
 
 def _record(ledger, result, cap, causal):
@@ -292,4 +341,21 @@ def test_other_actor_and_old_activity_purpose_do_not_inherit_clock_authority(tmp
     with pytest.raises(ValueError, match="role_capability_binding_invalid"):
         materialize_day_open_proposal(result.model_copy(update={"decision": decision}), cap, world_id=WORLD_ID)
     assert ledger.project().plans == ()
+    ledger.close()
+
+
+@pytest.mark.parametrize("agenda", [None, [INTENT]])
+def test_missing_day_open_registry_rejects_legacy_and_agenda_with_typed_error(tmp_path, monkeypatch, agenda):
+    from companion_daemon.world_v2 import proposal_envelope
+    from companion_daemon.world_v2.proposal_audit_schemas import decode_recorded_proposal
+
+    ledger, first = _seed(tmp_path / "registry-control.sqlite")
+    _record(ledger, *_choice(ledger, first, agenda=agenda))
+    audit, = ledger.project().proposal_audits
+    original = decode_recorded_proposal(audit)
+    with monkeypatch.context() as changed:
+        changed.delitem(proposal_envelope.PAYLOAD_MODEL_REGISTRY, "day_open_life_intent")
+        with pytest.raises(ValueError):
+            decode_recorded_proposal(audit)
+    assert decode_recorded_proposal(audit) == original
     ledger.close()

@@ -2758,10 +2758,11 @@ class QQC2CHost:
     async def dashboard_home_snapshot(
         self,
         runtime_observation: DashboardRuntimeObservation | None = None,
+        *, week=None,
     ) -> DashboardHomeSnapshot:
         """Read the fixed owner Dashboard DTO without advancing World work."""
 
-        return await self._host.dashboard_home_snapshot(runtime_observation)
+        return await self._host.dashboard_home_snapshot(runtime_observation, **({"week": week} if week is not None else {}))
 
     def dashboard_room(self) -> DashboardRoomProjectionDTO:
         """Return the fixed public Room DTO without minting a writable host."""

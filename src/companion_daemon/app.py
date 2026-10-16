@@ -767,16 +767,16 @@ async def world_v2_dashboard_home(
     """Relay the fixed typed snapshot from the process that owns the QQ World."""
 
     _require_world_v2_dashboard_access(request, x_world_v2_internal_token)
-    if request.query_params:
-        raise HTTPException(
-            status_code=400,
-            detail="World v2 Dashboard home does not accept query parameters",
-        )
+    from .world_v2.dashboard_agenda import requested_week
+    try:
+        week = requested_week(request.query_params)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Dashboard accepts only one YYYY-MM-DD week date") from exc
     source = _dashboard_home_source(request.app)
     if source is None:
         raise HTTPException(status_code=503, detail="World v2 Dashboard owner is unavailable")
     try:
-        result = await source.fetch(if_none_match=if_none_match)
+        result = await source.fetch(if_none_match=if_none_match, **({"week": week} if week is not None else {}))
     except DashboardHomeSourceError as exc:
         if exc.code in {"owner_unreachable", "owner_unavailable"}:
             raise HTTPException(

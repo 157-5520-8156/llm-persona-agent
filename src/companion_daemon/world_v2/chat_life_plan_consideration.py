@@ -94,6 +94,7 @@ def opportunity_from_state(
         world_id=world_id,
         proposal_id=opportunity.origin.proposal_id,
         owner_actor_ref=plan.owner_actor_ref,
+        **({"plan_id": plan.plan_id} if origin_field == "day_open_intent_origin" else {}),
     )
     if (
         not plan.plan_id.startswith(plan_prefix)

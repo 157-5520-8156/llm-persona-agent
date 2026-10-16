@@ -1801,13 +1801,23 @@ local recall fallback; do not claim all turns used BGE. No skipped new plan wind
 cold replay matches. This is behavioral evidence, beyond earlier mechanism tests.
 
 Life reconsideration (2026-09-27): `docs/audits/life-reconsideration-2026-09-27.md`.
-Current day-open capability5 / choice3 supports role-selected later consideration,
+Day-open capability5 / choice3 introduced role-selected later consideration,
 with durable original-choice binding, cross-day restart and fresh-context choice.
 V2 advisory routines are separate from legacy hobby schedules. NPC requests now
 expose source IDs, owner/time state, now/later fields and privacy floors before
 commit. 324 related tests passed; bounded real-provider probes used CNY0.10839764
 (29 calls, no unknown bills). Recorded-failure replay plus real correction reached
 NPC settlement. Fresh NPC no_op remains valid; week-long richness is unqualified.
+
+Rolling agenda (2026-10-16): current capability6 / choice4 lets the same character
+choose 1..8 concrete future intentions in one call, or no_op/reconsider. Registry7
+stores one original decision and accepts all Plans atomically; old contracts remain
+replayable. Each item retains its own source-bound intention and lifecycle choice.
+The existing authorized_attempt_result records objective consequences after a real
+attempt; future plans are never prewritten experiences. Routine remains habit
+background, not proof of an actual class or appointment. The owner Dashboard adds
+a bounded week filter and timetable for plans, settled results, Outlook candidates
+and timed intentions, with exact stored links only. See ADR0018 for display/privacy.
 
 Life richness audit (2026-09-27): see `docs/audits/life-richness-2026-09-27.md`.
 Current World Consequence context now excludes protagonist private affect,

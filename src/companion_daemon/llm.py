@@ -2561,6 +2561,7 @@ class FakeCompanionModel:
             "character_role_activity_lifecycle_choice_v1",
             "character_role_activity_lifecycle_choice_v2",
             "character_role_activity_lifecycle_choice_v3",
+            "character_role_activity_lifecycle_choice_v4",
         }:
             self.calls.append(messages)
             material = json.loads(messages[-1]["content"])

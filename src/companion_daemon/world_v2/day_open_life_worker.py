@@ -111,13 +111,13 @@ class DayOpenLifeWorker:
             purpose="activity_lifecycle_choice",
         ).identity_for_refs(sources, epoch=f"{day_ref}:attempt:{ordinal}")
         payload = {
-            "contract": "character-interior-activity-lifecycle-capability.5",
+            "contract": "character-interior-activity-lifecycle-capability.6",
             "catalog_version": catalog.catalog_version,
             "catalog_hash": catalog.catalog_hash,
             "offered_tokens": [],
             "openings": [],
             "self_directed_intent": {
-                "contract": "day-open-life-intent-capability.3",
+                "contract": "day-open-life-intent-capability.4",
                 **({"reconsideration_ref": reconsideration_ref} if reconsideration_ref else {}),
                 **({"completion_source": completion_source.model_dump(mode="json")}
                    if completion_source else {}),
@@ -168,7 +168,7 @@ class DayOpenLifeWorker:
                 ("You asked to reconsider now. " if reconsideration_ref else
                  "One owned activity has ended. " if completion_source else
                  "This is an opportunity to decide how to spend your own time. ")
-                + "Choose your own intention, no_op, or reconsider. You need not continue the last activity "
+                + "Choose a rolling agenda of 1..8 concrete own intentions, no_op, or reconsider. Make each intention useful to remember later, with the steps you actually intend, without inventing a course, appointment or outcome from generic routine. You need not continue the last activity "
                 "or conversation. A Plan is not execution, success, presence or a message. Routine is background. "
                 + ("The previous activity was abandoned, not completed. "
                    if completion_source and completion_source.terminal_kind == "abandoned" else "")

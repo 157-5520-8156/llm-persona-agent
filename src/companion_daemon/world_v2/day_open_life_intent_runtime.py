@@ -1,4 +1,4 @@
-"""Derive one private Plan from the exact audited day-open role decision.
+"""Derive private Plans from the exact audited day-open role decision.
 
 Neither the bridge nor the accepting runtime authors an intention. The bridge
 is inert; acceptance and replay re-prove its complete original role/model,
@@ -14,6 +14,10 @@ from zoneinfo import ZoneInfo
 
 from .day_open_life_intent_contract import (
     DAY_OPEN_CHOICE_CONTRACT,
+    AGENDA_CHOICE_CONTRACT,
+    DAY_OPEN_LIFE_AGENDA_REGISTRY_VERSION,
+    DayOpenAgendaChoice,
+    DayOpenLifeAgendaPayload,
     DAY_OPEN_LIFE_INTENT_POLICY_REF,
     DAY_OPEN_LIFE_INTENT_REGISTRY_VERSION,
     DayOpenActivityCapability,
@@ -80,9 +84,10 @@ def _role_material(result, capability_payload, *, world_id):
     payload = decision.get("payload")
     from .day_open_life_intent_contract import RECONSIDER_CHOICE_CONTRACT, DayOpenReconsiderChoice
 
-    current = capability.contract.endswith(".5")
+    agenda = capability.contract.endswith(".6")
+    current = agenda or capability.contract.endswith(".5")
     if not isinstance(payload, dict) or payload.get("contract") != (
-        RECONSIDER_CHOICE_CONTRACT if current else DAY_OPEN_CHOICE_CONTRACT
+        AGENDA_CHOICE_CONTRACT if agenda else RECONSIDER_CHOICE_CONTRACT if current else DAY_OPEN_CHOICE_CONTRACT
     ):
         raise DayOpenLifeIntentError("role_contract_invalid")
     if current and payload.get("decision") == "reconsider":
@@ -93,12 +98,17 @@ def _role_material(result, capability_payload, *, world_id):
         and payload.get("life_intent") is None
     ):
         return result, capability, None
+    if agenda:
+        choice = DayOpenAgendaChoice.model_validate_json(canonical_json(
+            {k: v for k, v in payload.items() if k != "contract"}
+        ))
+        return result, capability, choice.life_intents
     if set(payload) != {"contract", "decision", "life_intent"} or (
         payload.get("decision") != "self_directed_intent"
     ):
         raise DayOpenLifeIntentError("explicit_intent_missing")
     intent = LifeIntentDraft.model_validate_json(canonical_json(payload["life_intent"]))
-    return result, capability, intent
+    return result, capability, (intent,)
 
 
 def materialize_day_open_proposal(result, capability_payload, *, world_id: str):
@@ -107,8 +117,8 @@ def materialize_day_open_proposal(result, capability_payload, *, world_id: str):
         CanonicalTypedPayload, DecisionProposal, ProposalEvidenceRef, TypedChange,
     )
 
-    result, capability, intent = _role_material(result, capability_payload, world_id=world_id)
-    if intent is None:
+    result, capability, intents = _role_material(result, capability_payload, world_id=world_id)
+    if intents is None:
         return None
     supplied = capability.self_directed_intent
     source_material = {
@@ -128,14 +138,17 @@ def materialize_day_open_proposal(result, capability_payload, *, world_id: str):
         for ref, (revision, hash_) in sorted(source_material.items())
     )
     identity = digest(result.model_dump(mode="json"))
-    payload = DayOpenLifeIntentPayload(
-        **intent.model_dump(mode="json"), actor_ref=result.actor_ref,
+    agenda = capability.contract.endswith(".6")
+    payload = (DayOpenLifeAgendaPayload if agenda else DayOpenLifeIntentPayload)(
+        **({"life_intents": intents} if agenda else intents[0].model_dump(mode="json")),
+        actor_ref=result.actor_ref,
         role_decision_json=canonical_json(result.model_dump(mode="json")),
         capability_payload_json=canonical_json(capability_payload),
     )
     return DecisionProposal(
         proposal_id="proposal:day-open-life-intent:" + identity,
-        schema_registry_version=DAY_OPEN_LIFE_INTENT_REGISTRY_VERSION,
+        schema_registry_version=(DAY_OPEN_LIFE_AGENDA_REGISTRY_VERSION if agenda
+                                 else DAY_OPEN_LIFE_INTENT_REGISTRY_VERSION),
         trigger_ref=supplied.selected_clock_ref,
         evaluated_world_revision=result.cursor.world_revision,
         evidence_refs=evidence,
@@ -150,7 +163,8 @@ def materialize_day_open_proposal(result, capability_payload, *, world_id: str):
             evidence_refs=tuple(item.ref_id for item in evidence),
             policy_refs=(DAY_OPEN_LIFE_INTENT_POLICY_REF,),
             payload=CanonicalTypedPayload.from_value(
-                payload_schema="day_open_life_intent.v1", value=payload.model_dump(mode="json"),
+                payload_schema="day_open_life_intent.v2" if agenda else "day_open_life_intent.v1",
+                value=payload.model_dump(mode="json"),
             ),
         ),),
         confidence=10_000, brief_rationale=result.summary[:240],
@@ -159,7 +173,7 @@ def materialize_day_open_proposal(result, capability_payload, *, world_id: str):
     )
 
 
-def derive_day_open_life_plan(*, state, world_id: str, proposal_id: str, owner_actor_ref: str):
+def _derive_day_open_life_plans(*, state, world_id: str, proposal_id: str, owner_actor_ref: str):
     """The same original proof is checked by live acceptance and reducer replay."""
     from .character_interior.audit import recorded_character_interior_lineage
     from .character_interior.contracts import InnerDecision
@@ -172,17 +186,18 @@ def derive_day_open_life_plan(*, state, world_id: str, proposal_id: str, owner_a
         raise DayOpenLifeIntentError("proposal_missing")
     proposal = validate_proposal_envelope(json.loads(audit.proposal_json))
     if not isinstance(proposal, DecisionProposal) or any((
-        proposal.schema_registry_version != DAY_OPEN_LIFE_INTENT_REGISTRY_VERSION,
+        proposal.schema_registry_version not in {DAY_OPEN_LIFE_INTENT_REGISTRY_VERSION, DAY_OPEN_LIFE_AGENDA_REGISTRY_VERSION},
         proposal.proposal_hash != audit.proposal_hash,
         len(proposal.proposed_changes) != 1,
         proposal.proposed_changes[0].kind != "day_open_life_intent",
     )):
         raise DayOpenLifeIntentError("proposal_binding_invalid")
     change = proposal.proposed_changes[0]
-    payload = DayOpenLifeIntentPayload.model_validate_json(change.payload.canonical_json)
+    agenda = change.payload.payload_schema == "day_open_life_intent.v2"
+    payload = (DayOpenLifeAgendaPayload if agenda else DayOpenLifeIntentPayload).model_validate_json(change.payload.canonical_json)
     result = InnerDecision.model_validate_json(payload.role_decision_json)
     capability_payload = json.loads(payload.capability_payload_json)
-    result, capability, intent = _role_material(result, capability_payload, world_id=world_id)
+    result, capability, intents = _role_material(result, capability_payload, world_id=world_id)
     if payload.actor_ref != owner_actor_ref or result.actor_ref != owner_actor_ref:
         raise DayOpenLifeIntentError("actor_mismatch")
     if proposal != materialize_day_open_proposal(result, capability_payload, world_id=world_id):
@@ -263,8 +278,10 @@ def derive_day_open_life_plan(*, state, world_id: str, proposal_id: str, owner_a
     if selected_head is None or selected_head.logical_time != selected.logical_time:
         raise DayOpenLifeIntentError("selection_clock_invalid")
     origin = DayOpenLifeIntentOrigin(
-        contract=("day-open-life-intent-origin.3" if capability.contract.endswith(".5") else
+        contract=("day-open-life-intent-origin.4" if agenda else
+                  "day-open-life-intent-origin.3" if capability.contract.endswith(".5") else
                   "day-open-life-intent-origin.2" if completion else "day-open-life-intent-origin.1"),
+        agenda_index=0 if agenda else None,
         reconsideration_ref=supplied.reconsideration_ref,
         completion_source=completion,
         world_id=world_id, actor_ref=owner_actor_ref, opportunity_ref=supplied.opportunity_ref,
@@ -290,23 +307,43 @@ def derive_day_open_life_plan(*, state, world_id: str, proposal_id: str, owner_a
         source_world_revision=item.source_world_revision,
         immutable_hash=item.immutable_hash.removeprefix("sha256:"),
     ) for item in proposal.evidence_refs)
-    suffix = change.target_id.removeprefix(PLAN_PREFIX)
-    starts = origin.selected_at + timedelta(seconds=intent.start_after_seconds)
-    return ActivityPlannedPayload(
-        change_id=change.change_id, transition_id="transition:day-open-life-intent:" + suffix,
-        expected_entity_revision=0, evidence_refs=evidence,
-        policy_refs=(DAY_OPEN_LIFE_INTENT_POLICY_REF,), day_open_intent_origin=origin,
-        plan=PlanStateProjection(
-            plan_id=change.target_id, activity_id="activity:day-open-life-intent:" + suffix,
-            entity_revision=1, activity_kind="self_directed." + digest(intent.intention)[:24],
-            evidence_refs=evidence, status="planned", importance_bp=intent.importance_bp,
-            scheduled_window=DueWindow(
-                opens_at=starts, closes_at=starts + timedelta(seconds=intent.duration_seconds),
+    plans = []
+    for index, intent in enumerate(intents):
+        # Item zero retains the daily effect identity, including across legacy
+        # upgrades. Further items are bound to that identity and their ordinal.
+        plan_id = change.target_id if index == 0 else PLAN_PREFIX + digest([change.target_id, index])
+        suffix = plan_id.removeprefix(PLAN_PREFIX)
+        item_origin = origin.model_copy(update={"agenda_index": index}) if agenda else origin
+        starts = origin.selected_at + timedelta(seconds=intent.start_after_seconds)
+        plans.append((ActivityPlannedPayload(
+            change_id=change.change_id, transition_id="transition:day-open-life-intent:" + suffix,
+            expected_entity_revision=0, evidence_refs=evidence,
+            policy_refs=(DAY_OPEN_LIFE_INTENT_POLICY_REF,), day_open_intent_origin=item_origin,
+            plan=PlanStateProjection(
+                plan_id=plan_id, activity_id="activity:day-open-life-intent:" + suffix,
+                entity_revision=1, activity_kind="self_directed." + digest(intent.intention)[:24],
+                evidence_refs=evidence, status="planned", importance_bp=intent.importance_bp,
+                scheduled_window=DueWindow(
+                    opens_at=starts, closes_at=starts + timedelta(seconds=intent.duration_seconds),
+                ),
+                participant_refs=(), location_ref=None, privacy_class="private",
+                owner_actor_ref=owner_actor_ref,
             ),
-            participant_refs=(), location_ref=None, privacy_class="private",
-            owner_actor_ref=owner_actor_ref,
-        ),
-    ), intent
+        ), intent))
+    return tuple(plans)
+
+
+def derive_day_open_life_plan(*, state, world_id: str, proposal_id: str,
+                             owner_actor_ref: str, plan_id: str | None = None):
+    plans = _derive_day_open_life_plans(
+        state=state, world_id=world_id, proposal_id=proposal_id, owner_actor_ref=owner_actor_ref,
+    )
+    if plan_id is None and len(plans) == 1:
+        return plans[0]
+    matches = [item for item in plans if item[0].plan.plan_id == plan_id]
+    if len(matches) != 1:
+        raise DayOpenLifeIntentError("agenda_item_missing")
+    return matches[0]
 
 
 def validate_day_open_life_plan_event(*, state, event: WorldEvent, payload: ActivityPlannedPayload):
@@ -320,7 +357,7 @@ def validate_day_open_life_plan_event(*, state, event: WorldEvent, payload: Acti
         raise DayOpenLifeIntentError("origin_missing")
     expected, _ = derive_day_open_life_plan(
         state=state, world_id=event.world_id, proposal_id=origin.proposal_id,
-        owner_actor_ref=event.actor,
+        owner_actor_ref=event.actor, plan_id=payload.plan.plan_id,
     )
     if any((
         payload != expected, event.source != SOURCE,
@@ -349,10 +386,10 @@ class DayOpenLifeIntentRuntime:
         # The original paid audit may have been durably recorded at a later
         # Clock. Read its actual commit prefix, without changing its evaluated pin.
         pinned = self.ledger.project_at(audit_cursor)
-        payload, _ = derive_day_open_life_plan(
+        plans = _derive_day_open_life_plans(
             state=pinned, world_id=world_id, proposal_id=proposal_id, owner_actor_ref=self._owner,
         )
-        origin = payload.day_open_intent_origin
+        origin = plans[0][0].day_open_intent_origin
         self._validate_original_catalog(pinned, origin)
         for event_ref, hash_ in (
             (origin.proposal_event_ref, origin.proposal_payload_hash),
@@ -366,32 +403,39 @@ class DayOpenLifeIntentRuntime:
             )):
                 raise DayOpenLifeIntentError("audit_commit_unavailable")
         projection = self.ledger.project()
-        suffix = payload.plan.plan_id.removeprefix(PLAN_PREFIX)
-        event_id = EVENT_PREFIX + suffix
-        existing = self.ledger.lookup_event_commit(event_id)
-        if existing is not None:
-            original = ActivityPlannedPayload.model_validate_json(existing[0].payload_json)
-            validate_day_open_life_plan_event(state=projection, event=existing[0], payload=original)
-            if original != payload:
+        suffix = plans[0][0].plan.plan_id.removeprefix(PLAN_PREFIX)
+        located = [self.ledger.lookup_event_commit(EVENT_PREFIX + p.plan.plan_id.removeprefix(PLAN_PREFIX))
+                   for p, _ in plans]
+        if any(item is not None for item in located):
+            if not all(item is not None for item in located):
                 raise DayOpenLifeIntentError("effect_identity_conflict")
-            return existing[1]
+            for (payload, _), existing in zip(plans, located, strict=True):
+                original = ActivityPlannedPayload.model_validate_json(existing[0].payload_json)
+                validate_day_open_life_plan_event(state=projection, event=existing[0], payload=original)
+                if original != payload or existing[1] != located[0][1]:
+                    raise DayOpenLifeIntentError("effect_identity_conflict")
+            return located[0][1]
         if projection.logical_time is None:
             raise DayOpenLifeIntentError("clock_unavailable")
         source_event = self.ledger.lookup_event_commit(origin.proposal_event_ref)[0]
-        value = payload.model_dump(mode="json")
-        event = WorldEvent.from_payload(
-            schema_version="world-v2.1", event_id=event_id, world_id=world_id,
-            event_type="ActivityPlanned", logical_time=projection.logical_time,
-            created_at=source_event.created_at, actor=self._owner, source=SOURCE,
-            trace_id=source_event.trace_id, causation_id=origin.proposal_event_ref,
-            correlation_id=source_event.correlation_id,
-            idempotency_key=domain_idempotency_key(
-                event_type="ActivityPlanned", world_id=world_id, payload=value,
-            ), payload=value,
-        )
-        validate_day_open_life_plan_event(state=projection, event=event, payload=payload)
+        events = []
+        for payload, _ in plans:
+            value = payload.model_dump(mode="json")
+            event = WorldEvent.from_payload(
+                schema_version="world-v2.1",
+                event_id=EVENT_PREFIX + payload.plan.plan_id.removeprefix(PLAN_PREFIX), world_id=world_id,
+                event_type="ActivityPlanned", logical_time=projection.logical_time,
+                created_at=source_event.created_at, actor=self._owner, source=SOURCE,
+                trace_id=source_event.trace_id, causation_id=origin.proposal_event_ref,
+                correlation_id=source_event.correlation_id,
+                idempotency_key=domain_idempotency_key(
+                    event_type="ActivityPlanned", world_id=world_id, payload=value,
+                ), payload=value,
+            )
+            validate_day_open_life_plan_event(state=projection, event=event, payload=payload)
+            events.append(event)
         return self.ledger.commit_at_cursor(
-            (event,), expected_cursor=ProjectionCursor(
+            tuple(events), expected_cursor=ProjectionCursor(
                 world_revision=projection.world_revision,
                 deliberation_revision=projection.deliberation_revision,
                 ledger_sequence=projection.ledger_sequence,
@@ -409,7 +453,7 @@ class DayOpenLifeIntentRuntime:
             owner_actor_ref=self._owner, catalog_version=declared["catalog_version"],
         ).openings_for(projection=original, wake_event_ref=origin.source_event_ref)
         permitted = {"no_openings"}
-        if origin.contract == "day-open-life-intent-origin.3" and origin.reconsideration_ref is not None:
+        if origin.contract in {"day-open-life-intent-origin.3", "day-open-life-intent-origin.4"} and origin.reconsideration_ref is not None:
             # The current capability permits future planning alongside an
             # existing activity. It grants no start/pause/complete effect.
             permitted.add("openings_available")
@@ -429,7 +473,7 @@ class DayOpenLifeIntentRuntime:
             return None
         _, intent = derive_day_open_life_plan(
             state=state, world_id=self.ledger.world_id,
-            proposal_id=payload.day_open_intent_origin.proposal_id, owner_actor_ref=self._owner,
+            proposal_id=payload.day_open_intent_origin.proposal_id, owner_actor_ref=self._owner, plan_id=plan_id,
         )
         return DayOpenLifePlanMaterial(intent.intention, payload.day_open_intent_origin)
 

@@ -20,6 +20,8 @@ class DashboardWorldOccurrenceReading:
     status: Literal["read", "not_settled", "unavailable", "withheld"]
     text: str | None = None
     truncated: bool = False
+    attempt_text: str | None = None
+    plan_id: str | None = None
 
 
 def experience_world_occurrence(projection, experience):
@@ -126,9 +128,13 @@ def read_dashboard_world_occurrence(
             viewer_privacy_ceiling=viewer_privacy_ceiling, user_channel_limited_content_refs=limited,
         )
         text = " ".join(consequence.environment_text.split())
-        truncated = len(text) > max_characters
+        attempt = consequence.authorized_attempt_result
+        attempt_text = " ".join(attempt.text.split()) if attempt else None
+        truncated = len(text) > max_characters or bool(attempt_text and len(attempt_text) > max_characters)
         return DashboardWorldOccurrenceReading(
-            "read", text[:max_characters - 1] + "…" if truncated else text, truncated,
+            "read", text[:max_characters - 1] + "…" if len(text) > max_characters else text, truncated,
+            (attempt_text[:max_characters - 1] + "…" if len(attempt_text) > max_characters else attempt_text) if attempt_text else None,
+            getattr(attempt.execution_binding, "plan_id", None) if attempt else None,
         )
     except (ValueError, TypeError, KeyError, AttributeError):
         return unavailable

@@ -318,7 +318,12 @@ def compile_world_consequence_messages(
             "concrete success, failure or partial result inside the original intention and elapsed "
             "time, or no_op if no result can be resolved. A warning that a time window proves "
             "nothing is not itself a concrete result. Do not add actions outside that original "
-            "attempt, new decisions, feelings, fabricated earlier history or user-channel delivery.\n"
+            "attempt, new decisions, feelings, fabricated earlier history or user-channel delivery. "
+            "Write a self-contained activity record that later conversation can actually refer to: "
+            "what changed, concrete steps or interactions already within the authorized attempt, "
+            "and its remaining or completed result. Use specific detail where the supplied authority "
+            "permits it, without padding, inventing participants or future outcomes. Keep everything "
+            "inside the elapsed interval; do not turn a generic routine into a real appointment.\n"
         )
     tail_guidance = None
     if cache_stable_prefix:

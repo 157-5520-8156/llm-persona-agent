@@ -801,6 +801,16 @@ def _validate_day_open_reconsider_payload(payload, offered_tokens) -> None:
         _validate_day_open_payload(payload, offered_tokens)
 
 
+
+def _validate_day_open_agenda_payload(payload, offered_tokens) -> None:
+    if payload.get("decision") in {"no_op", "reconsider"}:
+        _validate_day_open_reconsider_payload(payload, offered_tokens)
+        return
+    from ..day_open_life_intent_contract import DayOpenAgendaChoice
+
+    DayOpenAgendaChoice.model_validate_json(json.dumps(payload))
+
+
 def _validate_outcome_selection_payload(
     payload: Mapping[str, object],
     offered_tokens: frozenset[str],
@@ -2472,9 +2482,7 @@ class StructuredCharacterRoleFaculty:
             manifest = request.capability_manifest
             if (
                 manifest is not None
-                and (request.purpose in {"fact_memory_retention", "prehistory_memory_batch", "experience_memory_retention", "memory_withdrawal_review", "memory_consolidation"}
-                     or (request.purpose == "activity_lifecycle_choice"
-                         and manifest.payload.get("self_directed_intent") is not None))
+                and request.purpose in {"fact_memory_retention", "prehistory_memory_batch", "experience_memory_retention", "memory_withdrawal_review", "memory_consolidation", "activity_lifecycle_choice"}
                 and tuple(result.decision.source_refs) != manifest.source_refs
             ):
                 self._raise(
@@ -3058,11 +3066,14 @@ class StructuredCharacterRoleFaculty:
                 ) from exc
             return replace(
                 contract,
-                payload_contract=("character-interior-activity-lifecycle-choice.3"
+                payload_contract=("character-interior-activity-lifecycle-choice.4"
+                                  if manifest.payload["contract"].endswith(".6") else
+                                  "character-interior-activity-lifecycle-choice.3"
                                   if manifest.payload["contract"].endswith(".5") else
                                   "character-interior-activity-lifecycle-choice.2"),
                 offered_token_fields=(),
-                validator=(_validate_day_open_reconsider_payload
+                validator=(_validate_day_open_agenda_payload
+                           if manifest.payload["contract"].endswith(".6") else _validate_day_open_reconsider_payload
                            if manifest.payload["contract"].endswith(".5") else _validate_day_open_payload),
             )
         return contract
@@ -3998,6 +4009,21 @@ class StructuredCharacterRoleFaculty:
                         "planning opportunity. No life_intent in this branch. It creates no "
                         "activity or message; you choose again using the then-current context"
                     )
+            if contract.payload_contract == "character-interior-activity-lifecycle-choice.4":
+                view["payload_schema"] = {
+                    "decision": "self_directed_agenda|no_op|reconsider",
+                    "life_intents": "self_directed_agenda only: 1..8 complete LifeIntentDraft objects. "
+                    "Each has execution_scope=self_directed, intention (1..480 chars), "
+                    "start_after_seconds (0..86400 from this Clock), duration_seconds (60..21600), "
+                    "importance_bp (0..10000). Choose a coherent rolling portion of your own life; "
+                    "include useful concrete intended steps in each intention. Choose the number "
+                    "and rhythm yourself; gaps and changes of mind are allowed. Read existing plans "
+                    "before adding more. Routine is only habit background: it does not establish "
+                    "a real class, appointment, place availability or another person's participation. "
+                    "These are future intentions, never completed actions, outcomes or emotions.",
+                    "reconsider_after_seconds": "reconsider only: integer 60..86400; no life_intents",
+                    "no_op": "decision only; creates no activity or message",
+                }
         if contract.purpose == "outcome_selection":
             view["payload_schema"] = {
                 "selected_token": "exactly one offered outcome token",

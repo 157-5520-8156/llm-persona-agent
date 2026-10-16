@@ -747,13 +747,13 @@ def create_qq_c2c_onebot_app(
         )
         if denied is not None:
             return denied
-        if request.query_params:
-            return JSONResponse(
-                {"error": "dashboard snapshot does not accept query parameters"},
-                status_code=400,
-            )
+        from .dashboard_agenda import requested_week
+        try:
+            week = requested_week(request.query_params)
+        except ValueError:
+            return JSONResponse({"error": "dashboard accepts only one YYYY-MM-DD week date"}, status_code=400)
         runtime_observation = await dashboard_runtime_sampler.capture()
-        snapshot = await host.dashboard_home_snapshot(runtime_observation)
+        snapshot = await host.dashboard_home_snapshot(runtime_observation, **({"week": week} if week is not None else {}))
         etag = f'"{snapshot.snapshot_hash}"'
         headers = {"Cache-Control": "private, no-store", "ETag": etag}
         if if_none_match == etag:
@@ -912,13 +912,13 @@ def create_qq_c2c_onebot_app(
         denied = _owner_dashboard_access(request, x_world_v2_internal_token)
         if denied is not None:
             return denied
-        if request.query_params:
-            return JSONResponse(
-                {"error": "dashboard home does not accept query parameters"},
-                status_code=400,
-            )
+        from .dashboard_agenda import requested_week
+        try:
+            week = requested_week(request.query_params)
+        except ValueError:
+            return JSONResponse({"error": "dashboard accepts only one YYYY-MM-DD week date"}, status_code=400)
         runtime_observation = await dashboard_runtime_sampler.capture()
-        snapshot = await host.dashboard_home_snapshot(runtime_observation)
+        snapshot = await host.dashboard_home_snapshot(runtime_observation, **({"week": week} if week is not None else {}))
         etag = f'"{snapshot.snapshot_hash}"'
         headers = {"Cache-Control": "private, no-store", "ETag": etag}
         if if_none_match == etag:

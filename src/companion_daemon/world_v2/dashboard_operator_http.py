@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 import ipaddress
 from typing import Protocol
 from urllib.parse import urlsplit
@@ -41,6 +42,7 @@ class DashboardHomeSource(Protocol):
         self,
         *,
         if_none_match: str | None = None,
+        week: date | None = None,
     ) -> DashboardHomeFetchResult: ...
 
 
@@ -72,6 +74,7 @@ class QQDashboardHomeHttpAdapter:
         self,
         *,
         if_none_match: str | None = None,
+        week: date | None = None,
     ) -> DashboardHomeFetchResult:
         headers = {
             "Accept": "application/json",
@@ -88,7 +91,8 @@ class QQDashboardHomeHttpAdapter:
                 trust_env=False,
                 follow_redirects=False,
             ) as client:
-                async with client.stream("GET", self._url, headers=headers) as response:
+                async with client.stream("GET", self._url, headers=headers,
+                                         params={"week": week.isoformat()} if week else None) as response:
                     etag = response.headers.get("ETag")
                     if response.status_code == 304:
                         if etag is None or if_none_match is None or etag != if_none_match:

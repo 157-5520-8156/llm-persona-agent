@@ -113,7 +113,7 @@ async def test_completed_activity_offers_one_new_self_directed_choice(
             assert sum(p.status == "active" for p in evidence.projection.plans) == 1
         next_request = json.loads(provider.day_requests[1]["messages"][1]["content"])
         capability = next_request["capability_manifest"]["payload"]["self_directed_intent"]
-        assert capability["contract"] == "day-open-life-intent-capability.3"
+        assert capability["contract"] == "day-open-life-intent-capability.4"
         completed = next(x.event for x in evidence.events if x.event.event_type == ("ActivityCompleted" if terminal_kind == "completed" else "ActivityAbandoned"))
         assert capability["completion_source"]["event_ref"] == completed.event_id
         assert capability["completion_source"].get("terminal_kind", "completed") == terminal_kind
@@ -227,6 +227,7 @@ class _DayOpenHTTP(_RoleHTTP):
         self.repair = repair
         self.repair_sources = repair_sources
         self.chat_intent = None
+        self.agenda = None
 
     async def __call__(self, request):
         body = json.loads(request.content)
@@ -287,10 +288,10 @@ class _DayOpenHTTP(_RoleHTTP):
                     if self.repair_sources and len(self.day_requests) == 2
                     else capability["source_refs"],
                     "payload": {
-                        "decision": "self_directed_intent",
-                        "life_intent": {**INTENT, "execution_scope": "control_others"}
+                        "decision": "self_directed_agenda",
+                        "life_intents": self.agenda or [{**INTENT, "execution_scope": "control_others"}
                         if self.repair and len(self.day_requests) == 1
-                        else INTENT,
+                        else INTENT],
                     }
                     if self.choose
                     else {"decision": "no_op"},
@@ -912,6 +913,95 @@ async def test_expired_pause_leads_to_owned_choice_then_fresh_intention(tmp_path
         assert len(provider.day_requests) == 2
         offered = json.loads(provider.lifecycle_requests[-1]["messages"][1]["content"])["capability_manifest"]["payload"]
         assert all(row["activity_state"]["window_elapsed"] for row in offered["openings"])
+    finally:
+        app.close()
+        await model.aclose()
+
+
+@pytest.mark.asyncio
+async def test_rolling_agenda_reaches_wire_chat_and_does_not_refill_in_future_gap(tmp_path, monkeypatch, build_app):
+    from companion_daemon.world_v2.day_open_opportunity import activity_continuation_due
+    from companion_daemon.world_v2.day_open_life_intent_runtime import DayOpenLifeIntentPlannedReader
+    from companion_daemon.world_v2.schemas import ProjectionCursor
+
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    provider = _DayOpenHTTP()
+    provider.agenda = [INTENT, {**INTENT, "intention": "晚些时候整理自己昨天的照片，留下清楚的几张。",
+                              "start_after_seconds": 3600}]
+    model = DeepSeekChatModel("offline", "https://fixture.invalid", "deepseek-v4-flash",
+                             thinking_enabled=False, transport=httpx.MockTransport(provider))
+    app = build_app(tmp_path / "agenda-public.sqlite", model, ecology=True)
+    previous = NOW
+    try:
+        for minute in (1, 2, 6, 7):
+            provider.lifecycle_choice = "complete" if minute == 6 else "start"
+            at = NOW + timedelta(minutes=minute)
+            await app.tick(tick_id=f"agenda-{minute}", logical_time_from=previous, logical_time_to=at,
+                           observed_at=at, trace_id=f"trace:agenda-{minute}", causation_id=f"clock:agenda-{minute}",
+                           correlation_id="agenda", reason="test_clock")
+            previous = at
+        state = app.export_replay_evidence().projection
+        assert len(state.plans) == 2 and len(provider.day_requests) == 1
+        assert len(state.chat_life_plan_considerations) == 1
+        assert state.chat_life_plan_considerations[0].status == "selected"
+
+        assert activity_continuation_due(app._ledger, actor_ref=ACTOR, projection=state) is None
+        queued, = [p for p in state.plans if p.status == "planned"]
+        cursor = ProjectionCursor(**{k: getattr(state, k) for k in ("world_revision", "deliberation_revision", "ledger_sequence")})
+        reading = DayOpenLifeIntentPlannedReader(ledger=app._ledger).read_planned_plan(
+            plan_id=queued.plan_id, expected_cursor=cursor, actor_ref=ACTOR, viewer_privacy_ceiling="private")
+        assert provider.agenda[1]["intention"] in reading.model_dump_json()
+        await app.respond(InboundTurn(platform="test", platform_user_id="user.1", platform_message_id="agenda-question",
+                                      text="接下来你有什么安排？", observed_at=previous, trace_id="trace:agenda-question"))
+        assert provider.agenda[1]["intention"] in json.dumps(provider.chat_requests[-1], ensure_ascii=False)
+        request = provider.day_requests[0]
+        assert "self_directed_agenda" in json.dumps(request["tools"], ensure_ascii=False)
+        assert "character_role_activity_lifecycle_choice_v4" in json.dumps(request["tools"])
+    finally:
+        app.close()
+        await model.aclose()
+
+
+@pytest.mark.asyncio
+async def test_agenda_activity_extra_decision_sources_are_corrected_by_same_role(tmp_path, monkeypatch, build_app):
+    class ExtraSourceHTTP(_DayOpenHTTP):
+        def __init__(self):
+            super().__init__()
+            self.repaired_lifecycle = False
+
+        async def __call__(self, request):
+            count = len(self.lifecycle_requests)
+            response = await super().__call__(request)
+            if len(self.lifecycle_requests) == count or count != 0:
+                return response
+            body = json.loads(request.content)
+            material = next(json.loads(m["content"]) for m in body["messages"]
+                            if m["role"] == "user" and "inner_life_snapshot" in m["content"])
+            args = json.loads(response.json()["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"])
+            refs = material["capability_manifest"]["source_refs"]
+            extra = next(ref for ref in material["inner_life_snapshot"]["source_refs"] if ref not in refs)
+            args["decision"]["source_refs"] = [*refs, extra]
+            self.repaired_lifecycle = True
+            return _http_result(body, args)
+
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    provider = ExtraSourceHTTP()
+    model = DeepSeekChatModel("offline", "https://fixture.invalid", "deepseek-v4-flash",
+                             thinking_enabled=False, transport=httpx.MockTransport(provider))
+    app = build_app(tmp_path / "source-repair.sqlite", model, ecology=True)
+    previous = NOW
+    try:
+        for minute in (1, 2):
+            at = NOW + timedelta(minutes=minute)
+            await app.tick(tick_id=f"source-repair-{minute}", logical_time_from=previous, logical_time_to=at,
+                           observed_at=at, trace_id=f"trace:source-repair-{minute}", causation_id=f"clock:source-repair-{minute}",
+                           correlation_id="source-repair", reason="test_clock")
+            previous = at
+        assert provider.repaired_lifecycle
+        assert len(provider.lifecycle_requests) == 2
+        state = app.export_replay_evidence().projection
+        assert state.plans[0].status == "active"
+        assert state.chat_life_plan_considerations[0].status == "selected"
     finally:
         app.close()
         await model.aclose()

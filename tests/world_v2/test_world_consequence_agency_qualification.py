@@ -413,6 +413,16 @@ async def test_actual_started_role_attempt_reaches_production_authority_and_worl
         consequence = json.loads(raw)
         assert consequence["authorized_attempt_result"]["execution_binding"] == bindings[0]
         assert consequence["authorized_attempt_result"]["text"] in ATTEMPT_RESULTS
+        from companion_daemon.world_v2.dashboard_home_snapshot import DashboardHomeSnapshotModule
+        snapshot = await DashboardHomeSnapshotModule(
+            ledger=ledger, deployment_id="qualification", boot_id="qualification",
+            life_content_store=store, life_actor_ref=ACTOR, life_privacy_ceiling="private",
+        ).capture()
+        agenda = snapshot.sections.overview_life.data.agenda
+        actual = next(e for e in agenda.entries if e.kind == "world" and e.related)
+        assert consequence["authorized_attempt_result"]["text"] in actual.detail
+        assert next(e for e in agenda.entries if e.index == actual.related[0]).kind == "plan"
+
         assert character.calls == 0
         assert ledger.project().experiences == prior_experiences
         assert (await _advance(_aftermath(ledger, store, character), due)).status == "no_op"

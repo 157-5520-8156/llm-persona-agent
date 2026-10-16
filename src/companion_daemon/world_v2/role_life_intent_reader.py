@@ -161,6 +161,7 @@ class RoleLifeIntentActivityReader:
             world_id=self._ledger.world_id,
             proposal_id=origin.proposal_id,
             owner_actor_ref=actor_ref,
+            **({"plan_id": plan.plan_id} if self._origin_field == "day_open_intent_origin" else {}),
         )
         # A concurrent advance invalidates this foreground read rather than
         # reading a lifecycle head from a different snapshot.

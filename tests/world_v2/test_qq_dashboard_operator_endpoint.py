@@ -100,6 +100,15 @@ def test_qq_owner_dashboard_endpoint_is_fixed_authenticated_and_cacheable(
         } & {item["key"] for item in runtime["data"]["signals"]}
         assert first.headers["etag"] == f'"{payload["snapshot_hash"]}"'
 
+        for week in ("2026-10-12", "2026-10-19"):
+            selected = client.get(path + "?week=" + week,
+                                  headers={"X-World-V2-Internal-Token": TOKEN})
+            assert selected.status_code == 200
+            assert selected.json()["sections"]["overview_life"]["data"]["agenda"]["week_start"] == week
+            assert selected.json()["cursor"]["ledger_sequence"] >= payload["cursor"]["ledger_sequence"]
+        assert client.get(path + "?week=invalid",
+                          headers={"X-World-V2-Internal-Token": TOKEN}).status_code == 400
+
         repeated = client.get(
             path,
             headers={"X-World-V2-Internal-Token": TOKEN},

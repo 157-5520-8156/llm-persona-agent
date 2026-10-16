@@ -120,6 +120,7 @@ DASHBOARD_HTML = """<!doctype html>
 .section-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;align-items:start}.section-card{padding:24px}.section-card[data-focus-area="life"],.section-card[data-focus-area="pending"]{grid-column:1/-1}.section-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.section-head h2{font-size:18px;font-weight:600;margin:0;letter-spacing:.03em}.section-state{border-radius:999px;padding:4px 9px;background:var(--soft);color:var(--green);font-size:11px;white-space:nowrap}.section-state[data-state="unavailable"],.section-state[data-state="degraded"],.section-state[data-state="stale"]{background:#f4e3d7;color:#91523a}.section-state[data-state="empty"],.section-state[data-state="disabled"]{background:#eeeee7;color:var(--muted)}.section-body{padding-top:16px;display:grid;gap:16px}.section-note{font-size:12px;color:var(--muted);line-height:1.8;margin:0}.empty-state{padding:24px 16px;border:1px dashed var(--line);border-radius:10px;color:var(--muted);font-size:13px;line-height:1.8;text-align:center}.section-subtitle{font-size:12px;color:var(--muted);font-weight:500;margin:0 0 10px}.life-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:30px}.life-column{min-width:0}.activity-list,.highlight-list{display:grid;gap:10px}.highlight{padding:16px;background:#f8f9f3;border:1px solid #e3e8dc;border-radius:12px;min-width:0}.highlight-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}.kind-tag{color:#66816b;font-size:10px;letter-spacing:.06em}.when{font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}.highlight h3{font-size:15px;line-height:1.65;font-weight:500;margin:8px 0 0;overflow-wrap:anywhere}.status-pill{display:inline-block;margin-top:8px;border-radius:5px;padding:3px 7px;background:var(--soft);font-size:10px;color:var(--green)}.highlight[data-status="planned"] .status-pill,.highlight[data-status="pending"] .status-pill{background:#f0e9d9;color:var(--amber)}.highlight .detail{font-size:12px;line-height:1.8;color:var(--muted);margin:8px 0 0;overflow-wrap:anywhere}.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.chip{font-size:10px;line-height:1.5;color:var(--muted);background:#eef1e8;border-radius:4px;padding:3px 6px;overflow-wrap:anywhere}.timeline{list-style:none;padding:0;margin:0;display:grid;gap:12px}.timeline li{display:grid;grid-template-columns:9px minmax(0,1fr);gap:12px;align-items:start}.timeline-dot{margin-top:20px;width:7px;height:7px;border-radius:50%;background:#91a888}.timeline .highlight{background:transparent;border:0;border-bottom:1px solid var(--line);padding:12px 0 16px;border-radius:0}.timeline li:last-child .highlight{border:0}.timeline h3{margin-top:4px}.timeline-caption{font-size:11px;color:var(--muted);margin:0 0 10px;line-height:1.8}
 .metric-grid,.signal-grid,.notice-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px}.metric,.signal,.notice{padding:11px 12px;border:1px solid var(--line);border-radius:9px;background:#fcfcf6;min-width:0}.metric span,.signal span,.notice span{display:block;color:var(--muted);font-size:10px}.metric strong,.signal strong,.notice strong{display:block;margin-top:6px;font-size:20px;font-weight:500}.signal strong,.notice strong{font-size:12px;line-height:1.6}.zero-metrics,.section-contract{border-top:1px solid var(--line);padding-top:12px}.zero-metrics summary,.section-contract summary{font-size:11px;color:var(--muted);cursor:pointer}.zero-metrics .metric-grid{margin-top:10px}.truncated{font-size:11px;color:var(--muted);margin:0;line-height:1.8}.operator-details{grid-column:1/-1;padding:18px 0;border-top:1px solid var(--line)}.operator-details>summary{font-size:12px;color:var(--muted);cursor:pointer}.operator-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;padding-top:18px}.meta{display:grid;grid-template-columns:auto 1fr;gap:8px 18px;font-size:11px;color:var(--muted)}.meta dd{margin:0}.footer{font-size:11px;color:var(--muted);display:flex;justify-content:space-between;gap:16px;line-height:1.8}.footer a{color:inherit}
 body.recording .operator-only{display:none!important}body.recording .bar{padding-top:28px}body.recording .wrap{gap:28px}body.recording .hero-note,body.recording .section-note{font-size:14px}body.recording .now-line .v{font-size:19px}body.recording .highlight h3{font-size:20px}body.recording .highlight .detail{font-size:15px}body.recording .kind-tag,body.recording .when,body.recording .chip,body.recording .status-pill{font-size:12px}body.recording .section-head h2{font-size:23px}body.recording[data-focus]:not([data-focus="all"]) .section-grid{grid-template-columns:1fr}body.recording[data-focus]:not([data-focus="all"]) .highlight-list{grid-template-columns:repeat(2,minmax(0,1fr))}body.recording .section-card{padding:30px}
+.agenda-controls,.agenda-navigation{display:flex;align-items:center;flex-wrap:wrap;gap:8px}.agenda-controls{justify-content:space-between}.agenda-range{font-size:14px;margin-left:6px;font-weight:500}.agenda-filter{font:inherit;font-size:12px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}.agenda-layout{display:grid;grid-template-columns:minmax(0,1fr) 260px;border:1px solid var(--line);border-radius:12px;overflow:hidden}.agenda-scroll{overflow:auto;max-height:820px;background:#fffefa}.agenda-calendar{min-width:740px;display:grid;grid-template-columns:52px repeat(7,minmax(0,1fr))}.agenda-corner,.agenda-day-heading{padding:12px 4px;font-size:11px;text-align:center;border-bottom:1px solid var(--line);background:#f5f6ee}.agenda-day-heading,.agenda-corner{position:sticky;top:0;z-index:3}.agenda-day-heading[data-today="true"]{color:#355840;font-weight:700;background:#e3eddf}.agenda-windows{padding:5px;display:flex;flex-direction:column;gap:4px;border-left:1px solid var(--line);border-bottom:1px solid var(--line);min-height:52px}.agenda-window-label{padding:12px 3px;font-size:10px;color:var(--muted);border-bottom:1px solid var(--line)}.agenda-window,.agenda-event{font:inherit;text-align:left;color:#3b5644;background:#e7efe2;border:1px solid #c6d7bd;border-radius:6px;cursor:pointer;min-width:0;overflow:hidden;padding:5px;display:flex;flex-direction:column;gap:2px}.agenda-window{font-size:10px;min-height:42px}.agenda-window[data-kind="outlook"]{color:#715332;background:#f4eddd;border:1px dashed #c7a76d}.agenda-window[data-kind="expectation"],.agenda-window[data-kind="revisit"],.agenda-window[data-kind="commitment"]{background:#ece8f2;border-color:#c8bad8;color:#65516e}.agenda-event[data-kind="world"]{background:#e4edf1;color:#36586b;border-color:#b5d0da}.agenda-event[aria-pressed="true"],.agenda-window[aria-pressed="true"]{outline:2px solid #42644c;outline-offset:-2px}.agenda-times,.agenda-day{position:relative;height:720px}.agenda-times{font-size:10px;color:var(--muted)}.agenda-times span{position:absolute;right:6px;transform:translateY(-50%)}.agenda-times span:first-child{transform:none}.agenda-day{border-left:1px solid var(--line);background:repeating-linear-gradient(to bottom,transparent 0,transparent 29px,#edf0e7 29px,#edf0e7 30px)}.agenda-event{position:absolute;box-sizing:border-box;font-size:11px}.agenda-event .agenda-entry-kind{display:none}.agenda-entry-time{font-size:9px;opacity:.8}.agenda-entry-kind{font-size:9px;opacity:.8}.agenda-entry-title{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;line-height:1.4;overflow-wrap:anywhere}.agenda-detail{background:#f8f9f3;border-left:1px solid var(--line);padding:20px;min-width:0}.agenda-detail h3{font-size:16px;line-height:1.7;font-weight:500;overflow-wrap:anywhere;margin:8px 0}.agenda-detail-time{font-size:11px;line-height:1.8;color:var(--muted)}.agenda-detail-body{font-size:13px;line-height:1.9;white-space:pre-wrap;overflow-wrap:anywhere}.agenda-related{display:block;font:inherit;font-size:12px;text-align:left;line-height:1.6;color:#42644c;background:transparent;border:0;padding:10px 0;text-decoration:underline;cursor:pointer}.agenda-warning{font-size:12px;color:#8d5c31}.agenda-event:focus-visible,.agenda-window:focus-visible{outline:3px solid #283f31;z-index:2}@media(max-width:1050px){.agenda-layout{grid-template-columns:1fr}.agenda-detail{border-left:0;border-top:1px solid var(--line)}.agenda-scroll{max-height:650px}}
 @media(min-width:1500px){.wrap{padding-top:32px}}@media(max-width:1000px){.section-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.now-panel{grid-template-columns:1fr;gap:22px}.now-panel h2{font-size:28px}.hero-note{max-width:none}.life-columns{gap:20px}}@media(max-width:680px){.bar{padding:18px;gap:8px}.bar h1{font-size:15px}.monogram{width:36px;height:36px}.eyebrow,.readonly{display:none}.status-bar{padding:16px 18px 0;align-items:start}.status-meta{align-items:start;flex-direction:column;gap:6px}.wrap{padding:18px;gap:16px}.section-grid,.operator-grid,.life-columns{grid-template-columns:1fr}.now-panel,.section-card{padding:20px}.now-story{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.bar-actions{gap:4px}.button{font-size:11px;padding:8px}.capture-notice{margin:12px 18px 0}.recording-tools{padding:0 18px;flex-wrap:wrap}body.recording[data-focus]:not([data-focus="all"]) .highlight-list{grid-template-columns:1fr}.footer{flex-direction:column;gap:4px}}
 @media(prefers-reduced-motion:no-preference){.button{transition:background .15s}.button:hover{filter:brightness(.97)}}
 </style></head><body><header class="bar"><div class="identity"><span class="monogram" aria-hidden="true">栀</span><div><h1>沈知栀 · 生活现场</h1><p class="eyebrow">A LIFE, CONTINUING</p></div></div><div class="bar-actions"><button id="recordingToggle" class="button primary" type="button" aria-pressed="false">录制模式</button><form class="logout operator-only" method="post" action="/world-v2/dashboard/logout"><button type="submit">退出登录</button></form></div></header>
@@ -142,7 +143,7 @@ const DashboardHomeClient=(()=>{
     if(!record(payload.cursor)||!record(payload.sections)||!record(payload.sections.room))throw new Error('dashboard room section unavailable');
     return payload;
   }
-  async function capture(fetchSnapshot,etag=null,{timeoutMs=10000}={}){
+  async function capture(fetchSnapshot,etag=null,{timeoutMs=10000,week=null}={}){
     const headers={Accept:'application/json'};
     if(etag)headers['If-None-Match']=etag;
     const controller=new AbortController();
@@ -151,7 +152,7 @@ const DashboardHomeClient=(()=>{
       controller.abort();reject(new Error('dashboard snapshot timed out'));
     },timeoutMs);});
     const load=async()=>{
-      const response=await fetchSnapshot(DATA_URL,{credentials:'same-origin',headers,signal:controller.signal});
+      const response=await fetchSnapshot(DATA_URL+(week?'?week='+encodeURIComponent(week):''),{credentials:'same-origin',headers,signal:controller.signal});
       if(response.status===304)return{kind:'not_modified',etag,snapshot:null};
       if(!response.ok)throw new Error('dashboard snapshot unavailable ('+response.status+')');
       const snapshot=validateSnapshot(await response.json());
@@ -395,6 +396,48 @@ const DashboardHomeClient=(()=>{
       ])),
     };
   }
+  function shiftWeek(week,days){
+    const at=new Date(week+'T12:00:00Z');at.setUTCDate(at.getUTCDate()+days);
+    return at.toISOString().slice(0,10);
+  }
+  function agendaKey(entry){return JSON.stringify([entry.index,entry.kind,entry.title,entry.starts_at,entry.ends_at,entry.detail]);}
+  function agendaView(snapshot,filter='all',status='all'){
+    const data=sectionData(snapshot,'overview_life');
+    const agenda=data&&data.agenda;
+    if(!record(agenda)||agenda.state==='unavailable')return null;
+    const start=Date.parse(agenda.week_start+'T00:00:00+08:00');
+    if(!Number.isFinite(start)||!Array.isArray(agenda.entries))return null;
+    const entries=agenda.entries.filter(item=>record(item)&&item.content_state!=='withheld');
+    const shown=entries.filter(item=>(status==='all'||item.status===status)&&(filter==='all'||item.kind===filter||filter==='intentions'&&['commitment','revisit','expectation'].includes(item.kind)));
+    const days=Array.from({length:7},(_,day)=>{
+      const from=start+day*86400000,to=from+86400000;
+      const windows=[],timed=[];
+      for(const entry of shown){
+        const a=Date.parse(entry.starts_at),b=Date.parse(entry.ends_at);
+        if(!Number.isFinite(a)||!Number.isFinite(b)||!(a<to&&(b>from||a===b&&a>=from)))continue;
+        const segment={entry,start:Math.max(a,from),end:Math.min(b,to),lane:0,lanes:1};
+        if(['outlook','commitment','revisit','expectation'].includes(entry.kind))windows.push(segment);
+        else{
+          segment.minute=(segment.start-from)/60000;
+          segment.endMinute=Math.min(1440,Math.max((segment.end-from)/60000,segment.minute+90));
+          timed.push(segment);
+        }
+      }
+      timed.sort((a,b)=>a.minute-b.minute||a.endMinute-b.endMinute);
+      let group=[],laneEnds=[],groupEnd=-1;
+      const close=()=>{for(const segment of group)segment.lanes=laneEnds.length;group=[];laneEnds=[];};
+      for(const segment of timed){
+        if(segment.minute>=groupEnd)close();
+        let lane=laneEnds.findIndex(end=>end<=segment.minute);
+        if(lane<0)lane=laneEnds.length;
+        segment.lane=lane;laneEnds[lane]=segment.endMinute;group.push(segment);
+        groupEnd=Math.max(segment.endMinute,...laneEnds);
+      }
+      close();
+      return {date:shiftWeek(agenda.week_start,day),windows,timed};
+    });
+    return {agenda,entries,shown,days};
+  }
   function pendingView(snapshot){
     return [
       {sectionId:'relationship_lifecycle',label:'事项与承诺',
@@ -463,6 +506,9 @@ const DashboardHomeClient=(()=>{
     formatRelative,
     highlightView,
     lifeView,
+    agendaView,
+    agendaKey,
+    shiftWeek,
     visibleHighlights,
     metaLabel,
     nowStory,
@@ -527,8 +573,8 @@ if(typeof document!=='undefined'){
       panel.hidden=recording&&focusArea!=='all'&&panel.dataset.focusArea!==focusArea;
     }
     const domains=byId('domainDetails');
-    if(recording&&['life','memory','emotion','relationships','pending'].includes(focusArea))domains.open=true;
-    domains.hidden=recording&&['now','mechanism','evidence'].includes(focusArea);
+    if(recording&&['memory','emotion','relationships','pending'].includes(focusArea))domains.open=true;
+    domains.hidden=recording&&['now','mechanism','evidence','life'].includes(focusArea);
   }
   function toggleRecording(){
     if(!recording)previousScroll=window.scrollY||0;
@@ -630,37 +676,120 @@ if(typeof document!=='undefined'){
       parent.appendChild(element('p','truncated','这里只展示部分摘要，未列出的记录不代表不存在。'));
     }
   }
-  function renderLife(snapshot){
-    const section=snapshot.sections.overview_life;
-    const {card,body}=sectionCard('生活进展',section,'life');
-    const view=DashboardHomeClient.lifeView(snapshot);
-    body.appendChild(element('p','section-note','计划尚未发生；活动结束也不代表目标已经达成。'));
-    if(view.state==='unavailable')empty(body,'生活记录暂时不可用。');
-    else{
-      const columns=element('div','life-columns');
-      const activities=element('div','life-column');
-      activities.appendChild(element('h3','section-subtitle','活动与计划'));
-      if(view.activities.length)appendHighlights(activities,view.activities);
-      else empty(activities,'暂无可展示的活动或计划。');
-      const history=element('div','life-column');
-      history.append(element('h3','section-subtitle','最近的生活记录'),element('p','timeline-caption','按记录时间排列，仅显示摘要；相邻记录不表示因果关系。'));
-      if(view.timeline.length){
-        const list=element('ol','timeline');
-        for(const item of view.timeline){
-          const row=element('li','');
-          const dot=element('span','timeline-dot');
-          dot.setAttribute('aria-hidden','true');
-          row.appendChild(dot);
-          appendHighlight(row,item);
-          list.appendChild(row);
-        }
-        history.appendChild(list);
-      }else empty(history,'暂无可展示的生活进展记录。');
-      columns.append(activities,history);
-      body.appendChild(columns);
-      appendCoverage(body,section);
+  let agendaWeek=null,agendaFilter='all',agendaStatus='all',agendaSelection=null;
+  const agendaLabels={plan:'角色计划',world:'实际事件',outlook:'命运候选',commitment:'约定',revisit:'再次考虑',expectation:'回应期待'};
+  function renderAgenda(body,snapshot){
+    const view=DashboardHomeClient.agendaView(snapshot,agendaFilter,agendaStatus);
+    if(!view){empty(body,'周课表暂时不可用。');return;}
+    const {agenda,entries,shown,days}=view;
+    if(!shown.some(entry=>DashboardHomeClient.agendaKey(entry)===agendaSelection))agendaSelection=shown[0]?DashboardHomeClient.agendaKey(shown[0]):null;
+    const controls=element('div','agenda-controls');
+    const navigation=element('div','agenda-navigation');
+    const changeWeek=value=>{
+      if(displayPaused||loading)return;
+      agendaWeek=value;snapshotEtag=null;loadDashboardHome();
+    };
+    for(const [label,offset] of [['上一周',-7],['本周',null],['下一周',7]]){
+      const button=element('button','button',label);button.type='button';
+      button.disabled=displayPaused;
+      button.addEventListener('click',()=>changeWeek(offset===null?null:DashboardHomeClient.shiftWeek(agenda.week_start,offset)));
+      navigation.appendChild(button);
     }
-    sectionGrid.appendChild(card);
+    navigation.appendChild(element('strong','agenda-range',days[0].date+' — '+days[6].date));
+    const filter=element('select','agenda-filter');filter.setAttribute('aria-label','筛选课表内容');
+    for(const [value,label] of [['all','全部内容'],['plan','角色计划'],['world','实际事件'],['outlook','命运候选'],['intentions','约定与惦记']]){
+      const option=element('option','',label);option.value=value;filter.appendChild(option);
+    }
+    filter.value=agendaFilter;
+    filter.addEventListener('change',()=>{agendaFilter=filter.value;renderLifePanel();});
+    const statusFilter=element('select','agenda-filter');statusFilter.setAttribute('aria-label','筛选课表状态');
+    for(const value of ['all',...new Set([...entries.map(entry=>entry.status),...(agendaStatus==='all'?[]:[agendaStatus])])]){
+      const option=element('option','',value==='all'?'全部状态':value);option.value=value;statusFilter.appendChild(option);
+    }
+    statusFilter.value=agendaStatus;
+    statusFilter.addEventListener('change',()=>{agendaStatus=statusFilter.value;renderLifePanel();});
+    controls.append(navigation,filter,statusFilter);body.appendChild(controls);
+    body.appendChild(element('p','section-note','北京时间 · 计划可以改变；命运候选是可能发生的机会。空白处表示没有已记录的安排。'));
+    if(agenda.outlook_state==='unavailable')body.appendChild(element('p','agenda-warning','命运候选暂时无法读取，当前课表不完整。'));
+    if(agenda.outlook_state==='empty')body.appendChild(element('p','section-note','命运机制尚无可展示的展望。'));
+    if(agenda.truncated)body.appendChild(element('p','agenda-warning','本周有 '+agenda.known_count+' 条记录，当前只显示其中 '+entries.length+' 条。未展示不代表不存在。'));
+    if(agenda.withheld_count)body.appendChild(element('p','section-note','另有受可见范围限制的记录未展示。'));
+    const layout=element('div','agenda-layout'),scroll=element('div','agenda-scroll');
+    scroll.setAttribute('tabindex','0');scroll.setAttribute('aria-label','一周课表，可横向滚动');
+    const calendar=element('div','agenda-calendar');
+    calendar.appendChild(element('div','agenda-corner','时间'));
+    days.forEach((day,index)=>{
+      const header=element('div','agenda-day-heading',('周'+'一二三四五六日'[index])+' '+day.date.slice(5));
+      if(snapshot.logical_time&&DashboardHomeClient.formatClock(snapshot.logical_time).startsWith(Number(day.date.slice(5,7))+'月'+Number(day.date.slice(8))+'日'))header.dataset.today='true';
+      calendar.appendChild(header);
+    });
+    const windowLabel=element('div','agenda-window-label','时间窗口');calendar.appendChild(windowLabel);
+    const select=entry=>{agendaSelection=DashboardHomeClient.agendaKey(entry);renderLifePanel();};
+    const makeButton=(entry,className)=>{
+      const button=element('button',className);button.type='button';button.dataset.kind=entry.kind;button.dataset.agendaIndex=String(entry.index);
+      button.setAttribute('aria-pressed',String(agendaSelection===DashboardHomeClient.agendaKey(entry)));
+      button.setAttribute('aria-label',agendaLabels[entry.kind]+'，'+entry.title+'，'+entry.status);
+      button.append(element('span','agenda-entry-kind',agendaLabels[entry.kind]),element('span','agenda-entry-title',entry.title));
+      button.title=entry.title+' · '+entry.status;button.addEventListener('click',()=>select(entry));
+      return button;
+    };
+    for(const day of days){
+      const windows=element('div','agenda-windows');
+      for(const segment of day.windows)windows.appendChild(makeButton(segment.entry,'agenda-window'));
+      calendar.appendChild(windows);
+    }
+    const times=element('div','agenda-times');
+    for(let hour=0;hour<24;hour+=2){const label=element('span','',String(hour).padStart(2,'0')+':00');label.style.top=(hour/24*100)+'%';times.appendChild(label);}
+    calendar.appendChild(times);
+    for(const day of days){
+      const column=element('div','agenda-day');
+      for(const segment of day.timed){
+        const button=makeButton(segment.entry,'agenda-event');
+        button.style.top=(segment.minute/1440*100)+'%';
+        button.style.height=((segment.endMinute-segment.minute)/1440*100)+'%';
+        button.style.left=(segment.lane/segment.lanes*100)+'%';
+        button.style.width=(100/segment.lanes)+'%';
+        const label=DashboardHomeClient.formatClock(new Date(segment.start).toISOString()).split(' ').pop();
+        button.prepend(element('span','agenda-entry-time',label));column.appendChild(button);
+      }
+      calendar.appendChild(column);
+    }
+    scroll.appendChild(calendar);layout.appendChild(scroll);
+    const detail=element('aside','agenda-detail');detail.setAttribute('aria-live','polite');
+    const selected=shown.find(entry=>DashboardHomeClient.agendaKey(entry)===agendaSelection)||shown[0];
+    if(selected){
+      detail.append(element('span','kind-tag',agendaLabels[selected.kind]),element('h3','',selected.title),element('span','status-pill',selected.status));
+      detail.appendChild(element('p','agenda-detail-time',DashboardHomeClient.formatClock(selected.starts_at)+' — '+DashboardHomeClient.formatClock(selected.ends_at)));
+      detail.appendChild(element('p','agenda-detail-body',selected.detail));
+      if(selected.content_state==='unavailable')detail.appendChild(element('p','section-note','详情来源暂缺，未根据标题补写。'));
+      if(selected.truncated)detail.appendChild(element('p','section-note','正文较长，这里显示节选。'));
+      for(const relation of selected.related||[]){
+        const related=entries.find(entry=>entry.index===relation);
+        if(!related)continue;
+        const button=element('button','agenda-related','已记录的关联：'+related.title);button.type='button';
+        button.addEventListener('click',()=>{agendaFilter='all';select(related);});detail.appendChild(button);
+      }
+    }else empty(detail,'本周此分类没有已记录的内容。');
+    layout.appendChild(detail);body.appendChild(layout);
+  }
+  function renderLifePanel(){
+    if(lastSnapshot){renderLife(lastSnapshot);applyPresentation();}
+  }
+  function renderLife(snapshot){
+    const host=byId('agendaPanel');
+    const scroll=host.querySelector('.agenda-scroll');
+    const position=scroll?{left:scroll.scrollLeft,top:scroll.scrollTop}:null;
+    const focus=document.activeElement;
+    const focusIndex=focus&&focus.dataset.agendaIndex;
+    const filterFocused=focus&&focus.classList.contains('agenda-filter');
+    const section=snapshot.sections.overview_life;
+    const {card,body}=sectionCard('一周生活',section,'life');
+    renderAgenda(body,snapshot);
+    host.replaceChildren(card);
+    const nextScroll=host.querySelector('.agenda-scroll');
+    if(position&&nextScroll){nextScroll.scrollLeft=position.left;nextScroll.scrollTop=position.top;}
+    if(focusIndex!==undefined)host.querySelector('[data-agenda-index="'+focusIndex+'"]')?.focus({preventScroll:true});
+    else if(filterFocused)host.querySelector('.agenda-filter')?.focus({preventScroll:true});
   }
   function renderDomain(snapshot,{title,sectionId,area,kinds,metricKeys,note}){
     const section=snapshot.sections[sectionId];
@@ -770,7 +899,7 @@ if(typeof document!=='undefined'){
     if(loading||displayPaused)return;
     loading=true;
     try{
-      const result=await DashboardHomeClient.capture(window.fetch.bind(window),snapshotEtag);
+      const result=await DashboardHomeClient.capture(window.fetch.bind(window),snapshotEtag,{week:agendaWeek});
       // A response already in flight must not replace a deliberately frozen view.
       if(displayPaused)return;
       const snapshot=DashboardHomeClient.snapshotFromCapture(result,lastSnapshot);
@@ -804,7 +933,7 @@ if(typeof document!=='undefined'){
 # or build-time dependency and no new browser data route.
 DASHBOARD_HTML = (
     DASHBOARD_HTML.replace("</style>", EXPLORER_CSS + "</style>")
-    .replace('<div id="sectionGrid" class="section-grid"></div>', EXPLORER_HTML + '<details id="domainDetails" class="domain-details"><summary>按领域查看摘要与运维详情</summary><div id="sectionGrid" class="section-grid"></div></details>')
+    .replace('<div id="sectionGrid" class="section-grid"></div>', '<div id="agendaPanel"></div>' + EXPLORER_HTML + '<details id="domainDetails" class="domain-details"><summary>按领域查看摘要与运维详情</summary><div id="sectionGrid" class="section-grid"></div></details>')
     .replace('<option value="now">这一刻</option>', '<option value="now">这一刻</option><option value="mechanism">运行机制</option><option value="evidence">记录浏览</option>')
     .replace('<span class="readonly">只读 · 不改变她的生活</span>', '<div class="view-tools"><span id="pauseLabel" class="pause-label" hidden>画面已暂停 · 不暂停角色进程</span><button id="pauseDisplay" type="button" class="button" aria-pressed="false">暂停画面</button><span class="readonly">只读 · 不改变她的生活</span></div>')
     .replace('world-v2-dashboard-home.1-ui7', 'world-v2-dashboard-home.1-ui7')

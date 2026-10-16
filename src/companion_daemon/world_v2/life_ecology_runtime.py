@@ -258,6 +258,10 @@ class LifeEcologyRuntime:
             return {"status": "disabled"}
         return self._world_outlook.health()
 
+    def dashboard_outlook_head(self, *, as_of):
+        """Read the installed candidate outlook at the owner's captured prefix."""
+        return self._world_outlook.store.head(as_of=as_of) if self._world_outlook is not None else None
+
     def next_outlook_due(self):
         return self._world_outlook.next_due() if self._world_outlook is not None else None
 

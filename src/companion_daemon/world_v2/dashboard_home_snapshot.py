@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 import hashlib
 import json
 from types import MappingProxyType
@@ -32,6 +32,7 @@ from .dashboard_mechanism_activity import DashboardMechanismActivity, mechanism_
 from .dashboard_projection_adapter import DashboardRoomRouteCatalog, DashboardSceneRoute
 from .dashboard_life_intention import DashboardLifeIntention, read_dashboard_life_intention
 from .dashboard_world_occurrence import DashboardWorldOccurrenceReading, read_dashboard_world_occurrence, experience_world_occurrence
+from .dashboard_agenda import DashboardAgenda, compile_dashboard_agenda, week_start_date
 from .ledger import LedgerPort
 from .life_content_store import ImmutableLifeContentStore
 from .proposal_audit_schemas import ProposalAuditProjection
@@ -828,6 +829,7 @@ class DashboardRoomSection(FrozenModel):
 
 
 class DashboardOverviewLifeData(FrozenModel):
+    agenda: DashboardAgenda | None = None
     metrics: tuple[DashboardMetric, ...]
     highlights: tuple[DashboardEntitySummary, ...] = ()
 
@@ -1070,10 +1072,12 @@ class DashboardHomeSnapshotModule:
         life_content_store: ImmutableLifeContentStore | None = None,
         life_actor_ref: str | None = None,
         life_privacy_ceiling: Literal["public", "shareable", "personal", "private"] = "shareable",
+        outlook_reader: Callable | None = None,
     ) -> None:
         if not deployment_id or not boot_id:
             raise ValueError("dashboard owner identity must be complete")
         self._ledger = ledger
+        self._outlook_reader = outlook_reader
         self._life_content_store = life_content_store
         self._life_actor_ref = life_actor_ref
         self._life_privacy_ceiling = life_privacy_ceiling
@@ -1083,30 +1087,25 @@ class DashboardHomeSnapshotModule:
         )
         self._clock = clock or (lambda: datetime.now(UTC))
         self._capture_lock = asyncio.Lock()
-        self._cached_key: tuple[
-            str,
-            ProjectionCursor,
-            str,
-            str,
-            str,
-            str | None,
-        ] | None = None
+        self._cached_key: tuple | None = None
         self._cached_snapshot: DashboardHomeSnapshot | None = None
 
     async def capture(
         self,
         runtime_observation: DashboardRuntimeObservation | None = None,
+        *, week: date | None = None,
     ) -> DashboardHomeSnapshot:
         """Capture exactly one projection; blocking compile/lookup stays off-loop."""
 
         async with self._capture_lock:
             if self._ledger.blocks_event_loop:
-                return await asyncio.to_thread(self._capture_sync, runtime_observation)
-            return self._capture_sync(runtime_observation)
+                return await asyncio.to_thread(self._capture_sync, runtime_observation, week)
+            return self._capture_sync(runtime_observation, week)
 
     def _capture_sync(
         self,
         runtime_observation: DashboardRuntimeObservation | None,
+        week: date | None = None,
     ) -> DashboardHomeSnapshot:
         projection = self._ledger.project()
         cursor = ProjectionCursor(
@@ -1114,6 +1113,20 @@ class DashboardHomeSnapshotModule:
             deliberation_revision=projection.deliberation_revision,
             ledger_sequence=projection.ledger_sequence,
         )
+        sampled_clock = self._clock() if projection.logical_time is None and self._cached_snapshot is None else None
+        date_basis = projection.logical_time or (
+            self._cached_snapshot.generated_at if self._cached_snapshot else sampled_clock
+        )
+        if date_basis.tzinfo is None or date_basis.utcoffset() is None:
+            raise ValueError("dashboard clock must be timezone-aware")
+        week = week_start_date(week or date_basis.astimezone(ZoneInfo("Asia/Shanghai")).date())
+        outlook_head, outlook_state = None, "disabled"
+        if self._outlook_reader is not None:
+            try:
+                outlook_head = self._outlook_reader(as_of=cursor.model_dump())
+                outlook_state = "ready" if outlook_head is not None else "empty"
+            except (ValueError, TypeError, KeyError, RuntimeError):
+                outlook_state = "unavailable"
         runtime_key = (
             _snapshot_hash(runtime_observation.model_dump(mode="json"))
             if runtime_observation is not None
@@ -1125,18 +1138,19 @@ class DashboardHomeSnapshotModule:
             projection.schema_version,
             projection.reducer_bundle_version,
             projection.semantic_hash,
-            runtime_key,
+            runtime_key, week, outlook_state, outlook_head[0] if outlook_head else None,
         )
         if self._cached_key == cache_key and self._cached_snapshot is not None:
             return self._cached_snapshot
 
-        generated_at = self._clock()
+        generated_at = sampled_clock or self._clock()
         if generated_at.tzinfo is None or generated_at.utcoffset() is None:
             raise ValueError("dashboard clock must be timezone-aware")
 
         sections = DashboardHomeSections(
             room=self._room(projection=projection, cursor=cursor),
-            overview_life=self._overview_life(projection=projection, cursor=cursor),
+            overview_life=self._overview_life(projection=projection, cursor=cursor, week=week,
+                                              outlook_head=outlook_head, outlook_state=outlook_state),
             facts_memory_inner=self._facts_memory_inner(
                 projection=projection,
                 cursor=cursor,
@@ -1248,6 +1262,7 @@ class DashboardHomeSnapshotModule:
         *,
         projection: LedgerProjection,
         cursor: ProjectionCursor,
+        week: date, outlook_head=None, outlook_state="disabled",
     ) -> DashboardOverviewLifeSection:
         metrics = _overview_life_metrics(projection)
         # Only the bounded display candidates need additional immutable reads.
@@ -1286,14 +1301,21 @@ class DashboardHomeSnapshotModule:
             world_readings=world_readings,
         )
         highlights = _bounded_summaries(all_highlights)
+        agenda = compile_dashboard_agenda(
+            ledger=self._ledger, projection=projection, cursor=cursor,
+            store=self._life_content_store, actor_ref=self._life_actor_ref,
+            week_start=week, outlook_head=outlook_head, outlook_state=outlook_state,
+            privacy_ceiling=self._life_privacy_ceiling,
+        )
         return DashboardOverviewLifeSection(
-            state=_state_from_metrics(metrics),
+            state="ready" if agenda.entries else _state_from_metrics(metrics),
             observed_at=projection.logical_time,
             cursor=cursor,
             coverage=_coverage(
                 len(all_highlights) + len(projection.plans) - len(plans), len(highlights),
             ),
-            data=DashboardOverviewLifeData(metrics=metrics, highlights=highlights),
+            data=DashboardOverviewLifeData(metrics=metrics, highlights=highlights,
+                agenda=agenda),
         )
 
     @staticmethod

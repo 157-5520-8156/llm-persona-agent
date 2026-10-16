@@ -1068,7 +1068,10 @@ class WorldV2TurnApplication:
             boot_id=f"boot:{secrets.token_hex(16)}",
             life_content_store=life_content_store,
             life_actor_ref=companion_actor_ref,
-            life_privacy_ceiling="shareable",
+            # This authenticated, loopback owner view may inspect private life
+            # records. withhold and user-channel restrictions still win.
+            life_privacy_ceiling="private",
+            outlook_reader=life_ecology.dashboard_outlook_head if life_ecology is not None else None,
         )
 
     async def respond(self, inbound: InboundTurn) -> RuntimeOutcome:
@@ -3239,10 +3242,11 @@ class WorldV2TurnApplication:
     async def dashboard_home_snapshot(
         self,
         runtime_observation: DashboardRuntimeObservation | None = None,
+        *, week=None,
     ) -> DashboardHomeSnapshot:
         """Return the fixed private Dashboard contract from the owning ledger."""
 
-        return await self._dashboard_home.capture(runtime_observation)
+        return await self._dashboard_home.capture(runtime_observation, week=week)
 
     def _mechanism_detail_sections(self, projection) -> dict[str, dict[str, object]]:
         """Compile bounded per-item mechanism detail for the viewer dashboard.

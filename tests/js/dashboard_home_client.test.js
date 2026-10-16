@@ -287,6 +287,12 @@ class Element {
   set textContent(value) {this.ownText=String(value);this.children=[];}
   get textContent() {return this.ownText+this.children.map(child=>child.textContent).join('');}
   set innerHTML(_value) {throw new Error('unsafe HTML rendering');}
+  querySelector(selector) {
+    const descendants=node=>node.children.flatMap(child=>[child,...descendants(child)]);
+    return descendants(this).find(node=>selector.startsWith('.')&&node.className.split(' ').includes(selector.slice(1)))||null;
+  }
+  focus() {}
+  prepend(...children) {this.children.unshift(...children);}
   append(...children) {this.children.push(...children);}
   appendChild(child) {this.append(child);}
   replaceChildren(...children) {this.ownText='';this.children=[...children];}
@@ -295,7 +301,7 @@ class Element {
   fire(name,event={}) {this.events[name]?.({target:this,...event});}
 }
 function browserWith(responses) {
-  const ids=Object.fromEntries(['sectionGrid','captureState','captureNotice','recordingToggle',
+  const ids=Object.fromEntries(['agendaPanel','sectionGrid','captureState','captureNotice','recordingToggle',
     'recordingTools','recordingFocus','headerClock','worldClock','nowStory',
     'mechanismMap','mechanismDetail','evidenceNode','evidenceKind','evidenceTime','evidenceSearch',
     'evidenceCount','evidenceRecords','evidencePage','previousEvidence','nextEvidence','resetEvidence',
@@ -516,4 +522,63 @@ test('fulfilled and expired expectations stay in history but leave unfinished it
   ]}}}};
   assert.deepEqual(client.pendingView(payload)[1].items.map(item=>item.title),['仍待评估']);
   assert.equal(client.visibleHighlights(payload,'operations',['response_expectation']).length,3);
+});
+
+test('week calendar clips midnight and lays out overlaps without interpreting candidates as events', () => {
+  const entries = [
+    {index:0,kind:'plan',title:'夜间整理',starts_at:'2026-10-12T23:30:00+08:00',ends_at:'2026-10-13T01:00:00+08:00',content_state:'read'},
+    {index:1,kind:'plan',title:'另一安排',starts_at:'2026-10-13T00:30:00+08:00',ends_at:'2026-10-13T02:00:00+08:00',content_state:'read'},
+    {index:2,kind:'outlook',title:'可能来信',starts_at:'2026-10-12T10:00:00+08:00',ends_at:'2026-10-14T10:00:00+08:00',content_state:'read'},
+  ];
+  const state={sections:{overview_life:{state:'ready',data:{agenda:{state:'ready',week_start:'2026-10-12',entries}}}}};
+  const week=client.agendaView(state);
+  assert.equal(week.days.length,7);
+  assert.equal(week.days[0].timed[0].minute,1410);
+  assert.equal(week.days[0].timed[0].endMinute,1440);
+  assert.equal(week.days[1].timed.length,2);
+  assert.deepEqual(week.days[1].timed.map(s=>s.lanes),[2,2]);
+  assert.notEqual(week.days[1].timed[0].lane,week.days[1].timed[1].lane);
+  assert.equal(week.days[0].windows.length,1);
+  assert.equal(client.agendaView(state,'world').shown.length,0);
+  assert.equal(client.shiftWeek('2026-12-28',7),'2027-01-04');
+});
+
+test('week capture forwards only the selected date on the existing route', async () => {
+  let url;
+  await client.capture(async value=>{url=value;return {ok:true,status:304};},'old',{week:'2026-10-12'});
+  assert.equal(url,'/world-v2/dashboard/home?week=2026-10-12');
+});
+
+
+test('same-title overlapping entries retain distinct detail selections', () => {
+  const entry={kind:'plan',title:'同一个标题',starts_at:'2026-10-14T10:00:00+08:00',ends_at:'2026-10-14T11:00:00+08:00'};
+  assert.notEqual(client.agendaKey({...entry,index:0,detail:'第一项的细节'}),client.agendaKey({...entry,index:1,detail:'第二项的细节'}));
+  assert.notEqual(client.agendaKey({...entry,index:0,detail:'相同正文'}),client.agendaKey({...entry,index:1,detail:'相同正文'}));
+});
+
+
+test('shipped calendar navigation and selection use the readonly date route and exact entry', async () => {
+  const payload=snapshot({state:'unavailable'});
+  const base={kind:'plan',title:'相同标题',starts_at:'2026-10-12T10:00:00+08:00',ends_at:'2026-10-12T11:00:00+08:00',content_state:'read',related:[]};
+  payload.sections.overview_life={state:'ready',data:{metrics:[],highlights:[],agenda:{
+    state:'ready',outlook_state:'disabled',week_start:'2026-10-12',entries:[
+      {...base,index:0,status:'已计划',detail:'第一份详情'},
+      {...base,index:1,status:'已结束',detail:'第二份详情'},
+    ],known_count:2,withheld_count:0,truncated:false,
+  }}};
+  const next=JSON.parse(JSON.stringify(payload));next.sections.overview_life.data.agenda.week_start='2026-10-19';
+  const browser=browserWith([responseFor(payload),responseFor(next)]);
+  await browser.flush();
+  assert.equal(browser.ids.captureState.textContent,'已同步');
+  const descendants=node=>[node,...node.children.flatMap(descendants)];
+  const second=descendants(browser.ids.agendaPanel).find(node=>node.dataset.agendaIndex==='1');
+  second.fire('click');
+  assert.match(browser.ids.agendaPanel.textContent,/第二份详情/);
+  assert.doesNotMatch(browser.ids.agendaPanel.textContent,/第一份详情/);
+  const selected=client.agendaView(payload,'plan','已结束');
+  assert.deepEqual(selected.shown.map(entry=>entry.index),[1]);
+  descendants(browser.ids.agendaPanel).find(node=>node.tagName==='button'&&node.textContent==='下一周').fire('click');
+  await browser.flush();
+  assert.equal(browser.requests[1][0],'/world-v2/dashboard/home?week=2026-10-19');
+  assert.match(browser.ids.agendaPanel.textContent,/2026-10-19/);
 });

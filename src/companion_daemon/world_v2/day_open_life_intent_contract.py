@@ -15,6 +15,8 @@ from .schema_core import FrozenModel
 from .activity_continuation_source import ActivityCompletionSource
 
 DAY_OPEN_LIFE_INTENT_REGISTRY_VERSION = "world-v2-proposals.6"
+DAY_OPEN_LIFE_AGENDA_REGISTRY_VERSION = "world-v2-proposals.7"
+AGENDA_CHOICE_CONTRACT = "character-interior-activity-lifecycle-choice.4"
 DAY_OPEN_LIFE_INTENT_POLICY_REF = "policy:day-open-life-intent.1"
 DAY_OPEN_CHOICE_CONTRACT = "character-interior-activity-lifecycle-choice.2"
 RECONSIDER_CHOICE_CONTRACT = "character-interior-activity-lifecycle-choice.3"
@@ -23,6 +25,13 @@ RECONSIDER_CHOICE_CONTRACT = "character-interior-activity-lifecycle-choice.3"
 class DayOpenReconsiderChoice(FrozenModel):
     decision: Literal["reconsider"]
     reconsider_after_seconds: int = Field(ge=60, le=86_400, strict=True)
+
+
+class DayOpenAgendaChoice(FrozenModel):
+    """A rolling set of intentions; neither external facts nor future results."""
+
+    decision: Literal["self_directed_agenda"]
+    life_intents: tuple[LifeIntentDraft, ...] = Field(min_length=1, max_length=8)
 
 
 def canonical_json(value: object) -> str:
@@ -43,7 +52,7 @@ def day_open_opportunity_ref(*, world_id: str, actor_ref: str, day_key: str,
 
 
 class DayOpenLifeIntentCapability(FrozenModel):
-    contract: Literal["day-open-life-intent-capability.1", "day-open-life-intent-capability.2", "day-open-life-intent-capability.3"]
+    contract: Literal["day-open-life-intent-capability.1", "day-open-life-intent-capability.2", "day-open-life-intent-capability.3", "day-open-life-intent-capability.4"]
     execution_scope: Literal["self_directed"]
     opportunity_ref: str = Field(pattern=r"^(day-open|activity-continuation|life-reconsideration):[0-9a-f]{64}$")
     reconsideration_ref: str | None = Field(default=None, pattern=r"^reconsider:[0-9a-f]{64}$", exclude_if=lambda v: v is None)
@@ -66,7 +75,7 @@ class DayOpenLifeIntentCapability(FrozenModel):
                            "activity-continuation:" if self.completion_source else "day-open:")
         if not self.opportunity_ref.startswith(expected_prefix):
             raise ValueError("opportunity kind disagrees with its timing source")
-        if self.contract != "day-open-life-intent-capability.3" and (
+        if self.contract not in {"day-open-life-intent-capability.3", "day-open-life-intent-capability.4"} and (
             self.reconsideration_ref is not None
             or (self.completion_source is not None and self.completion_source.terminal_kind != "completed")
             or (self.contract == "day-open-life-intent-capability.2") != (self.completion_source is not None)
@@ -89,7 +98,7 @@ class DayOpenLifeIntentCapability(FrozenModel):
 
 
 class DayOpenActivityCapability(FrozenModel):
-    contract: Literal["character-interior-activity-lifecycle-capability.3", "character-interior-activity-lifecycle-capability.4", "character-interior-activity-lifecycle-capability.5"]
+    contract: Literal["character-interior-activity-lifecycle-capability.3", "character-interior-activity-lifecycle-capability.4", "character-interior-activity-lifecycle-capability.5", "character-interior-activity-lifecycle-capability.6"]
     catalog_version: str = Field(min_length=1, max_length=128)
     catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     offered_tokens: tuple[str, ...] = Field(max_length=0)
@@ -98,6 +107,12 @@ class DayOpenActivityCapability(FrozenModel):
 
     @model_validator(mode="after")
     def continuation_version_is_explicit(self):
+        if self.contract.endswith(".6"):
+            if self.self_directed_intent.contract != "day-open-life-intent-capability.4":
+                raise ValueError("agenda requires its explicit capability")
+            return self
+        if self.self_directed_intent.contract == "day-open-life-intent-capability.4":
+            raise ValueError("legacy capability cannot offer an agenda")
         if self.contract.endswith(".5"):
             if self.self_directed_intent.contract != "day-open-life-intent-capability.3":
                 raise ValueError("reconsideration requires the current intent capability")
@@ -115,6 +130,13 @@ class DayOpenLifeIntentPayload(LifeIntentDraft):
     capability_payload_json: str = Field(min_length=2, max_length=8_000)
 
 
+class DayOpenLifeAgendaPayload(FrozenModel):
+    life_intents: tuple[LifeIntentDraft, ...] = Field(min_length=1, max_length=8)
+    actor_ref: str = Field(min_length=1, max_length=256)
+    role_decision_json: str = Field(min_length=2, max_length=50_000)
+    capability_payload_json: str = Field(min_length=2, max_length=8_000)
+
+
 class DayOpenEvaluatedCursor(FrozenModel):
     """Original audit coordinates, independent of the aggregate schema imports."""
 
@@ -124,7 +146,8 @@ class DayOpenEvaluatedCursor(FrozenModel):
 
 
 class DayOpenLifeIntentOrigin(FrozenModel):
-    contract: Literal["day-open-life-intent-origin.1", "day-open-life-intent-origin.2", "day-open-life-intent-origin.3"] = "day-open-life-intent-origin.1"
+    contract: Literal["day-open-life-intent-origin.1", "day-open-life-intent-origin.2", "day-open-life-intent-origin.3", "day-open-life-intent-origin.4"] = "day-open-life-intent-origin.1"
+    agenda_index: int | None = Field(default=None, ge=0, le=7, exclude_if=lambda value: value is None)
     reconsideration_ref: str | None = Field(default=None, pattern=r"^reconsider:[0-9a-f]{64}$", exclude_if=lambda v: v is None)
     completion_source: ActivityCompletionSource | None = Field(
         default=None, exclude_if=lambda value: value is None,
@@ -161,6 +184,12 @@ class DayOpenLifeIntentOrigin(FrozenModel):
 
     @model_validator(mode="after")
     def continuation_version_is_explicit(self):
+        if self.contract.endswith(".4"):
+            if self.agenda_index is None:
+                raise ValueError("agenda origin needs its exact item")
+            return self
+        if self.agenda_index is not None:
+            raise ValueError("legacy origin cannot carry an agenda item")
         if self.contract.endswith(".3"):
             return self
         if self.completion_source and self.completion_source.terminal_kind != "completed":

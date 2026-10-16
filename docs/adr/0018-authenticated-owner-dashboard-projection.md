@@ -64,3 +64,19 @@ fail closed；浏览器冻结最后一个已验证快照或显示 unavailable，
 单元、HTTP、browser contract、privacy canary、replay/cursor 与假数据视觉检查只能证明机械
 契约。它们不证明真实 QQ owner 已部署、生产数据库迁移成功、真实 provider 可用、长期数据
 布局良好或人工视觉验收通过；这些结论必须另行取证。
+
+
+## 2026-10：周课表
+
+`home?week=YYYY-MM-DD` 只选择北京时间的一周，服务端归一到周一；仍不接受 world、viewer、
+权限或 cursor 参数。计划、已结算结果和最新已安装命运展望在同一 ledger prefix 读取，
+展望的 revision 也参与缓存键。每周最多 96 项并报告截断，只有选中的有界候选才读取正文。
+日期筛选不推进时钟，不生成安排，也不补写缺失细节。
+
+课表区分角色计划、世界实际结果、命运候选窗口、约定和再次考虑/回应期待。只有精确的
+attempt execution binding 或展望中保存的前置关系产生关联；时间相邻不产生关联。
+命运候选不是角色已知的事实。点击项使用快照内显示编号，不向浏览器提供内部 entity ID。
+
+生产本机 owner composition 明确设置 life privacy ceiling 为 private，允许检查本人的私密
+生活结果；编译器仍遵循传入上限，withhold、渠道限定来源和 PrivateImpression 正文继续屏蔽。
+这不改变公开 dashboard、聊天引用权限或角色是否愿意告诉用户的决定权。

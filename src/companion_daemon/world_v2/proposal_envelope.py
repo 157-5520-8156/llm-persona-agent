@@ -1497,10 +1497,17 @@ class TypedChange(FrozenModel):
         if self.transition not in transitions:
             raise ValueError(f"illegal transition {self.transition!r} for {self.kind}")
         expected_schema = f"{self.kind}.v1"
+        if self.kind == "day_open_life_intent" and self.payload.payload_schema == "day_open_life_intent.v2":
+            expected_schema = "day_open_life_intent.v2"
         if self.payload.payload_schema != expected_schema or self.payload.payload_version != 1:
             raise ValueError(f"payload schema/version must be {expected_schema}/1 for {self.kind}")
         try:
-            TypeAdapter(PAYLOAD_MODEL_REGISTRY[self.kind]).validate_json(
+            payload_model = PAYLOAD_MODEL_REGISTRY[self.kind]
+            if expected_schema == "day_open_life_intent.v2":
+                from .day_open_life_intent_contract import DayOpenLifeAgendaPayload
+
+                payload_model = DayOpenLifeAgendaPayload
+            TypeAdapter(payload_model).validate_json(
                 self.payload.canonical_json, strict=True
             )
         except Exception as exc:
@@ -1574,7 +1581,7 @@ class ProposalEnvelope(FrozenModel):
     # .2 belongs to the separate FactCommitProposalEnvelopeV2 grammar.
     schema_registry_version: Literal[
         "world-v2-proposals.1", "world-v2-proposals.3", "world-v2-proposals.4",
-        "world-v2-proposals.5", "world-v2-proposals.6",
+        "world-v2-proposals.5", "world-v2-proposals.6", "world-v2-proposals.7",
     ] = "world-v2-proposals.1"
     evidence_refs: tuple[ProposalEvidenceRef, ...] = Field(default=(), max_length=128)
     proposed_changes: tuple[TypedChange, ...] = Field(default=(), max_length=64)
@@ -1588,17 +1595,23 @@ class ProposalEnvelope(FrozenModel):
 
     @model_validator(mode="after")
     def identifiers_evidence_and_expression_beats_are_bound(self) -> Self:
-        if self.schema_registry_version != "world-v2-proposals.6" and any(
+        if self.schema_registry_version not in {"world-v2-proposals.6", "world-v2-proposals.7"} and any(
             change.kind == "day_open_life_intent" for change in self.proposed_changes
         ):
             raise ValueError("day_open_life_intent requires proposal registry .6")
-        if self.schema_registry_version == "world-v2-proposals.6" and (
+        if self.schema_registry_version in {"world-v2-proposals.6", "world-v2-proposals.7"} and (
             self.proposal_kind != "decision"
             or len(self.proposed_changes) != 1
             or self.proposed_changes[0].kind != "day_open_life_intent"
             or self.action_intents
         ):
             raise ValueError("proposal registry .6 permits only one day-open intent")
+        for change in self.proposed_changes:
+            if change.kind == "day_open_life_intent" and change.payload.payload_schema != (
+                "day_open_life_intent.v2" if self.schema_registry_version == "world-v2-proposals.7"
+                else "day_open_life_intent.v1"
+            ):
+                raise ValueError("day-open payload must match its proposal registry")
         evidence_ids = [ref.ref_id for ref in self.evidence_refs]
         if len(set(evidence_ids)) != len(evidence_ids):
             raise ValueError("duplicate evidence ref_id")

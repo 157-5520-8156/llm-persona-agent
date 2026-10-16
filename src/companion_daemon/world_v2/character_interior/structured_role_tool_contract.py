@@ -1999,7 +1999,8 @@ class StructuredRoleToolContracts:
                 {"properties": {"decision": {"enum": ["self_directed_intent"]}}, "required": ["life_intent"],
                  "not": {"properties": {"life_intent": {"type": "null"}}}},
             ]
-            reconsider = capability_payload["contract"].endswith(".5")
+            agenda = capability_payload["contract"].endswith(".6")
+            reconsider = agenda or capability_payload["contract"].endswith(".5")
             if reconsider:
                 from ..day_open_life_intent_contract import DayOpenReconsiderChoice
 
@@ -2013,9 +2014,13 @@ class StructuredRoleToolContracts:
                      "required": ["decision", "life_intent"], "additionalProperties": False},
                     _provider_schema(DayOpenReconsiderChoice),
                 ]}
+            if agenda:
+                from ..day_open_life_intent_contract import DayOpenAgendaChoice
+
+                schema["anyOf"][1] = _provider_schema(DayOpenAgendaChoice)
             return _compile_generic_decision_contract(
                 purpose="activity_lifecycle_choice",
-                tool_name="character_role_activity_lifecycle_choice_v3" if reconsider else "character_role_activity_lifecycle_choice_v2",
+                tool_name="character_role_activity_lifecycle_choice_v4" if agenda else "character_role_activity_lifecycle_choice_v3" if reconsider else "character_role_activity_lifecycle_choice_v2",
                 payload_schema=schema,
                 capability_identity=capability_payload,
                 source_refs=tuple(json.loads(source_refs_json)),
@@ -2023,7 +2028,8 @@ class StructuredRoleToolContracts:
                 description=("Consider this activity-completion opportunity with the pinned context. Freely choose one "
                 if capability_payload["contract"].endswith(".4")
                 else "Consider this daily opportunity with the pinned context. Freely choose one ") +
-                "self_directed private future intention or no_op. The intention requests a Plan; "
+                ("self_directed_agenda of 1..8 detailed private future intentions or no_op. " if agenda else
+                 "self_directed private future intention or no_op. ") + "Each intention requests a Plan; "
                 "it does not start or complete it, move anyone, control another person, or author "
                 "a World result. No action or intention is required. " +
                 ("You may instead choose reconsider with reconsider_after_seconds (60..86400) "

@@ -96,6 +96,7 @@ def read_dashboard_life_intention(
             _, intent = derive(
                 state=projection, world_id=projection.world_id,
                 proposal_id=origin.proposal_id, owner_actor_ref=plan.owner_actor_ref,
+                **({"plan_id": plan.plan_id} if kind == "day_open" else {}),
             )
             return DashboardLifeIntention(intent.intention, kind, origin.selected_at)
         except (ValueError, TypeError, KeyError):
