@@ -159,6 +159,19 @@ class _LedgerCapsuleInteriorProjection:
             trigger_ref=subject.trigger_ref,
         )
         compile_capsule = self.capsules.compile
+        if subject.purpose == "proactive_contact" and subject.capability_manifest is not None:
+            from ..proactive_action import compile_proactive_self_history_advisories
+
+            target = subject.capability_manifest.payload.get("target_ref")
+            if isinstance(target, str) and target:
+                advisories = compile_proactive_self_history_advisories(
+                    projection, actor_ref=subject.actor_ref, target=target
+                )
+                if advisories:
+                    def compile_capsule(query):
+                        return self.capsules.compile_for_deliberation_with_advisories(
+                            query, advisories
+                        ).capsule
         if (
             isinstance(subject, InteriorOpportunity)
             and subject.capability_manifest is not None
@@ -1044,6 +1057,8 @@ def _bind_production_character_interior(
                 ledger=ledger,
                 owner_id=inner_state_settlement_owner,
                 idle_seconds_threshold=silence_appraisal_idle_seconds,
+                actor_ref=companion_actor_ref,
+                target=reply_target,
             )
         if plan_disruption_appraisal_enabled:
             disruption_opener = PlanDisruptionAppraisalTriggerOpener(

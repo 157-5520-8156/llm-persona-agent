@@ -130,3 +130,70 @@ def test_other_recipient_or_actor_does_not_count_and_ambiguous_inbound_is_unavai
         silence_observation(p, anchor_event_ref="receipt-4", actor_ref="companion")["status"]
         == "unavailable"
     )
+
+
+def _opportunity_projection():
+    p = projection()
+    p.world_id = 'world:silence'
+    p.trigger_processes = []
+    for i, receipt in enumerate(p.execution_receipts, start=2):
+        receipt.receipt_id = f'provider:{i}'
+    return p
+
+
+def test_later_verification_does_not_reopen_an_already_appraised_expression():
+    from companion_daemon.world_v2.silence_appraisal_trigger import silence_appraisal_opportunity
+    from companion_daemon.world_v2.batch_invariants import silence_appraisal_trigger_identity
+    p = _opportunity_projection()
+    first = silence_appraisal_opportunity(p, idle_seconds_threshold=60)
+    p.trigger_processes.append(N(trigger_id=first.trigger_id, process_kind='silence_appraisal',
+                                 source_evidence_ref=first.source_evidence_ref))
+    p.committed_world_event_refs.append(N(event_id='late-verification', event_type='ExecutionReceiptRecorded',
+                                         world_revision=6, logical_time=NOW - timedelta(minutes=2)))
+    p.execution_receipts.append(N(action_id='action-4', observed_state='delivered', receipt_id='late'))
+    assert silence_appraisal_opportunity(p, idle_seconds_threshold=60) is None
+    # An old deployment may already have appraised the later receipt instead.
+    p.trigger_processes[:] = [N(trigger_id=silence_appraisal_trigger_identity(p.world_id, 'late-verification'),
+                                process_kind='silence_appraisal', source_evidence_ref='late-verification')]
+    assert silence_appraisal_opportunity(p, idle_seconds_threshold=60) is None
+
+
+def test_failed_or_unknown_send_is_not_evidence_of_unanswered_contact():
+    from companion_daemon.world_v2.silence_appraisal_trigger import silence_appraisal_opportunity
+    for status in ('failed', 'unknown'):
+        p = _opportunity_projection()
+        for i in range(2, 5):
+            p.committed_world_event_refs.append(N(event_id=f'failure-{i}', event_type='ExecutionReceiptRecorded',
+                                                 world_revision=6+i, logical_time=NOW - timedelta(minutes=2)))
+            p.execution_receipts.append(N(action_id=f'action-{i}', observed_state=status, receipt_id=f'failure-{i}'))
+        assert silence_appraisal_opportunity(p, idle_seconds_threshold=60) is None
+
+
+def test_first_failed_beat_cannot_move_expression_start_past_a_reply():
+    from companion_daemon.world_v2.silence_appraisal_trigger import silence_appraisal_opportunity
+    p = _opportunity_projection()
+    p.actions = p.actions[:2]
+    p.execution_receipts = p.execution_receipts[:2]
+    p.committed_world_event_refs = p.committed_world_event_refs[:3]
+    p.committed_world_event_refs[2].world_revision = 4
+    p.committed_world_event_refs.append(N(event_id='answer-between', event_type='ObservationRecorded',
+                                         world_revision=3, payload_hash='answer-hash', logical_time=NOW-timedelta(days=2)))
+    p.message_observations.append(N(actor='user', world_revision=3, event_payload_hash='answer-hash'))
+    p.committed_world_event_refs.append(N(event_id='unknown-first', event_type='ExecutionReceiptRecorded',
+                                         world_revision=5, logical_time=NOW-timedelta(hours=1)))
+    p.execution_receipts.append(N(action_id='action-2', observed_state='unknown', receipt_id='unknown'))
+    assert silence_appraisal_opportunity(p, idle_seconds_threshold=60) is None
+    gap = silence_observation(p, anchor_event_ref='receipt-3', actor_ref='companion')
+    assert gap['unanswered_expression_groups'] == 0
+
+
+def test_proactive_gap_requires_the_current_actor_and_conversation():
+    from companion_daemon.world_v2.proactive_action import compile_proactive_self_history_advisories
+    p = _opportunity_projection()
+    for a in p.actions:
+        a.actor = 'another-actor'
+        a.target = 'another-target'
+    assert compile_proactive_self_history_advisories(p) == ()
+    assert compile_proactive_self_history_advisories(p, actor_ref='companion', target='user') == ()
+    from companion_daemon.world_v2.silence_appraisal_trigger import silence_appraisal_opportunity
+    assert silence_appraisal_opportunity(p, idle_seconds_threshold=60, actor_ref='companion', target='user') is None

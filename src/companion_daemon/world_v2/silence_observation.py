@@ -1,6 +1,5 @@
 """Chronology for a silence opportunity; no interpretation of another mind."""
-from .response_expectation_view import answerable_receipt_history
-from .silence_appraisal_trigger import _VISIBLE_MESSAGE_ACTION_KINDS
+from .silence_appraisal_trigger import _VISIBLE_MESSAGE_ACTION_KINDS, answerable_expression_anchors
 
 SILENCE_CONTEXT_NOTE = (
     "This opportunity concerns the continuing reply gap at the CURRENT World time. "
@@ -44,19 +43,7 @@ def silence_observation(projection, *, anchor_event_ref, actor_ref):
                      and e.payload_hash == latest.event_payload_hash), None)
     if incoming is None or incoming.logical_time > now:
         return {**base, 'status': 'unavailable'}
-    groups = {}
-    for action_id, (first, _last) in answerable_receipt_history(projection).items():
-        sent = actions.get(action_id)
-        if (sent is None or sent.actor != actor_ref or sent.target != action.target
-            or sent.kind not in _VISIBLE_MESSAGE_ACTION_KINDS
-            or first.logical_time > now):
-            continue
-        # Several Beats and repeated transport acknowledgements are one
-        # authored expression, never several separate attempts at contact.
-        key = sent.expression_plan_id or sent.action_id
-        previous = groups.get(key)
-        if previous is None or first.world_revision < previous.world_revision:
-            groups[key] = first
+    groups = answerable_expression_anchors(projection, actor_ref=actor_ref, target=action.target)
     # A delayed Beat from an expression begun before his reply is not a new
     # contact after that reply. Group before applying the inbound boundary.
     groups = {key: first for key, first in groups.items()

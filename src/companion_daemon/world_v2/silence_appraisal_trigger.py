@@ -2,7 +2,7 @@
 
 After the companion's visible reply is delivered and the user stays quiet,
 this module leaves at most one recoverable work opportunity anchored to that
-reply's committed execution receipt.  It never interprets the silence itself:
+expression's first visible execution receipt.  It never interprets the silence itself:
 what the quiet means (missing them, unease, indifference, nothing) belongs to
 the model behind the trigger consumer, and every authoritative value here is
 derived from committed ledger state.
@@ -22,15 +22,15 @@ from .event_identity import domain_idempotency_key
 from .ledger import LedgerPort
 from .schema_core import FrozenModel
 from .schemas import TriggerProcess, WorldEvent
+from .response_expectation_view import answerable_receipt_history
 
 
-SILENCE_APPRAISAL_TRIGGER_VERSION = "silence-appraisal-trigger.1"
+SILENCE_APPRAISAL_TRIGGER_VERSION = "silence-appraisal-trigger.2"
 
 # The silence anchor must be one of her own visible conversational messages.
 # Media, tool, and perception receipts are provider plumbing, not something a
 # person would sit with while waiting for an answer.
 _VISIBLE_MESSAGE_ACTION_KINDS = frozenset({"reply", "followup", "proactive_message"})
-_ANSWERABLE_RECEIPT_STATES = frozenset({"provider_accepted", "delivered"})
 
 
 def _digest(value: object) -> str:
@@ -51,15 +51,47 @@ class SilenceOpportunity(FrozenModel):
     idle_seconds: int = Field(ge=0)
 
 
+def answerable_expression_anchors(projection, *, actor_ref=None, target=None):
+    """First visible receipt per expression, with current delivery evidence.
+
+    Later verification and additional Beats do not constitute a new contact.
+    Receipt failure removes delivery evidence; it says nothing about the user.
+    """
+    actions = {item.action_id: item for item in projection.actions}
+    scoped = {key: a for key, a in actions.items()
+              if a.kind in _VISIBLE_MESSAGE_ACTION_KINDS
+              and (actor_ref is None or a.actor == actor_ref)
+              and (target is None or a.target == target)}
+    currently_answerable = answerable_receipt_history(projection)
+    valid_groups = {scoped[key].expression_plan_id or key
+                    for key in currently_answerable if key in scoped}
+    # Current receipt validity decides whether the expression is answerable;
+    # all its historical visible sends decide when that expression began.
+    # Losing the first Beat's delivery evidence must not move it past a reply.
+    refs = (e for e in projection.committed_world_event_refs
+            if e.event_type == "ExecutionReceiptRecorded")
+    groups = {}
+    for ref, receipt in zip(refs, projection.execution_receipts, strict=True):
+        action = scoped.get(receipt.action_id)
+        if (action is None or receipt.observed_state not in {"provider_accepted", "delivered"}
+            or ref.logical_time > projection.logical_time):
+            continue
+        key = action.expression_plan_id or action.action_id
+        previous = groups.get(key)
+        if key in valid_groups and (previous is None or ref.world_revision < previous.world_revision):
+            groups[key] = ref
+    return groups
+
+
 def silence_appraisal_opportunity(
-    projection, *, idle_seconds_threshold: int
+    projection, *, idle_seconds_threshold: int, actor_ref=None, target=None
 ) -> SilenceOpportunity | None:
     """Derive the one open-able silence anchor from committed projection state.
 
     Returns ``None`` unless all of the following hold: the companion's latest
     visible message receipt is acknowledged or delivered, no newer user message
     observation exists, the durable clock has moved past the idle threshold,
-    and no silence trigger was ever opened for this anchor.
+    and no silence trigger was ever opened for this expression.
     """
 
     if idle_seconds_threshold <= 0:
@@ -67,51 +99,39 @@ def silence_appraisal_opportunity(
     logical_time = projection.logical_time
     if logical_time is None:
         return None
-    receipt_refs = tuple(
-        item
-        for item in projection.committed_world_event_refs
-        if item.event_type == "ExecutionReceiptRecorded"
-    )
-    # Each ``ExecutionReceiptRecorded`` reduction appends exactly one receipt,
-    # so the committed refs of that type align positionally with the receipt
-    # projection.  This join stays pure over the projection: no ledger lookup
-    # or payload re-hash is needed to bind a receipt to its committed event.
-    if len(receipt_refs) != len(projection.execution_receipts):
-        raise ValueError("execution receipt projection does not align with committed refs")
-    action_kinds = {item.action_id: item.kind for item in projection.actions}
-    anchor = None
-    for ref, receipt in zip(receipt_refs, projection.execution_receipts, strict=True):
-        if (
-            receipt.observed_state not in _ANSWERABLE_RECEIPT_STATES
-            or action_kinds.get(receipt.action_id) not in _VISIBLE_MESSAGE_ACTION_KINDS
-        ):
-            continue
-        if anchor is None or ref.world_revision > anchor[0].world_revision:
-            anchor = (ref, receipt)
-    if anchor is None:
+    groups = answerable_expression_anchors(projection, actor_ref=actor_ref, target=target)
+    if not groups:
         return None
-    anchor_ref, anchor_receipt = anchor
-    # The user answering (any newer message observation) closes the silence:
-    # what follows is an ordinary interaction appraisal, never this lane.
-    if any(
-        item.world_revision > anchor_ref.world_revision
-        for item in projection.message_observations
-    ):
+    group_id, anchor_ref = max(groups.items(), key=lambda item: item[1].world_revision)
+    # Compare the user's reply with the expression's first visible send, not
+    # its delayed terminal verification or a later Beat of the same plan.
+    if any(item.world_revision > anchor_ref.world_revision
+           for item in projection.message_observations):
         return None
     idle_seconds = int((logical_time - anchor_ref.logical_time).total_seconds())
     if idle_seconds < idle_seconds_threshold:
         return None
-    trigger_id = silence_appraisal_trigger_identity(projection.world_id, anchor_ref.event_id)
-    # One trigger per silence anchor, in any state: a completed appraisal of
-    # this same quiet stretch must never reopen on replay or on later passes.
-    if any(item.trigger_id == trigger_id for item in projection.trigger_processes):
+    refs = tuple(e for e in projection.committed_world_event_refs
+                 if e.event_type == "ExecutionReceiptRecorded")
+    receipts = dict(zip((e.event_id for e in refs), projection.execution_receipts, strict=True))
+    actions = {a.action_id: a for a in projection.actions}
+    group_receipt_refs = {ref for ref, receipt in receipts.items()
+                          if receipt.action_id in actions
+                          and (actions[receipt.action_id].expression_plan_id or receipt.action_id) == group_id}
+    # Older ledgers keyed this work by any receipt. Preserve their completed
+    # or pending work instead of reopening it under the canonical first send.
+    old_ids = {silence_appraisal_trigger_identity(projection.world_id, ref)
+               for ref in group_receipt_refs}
+    if any(item.trigger_id in old_ids for item in projection.trigger_processes):
         return None
+    anchor_receipt = receipts[anchor_ref.event_id]
+    trigger_id = silence_appraisal_trigger_identity(projection.world_id, anchor_ref.event_id)
     return SilenceOpportunity(
         trigger_id=trigger_id,
         source_evidence_ref=anchor_ref.event_id,
         receipt_id=anchor_receipt.receipt_id,
         action_id=anchor_receipt.action_id,
-        action_kind=action_kinds[anchor_receipt.action_id],
+        action_kind=actions[anchor_receipt.action_id].kind,
         anchored_at=anchor_ref.logical_time,
         idle_seconds=idle_seconds,
     )
@@ -126,6 +146,8 @@ class SilenceAppraisalTriggerOpener:
         ledger: LedgerPort,
         owner_id: str,
         idle_seconds_threshold: int,
+        actor_ref: str | None = None,
+        target: str | None = None,
         source: str = "world-v2:silence-appraisal-trigger-opener",
     ) -> None:
         if not owner_id or idle_seconds_threshold <= 0:
@@ -134,13 +156,16 @@ class SilenceAppraisalTriggerOpener:
         self._owner_id = owner_id
         self._idle_seconds_threshold = idle_seconds_threshold
         self._source = source
+        self._actor_ref = actor_ref
+        self._target = target
 
     async def open_once(self) -> str | None:
         """Open the current silence opportunity, returning its trigger id."""
 
         projection = await self._project()
         opportunity = silence_appraisal_opportunity(
-            projection, idle_seconds_threshold=self._idle_seconds_threshold
+            projection, idle_seconds_threshold=self._idle_seconds_threshold,
+            actor_ref=self._actor_ref, target=self._target,
         )
         if opportunity is None:
             return None

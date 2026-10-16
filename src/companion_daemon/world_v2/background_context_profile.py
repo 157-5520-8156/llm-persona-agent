@@ -291,8 +291,8 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
         profile_id="proactive_contact",
         omit_inventory_proofs=True,
         purposes=frozenset({"proactive_contact"}),
-        snapshot_material_keys=_CHARACTER_CONTINUITY_MATERIALS,
-        snapshot_material_limits=_CHARACTER_CONTINUITY_LIMITS,
+        snapshot_material_keys=(*_CHARACTER_CONTINUITY_MATERIALS, "advisories"),
+        snapshot_material_limits={**_CHARACTER_CONTINUITY_LIMITS, "advisories": 1},
     ),
     BackgroundContextProfile(
         profile_id="memory_consolidation",
@@ -469,6 +469,13 @@ def slice_background_inner_life_snapshot(
         if key not in materials:
             continue
         value = materials[key]
+        if key == "advisories" and "proactive_contact" in profile.purposes:
+            # Keep the already-redacted self-history aggregate, not a second
+            # copy of unrelated scheduling or opportunity instructions.
+            items = value.get("items", ()) if isinstance(value, dict) else value
+            kept = [item for item in items if isinstance(item, dict)
+                    and item.get("kind") == "proactive_self_history"] if isinstance(items, list) else []
+            value = {**value, "items": kept} if isinstance(value, dict) else kept
         limit = profile.snapshot_material_limits.get(key)
         if limit is not None:
             value = _limit_material_items(value, limit, key=key)

@@ -195,10 +195,10 @@ _SELF_HISTORY_CANDIDATE_MAX = 256
 _SELF_HISTORY_OUTBOUND_MIN = 2
 _SELF_HISTORY_TEXTS_SHOWN = 4
 _SELF_HISTORY_HOPES_SHOWN = 3
-_SELF_HISTORY_ADVISORY_VERSION = "proactive-self-history.2"
+_SELF_HISTORY_ADVISORY_VERSION = "proactive-self-history.3"
 
 
-def _unanswered_outbound_message_facts(projection: object) -> tuple[tuple[str, str], ...]:
+def _unanswered_outbound_message_facts(projection: object, *, action_ids=None) -> tuple[tuple[str, str], ...]:
     """Her delivered text beats since his last inbound, oldest first.
 
     Each entry pairs the payload's committed event ref with its exact text.
@@ -225,6 +225,8 @@ def _unanswered_outbound_message_facts(projection: object) -> tuple[tuple[str, s
         delivered: list[tuple[object, object]] = []
         for beat in getattr(projection, "expression_beats", ()):
             action_id = getattr(beat, "action_id", None)
+            if action_ids is not None and action_id not in action_ids:
+                continue
             ref = first_visible_by_action.get(action_id) if action_id else None
             if ref is None or ref.world_revision <= latest_inbound_revision:
                 continue
@@ -249,7 +251,7 @@ def _unanswered_outbound_message_facts(projection: object) -> tuple[tuple[str, s
 
 
 def _living_hope_facts(
-    projection: object,
+    projection: object, *, action_ids=None,
 ) -> tuple[tuple[str, str, datetime, datetime], ...]:
     """Living declared hopes without a terminal assessment, soonest wake first."""
 
@@ -265,6 +267,11 @@ def _living_hope_facts(
         for manifest in getattr(projection, "expression_plan_manifests", ()):
             expectation = getattr(manifest, "response_expectation", None)
             if expectation is None or getattr(manifest, "plan_id", "") not in answerable_plan_ids:
+                continue
+            if action_ids is not None and not any(
+                beat.beat_id == expectation.source_beat_id and beat.action.action_id in action_ids
+                for beat in manifest.beats
+            ):
                 continue
             not_before = getattr(expectation, "not_before", None)
             expires_at = getattr(expectation, "expires_at", None)
@@ -288,7 +295,7 @@ def _living_hope_facts(
 
 
 def compile_proactive_self_history_advisories(
-    projection: object,
+    projection: object, *, actor_ref=None, target=None,
 ) -> tuple[InnerAdvisoryProjection, ...]:
     """Fact-only view of her own unanswered outreach and living hopes.
 
@@ -303,11 +310,41 @@ def compile_proactive_self_history_advisories(
     logical_time = getattr(projection, "logical_time", None)
     if not isinstance(logical_time, datetime):
         return ()
-    outbound = _unanswered_outbound_message_facts(projection)
-    hopes = _living_hope_facts(projection)
+    action_ids = ({a.action_id for a in getattr(projection, "actions", ())
+                   if a.actor == actor_ref and a.target == target}
+                  if actor_ref is not None and target is not None else None)
+    outbound = _unanswered_outbound_message_facts(projection, action_ids=action_ids)
+    hopes = _living_hope_facts(projection, action_ids=action_ids)
     candidates: list[InnerAdvisoryCandidate] = []
     candidate_refs: list[str] = []
     source_refs: list[str] = []
+    # Even one unanswered expression can be days old after its declared hope
+    # expires. Preserve that chronology without inventing read status or motive.
+    from .silence_appraisal_trigger import answerable_expression_anchors
+    from .silence_observation import silence_observation
+
+    if action_ids:
+        anchors = answerable_expression_anchors(projection, actor_ref=actor_ref, target=target)
+        anchor = max(anchors.values(), key=lambda e: e.world_revision, default=None)
+        if anchor is not None:
+            receipts = [e for e in projection.committed_world_event_refs
+                        if e.event_type == "ExecutionReceiptRecorded"]
+            receipt = next(r for e, r in zip(receipts, projection.execution_receipts, strict=True)
+                           if e.event_id == anchor.event_id)
+            actor = next(a.actor for a in projection.actions if a.action_id == receipt.action_id)
+            gap = silence_observation(projection, anchor_event_ref=anchor.event_id, actor_ref=actor)
+            if gap.get("status") == "available" and gap["unanswered_expression_groups"]:
+                candidates.append(InnerAdvisoryCandidate(
+                    candidate_ref="self-history:reply_gap",
+                    value=(f"Last counterpart message {gap['seconds_since_last_counterpart_message']}s ago; "
+                           f"{gap['unanswered_expression_groups']} expression(s) without a later inbound; "
+                           f"first {gap['seconds_since_first_unanswered_expression']}s ago, "
+                           f"latest {gap['seconds_since_latest_unanswered_expression']}s ago. "
+                           "No read status or motive inferred. Interpretation and next choice are yours."),
+                    weight_bp=10_000, confidence_bp=10_000,
+                ))
+                candidate_refs.append("self-history:reply_gap")
+                source_refs.extend(gap["source_event_refs"])
     if len(outbound) >= _SELF_HISTORY_OUTBOUND_MIN:
         texts = [text for _ref, text in outbound]
         repeats = len(texts) - len(set(texts))
@@ -332,7 +369,7 @@ def compile_proactive_self_history_advisories(
             )
         )
         candidate_refs.append("self-history:unanswered_outbound")
-        source_refs.extend(ref for ref, _text in outbound)
+        source_refs.extend(ref for ref, _text in outbound[-_SELF_HISTORY_TEXTS_SHOWN:])
     if hopes:
         shown_hopes: list[str] = []
         for _ref, hoped, not_before, _expires_at in hopes[:_SELF_HISTORY_HOPES_SHOWN]:
@@ -358,9 +395,17 @@ def compile_proactive_self_history_advisories(
             )
         )
         candidate_refs.append("self-history:living_hopes")
-        source_refs.extend(ref for ref, _hoped, _nb, _exp in hopes)
+        source_refs.extend(ref for ref, _hoped, _nb, _exp in hopes[:_SELF_HISTORY_HOPES_SHOWN])
     if not candidates:
         return ()
+    # Totals are computed over the complete actor/target-scoped pinned view.
+    # Bind the displayed examples and chronological boundaries, not every
+    # archived row: 4 gap refs + 4 texts + 3 hopes + 1 clock stays below 32.
+    # The clock anchors the query time; it is not evidence of the total itself.
+    clock = next((e for e in reversed(projection.committed_world_event_refs)
+                  if e.event_type == "ClockAdvanced"), None)
+    if clock is not None:
+        source_refs.append(clock.event_id)
     deduped_refs = tuple(dict.fromkeys(ref for ref in source_refs if ref))
     if not deduped_refs:
         return ()
@@ -1965,17 +2010,13 @@ class ProactiveDeliberationTurn:
             invitation_advisories = pending_shared_private_invitation_advisories(projection)
         except (TypeError, ValueError):
             invitation_advisories = ()
-        # Her own trajectory — unanswered outbound count/texts and living
-        # hopes — rides along as source-bound facts.  Fact supply only: the
-        # character stays the sole author of what to do with them.
-        try:
-            self_history_advisories = compile_proactive_self_history_advisories(projection)
-        except (TypeError, ValueError, AttributeError):
-            self_history_advisories = ()
+        # Self-history is compiled by the canonical Interior projection at
+        # this same pin. An overlay here was discarded when Interior rebuilt
+        # its own snapshot, so do not prepare a second unused copy.
         capsule = await asyncio.to_thread(
             self._capsules.compile_for_deliberation_with_advisories,
             query,
-            (advisory, *self_history_advisories, *invitation_advisories),
+            (advisory, *invitation_advisories),
             model_content_profile="proactive_decision",
         )
         resolved_attempt_id = attempt_id or "attempt:proactive:" + _digest(

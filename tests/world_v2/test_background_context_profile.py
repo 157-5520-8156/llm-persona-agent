@@ -419,3 +419,30 @@ def test_current_world_author_does_not_inherit_character_private_continuity():
     )
     assert "affect" in character["materials"]
     assert "relationship" in character["materials"]
+
+
+@pytest.mark.parametrize('wrapped', (False, True))
+def test_proactive_wire_keeps_source_bound_reply_gap_after_profile_slicing(wrapped):
+    from copy import deepcopy
+    gap = {'source_ref':'advisory:gap', 'kind':'proactive_self_history',
+           'candidates':[{'candidate_ref':'self-history:reply_gap',
+                          'value':'172800 seconds, one expression; reading and motive unknown.'}]}
+    unrelated = {'source_ref':'advisory:other', 'kind':'unrelated', 'candidates':[]}
+    snapshot = _sample_snapshot()
+    entries = [unrelated, gap]
+    snapshot['materials']['advisories'] = {'items':entries} if wrapped else entries
+    snapshot['source_refs'] += ['advisory:gap','advisory:other']
+    snapshot['source_inventory'] += [{'source_ref':ref,'scope':'advisories','privacy_class':'private'}
+                                     for ref in ('advisory:gap','advisory:other')]
+    before = deepcopy(snapshot)
+    profile = background_context_profile_for_purpose('proactive_contact')
+    view = slice_background_inner_life_snapshot(snapshot, profile)
+    actual = view['materials']['advisories']
+    assert (actual['items'] if wrapped else actual) == [gap]
+    assert 'advisory:gap' in view['source_refs'] and 'advisory:other' not in view['source_refs']
+    assert any(i['source_ref']=='advisory:gap' and i['privacy_class']=='private' for i in view['source_inventory'])
+    assert snapshot == before
+    # This stage must not reconstruct a summary removed by the privacy view.
+    snapshot['materials']['advisories'] = {'items':[unrelated]} if wrapped else [unrelated]
+    hidden = slice_background_inner_life_snapshot(snapshot, profile)
+    assert '172800' not in json.dumps(hidden)

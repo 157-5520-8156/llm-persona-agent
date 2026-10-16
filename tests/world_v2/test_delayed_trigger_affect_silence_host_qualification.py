@@ -398,6 +398,8 @@ async def _prepare_delivered_reply(
         assert action.claim_lease is not None
         reconcile_at = action.claim_lease.expires_at
         action_id = action.action_id
+        first_visible_at = next(r.received_at for r in accepted.projection.execution_receipts
+                                if r.action_id == action_id and r.observed_state == "provider_accepted")
     finally:
         await first.aclose()
 
@@ -419,16 +421,11 @@ async def _prepare_delivered_reply(
         # Clear unrelated ordinary inbound jobs only through the public scheduler seam.
         await second.drain(max_action_units=0, max_background_units=32)
         settled = second.export_replay_evidence()
-        anchor = next(
-            item
-            for item in settled.projection.execution_receipts
-            if item.action_id == action_id and item.is_terminal
-        )
         appraisal_count = len(settled.projection.appraisals)
         affect_count = len(settled.projection.affect_episodes)
     finally:
         await second.aclose()
-    return settled, anchor.received_at, appraisal_count, affect_count
+    return settled, first_visible_at, appraisal_count, affect_count
 
 
 async def _qualify_silence_aftermath(
