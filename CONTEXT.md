@@ -9,13 +9,20 @@ New impression is not yet due: recent_user_observation gate, quiet boundary00:41
 Overlap firstCapture7.251s whileproxy pending; day3host9.217s/4exact terminal Capture receipts. Not QQ or5sSLA.
 Day1/overlap unsupported just-woke claims remain semantic failures; day3 content review recorded separately.
 Profile example now180s, matching qualified settings;35focused tests pass. No application Python change after fullv15.
-User prepared QQ and authorized production: old packagePID1127/8787 remains online; QQ3000online/good.
-Latest healthdegraded for retained CharacterInterior technical failures; scheduler running, no activeAction/ingress/Corelease.
-No production stop/restart/callback switch/candidate launch yet. Private QQ supervisor and recovery controls prepared;
-real wire stage waits user's CURRENT availability to send one new message. Candidate handles first live push; restored
-old production handles same actual input once via native backfill (possible second reply round). Each World audited separately.
-Original service remains up while waiting. Readiness and final review artifacts under output/private-audits/real-qq-release-20261015.
-See docs/design/long-horizon-working-sets-2026-10-15.md and live-v17 independent-terminal-audit.json.
+Real QQ live-v1 complete (2026-10-16 09:52-10:01+08): user sent1808218972 and confirmed both reply rounds received.
+Candidate first live push generated3QQ messages; firstproviderACK3.172129s, allget_msg/text/hash/terminalreceipts bind.
+Exact input replay added no inboundturn/Action/dispatch. Independent wire review passes named scope.
+Original production restoredPID79910/8787, globalowner/config/plist/wrapper/callback unchanged; QQonline/good.
+Nativebackfill fetched16/replayed1/skipped15; firstoriginalattempt hitinteractive_budget_exhausted, retainedseq35972;
+sameexpressionprocess retried35973,author35974,completed35994,3real terminalreceipts. Same-ID productionreplay unchanged.
+Originalhealth first12s probeReadTimeout, next5.128s degraded/scheduler running; transportpending0. Not allerrorsresolved.
+Candidate stoppedbySIGINT/KeyboardInterrupt with0pendingtasks/0activeHTTP; don'tclaimexit0. No permanentdeployment.
+Lateprivateharnessfinding: candidate hadLIFE_OUTLOOK_ENABLED=false vs qualifiedv17true; retainedWorldAuthor ValueError/main_exception176.
+QQwire/foregroundproof remains valid; combinedqualifiedbackgroundprofile was NOT tested bythiswirestage. Usedrunner/hash preserved.
+Privateharness nowexplicittrue/assertsall10v17settings; actualSettingsAST red/green0API pass, no corrected-profile live rerun.
+Readiness=false afterpostrunsetuprepair; no service/testactive. ApplicationPython unchanged. Remaining semanticfailures not waived.
+Evidence: real-qq-v1/{real-wire-receipt-audit,exact-replay-audit,wire-independent-review,production-recovery-audit,profile-mismatch-disclosure}.json
+and real-qq-release-20261015/real-qq-v1/final-production-state.json. Current user need to open production is fulfilled.
 
 Release recovery checkpoint (2026-10-15): feature freeze continues; real QQ is explicitly authorized last.
 User superseded the three-failure stop. All failure counters, records, validators, original72h origin,

@@ -1,7 +1,7 @@
 # 长期运行的调度工作集与命运输入
 
 起点 `83fcee0f`。用户要求先解决本地调度开销和命运输入持续增长，再继续原跨日验收。
-此文记录修复范围与验收约束。72小时模拟跨度已完成；真实QQ与完整发布资格仍待验证。沿用ADR0010，冻结无关功能和大重构。
+此文记录修复范围与验收约束。72小时模拟跨度及真实QQ传输已验证；完整发布资格仍有下文列出的范围限制。沿用ADR0010，冻结无关功能和大重构。
 
 ## 增长边界
 
@@ -254,3 +254,40 @@ QQ/NapCat3000在线；最新只读检查无在途Action、未提交ingress或有
 控制没有发QQ或变更生产，不代替真实验收。实际测试还需用户发送新消息：候选首次实时接收，
 恢复后旧生产按原生history backfill再处理一次，可能出现第二轮回复。两份World分别核对去重；
 不能宣称跨两份World全局只回复一次。等待用户当前方便配合期间保持旧生产在线。
+
+
+## 真实QQ传输、精确重放与生产恢复（2026-10-16上午）
+
+用户确认当前可配合后，才执行受监督的短暂切换。候选使用fresh World与端口8789，原进程
+1127退出后才获得同一出站锁；startup backfill为0，随后真实callback送达用户消息1808218972。
+候选生成3条QQ文本，第一条平台ACK距真实入站3.172129秒。3条实际get_msg的文本/消息ID均
+匹配各自Action的payload hash；各只有1次dispatch和1条delivered终态。约119秒后的get_msg
+终态核验不是用户可见延迟。用户独立确认收到了第一轮及恢复后的第二轮。
+
+原始输入字节重放后，已提交ingress、batch、角色回合、Action和dispatch记录完全不变。
+独立审查13项与3条逐Action绑定通过；证据在real-qq-v1/wire-independent-review.json。
+候选6次捕获HTTP为5proxy+1DeepSeek，均完整返回；后台另有下面单列的本地异常，不能将
+6次HTTP成功写成全部后台任务成功。候选经SIGINT退出，日志为KeyboardInterrupt，保存了
+pending_tasks0/activeHTTP[]；不声称候选exit0。
+
+原生产PID79910恢复、callback回8787，env/plist/wrapper与NapCat磁盘配置原字节均保持。
+旧发布包自动history backfill fetched16/replayed1/skipped15/failed0。原始ingress结果为deferred：
+seq35972保留interactive_budget_exhausted；同expression process于35973重取，35974作者成功，
+35994完成。最终同一输入的另一份World生成3条真实终态投递，用户确认收到。再次向原服务
+重放同消息ID，目标ingress、模型审计、Action与dispatch都不变。两份World各自effect-once，
+不是宣称两次测试之间全局只发一轮。原生自动技术恢复经过真实验证，失败未删除。
+
+最终只读状态：QQonline/good，出站owner为原服务79910，无在途Action/未提交ingress/有效
+Corelease，全部路由RPC有ACK。旧服务health第一次12秒ReadTimeout，第二次5.128秒返回
+现有角色技术失败导致的degraded，scheduler仍运行；原超时保留，不声称性能已全面合格。
+当前仍运行原发布包，没有永久部署候选。
+
+### 本轮准备脚本的范围缺口
+
+收尾发现private runner漏设WORLD_V2_LIFE_OUTLOOK_ENABLED：实际false，跨日合格配置为true。
+其余10字段记录中的9项一致。该运行进入旧World Author路径并在seq176保留ValueError /
+main_exception；不能算作已测试命运配置的完整组合验收。原runner及hash已归档，原失败不改写。
+私有脚本已显式设true，并在创建应用前逐项核对全部10个跨日协议设置，protocol同步保存这些值。
+执行真实Settings AST的零API对照证明旧脚本仅这一项不一致、改后全部一致；没有追加QQ消息
+或真实重跑纠正后的组合。readiness再次设false，后续如需完整候选部署，须先验证该组合。
+此修正不修改生产配置或应用Python；既有语义准确性缺口也没有因此改判通过。
