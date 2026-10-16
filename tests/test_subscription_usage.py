@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from companion_daemon.llm import model_call_scope
-from companion_daemon.subscription_usage import SubscriptionTokenLedger, SubscriptionAnthropicModel
+from companion_daemon.subscription_usage import SubscriptionTokenLedger, SubscriptionAnthropicModel, BackgroundGLMModel
 
 
 def ledger(tmp_path, **kwargs):
@@ -69,13 +69,14 @@ async def test_native_subscription_call_is_metered_without_monetary_pricing(tmp_
 
 
 @pytest.mark.asyncio
-async def test_cancelled_sent_request_retains_token_reservation(tmp_path):
+@pytest.mark.parametrize("adapter", [SubscriptionAnthropicModel, BackgroundGLMModel])
+async def test_cancelled_sent_request_retains_token_reservation(tmp_path, adapter):
     entered = asyncio.Event()
     async def handler(request):
         entered.set()
         await asyncio.Event().wait()
     store = ledger(tmp_path)
-    model = SubscriptionAnthropicModel('local-proxy','http://localhost:8788','fixture',
+    model = adapter('local-proxy','http://localhost:8788','fixture',
         token_ledger=store, transport=httpx.MockTransport(handler), timeout_seconds=30)
     async def call():
         with model_call_scope('memory_consolidation'):

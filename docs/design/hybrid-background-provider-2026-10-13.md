@@ -1,5 +1,17 @@
 # 即时 DeepSeek 与后台订阅代理分工
 
+## 2026-10-16：当前后台改用 GLM
+
+用户指定的新后台为 `https://api.edgefn.net/v1` 的 `GLM-5.3-Flash`；加载
+`configs/glm-background.env.example`，密钥从本地 `.env` 或环境变量提供。
+复用既有后台目的路由、Chat Completions 传输和持久 token 账本；即时 DeepSeek 不变。
+GLM 使用 enabled thinking、low 思考强度和 auto 单工具选择，仍严格核验结果。
+配置支持 low/high/max，后台输出上限 64000、截止时间 180 秒；断路器不与即时路线共享。
+依据 [官方参数文档](https://docs.z.ai/api-reference/llm/chat-completion)，并独立验证代理实际返回。
+本地 token 上限不代表供应商额度，未知价格不套用 DeepSeek 计费。
+短请求及一个完整 World Author 样本通过；完整离线回归通过不替代跨日或生产资格。
+以下为旧 Anthropic 路由的历史设计与保留约束。
+
 用户要求：非即时后台推演使用 localhost:8788 的 Anthropic 代理、
 gemini-3.8-flash-medium；即时交互继续使用现有 DeepSeek V4.1 路由。
 基线 e32eca51，接续上轮尚未提交的 Anthropic adapter；只在隔离分支及副本验证。

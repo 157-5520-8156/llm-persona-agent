@@ -1,3 +1,11 @@
+Background provider switched in candidate configuration (2026-10-16), base9bf45cbf.
+New route glm / https://api.edgefn.net/v1 / GLM-5.3-Flash; enabled thinking/low,64000output,180s deadline.
+Existing background purposes/role lineage/source gates retained; interactive and visible review remain DeepSeek. Independent circuit, token admission and unknown reservations reused; no fallback.
+Key only in ignored local .env and user Application Support background-provider.env (0600); unrelated env unchanged. Production old QQ PID79910 not restarted/deployed.
+4 real generation requests,10363reportedtokens: original diagnostic, adapter JSON2.961s/tool9.869s, full World Author27.330s with4details and original structural/binding checks. No semantic/cross-day qualification claim.
+153scoped tests; frozen full10749pass/19skip/2xfail/1existingwarning,1223.29s,sourcehashes unchanged; Standards/Spec closed.
+Evidence output/private-audits/edgefn-background-20261016/RESULT.md. Old Anthropic-only private crossday runner needs new protocol/profile capture before resume; preserve original clock/failures/budgets.
+
 World Author prompt convergence completed offline (2026-10-16), base ac90fab7.
 Task-scoped guidance fixes bound-detail scene/draw, result-claim scope, detail closure and location/visual correction contradictions.
 Exact duplicate capability mirrors and schema annotations reduced; original permissions, character agency, canonical validators and tool contracts unchanged.

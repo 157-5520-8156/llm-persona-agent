@@ -9,7 +9,7 @@ import uuid
 
 import httpx
 
-from .llm import admit_turn_provider_call, complete_with_timeout
+from .llm import DeepSeekChatModel, ProviderCircuitBreaker, admit_turn_provider_call, complete_with_timeout
 from .llm_anthropic import AnthropicChatModel
 
 
@@ -85,8 +85,8 @@ class SubscriptionTokenLedger:
                     'reserved_or_used_tokens_7d': self._used(connection, now - 7 * 86400)}
 
 
-class SubscriptionAnthropicModel(AnthropicChatModel):
-    """Same native protocol with token reservations and an independent time budget."""
+class _BackgroundTokenBudget:
+    """Shared durable admission and deadlines; provider adapters own their wire."""
 
     mirrors_debug_spend = False
 
@@ -94,6 +94,7 @@ class SubscriptionAnthropicModel(AnthropicChatModel):
         self.token_ledger = token_ledger
         self.timeout_seconds = timeout_seconds
         self.background_timeout_seconds = timeout_seconds
+        kwargs.setdefault("circuit_breaker", ProviderCircuitBreaker())
         super().__init__(*args, usage_observer=token_ledger.record, transport=transport,
                          client=httpx.AsyncClient(timeout=timeout_seconds, trust_env=False,
                                                   transport=transport), **kwargs)
@@ -109,3 +110,23 @@ class SubscriptionAnthropicModel(AnthropicChatModel):
     async def _complete(self, *args, **kwargs):
         return await complete_with_timeout(super()._complete(*args, **kwargs),
                                            timeout_seconds=self.timeout_seconds)
+
+
+class SubscriptionAnthropicModel(_BackgroundTokenBudget, AnthropicChatModel):
+    """The existing Anthropic subscription route and its original wire."""
+
+
+class BackgroundGLMModel(_BackgroundTokenBudget, DeepSeekChatModel):
+    """GLM Chat Completions using the shared transport and strict local validation.
+
+    GLM-5.3 uses enabled thinking and auto tool selection. This is not a claim
+    of provider-enforced JSON Schema or of the proxy's upstream identity.
+    """
+
+    provider = "glm"
+    supports_strict_tool_choice = False
+
+    def __init__(self, *args, reasoning_effort="low", **kwargs):
+        if reasoning_effort not in {"low", "high", "max"}:
+            raise ValueError("GLM-5.3 reasoning effort must be low, high or max")
+        super().__init__(*args, thinking_enabled=True, reasoning_effort=reasoning_effort, **kwargs)

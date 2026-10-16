@@ -7,7 +7,7 @@ import pytest
 
 from companion_daemon.config import Settings
 from companion_daemon.llm import DeepSeekChatModel
-from companion_daemon.subscription_usage import SubscriptionAnthropicModel
+from companion_daemon.subscription_usage import BackgroundGLMModel, SubscriptionAnthropicModel
 from companion_daemon.world_v2.character_interior.background_route import (
     BACKGROUND_CHARACTER_PURPOSES,
 )
@@ -17,24 +17,30 @@ from companion_daemon.world_v2.semantic_chat_composition import build_semantic_c
 def settings(tmp_path, **kwargs):
     return Settings(_env_file=None, database_path=tmp_path / 'world.sqlite',
                     DEEPSEEK_DEBUG_API_KEY='fixture-ds',
-                    WORLD_V2_BACKGROUND_PROVIDER='anthropic_subscription',
-                    WORLD_V2_BACKGROUND_API_KEY='local-proxy', **kwargs)
+                    **{'WORLD_V2_BACKGROUND_PROVIDER':'anthropic_subscription',
+                       'WORLD_V2_BACKGROUND_API_KEY':'local-proxy', **kwargs})
 
 
 @pytest.mark.asyncio
-async def test_configured_split_has_one_logical_author_and_actual_provider_lineage(tmp_path):
-    comp = build_semantic_chat_composition(settings=settings(tmp_path), model_id_prefix='hybrid')
+@pytest.mark.parametrize('route,adapter,model_name', [
+    ('anthropic_subscription', SubscriptionAnthropicModel, 'gemini-3.8-flash-medium'),
+    ('glm', BackgroundGLMModel, 'GLM-5.3-Flash'),
+])
+async def test_configured_split_has_one_logical_author_and_actual_provider_lineage(tmp_path, route, adapter, model_name):
+    comp = build_semantic_chat_composition(settings=settings(tmp_path,
+        WORLD_V2_BACKGROUND_PROVIDER=route, WORLD_V2_BACKGROUND_MODEL=model_name), model_id_prefix='hybrid')
     try:
-        assert isinstance(comp.world_support_model, SubscriptionAnthropicModel)
+        assert isinstance(comp.world_support_model, adapter)
         registry = comp.character_interior._registry
         interactive = registry.for_purpose('proactive_contact')
         background = registry.for_purpose('memory_consolidation')
         assert type(interactive._model) is DeepSeekChatModel
         assert background._model is comp.world_support_model
-        assert background._model_id == 'gemini-3.8-flash-medium'
+        assert background._model.circuit_breaker is not interactive._model.circuit_breaker
+        assert background._model_id == model_name
         assert background.requires_author_lineage
         assert background.author_identity['semantic_author_id'] == interactive.author_identity['semantic_author_id']
-        assert background.author_identity['background_author_route']['model_id'] == 'gemini-3.8-flash-medium'
+        assert background.author_identity['background_author_route']['model_id'] == model_name
         assert registry.semantic_author_count == 1
         assert registry.duplicate_purpose_owner_count == 0
         assert comp.character_interior._turn_lease_seconds >= 6 * 90
@@ -76,19 +82,18 @@ async def test_slow_background_lifecycle_keeps_lease_through_review_and_recall(t
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('subscription,expected', [(True,90.0),(False,8.0)])
-async def test_real_host_passes_background_budget_to_fact_adapter(tmp_path, subscription, expected):
+@pytest.mark.parametrize('route,provider,expected', [('anthropic_subscription','anthropic',90.0),('glm','glm',90.0),('deepseek','deepseek',8.0)])
+async def test_real_host_passes_background_budget_to_fact_adapter(tmp_path, route, provider, expected):
     from companion_daemon.world_v2.qq_c2c_host import build_qq_c2c_host
     from drive_production_lanes import CaptureDelivery
     config = settings(tmp_path)
-    if not subscription:
-        config.world_v2_background_provider = 'deepseek'
+    config.world_v2_background_provider = route
     host = build_qq_c2c_host(settings=config, recipient_id='fixture-user',
         reviewed_prehistory=None, use_configured_recall_embedding=False, delivery=CaptureDelivery())
     try:
         adapter = host._host._application._turns._runtime._fact_adapter
         assert adapter._timeout_seconds == expected
-        assert (adapter._model.provider == 'anthropic') is subscription
+        assert adapter._model.provider == provider
     finally:
         await host.aclose()
 
@@ -125,8 +130,9 @@ async def test_core_invalid_memory_result_corrects_on_same_background_model(tmp_
 
 
 @pytest.mark.asyncio
-async def test_background_failure_and_correction_stay_on_background_route(tmp_path, monkeypatch):
-    comp = build_semantic_chat_composition(settings=settings(tmp_path), model_id_prefix='hybrid')
+@pytest.mark.parametrize('route', ['anthropic_subscription','glm'])
+async def test_background_failure_and_correction_stay_on_background_route(tmp_path, monkeypatch, route):
+    comp = build_semantic_chat_composition(settings=settings(tmp_path, WORLD_V2_BACKGROUND_PROVIDER=route), model_id_prefix='hybrid')
     calls = []
     async def fail(request, **kwargs):
         calls.append((request.purpose, request.correction_ordinal))
@@ -156,13 +162,16 @@ def test_missing_key_and_ambiguous_injection_fail_before_model_construction(tmp_
 
 
 @pytest.mark.asyncio
-async def test_real_memory_contract_uses_native_proxy_while_interactive_can_complete(tmp_path):
+@pytest.mark.parametrize('route', ['anthropic_subscription','glm'])
+async def test_real_memory_contract_uses_native_proxy_while_interactive_can_complete(tmp_path, route):
     from test_background_recovery_regressions import choices, manifest
     from test_character_interior_structured_role import _request, _result
     from companion_daemon.llm import model_call_scope
     from companion_daemon.world_v2.character_interior.core import CharacterInterior
 
-    comp = build_semantic_chat_composition(settings=settings(tmp_path), model_id_prefix='hybrid')
+    model_name = 'GLM-5.3-Flash' if route == 'glm' else 'gemini-3.8-flash-medium'
+    comp = build_semantic_chat_composition(settings=settings(tmp_path, WORLD_V2_BACKGROUND_PROVIDER=route,
+        WORLD_V2_BACKGROUND_MODEL=model_name), model_id_prefix='hybrid')
     entered, release = asyncio.Event(), asyncio.Event()
     requests = []
     async def handler(request):
@@ -171,6 +180,15 @@ async def test_real_memory_contract_uses_native_proxy_while_interactive_can_comp
         if request.url.host == 'localhost':
             entered.set()
             await release.wait()
+            if route == 'glm':
+                assert request.url.path == '/chat/completions'
+                assert body['thinking'] == {'type':'enabled'} and body['reasoning_effort'] == 'low'
+                assert body['tool_choice'] == 'auto' and body['max_tokens'] == 64000
+                return httpx.Response(200, json={'choices':[{'finish_reason':'tool_calls','message':{
+                    'content':None,'tool_calls':[{'id':'t1','type':'function','function':{
+                        'name':body['tools'][0]['function']['name'],
+                        'arguments':_result(status='decision', decision={'payload':choices()})}}]}}],
+                    'usage':{'prompt_tokens':12,'completion_tokens':20,'total_tokens':32}})
             return httpx.Response(200, json={'id':'memory1', 'type':'message',
                 'model':body['model'], 'stop_reason':'tool_use',
                 'content':[{'type':'tool_use','id':'t1','name':body['tools'][0]['name'],
@@ -196,9 +214,9 @@ async def test_real_memory_contract_uses_native_proxy_while_interactive_can_comp
         result = await task
         validated = CharacterInterior._validate_role_result(result, snapshot=request.snapshot,
             request=request, allowed_statuses={'decision'}, require_author_lineage=True)
-        assert validated.author_lineage.model_id == 'gemini-3.8-flash-medium'
+        assert validated.author_lineage.model_id == model_name
         assert result['decision']['payload']['choices'] == choices()['choices']
-        assert requests[0][0] == 'http://localhost:8788/v1/messages'
+        assert requests[0][0] == ('http://localhost:8788/v1/messages' if route == 'anthropic_subscription' else 'http://localhost:8788/chat/completions')
         assert requests[1][1]['model'] == 'deepseek-v4-flash'
         assert comp.world_support_model.token_ledger.snapshot()['known_reported_tokens'] == 32
     finally:

@@ -894,19 +894,19 @@ def build_semantic_chat_composition(
 
     if not model_id_prefix:
         raise ValueError("semantic chat composition requires a model id prefix")
-    subscription_background = settings.world_v2_background_provider == 'anthropic_subscription'
-    if subscription_background:
+    separate_background = settings.world_v2_background_provider != 'deepseek'
+    if separate_background:
         if not (settings.world_v2_background_api_key or '').strip():
-            raise ValueError('subscription background requires WORLD_V2_BACKGROUND_API_KEY')
+            raise ValueError('configured background requires WORLD_V2_BACKGROUND_API_KEY')
         if not settings.world_v2_background_model.strip():
-            raise ValueError('subscription background requires a nonempty model')
+            raise ValueError('configured background requires a nonempty model')
         endpoint = urlsplit(settings.world_v2_background_base_url)
         if endpoint.scheme not in {'http', 'https'} or not endpoint.hostname:
-            raise ValueError('subscription background requires an HTTP endpoint')
+            raise ValueError('configured background requires an HTTP endpoint')
         if endpoint.username or endpoint.password or endpoint.query or endpoint.fragment:
-            raise ValueError('subscription background endpoint cannot embed credentials or query')
+            raise ValueError('configured background endpoint cannot embed credentials or query')
         if world_support_model is not None:
-            raise ValueError('configured subscription background conflicts with injected world support')
+            raise ValueError('configured configured background conflicts with injected world support')
     if type(visible_source_review_version) is not str or visible_source_review_version not in SUPPORTED_REVIEW_VERSIONS:
         raise ValueError("unsupported visible source review version")
     if settings.world_v2_native_slim_core and visible_author_tool_version != "slim":
@@ -1157,10 +1157,10 @@ def build_semantic_chat_composition(
         _close_failed_construction_resources(owned, owned_finalizers)
         raise
     background_model = world_support_model
-    subscription_model = None
-    if subscription_background:
+    configured_background_model = None
+    if separate_background:
         from companion_daemon.subscription_usage import (
-            SubscriptionAnthropicModel, SubscriptionTokenLedger,
+            BackgroundGLMModel, SubscriptionAnthropicModel, SubscriptionTokenLedger,
         )
         try:
             subscription_ledger = SubscriptionTokenLedger(
@@ -1169,21 +1169,25 @@ def build_semantic_chat_composition(
                 weekly_tokens=settings.world_v2_background_tokens_7d,
             )
 
-            def new_subscription_model():
-                provider = SubscriptionAnthropicModel(
+            def new_background_model():
+                is_glm = settings.world_v2_background_provider == 'glm'
+                adapter = BackgroundGLMModel if is_glm else SubscriptionAnthropicModel
+                wire_options = ({'reasoning_effort': settings.world_v2_background_reasoning_effort}
+                                if is_glm else {'tool_result_carrier': settings.world_v2_background_tool_result_carrier})
+                provider = adapter(
                     settings.world_v2_background_api_key,
                     settings.world_v2_background_base_url,
                     settings.world_v2_background_model,
                     token_ledger=subscription_ledger,
                     timeout_seconds=settings.world_v2_background_timeout_seconds,
                     max_completion_tokens=settings.world_v2_background_output_tokens,
-                    tool_result_carrier=settings.world_v2_background_tool_result_carrier,
+                    **wire_options,
                 )
                 owned.append(provider)
                 return provider
 
-            subscription_model = new_subscription_model()
-            background_model = subscription_model
+            configured_background_model = new_background_model()
+            background_model = configured_background_model
         except BaseException:
             _close_failed_construction_resources(owned, owned_finalizers)
             raise
@@ -1223,14 +1227,14 @@ def build_semantic_chat_composition(
             from .character_interior.life_source_review import LifeSourceReviewer
             from .life_content_store import SQLiteImmutableLifeContentStore
 
-            life_review_model = new_subscription_model() if subscription_background else DeepSeekChatModel(
+            life_review_model = new_background_model() if separate_background else DeepSeekChatModel(
                 api_key=effective_deepseek_key,
                 base_url=settings.deepseek_base_url,
                 model=settings.world_v2_life_candidate_review_model,
                 thinking_enabled=False, max_completion_tokens=8192,
                 usage_observer=usage_observer,
             )
-            if not subscription_background:
+            if not separate_background:
                 owned.append(life_review_model)
             evidence_store = SQLiteImmutableLifeContentStore(
                 path=str(settings.database_path), world_id=life_review_world_id,
@@ -1238,16 +1242,16 @@ def build_semantic_chat_composition(
             owned_finalizers.append(evidence_store)
             life_source_reviewer = LifeSourceReviewer(
                 model=life_review_model, evidence_store=evidence_store,
-                timeout_seconds=settings.world_v2_background_timeout_seconds if subscription_background else 22.0,
+                timeout_seconds=settings.world_v2_background_timeout_seconds if separate_background else 22.0,
             )
         text_shadow_observer = None
         if settings.world_v2_ordinary_text_review_mode == "sampled":
             from .text_shadow_observer import TextShadowObserver
             text_shadow_observer = TextShadowObserver(
                 database=settings.database_path, world_id=life_review_world_id,
-                model=subscription_model or source_closure_model.source_model,
+                model=configured_background_model or source_closure_model.source_model,
                 sample_every=settings.world_v2_text_review_sample_every,
-                timeout_seconds=settings.world_v2_background_timeout_seconds if subscription_background else 30,
+                timeout_seconds=settings.world_v2_background_timeout_seconds if separate_background else 30,
             )
             owned_closeables.append(text_shadow_observer)
         character_interior = compose_production_character_interior(
@@ -1263,12 +1267,12 @@ def build_semantic_chat_composition(
             evidence_first_schema=visible_author_evidence_first_schema,
             visible_source_review_version=visible_source_review_version,
             life_source_reviewer=life_source_reviewer,
-            background_character_model=subscription_model,
+            background_character_model=configured_background_model,
             background_turn_lease_seconds=(
                 # Initial + one correction + Recall follow-up; each can include
                 # one Life review budget (including its wire repair).
                 max(120, int(6 * settings.world_v2_background_timeout_seconds + 120))
-                if subscription_background else 120
+                if separate_background else 120
             ),
             reference_wire=settings.world_v2_reference_wire_enabled,
             source_closure_model=None,

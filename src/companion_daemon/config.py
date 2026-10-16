@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     deepseek_debug_api_key: str | None = Field(default=None, alias="DEEPSEEK_DEBUG_API_KEY")
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-v4-flash"
-    world_v2_background_provider: Literal['deepseek', 'anthropic_subscription'] = Field(
+    world_v2_background_provider: Literal['deepseek', 'anthropic_subscription', 'glm'] = Field(
         default='deepseek', alias='WORLD_V2_BACKGROUND_PROVIDER'
     )
     world_v2_background_base_url: str = Field(
@@ -59,6 +59,9 @@ class Settings(BaseSettings):
     )
     world_v2_background_model: str = Field(
         default='gemini-3.8-flash-medium', alias='WORLD_V2_BACKGROUND_MODEL'
+    )
+    world_v2_background_reasoning_effort: Literal['low', 'high', 'max'] = Field(
+        default='low', alias='WORLD_V2_BACKGROUND_REASONING_EFFORT'
     )
     world_v2_background_timeout_seconds: float = Field(
         default=90, gt=0, le=300, alias='WORLD_V2_BACKGROUND_TIMEOUT_SECONDS'
