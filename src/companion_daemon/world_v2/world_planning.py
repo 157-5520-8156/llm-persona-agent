@@ -16,7 +16,8 @@ class PlanningSlot(FrozenModel):
     slot_id: str = Field(pattern=r"^[a-z][a-z0-9_-]{0,63}$")
     title: str = Field(min_length=1, max_length=100)
     detail: str = Field(min_length=1, max_length=400)
-    weekdays: tuple[int, ...] = Field(min_length=1, max_length=7)
+    weekdays: tuple[int, ...] = Field(min_length=1, max_length=7,
+        description="Monday=0, Tuesday=1, Wednesday=2, Thursday=3, Friday=4, Saturday=5, Sunday=6. Titles and details must describe these same days.")
     start_minute: int = Field(ge=0, lt=1440, strict=True)
     duration_minutes: int = Field(ge=1, le=1440, strict=True)
 
@@ -241,7 +242,12 @@ def validate_planning_publication(planning, *, projection, actor_ref, occurrence
                 heads.append(occurrence)
     head = max(heads, key=lambda item: item.settlement_world_revision, default=None)
     if planning.supersedes_occurrence_ref != (head.occurrence_id if head else None):
-        raise ValueError("planning revision must supersede its exact current publication")
+        raise ValueError(
+            "planning revision must supersede its exact current publication: "
+            f"planning_key={planning.planning_key!r} requires supersedes_occurrence_ref="
+            f"{head.occurrence_id if head else 'null (first publication)'}. "
+            "Ordinary environment notices are not planning predecessors."
+        )
     if head is not None:
         from .life_content_reading import selected_world_consequence
         previous = selected_world_consequence(store=store, projection=projection, occurrence=head,

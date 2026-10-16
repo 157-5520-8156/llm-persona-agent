@@ -1835,8 +1835,9 @@ class StructuredCharacterRoleFaculty:
                     schema_dialect=(
                         "deepseek-strict-v7"
                         if bool(getattr(self._model, "supports_strict_tool_choice", False))
-                        else "standard"
+                        else "standard-v8"
                     ),
+                    expanded_attention=self._reference_wire,
                     source_tokens=() if self._reference_wire else tuple(
                         (item.token, item.source_ref)
                         for item in _citeable_catalog_for_request(request).items
@@ -1989,6 +1990,14 @@ class StructuredCharacterRoleFaculty:
             ):
                 raise ValueError("rejected Life result differs from its original author invocation")
         allowed_statuses = sorted(self._allowed_statuses(request, contract=contract))
+        if request.recall_completed:
+            allowed_statuses.remove("recall_request")
+        if (request.purpose == "world_stimulus_appraisal" and request.capability_manifest is not None
+                and request.capability_manifest.payload.get("world_life_response") is not None):
+            allowed_statuses.remove("no_change")
+        # Appraisal always returns its result proposal, including no_change.
+        # Other experience purposes retain their own empty/no-change shapes.
+        typed_proposal_only = request.purpose == "world_stimulus_appraisal" and "decision" not in allowed_statuses
         from .continuity_view import CHOICE_PURPOSES, continuity_profile
 
         current_choice = self._living_frame_json is not None and request.purpose in CHOICE_PURPOSES
@@ -2094,7 +2103,7 @@ class StructuredCharacterRoleFaculty:
                         "proposals": [],
                     },
                     "typed_proposal": {
-                        "status": "<transition or no_change as allowed>",
+                        "status": "|".join(status for status in allowed_statuses if status != "recall_request"),
                         "summary": "<one short role-authored instant private self>",
                         "attended_source_refs": ["<one supplied pinned source ref>"],
                         "decision": None,
@@ -2108,6 +2117,14 @@ class StructuredCharacterRoleFaculty:
                 ),
             },
         }
+        wire = user_payload["wire_contract"]
+        if typed_proposal_only:
+            wire["decision_shape"] = None
+            wire["placement_rules"].pop("generic_decision")
+            wire["shape_example"].pop("generic_decision")
+        elif not contract.proposals_allowed:
+            wire["placement_rules"].pop("typed_proposal")
+            wire["shape_example"].pop("typed_proposal")
         if request.purpose == "memory_consolidation" and request.capability_manifest is not None:
             from ..memory_consolidation_contract import HOST_SOURCE_BINDING
             if request.capability_manifest.payload.get("source_binding") == HOST_SOURCE_BINDING:
@@ -2276,14 +2293,18 @@ class StructuredCharacterRoleFaculty:
                     "conversational outcome, motive, tone, or action. Selective recall is optional "
                     "when available. The capability manifest describes only choices the system can "
                     "carry out. Return exactly one JSON object with the supplied wire fields, never "
-                    "Markdown. For a generic decision, use the nested shape "
-                    + ("decision:{source_refs:[...],payload:{...}}"
-                       if "source_refs" in user_payload["wire_contract"]["decision_shape"]
-                       else "decision:{payload:{...}}")
-                    + " and put all purpose fields in "
-                    "payload. For a typed-proposal purpose, keep decision null and put the "
-                    "complete proposal in proposals. Never flatten a purpose payload into the "
-                    "outer decision field. Cite only supplied source refs and capability tokens. Do not return "
+                    "Markdown. "
+                    + ("Keep outer decision null and put the complete purpose-specific object in proposals. "
+                       "Its semantic decision and other purpose fields belong inside that object. "
+                       if typed_proposal_only else
+                       "For a generic decision, use the nested shape "
+                       + ("decision:{source_refs:[...],payload:{...}}"
+                          if "source_refs" in wire["decision_shape"] else "decision:{payload:{...}}")
+                       + " and put all purpose fields in payload. "
+                       + ("For a typed-proposal purpose, keep decision null and put the complete proposal in proposals. "
+                          "Never flatten a purpose payload into the outer decision field. "
+                          if contract.proposals_allowed else ""))
+                    + "Cite only supplied source refs and capability tokens. Do not return "
                     "author audit fields; the trusted boundary adds those after the provider call."
                     " 来源只写 citeable_sources 里的 id 或原样抄 ref，不要手写拼接。"
                     + (
@@ -3632,7 +3653,6 @@ class StructuredCharacterRoleFaculty:
         view: dict[str, object] = {
             "purpose": contract.purpose,
             "payload_contract": contract.payload_contract,
-            "payload_is_open_json_object": True,
         }
         if contract.capability_kind is not None:
             view["capability_kind"] = contract.capability_kind

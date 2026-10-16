@@ -208,7 +208,7 @@ class _QualifiedRoleModel:
         if tools is not None:
             assert tool_choice == {
                 "type": "function",
-                "function": {"name": "character_role_world_stimulus_appraisal_v1"},
+                "function": {"name": "character_role_world_stimulus_appraisal_v8"},
             }
         return await self.complete(messages, temperature=temperature)
 

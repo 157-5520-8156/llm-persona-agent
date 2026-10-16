@@ -1889,10 +1889,10 @@ async def test_world_stimulus_appraisal_uses_one_versioned_forced_tool(
     tools, tool_choice = model.tool_calls[0]
     assert tool_choice == {
         "type": "function",
-        "function": {"name": "character_role_world_stimulus_appraisal_v1"},
+        "function": {"name": "character_role_world_stimulus_appraisal_v8"},
     }
     assert len(tools) == 1
-    assert tools[0]["function"]["name"] == "character_role_world_stimulus_appraisal_v1"
+    assert tools[0]["function"]["name"] == "character_role_world_stimulus_appraisal_v8"
 
 
 @pytest.mark.asyncio

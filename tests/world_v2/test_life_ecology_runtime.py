@@ -1540,7 +1540,8 @@ async def test_due_npc_does_not_replace_an_exact_protagonist_attempt_result(atte
 
 
 @pytest.mark.asyncio
-async def test_failed_old_consequence_yields_one_due_slot_without_losing_retry():
+@pytest.mark.parametrize("family,mixed", [("consequence", False), ("event_details", False), ("consequence", True), ("event_details", True)])
+async def test_failed_old_causal_work_yields_one_due_slot_without_losing_retry(family, mixed):
     event = _event("fair-consequence")
     ledger, triggers = _Ledger(event), _TriggerStore(claims=["owned", "owned"])
 
@@ -1550,8 +1551,19 @@ async def test_failed_old_consequence_yields_one_due_slot_without_losing_retry()
         result_calls = 0
 
         def pending_completed_activity_ref(self, *, after_world_revision=None):
+            if family != "consequence" and not mixed:
+                return None
             self.limits.append(after_world_revision)
             return "event:old-completion" if self.old_pending and after_world_revision is None else None
+
+        def pending_world_event_detail_ref(self, *, after_world_revision=None):
+            if family != "event_details" and not mixed:
+                return None
+            self.limits.append(after_world_revision)
+            return "event:old-detail" if self.old_pending and after_world_revision is None else None
+
+        async def advance_world_event_detail_once(self, **kwargs):
+            return await self.advance_completed_activity_once(**kwargs)
 
         async def advance_completed_activity_once(self, **kwargs):
             self.result_calls += 1
@@ -1567,14 +1579,15 @@ async def test_failed_old_consequence_yields_one_due_slot_without_losing_retry()
     runtime = LifeEcologyRuntime(ledger=ledger, trigger_store=triggers, media_followup=_Media(),
                                 life_development_followup=development,
                                 availability=LifeEcologyAvailability(state="installed_and_active"))
-    schedule("technical_failure.consequence.life_development.source_review_failed")
+    schedule(f"technical_failure.{family}.life_development.source_review_failed")
     await runtime.advance_once(wake_event_ref=event.event_id, trace_id="fair", correlation_id="fair")
     assert development.result_calls == 0 and len(development.calls) == 1
-    assert development.limits == [7]  # Only genuinely new causal results may preempt.
+    assert development.limits == ([7, 7] if mixed else [7])  # Only genuinely new causal results may preempt.
     schedule("life_development_no_op")
     await runtime.advance_once(wake_event_ref=event.event_id, trace_id="retry", correlation_id="retry")
     assert development.result_calls == 1 and len(development.calls) == 1
-    assert triggers.completed[-1][2] == "technical_failure.consequence.life_development.source_review_failed"
+    retried_family = "consequence" if mixed else family
+    assert triggers.completed[-1][2] == f"technical_failure.{retried_family}.life_development.source_review_failed"
     assert development.old_pending  # No fake settlement, no deletion of failed work.
 
 

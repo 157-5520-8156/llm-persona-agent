@@ -74,11 +74,18 @@ def test_basis_schema_distinguishes_event_authority_from_visible_entity_id():
     assert not validator.is_valid(["occurrence:visible-in-context"])
 
 
-def test_unchanged_prior_opportunities_keep_their_committed_basis_only(tmp_path):
+@pytest.mark.parametrize("with_planning", [False, True])
+def test_unchanged_prior_opportunities_keep_their_committed_basis_only(tmp_path, with_planning):
     from companion_daemon.world_v2.world_outlook import validate_draft
     ledger, wake, _, _, runtime = setup(tmp_path, lambda w: [])
     try:
-        prior = WorldOutlookDraft.model_validate_json(json.dumps(draft_value(wake)))
+        value = draft_value(wake)
+        if with_planning:
+            from test_world_planning import planning
+            value["opportunities"][0]["execution"] = {
+                "kind": "planning", "text": "学校发布课程安排。", "planning": planning().model_dump(mode="json"),
+            }
+        prior = WorldOutlookDraft.model_validate_json(json.dumps(value))
         draft = prior.model_copy(update={"parent_revision": "a" * 64})
         kwargs = dict(projection=ledger.project(), actor_ref=draft.actor_ref,
                       parent_revision=draft.parent_revision, basis_refs=("event:new-clock",),
@@ -86,6 +93,8 @@ def test_unchanged_prior_opportunities_keep_their_committed_basis_only(tmp_path)
         validate_draft(draft, **kwargs)
         schema = outlook_author_schema(basis_refs=("event:new-clock",),
                                        prior_opportunities=prior.opportunities)
+        assert schema["$defs"]["OutlookOpportunity"]["anyOf"][1]["enum"] == [
+            node.model_dump(mode="json") for node in prior.opportunities]
         validator = Draft202012Validator(schema)
         # Exact persisted form includes old optional/default execution fields.
         value = draft.model_dump(mode="json")

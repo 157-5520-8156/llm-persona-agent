@@ -1967,7 +1967,7 @@ class LifeDevelopmentRuntime:
             "world_id": self._ledger.world_id, "active_attempt_event_ref": event_ref,
         })
 
-    def pending_world_event_detail_ref(self):
+    def pending_world_event_detail_ref(self, *, after_world_revision=None):
         if self._world_outlook is None:
             return None
         state = self._ledger.project()
@@ -1983,7 +1983,12 @@ class LifeDevelopmentRuntime:
             if not value.get("script", {}).get("prepare_details") or value.get("central_authorship", {}).get("event_detail_origin"):
                 continue
             source = "event:activate:" + occurrence.occurrence_id
-            if self._ledger.lookup_event_commit(source) is None:
+            located = self._ledger.lookup_event_commit(source)
+            if located is None:
+                continue
+            # This is scheduling freshness at a complete projection boundary,
+            # not source authority; advance_once still validates the exact event.
+            if after_world_revision is not None and located[1].world_revision <= after_world_revision:
                 continue
             proposal_id = self._event_detail_proposal_id(source)
             if self._ledger.lookup_event_commit("event:life-development:proposal:" + _digest(proposal_id)) is None:

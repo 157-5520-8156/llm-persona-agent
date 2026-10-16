@@ -122,6 +122,23 @@ async def test_outlook_publishes_planning_into_real_role_context_without_attenda
         experiences = [e for e in agenda.entries if e.kind == "experience"]
         assert experiences and all(e.content_state == "read" for e in experiences)
         assert all(e.ends_at < at(16, 14) for e in experiences), "experiencing a notice is not attending its future class"
+        # A current revision uses the exact published planning, whereas the
+        # previously offered first edition retains its original null predecessor.
+        from companion_daemon.world_v2.world_outlook import WorldOutlookDraft
+        runtime = app._life_ecology._world_outlook
+        original_draft = runtime.store.head()[1]
+        runtime._validate_offered_nodes(original_draft, projection=state)
+        revised = original_draft.model_dump(mode="json")
+        new_node = revised["opportunities"][0]
+        new_node["opportunity_id"] += "-revision"
+        with pytest.raises(ValueError, match="exact current publication"):
+            runtime._validate_offered_nodes(WorldOutlookDraft.model_validate_json(json.dumps(revised)), projection=state)
+        new_node["execution"]["planning"]["supersedes_occurrence_ref"] = values[0].occurrence_ref
+        runtime._validate_offered_nodes(WorldOutlookDraft.model_validate_json(json.dumps(revised)), projection=state)
+        rewritten = original_draft.model_dump(mode="json")
+        rewritten["opportunities"][0]["execution"]["planning"]["title"] = "不能重写已发布的节点"
+        with pytest.raises(ValueError, match="cannot be rewritten"):
+            runtime._validate_offered_nodes(WorldOutlookDraft.model_validate_json(json.dumps(rewritten)), projection=state)
         assert not state.plans
         assert not any(e.event_type == "ActivityStarted" for e in state.committed_world_event_refs)
         await app.respond(InboundTurn(platform="test", platform_user_id="user.1", platform_message_id="planning-question",

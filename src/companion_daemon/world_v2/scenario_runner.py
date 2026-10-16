@@ -368,7 +368,12 @@ class ScenarioVerificationError(AssertionError):
 # .112 types source reading as .2; a complete .111 control and current run
 # differ only in npc_world_impact.01's replay identity. Per-case behavior and
 # all source/receipt predicates are unchanged; see the dated .112 audit.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.112"
+# .114 updates the current offline stimulus fixture from standard tool v1 to
+# v8 and records task-specific current role prompts. The complete 4a7ad079
+# control reproduces .112; only npc_world_impact.01's replay identity changes,
+# with every behavioral manifest field unchanged.
+# The withdrawn .113 audit remains intact. See the dated .114 audit.
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.114"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -697,7 +702,7 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.112
 # frozen; changing their historical maximum changes only derived replay
 # identities in all 120 offline cases, not outputs or predicates. See
 # docs/audits/scenario-baseline-108-2026-09-30.json.
-FROZEN_OFFLINE_SUITE_MANIFEST_HASH = "8db27254d8e899d762f567e47a0055e97d2a68429e2be74add8769dd9ee29204"
+FROZEN_OFFLINE_SUITE_MANIFEST_HASH = "74747be5cb9cd26fe1bf795ad4522a2b6a2e9dce55d8aebbd25c80d872a1089e"
 
 
 class _FixedScenarioRouter:
@@ -886,7 +891,7 @@ class _FixedCharacterInteriorScenarioModel(FakeCompanionModel):
             purpose = request.get("inner_turn", {}).get("purpose")
             expected_tool = {
                 "world_stimulus_appraisal": (
-                    "character_role_world_stimulus_appraisal_v1"
+                    "character_role_world_stimulus_appraisal_v8"
                 ),
                 "outcome_selection": "character_role_outcome_selection_v1",
                 "expression_reconsideration": (

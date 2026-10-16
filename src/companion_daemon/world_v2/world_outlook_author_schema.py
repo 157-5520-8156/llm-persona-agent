@@ -69,7 +69,9 @@ def outlook_author_schema(*, basis_refs=None, npc_privacy_floors=(), prior_oppor
     # actual fields, types and constraints makes the richer schema affordable.
     def without_annotations(value):
         if isinstance(value, dict):
-            return {key: without_annotations(child) for key, child in value.items()
+            # Enum/const contain literal authored data, not schema nodes.
+            # In particular, a prior timetable's title is a required value.
+            return {key: child if key in {"enum", "const"} else without_annotations(child) for key, child in value.items()
                     if not (key == "default" or key == "title" and isinstance(child, str))}
         if isinstance(value, list):
             return [without_annotations(child) for child in value]

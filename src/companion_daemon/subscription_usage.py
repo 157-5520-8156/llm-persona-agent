@@ -1,6 +1,7 @@
 """Durable token admission for a subscription route; never infer a CNY price."""
 
 from contextlib import closing
+from copy import deepcopy
 import json
 from pathlib import Path
 import sqlite3
@@ -9,7 +10,7 @@ import uuid
 
 import httpx
 
-from .llm import DeepSeekChatModel, ProviderCircuitBreaker, admit_turn_provider_call, complete_with_timeout
+from .llm import DeepSeekChatModel, ProviderCircuitBreaker, ProviderResultFormatError, admit_turn_provider_call, complete_with_timeout
 from .llm_anthropic import AnthropicChatModel
 
 
@@ -130,3 +131,64 @@ class BackgroundGLMModel(_BackgroundTokenBudget, DeepSeekChatModel):
         if reasoning_effort not in {"low", "high", "max"}:
             raise ValueError("GLM-5.3 reasoning effort must be low, high or max")
         super().__init__(*args, thinking_enabled=True, reasoning_effort=reasoning_effort, **kwargs)
+        self.model_version = self.model + ":object-tool-root.2"
+
+
+    @staticmethod
+    def _root_union(tool):
+        schema = tool.get("function", {}).get("parameters", {})
+        return any(key in schema for key in ("anyOf", "oneOf"))
+
+    def request_payload(self, messages, *, temperature, json_object=False, tools=None, tool_choice=None):
+        if tools:
+            if isinstance(tool_choice, dict):
+                # Reviewers also call this adapter directly. Preserve their
+                # one named result while using GLM's advertised auto carrier.
+                from .world_v2.character_interior.single_tool_transport import resolve_single_tool_transport
+                name = tools[0].get("function", {}).get("name")
+                tool_choice = resolve_single_tool_transport(
+                    provider=self, tools=tools, tool_choice=tool_choice,
+                    identity={"tool_name": name},
+                ).tool_choice
+            elif tool_choice is not None and tool_choice != "auto":
+                raise ValueError("GLM supports only auto or one exact named result")
+            tools = deepcopy(tools)
+            for tool in tools:
+                tool["function"].pop("strict", None)
+        if tools and any(self._root_union(tool) for tool in tools):
+            if len(tools) != 1:
+                raise ValueError("GLM root-union transport requires one declared tool")
+            # Reuse the schema-only expander before moving its root, so local
+            # references retain their meaning. The original role schema is untouched.
+            from .world_v2.character_interior.local_schema_references import expand_local_schema_references
+            function = tools[0]["function"]
+            function["parameters"] = {
+                "type": "object",
+                "properties": {"result": expand_local_schema_references(function["parameters"])},
+                "required": ["result"], "additionalProperties": False,
+            }
+        return super().request_payload(messages, temperature=temperature, json_object=json_object,
+                                       tools=tools, tool_choice=tool_choice)
+
+    def _response_tool_content(self, message, *, tools, tool_choice, expected_tool_name):
+        raw = super()._response_tool_content(message, tools=tools, tool_choice=tool_choice,
+                                            expected_tool_name=expected_tool_name)
+        if raw is None or not any(self._root_union(tool) for tool in tools):
+            return raw
+        def unique_members(pairs):
+            result = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("GLM tool result contains duplicate keys")
+                result[key] = value
+            return result
+        try:
+            envelope = json.loads(raw, object_pairs_hook=unique_members)
+            if not isinstance(envelope, dict) or set(envelope) != {"result"} or not isinstance(envelope["result"], dict):
+                raise ValueError("GLM root-union tool needs its exact result object envelope")
+            # Remove only the declared transport wrapper. Original role/source
+            # validation still receives the complete model-authored result.
+            return json.dumps(envelope["result"], ensure_ascii=False, allow_nan=False)
+        except (ValueError, RecursionError) as exc:
+            raise ProviderResultFormatError(raw_result=raw,
+                detail=f"invalid GLM tool result envelope: {exc}") from exc

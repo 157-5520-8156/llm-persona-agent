@@ -1,3 +1,21 @@
+Candidate GLM calendar integration repairs (2026-10-17), base4a7ad079; real acceptance remains in progress.
+Shared GLM object-root tool adapter .2 now handles exact forced-name→auto/nonstrict transport for all callers,
+including Life Source Review; original logical requests, exact returned tool identity and local validation remain.
+Standard-v8 WorldStimulus prompt/schema aligns mandatory responses and optional fields; historical dialects unchanged.
+Outlook preserves literal prior planning enum data, checks unpublished planning predecessors during same-author
+correction, and keeps published/offered nodes immutable. Biography/planning priorities now apply before source admission.
+Old consequence/detail failures share one yielding slot so they cannot alternate and starve independent work.
+Frozen full-final-v7:10777passed/19skipped/2xfailed/1existingwarning,1278.41s; source hashes unchanged.
+Ruff/diff and Standards/Spec closed. Scenario baseline .114 changes only one mock tool lineage; no behavioral relaxation.
+Live small-World probe: GLM corrected first-publication predecessor and published World.3; one reviewed Experience
+reached the calendar. Its generic campus slots/weekday prose were NOT content acceptance. Source audit found only
+12 everyday prehistory records, so this is not full-character qualification; all old probes/failures remain retained.
+Main acceptance now uses a new clone of full candidate live-v17 (1259 prehistory), named candidate-calendar-full-v1.
+Its first old-Outlook project_at is cold-replaying history; no bypass of semantic hash proof. Warm caches are bounded
+and evictable; cold recovery cost is not qualified. No cue-only recall patch or archive approval rebinding was added.
+Evidence: output/private-audits/candidate-calendar-20261016/{continuation,source-lineage,verification-checkpoint}.json.
+8792 remains a candidate CaptureDelivery view, not QQ. Original production8787/PID79910 remains untouched.
+
 Background provider switched in candidate configuration (2026-10-16), base9bf45cbf.
 New route glm / https://api.edgefn.net/v1 / GLM-5.3-Flash; enabled thinking/low,64000output,180s deadline.
 Existing background purposes/role lineage/source gates retained; interactive and visible review remain DeepSeek. Independent circuit, token admission and unknown reservations reused; no fallback.

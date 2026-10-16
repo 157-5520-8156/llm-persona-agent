@@ -873,6 +873,13 @@ def _rank(
     logical_time: datetime | None,
     query_text: str = "",
 ) -> int:
+    # Apply the existing grounding priority before bounded selection and
+    # source admission, not only after optional episodes consumed that budget.
+    if slice_name == "world_life":
+        if isinstance(item, BiographicalWorldContextItem):
+            return 10_000
+        if isinstance(item, WorldLifeContextItem) and item.world_planning is not None:
+            return 9_950
     if slice_name in _READ_SCORE_SLICES:
         recency_bp = _recency_bp(item, logical_time)
         if slice_name == "relevant_facts" and isinstance(item, FactRecallItem):
@@ -3176,11 +3183,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                 ResolvedItemMetadata(
                     item_ref=item_ref,
                     rank_score_bp=(
-                        10_000
-                        if isinstance(item, BiographicalWorldContextItem)
-                        else 9_950
-                        if isinstance(item, WorldLifeContextItem) and item.world_planning is not None
-                        else max(9_900, _rank(slice_name, item, query.logical_time))
+                        max(9_900, _rank(slice_name, item, query.logical_time))
                         if (slice_name, item_ref) in rank_overrides
                         else _rank(slice_name, item, query.logical_time)
                     ),

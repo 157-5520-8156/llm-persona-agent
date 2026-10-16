@@ -1,0 +1,212 @@
+{
+  "contract": "world-v2-offline-mechanism-rebaseline.1",
+  "status": "verified_offline_only",
+  "baseline_commit": "4a7ad079",
+  "old_version": "world-v2-offline-mechanism-baseline.112",
+  "old_manifest_hash": "8db27254d8e899d762f567e47a0055e97d2a68429e2be74add8769dd9ee29204",
+  "new_version": "world-v2-offline-mechanism-baseline.114",
+  "new_manifest_hash": "74747be5cb9cd26fe1bf795ad4522a2b6a2e9dce55d8aebbd25c80d872a1089e",
+  "new_run_hash_with_old_version": "e91b0852db9e2c27c538ec90300056c66785d26d6f9a9daca4782eb90aa4edb6",
+  "case_count": 120,
+  "changed_fields": {
+    "npc_world_impact.01": [
+      "replay_hash"
+    ]
+  },
+  "all_predicates_passed": true,
+  "all_case_replays_passed": true,
+  "fixture_change": {
+    "scope": "current offline _FixedCharacterInteriorScenarioModel required-tool assertion only",
+    "before": "character_role_world_stimulus_appraisal_v1",
+    "after": "character_role_world_stimulus_appraisal_v8",
+    "authored_result_payload_changed": false,
+    "scenario_corpus_changed": false,
+    "scenario_test_assertions_changed": false,
+    "golden_historical_payloads_changed": false
+  },
+  "red_control": {
+    "verification_errors": [
+      "missing_required_events:AffectEpisodeOpened,AppraisalAccepted",
+      "outcome_character_interior_chain_incomplete",
+      "outcome_character_interior_model_call_budget_exceeded",
+      "next_reply_did_not_consume_outcome_affect_context"
+    ],
+    "background_work_statuses": [
+      "accepted",
+      "technical_failure"
+    ],
+    "background_model_calls": 1,
+    "artifact": "output/private-audits/candidate-calendar-20261016/scenario-rebaseline-20261017/current-red/manifest.json"
+  },
+  "baseline_control": "A complete source archive of 4a7ad079, without local .env, reproduced the committed .112 manifest exactly across all 120 cases.",
+  "current_control": "The final legacy-capability-safe task prompt and GLM adapter .2 source snapshot passed all 120 cases. A separate process passed the unchanged original test_scenario_runner.py (15 tests), including the complete-suite .114 manifest guard. All 716 source Python files matched the final frozen snapshot after verification.",
+  "projection_comparison": {
+    "scenario": "npc_world_impact.01",
+    "unchanged_domain_fields": [
+      "appraisals",
+      "affect_episodes",
+      "plans",
+      "world_occurrences",
+      "experiences",
+      "facts",
+      "memory_candidates",
+      "relationship_states",
+      "relationship_signals",
+      "private_impressions",
+      "threads",
+      "commitments",
+      "npcs",
+      "goals",
+      "resources"
+    ],
+    "nonempty_unchanged_domain_counts": {
+      "appraisals": 1,
+      "affect_episodes": 1,
+      "world_occurrences": 1
+    },
+    "all_stored_message_texts_equal": true,
+    "changed_leaf_count": 352,
+    "changed_leaf_types": "strings only",
+    "changed_leaf_field_names": [
+      "acceptance_event_payload_hash",
+      "acceptance_event_ref",
+      "acceptance_id",
+      "action_hash",
+      "action_id",
+      "attempt_id",
+      "attempt_ids",
+      "audit_hash",
+      "author_model_call_id",
+      "author_request_hash",
+      "author_response_hash",
+      "beat_hash",
+      "beat_id",
+      "beat_ref",
+      "budget_reservation_id",
+      "capability_ref",
+      "capsule_id",
+      "causal_change_id",
+      "causation_id",
+      "change_id",
+      "completed_trigger_ids",
+      "decision_hash",
+      "deliberation_result_id",
+      "event_id",
+      "event_payload_hash",
+      "event_ref",
+      "expression_beat_id",
+      "expression_change_hash",
+      "expression_change_id",
+      "expression_plan_id",
+      "idempotency_key",
+      "inner_turn_id",
+      "intent_hash",
+      "intent_id",
+      "intent_ref",
+      "manifest_hash",
+      "materialized_payload_ref",
+      "message_hash",
+      "model_call_id",
+      "model_result_ref",
+      "owner_id",
+      "payload_hash",
+      "payload_ref",
+      "plan_id",
+      "private_self_lineage_hash",
+      "proposal_event_payload_hash",
+      "proposal_event_ref",
+      "proposal_hash",
+      "proposal_id",
+      "proposal_ids",
+      "provider_ref",
+      "receipt_id",
+      "request_hash",
+      "reservation_hash",
+      "reservation_id",
+      "response_hash",
+      "result_id",
+      "runtime_outcome_ref",
+      "semantic_hash",
+      "settlement_id",
+      "snapshot_hash",
+      "snapshot_id",
+      "source_event_id",
+      "target_id",
+      "trigger_id",
+      "trigger_ref"
+    ],
+    "exact_difference_artifact": "output/private-audits/candidate-calendar-20261016/scenario-rebaseline-20261017/legacy-capability-npc-projection-differences.json",
+    "explanation": "The outcome-selection and world-stimulus author request identities change with current task-specific prompts/tool v8; both author response hashes remain unchanged. Derived audit hashes propagate into the following two inbound request/response envelope identities and their Action/receipt identifiers. Every changed projection leaf is an existing identity/ref/hash string; text, status, time, amount and all other values remain unchanged. All source/effect-once/replay predicates remain enforced."
+  },
+  "preserved_withdrawn_audit": "docs/audits/scenario-baseline-113-2026-10-11.json",
+  "validation": {
+    "original_scenario_test_file": "15 passed in 42.09s",
+    "network": "socket.socket.connect rejected during all scenario controls; fake providers only",
+    "real_provider_calls": 0,
+    "qq_sends": 0,
+    "only_current_source_change_during_frozen_runs": "The source-priority follow-up changed only ledger_context_resolver.py relative to the preceding .114 verification. All 716 source Python hashes matched the new frozen snapshot after the unchanged original scenario test file passed; the .114 manifest is unchanged.",
+    "independent_schema_repair": {
+      "file": "src/companion_daemon/world_v2/world_outlook_author_schema.py",
+      "scope": "Preserve enum/const literal data, including prior planning titles; no scenario producer uses this Outlook-author schema path. Included in final frozen guard snapshot.",
+      "focused_log": "output/private-audits/candidate-calendar-20261016/prior-planning-schema-green.log"
+    },
+    "independent_adapter_fix": {
+      "file": "src/companion_daemon/subscription_usage.py",
+      "scope": "Versioned GLM .2 maps one exactly named forced tool to auto and removes only unsupported function.strict on a copy. Fixed scenario providers never invoke this adapter. Its separate 74-test evidence is not inferred from scenario equality.",
+      "focused_log": "output/private-audits/candidate-calendar-20261016/glm-review-auto-green-v2.log"
+    }
+  },
+  "evidence": {
+    "root": "output/private-audits/candidate-calendar-20261016/scenario-rebaseline-20261017",
+    "baseline_manifest": "output/private-audits/candidate-calendar-20261016/scenario-rebaseline-20261017/baseline/manifest.json",
+    "current_manifest_with_old_label": "output/private-audits/candidate-calendar-20261016/scenario-rebaseline-20261017/legacy-capability-with-old-label-manifest.json",
+    "versioned_manifest": "output/private-audits/candidate-calendar-20261016/scenario-rebaseline-20261017/legacy-capability-final/manifest.json",
+    "tests": "output/private-audits/candidate-calendar-20261016/scenario-rebaseline-20261017/priority-scenario-tests.log",
+    "source_snapshots": "output/private-audits/candidate-calendar-20261016/scenario-rebaseline-20261017/priority-source-snapshots.json",
+    "reproducible_current_source_patch": "output/private-audits/candidate-calendar-20261016/scenario-rebaseline-20261017/priority-current-source-diff.patch"
+  },
+  "rationale": "The current offline scenario model must accept the live non-strict stimulus tool v8. Task-specific prompts remove conflicting placement examples, unsupported presented statuses and an unconditional life_responses mention when that capability is absent. Authored fixture payloads and canonical validators are unchanged. Rebaseline only measured audit/replay identity drift; no corpus, original test assertion or historical golden payload changes. The withdrawn .113 audit and both earlier uncommitted .114 candidates remain intact.",
+  "limitations": "Fixed fake provider mechanism evidence only; no real-model semantic, long-horizon, QQ, latency or deployment qualification claim.",
+  "prompt_change": {
+    "scope": "Current presentation only; canonical and native tool validators unchanged",
+    "typed_only": "World stimulus keeps outer decision null and places the full semantic object inside proposals; unrelated generic example removed",
+    "decision_only": "Tasks forbidding proposals no longer receive the unrelated typed example",
+    "statuses": "Presented states follow required life_responses and recall_completed; private-impression empty/no_change behavior is preserved",
+    "misleading_open_json_flag_removed": true,
+    "legacy_capability_scope": "The shared typed-result system sentence does not name life_responses unconditionally; capability-specific instructions continue to supply that field only when offered."
+  },
+  "superseded_uncommitted_candidates": [
+    {
+      "version": "world-v2-offline-mechanism-baseline.114",
+      "manifest_hash": "e1f59522d94c541307d5d6335943e35ce8ec7d610072e64219ebc143756c7332",
+      "audit_copy": "output/private-audits/candidate-calendar-20261016/scenario-rebaseline-20261017/pre-task-shape-baseline-114.json",
+      "audit_sha256": "67531e9feb0d578ad8b520fba03ed547045bb5a8bb5f2d530852ffebc0c94c89",
+      "reason": "The final prompt repair landed before this baseline was committed; retain the previous measured candidate privately and finalize the same .114 version, not .115."
+    },
+    {
+      "version": "world-v2-offline-mechanism-baseline.114",
+      "manifest_hash": "e384850a6814356d101435976d7453c7e5b7da70778ac4d92079fe53f7ad3b86",
+      "audit_copy": "output/private-audits/candidate-calendar-20261016/scenario-rebaseline-20261017/pre-legacy-capability-baseline-114.json",
+      "audit_sha256": "0d9bcac24c072ae60ac2863117083e29f53bfbb9f07c16dd24fe9dbe49e9dc43",
+      "reason": "Before commit, the final shared system sentence stopped naming life_responses when that capability is absent. GLM adapter .2 was included in the frozen source; fixed scenario providers do not invoke it. Finalize the same .114 rather than create .115."
+    }
+  ],
+  "source_priority_followup": {
+    "file": "src/companion_daemon/world_v2/ledger_context_resolver.py",
+    "change": "Apply existing BiographicalWorldContextItem=10000 and published world_planning=9950 ranks before bounded selection and source admission; remove duplicate late metadata ranking.",
+    "scope": "Selection order only. No new budget, source/actor/privacy permission, event mutation or role choice.",
+    "focused_checks": "84 passed in 4.16s; 16/300/1000 recent-event priority controls were red before the repair.",
+    "focused_log": "output/private-audits/candidate-calendar-20261016/planning-source-priority-green.log",
+    "red_log": "output/private-audits/candidate-calendar-20261016/planning-source-priority-red.log",
+    "frozen_world_probes": [
+      "output/private-audits/candidate-calendar-20261016/context-diagnostic-v2.log",
+      "output/private-audits/candidate-calendar-20261016/context-diagnostic-v3.log"
+    ],
+    "probe_observation": "At the same logged cursor 1775, the biographical item was absent before the source-admission change and present afterward with 1249 characters; established limits remained in place.",
+    "scenario_compatibility": "The unchanged original scenario test file, including its complete 120-case strict manifest guard, reproduces the existing .114 manifest exactly. No manifest or version change is required; prior per-case/projection comparison remains applicable.",
+    "preserved_prior_audit": "output/private-audits/candidate-calendar-20261016/scenario-rebaseline-20261017/pre-priority-baseline-114.json",
+    "preserved_prior_audit_sha256": "dd4bacb119a951c5d092b1a5439d28b39a667ca8a8fd4541c216f0157b1b1730",
+    "source_file_count": 716,
+    "source_drift_after_test": false
+  }
+}

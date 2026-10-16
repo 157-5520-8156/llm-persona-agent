@@ -250,6 +250,25 @@ async def test_invalid_author_gets_one_correction_and_failure_is_not_a_character
         runtime.close()
 
 
+@pytest.mark.asyncio
+async def test_mixed_response_branches_get_precise_correction_without_accepting_extra_fields(tmp_path):
+    ledger, wake, store, author, runtime = setup(tmp_path, lambda w: [
+        {"decision": "revise", "draft": draft_value(w), "review_at": None, "reason": None},
+        {"decision": "revise", "draft": draft_value(w)},
+    ])
+    before = ledger.project()
+    try:
+        result = await runtime.refresh(projection=before, context={},
+            manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)))
+        assert result["status"] == "ready" and store.head() is not None
+        assert len(author.calls) == 2 and ledger.project() == before
+        correction = author.calls[1][-1]["content"]
+        assert "revise requires exactly decision, draft" in correction
+        assert "Do not copy keep fields onto revise" in correction
+    finally:
+        runtime.close()
+
+
 def test_cycles_and_unknown_threads_are_rejected():
     value = draft_value(SimpleNamespace(event_id="clock"))
     value["opportunities"][0]["after_opportunities"] = ["materials"]
@@ -1087,5 +1106,35 @@ async def test_recovered_author_response_keeps_original_model_identity(tmp_path,
         assert result["status"] == "ready"
         assert store.head()[2]["model"] == author.model
         assert len(author.calls) == 1 and replacement.calls == []
+    finally:
+        runtime.close()
+
+
+
+def _planning_draft(wake, supersedes=None):
+    draft = draft_value(wake)
+    node = draft['opportunities'][0]
+    node['execution'] = {'kind':'planning', 'text':'学校发布课程安排。', 'privacy_class':'private', 'duration_minutes':1,
+        'planning': {'contract':'world-planning.1','planning_key':'autumn-courses','title':'秋季学期课程',
+            'summary':'学校安排的课程，不代表角色出席。','starts_on':NOW.date().isoformat(),
+            'ends_on':(NOW+timedelta(days=100)).date().isoformat(),'timezone_name':'Asia/Shanghai',
+            'slots':[{'slot_id':'literature','title':'文学课','detail':'学校安排的文学课。','weekdays':[0,2],
+                'start_minute':840,'duration_minutes':90}], 'exceptions':[], 'supersedes_occurrence_ref':supersedes}}
+    draft['opportunities']=[node]
+    return draft
+
+@pytest.mark.asyncio
+async def test_planning_invalid_predecessor_is_corrected_before_install(tmp_path):
+    ledger,wake,store,author,runtime = setup(tmp_path, lambda w:[
+        {'decision':'revise','draft':_planning_draft(w,'occurrence:old-ordinary-notice')},
+        {'decision':'revise','draft':_planning_draft(w)}])
+    before=ledger.project()
+    try:
+        result=await runtime.refresh(projection=before,context={},manifest=_manifest(wake,pinned_cursor=_projection_cursor(ledger)))
+        assert result['status']=='ready'
+        assert len(author.calls)==2
+        assert 'supersede its exact current publication' in author.calls[1][-1]['content']
+        assert store.head()[1].opportunities[0].execution.planning.supersedes_occurrence_ref is None
+        assert ledger.project()==before
     finally:
         runtime.close()

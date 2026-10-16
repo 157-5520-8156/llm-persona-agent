@@ -529,15 +529,15 @@ class LifeEcologyRuntime:
         life_development_status: str | None = None
         life_development_failure_code: str | None = None
         completion_ref = None
-        # A failed old attempt result must not own every later due slot. Use
-        # the next due slot for independent work, then allow its retry again.
+        # Failed old causal work must not own every later due slot. Yield both
+        # consequence and detail work together so they cannot starve independent
+        # work by alternating failures, then allow their retry again.
         # Fresh causal results still take priority. Failure stays a failure;
         # neither the attempt nor its missing result is silently completed.
-        retry_old_consequence = development_due and not (
-            schedule is not None and schedule.last_outcome_ref.startswith(
-                "life-ecology:technical_failure.consequence."
-            )
+        yield_old_causal_work = schedule is not None and schedule.last_outcome_ref.startswith(
+            ("life-ecology:technical_failure.consequence.", "life-ecology:technical_failure.event_details.")
         )
+        retry_old_consequence = development_due and not yield_old_causal_work
         pending_completion = getattr(
             self._life_development_followup, "pending_completed_activity_ref", None,
         )
@@ -578,7 +578,9 @@ class LifeEcologyRuntime:
                     aftermath_followup_status=aftermath_status,
                 )
         pending_event = getattr(self._life_development_followup, "pending_world_event_detail_ref", None)
-        event_detail_ref = pending_event() if callable(pending_event) and is_clock_wake and completion_ref is None and active_attempt_ref is None else None
+        event_detail_ref = pending_event(
+            after_world_revision=projection.world_revision if yield_old_causal_work else None,
+        ) if callable(pending_event) and is_clock_wake and completion_ref is None and active_attempt_ref is None else None
         outlook_node = None
         if self._world_outlook is not None:
             try:
@@ -955,7 +957,9 @@ class LifeEcologyRuntime:
                 "key": key,
                 "trigger_id": claim.trigger_id,
                 "outcome": (
-                    f"technical_failure.consequence.{life_development_failure_code}"
+                    f"technical_failure.event_details.{life_development_failure_code}"
+                    if event_detail_ref is not None and life_development_failure_code is not None
+                    else f"technical_failure.consequence.{life_development_failure_code}"
                     if (completion_ref is not None or active_attempt_ref is not None)
                     and life_development_failure_code is not None
                     else f"aftermath_{aftermath_status}"

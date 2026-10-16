@@ -1070,6 +1070,35 @@ def test_selection_is_bounded_and_deterministic_before_authority_lookup() -> Non
     assert _bounded_domain_items("relevant_facts", candidates * 14, NOW) is None
 
 
+@pytest.mark.parametrize("recent_count", [16, 300, 1000])
+def test_biography_and_published_planning_keep_priority_before_source_budget(recent_count):
+    from companion_daemon.world_v2.world_life_context import (
+        BiographicalWorldContextItem, WorldLifeContextItem, WorldLifeSourceBinding,
+    )
+    from companion_daemon.world_v2.world_planning import WorldPlanningReading
+    def source(ref):
+        return WorldLifeSourceBinding(authority_event_ref=ref, authority_world_revision=1,
+                                      authority_payload_hash="a" * 64)
+    biography = BiographicalWorldContextItem(biography_id="biography:current",
+        reviewed_timeline_ref="timeline:reviewed", timeline_source_event_ref="event:biography",
+        logical_at=NOW, age=21, academic_phase="term", academic_year=3, season="summer",
+        calendar_context_tags=("academic:term",), current_residence_context_tags=("residence:campus",),
+        active_life_arcs=(), source_bindings=(source("event:biography"),))
+    def episode(index):
+        return WorldLifeContextItem(occurrence_id=f"occurrence:{index}", occurrence_entity_revision=1,
+            participant_refs=("agent:companion",), result_id=f"result:{index}",
+            result_payload_ref=f"payload:{index}", result_payload_hash="b" * 64, settled_at=NOW,
+            privacy_class="personal", source=source(f"event:episode:{index}"))
+    published = episode("planning").model_copy(update={"settled_at": NOW - timedelta(days=60),
+        "world_planning": WorldPlanningReading(title="课程安排", summary="学校安排，不代表出席。",
+            starts_on=NOW.date(), ends_on=(NOW + timedelta(days=90)).date(), upcoming=())})
+    candidates = tuple(episode(i) for i in range(recent_count)) + (published, biography)
+    selected = _bounded_domain_items("world_life", candidates, NOW)
+    assert selected[:2] == (biography, published)
+    assert len(selected) == min(len(candidates), 256)
+    assert _bounded_domain_items("world_life", tuple(reversed(candidates)), NOW) == selected
+
+
 @pytest.mark.parametrize("kind", ["memory", "sqlite"])
 def test_head_cursor_never_invokes_historical_reducer_replay(
     kind: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

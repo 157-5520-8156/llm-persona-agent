@@ -89,3 +89,67 @@ async def test_cancelled_sent_request_retains_token_reservation(tmp_path, adapte
     await model.aclose()
     assert ledger(tmp_path).snapshot()['unknown_or_pending_requests'] == 1
     assert ledger(tmp_path).snapshot()['reserved_or_used_tokens_5h'] > 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('response_kind', ['valid', 'bare', 'extra', 'duplicate', 'wrong_tool'])
+async def test_glm_root_union_transport_preserves_schema_and_exact_tool_result(tmp_path, response_kind):
+    from copy import deepcopy
+    from jsonschema import Draft202012Validator
+    schema = {'type':'object', 'anyOf': [
+        {'type':'object','properties':{'decision':{'enum':['keep']}},'required':['decision'],'additionalProperties':False},
+        {'type':'object','properties':{'decision':{'enum':['change']},'value':{'type':'string'}},'required':['decision','value'],'additionalProperties':False},
+    ]}
+    tools = [{'type':'function','function':{'name':'role_result','description':'Choose a complete result.','parameters':schema}}]
+    before = deepcopy(tools)
+    seen = []
+    def handler(request):
+        body = json.loads(request.content)
+        seen.append(body)
+        wrapped = body['tools'][0]['function']['parameters']
+        assert wrapped['type'] == 'object'
+        assert wrapped['properties']['result'] == schema
+        assert wrapped['required'] == ['result'] and wrapped['additionalProperties'] is False
+        for value in ({'decision':'keep'}, {'decision':'change','value':'later'}):
+            Draft202012Validator(schema).validate(value)
+            Draft202012Validator(wrapped).validate({'result':value})
+        raw = {'valid':'{"result":{"decision":"keep"}}',
+               'bare':'{"decision":"keep"}',
+               'extra':'{"result":{"decision":"keep"},"extra":true}',
+               'duplicate':'{"result":{"decision":"change","value":"now"},"result":{"decision":"keep"}}',
+               'wrong_tool':'{"result":{"decision":"keep"}}'}[response_kind]
+        return httpx.Response(200,json={'choices':[{'finish_reason':'tool_calls','message':{
+            'content':None,'tool_calls':[{'id':'t1','type':'function','function':{
+                'name':'wrong' if response_kind=='wrong_tool' else 'role_result','arguments':raw}}]}}],
+            'usage':{'prompt_tokens':20,'completion_tokens':5,'total_tokens':25}})
+    model = BackgroundGLMModel('fixture','https://fixture.invalid/v1','GLM-5.3-Flash',
+        token_ledger=ledger(tmp_path),transport=httpx.MockTransport(handler))
+    try:
+        with model_call_scope('memory_consolidation'):
+            call = model.complete_json([{'role':'user','content':'Choose.'}],tools=tools,tool_choice='auto')
+            if response_kind == 'valid':
+                assert json.loads(await call) == {'decision':'keep'}
+            else:
+                with pytest.raises(ValueError):
+                    await call
+        assert len(seen) == 1 and tools == before
+        assert model.model_version.endswith(':object-tool-root.2')
+    finally:
+        await model.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("choice,count", [("none", 1), ("required", 1),
+    ({"type":"function","function":{"name":"wrong"}}, 1),
+    ({"type":"function","function":{"name":"result"}}, 2)])
+async def test_glm_does_not_guess_a_different_tool_selection(tmp_path, choice, count):
+    model = BackgroundGLMModel('fixture','https://fixture.invalid/v1','GLM-5.3-Flash',
+        token_ledger=ledger(tmp_path))
+    tools = [{'type':'function','function':{'name':name,'parameters':{'type':'object'}}}
+             for name in ('result', 'other')[:count]]
+    try:
+        with pytest.raises(ValueError):
+            model.request_payload([], temperature=0, tools=tools, tool_choice=choice)
+        assert model.token_ledger.snapshot()['requests'] == 0
+    finally:
+        await model.aclose()

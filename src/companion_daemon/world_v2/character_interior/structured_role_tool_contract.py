@@ -41,7 +41,7 @@ _EXPRESSION_RECONSIDERATION_TOOL_NAME = "character_role_expression_reconsiderati
 _FACT_MEMORY_RETENTION_TOOL_NAME = "character_role_fact_memory_retention_v1"
 _EXPERIENCE_MEMORY_RETENTION_TOOL_NAME = "character_role_experience_memory_retention_v1"
 _MEMORY_WITHDRAWAL_REVIEW_TOOL_NAME = "character_role_memory_withdrawal_review_v1"
-StructuredRoleToolSchemaDialect = Literal["standard", "deepseek-strict", "deepseek-strict-v3", "deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6", "deepseek-strict-v7", "deepseek-strict-compact"]
+StructuredRoleToolSchemaDialect = Literal["standard", "standard-v8", "deepseek-strict", "deepseek-strict-v3", "deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6", "deepseek-strict-v7", "deepseek-strict-compact"]
 
 
 _ROLE_RESULT_FEATURE_KEYS = ("status", "summary")
@@ -916,6 +916,7 @@ class StructuredRoleToolContracts:
         recall_allowed: bool,
         source_tokens: tuple[tuple[str, str], ...] | None = None,
         schema_dialect: StructuredRoleToolSchemaDialect = "standard",
+        expanded_attention: bool = False,
     ) -> StructuredRoleToolContract:
         """Compile the typed appraisal proposal envelope for one pinned wake.
 
@@ -931,6 +932,7 @@ class StructuredRoleToolContracts:
             recall_allowed,
             source_tokens,
             schema_dialect,
+            expanded_attention,
         )
 
     def private_impression_reflection(
@@ -1417,6 +1419,7 @@ class StructuredRoleToolContracts:
         recall_allowed: bool,
         source_tokens: tuple[tuple[str, str], ...] | None = None,
         schema_dialect: StructuredRoleToolSchemaDialect = "standard",
+        expanded_attention: bool = False,
     ) -> StructuredRoleToolContract:
         # These imports are intentionally local: structured_role imports this
         # compiler during module initialization, while the canonical payload
@@ -1427,7 +1430,7 @@ class StructuredRoleToolContracts:
         if not isinstance(capability_payload, dict):
             raise ValueError("world stimulus capability must be one object")
         role_schema = _provider_schema(
-            _ExpandedAttentionWireRoleResult if schema_dialect in {"deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6", "deepseek-strict-v7"} else _WireRoleResult
+            _ExpandedAttentionWireRoleResult if schema_dialect in {"deepseek-strict-v4", "deepseek-strict-v5", "deepseek-strict-v6", "deepseek-strict-v7"} or (schema_dialect == "standard-v8" and expanded_attention) else _WireRoleResult
         )
         role_properties = _required_object_properties(role_schema)
         common = {
@@ -1439,7 +1442,7 @@ class StructuredRoleToolContracts:
         }
         proposal_schema = _provider_schema(_WorldStimulusAppraisalResult)
         proposal_properties = _required_object_properties(proposal_schema)
-        if schema_dialect not in {"deepseek-strict-v6", "deepseek-strict-v7"}:
+        if schema_dialect not in {"deepseek-strict-v6", "deepseek-strict-v7", "standard-v8"}:
             # Historical tools still require their original explanation fields.
             proposal_properties.pop("reflection_depth", None)
             for field in ("behavior_tendency", "stance", "display_strategy"):
@@ -1529,7 +1532,7 @@ class StructuredRoleToolContracts:
                 "properties": {
                     "status": {"type": "string", "enum": (
                         ["transition"]
-                        if schema_dialect == "deepseek-strict-v7" and response_capability is not None
+                        if schema_dialect in {"deepseek-strict-v7", "standard-v8"} and response_capability is not None
                         else ["no_change", "transition"]
                     )},
                     **proposal_branch_properties,
@@ -1606,14 +1609,22 @@ class StructuredRoleToolContracts:
                     tool_name, version = _WORLD_STIMULUS_STRICT_V6_TOOL_NAME, "6"
                 elif schema_dialect == "deepseek-strict-v7":
                     tool_name, version = _WORLD_STIMULUS_STRICT_V7_TOOL_NAME, "7"
+        elif schema_dialect == "standard-v8":
+            tool_name, version = "character_role_world_stimulus_appraisal_v8", "8"
         elif schema_dialect != "standard":
             raise ValueError("unsupported world stimulus tool schema dialect")
         function = {
             "name": tool_name,
             "description": (
                 "Return the complete source-bound world_stimulus_appraisal role result. "
-                "The character may choose no_change or a transition, including any legal "
-                "Affect, relationship, aspiration, or experience proposal. The function "
+                + (
+                    "The appraisal decision may be no_change or activate. Outer status must be "
+                    "transition when life_responses records a receipt, even if response_text is null. "
+                    "reflection_depth=brief permits null explanations; it does not force a feeling. "
+                    if schema_dialect == "standard-v8" else
+                    "The character may choose no_change or a transition, including any legal "
+                )
+                + "Affect, relationship, aspiration, or experience proposal. The function "
                 "constrains transport and typed shape only; it does not choose the appraisal "
                 "or supply semantic values."
                 + (

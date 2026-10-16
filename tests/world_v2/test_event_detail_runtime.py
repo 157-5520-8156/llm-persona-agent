@@ -290,6 +290,8 @@ async def test_activated_outlook_scene_uses_existing_author_then_private_timed_r
         runtime._world_outlook = WorldOutlookRuntime(ledger=ledger, store=store, author=author, actor_ref=ACTOR,
             executor=details.executor, content_store=content)
         source = runtime.pending_world_event_detail_ref()
+        assert runtime.pending_world_event_detail_ref(after_world_revision=ledger.project().world_revision) is None
+        assert runtime.pending_world_event_detail_ref(after_world_revision=0) == source
         assert source == "event:activate:"+result.occurrence_id
         monkeypatch.setattr(runtime, "_resolve_occasion_draw", lambda **kwargs: pytest.fail("a bound event must not draw a fresh opportunity or disturbance"))
         prepared_result = await runtime.advance_world_event_detail_once(event_ref=source,wake_event_ref=wake.event_id,

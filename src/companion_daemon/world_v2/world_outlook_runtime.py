@@ -63,11 +63,24 @@ Use planning execution to publish or revise external arrangements such as a term
 work schedule or project period. These are World arrangements, never protagonist intentions
 or evidence of attendance. Publish once, preserve weekly rules, represent cancellations and
 rescheduling with exact original-date exceptions. Cancelling a previously moved instance uses
-action=cancel and retains its prior new_start/duration_minutes, so the cancelled window remains visible. A revision must name the current publication
-in supersedes_occurrence_ref. Plan periods may span months (at most two years), while the
+action=cancel and retains its prior new_start/duration_minutes, so the cancelled window remains visible.
+The first publication uses supersedes_occurrence_ref=null; a revision names the current published
+planning with the same planning_key. An ordinary environment notice is not a planning predecessor.
+Plan periods may span months (at most two years), while the
 publication opportunity remains within the rolling outlook horizon. At most four planning
 publications per outlook; each bounded document must fit 5500 characters. Mon=0..Sun=6.
-Use an empty slots list for a background period. Reuse current planning keys and published
+Use an empty slots list only for a background period without recurring external arrangements.
+For an ongoing term, job or project established by sourced biography, give the ordinary external
+structure the same attention as story hooks. If no current published or pending planning covers
+it, author a coherent period and its recurring weekly arrangements, with publication in a near
+future window. For a student, publish the institution's assigned course subjects and weekly
+class windows for the term, not merely campus traffic or facility opening hours. Assignment is
+external; attendance remains her choice. Choose coherent term-length dates and a weekly pattern
+that fit the supplied background; do not invent earlier attendance,
+completed coursework or new identity facts. Leave discretionary time unassigned: sleeping,
+leisure, accepting a shift or attending a class remain protagonist choices. Retain existing
+arrangements when still valid; amend their exact publication when external circumstances change.
+Reuse current planning keys and published
 source refs when revising; do not mint duplicate independent timetables for the same arrangement. Current
 World facts are the only factual authority. This is not a completed story or anyone's plan.
 Never prescribe the PROTAGONIST's motives, emotions, choices, consent, participation or growth.
@@ -145,6 +158,7 @@ class WorldOutlookRuntime:
         content_store=None,
     ):
         self.ledger, self.store, self.author, self.actor_ref = ledger, store, author, actor_ref
+        self._content_store = content_store
         self._executor = executor
         from .event_detail_runtime import EventDetailRuntime
         self.event_details = EventDetailRuntime(ledger=ledger, store=store, executor=executor, actor_ref=actor_ref, content_store=content_store) if executor is not None and content_store is not None else None
@@ -666,7 +680,11 @@ class WorldOutlookRuntime:
                     or set(obj) != {"decision", "draft"}
                     or obj["decision"] != "revise"
                 ):
-                    raise ValueError("outlook response shape invalid")
+                    raise ValueError(
+                        "outlook response shape invalid: keep requires exactly decision, review_at, reason; "
+                        "revise requires exactly decision, draft. Do not copy keep fields onto revise; "
+                        "its schedule belongs inside draft."
+                    )
                 candidate = WorldOutlookDraft.model_validate_json(
                     json.dumps(obj["draft"], ensure_ascii=False)
                 )
@@ -707,7 +725,7 @@ class WorldOutlookRuntime:
                 )
                 if history_offer is not None and not precise_privacy:
                     history_offer.validate_privacy(candidate)
-                self._validate_offered_nodes(candidate)
+                self._validate_offered_nodes(candidate, projection=projection)
             except (ValueError, TypeError) as exc:
                 self._record_attempt(
                     op,
@@ -910,7 +928,7 @@ class WorldOutlookRuntime:
                         )
         return tuple(latest.values())[:12]
 
-    def _validate_offered_nodes(self, draft):
+    def _validate_offered_nodes(self, draft, *, projection):
         previous = {
             r["payload"]["node"]["opportunity_id"]: r["payload"]["node"]
             for r in self.store.offers(node_ids={node.opportunity_id for node in draft.opportunities})
@@ -925,6 +943,17 @@ class WorldOutlookRuntime:
                 raise ValueError(
                     "an already considered opportunity cannot be rewritten or reoffered"
                 )
+            if n.opportunity_id not in previous and n.execution.planning is not None:
+                from .world_planning import validate_planning_publication
+                from .world_outlook_execution import occurrence_ref
+
+                try:
+                    validate_planning_publication(n.execution.planning, projection=projection,
+                        actor_ref=self.actor_ref,
+                        occurrence_ref=occurrence_ref(projection.world_id, self.actor_ref, n.opportunity_id),
+                        store=self._content_store)
+                except ValueError as exc:
+                    raise ValueError(f"outlook opportunity {n.opportunity_id!r}: {exc}") from exc
 
     def ready(self, *, npc_refs=None):
         return tuple(

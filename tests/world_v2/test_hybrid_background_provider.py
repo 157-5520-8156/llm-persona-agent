@@ -187,7 +187,7 @@ async def test_real_memory_contract_uses_native_proxy_while_interactive_can_comp
                 return httpx.Response(200, json={'choices':[{'finish_reason':'tool_calls','message':{
                     'content':None,'tool_calls':[{'id':'t1','type':'function','function':{
                         'name':body['tools'][0]['function']['name'],
-                        'arguments':_result(status='decision', decision={'payload':choices()})}}]}}],
+                        'arguments':json.dumps({'result':json.loads(_result(status='decision', decision={'payload':choices()}))})}}]}}],
                     'usage':{'prompt_tokens':12,'completion_tokens':20,'total_tokens':32}})
             return httpx.Response(200, json={'id':'memory1', 'type':'message',
                 'model':body['model'], 'stop_reason':'tool_use',
@@ -223,3 +223,49 @@ async def test_real_memory_contract_uses_native_proxy_while_interactive_can_comp
         release.set()
         await asyncio.gather(task, return_exceptions=True)
         await comp.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('valid_correction', [True, False])
+async def test_glm_bad_envelope_gets_one_same_role_correction(tmp_path, valid_correction):
+    from companion_daemon.subscription_usage import SubscriptionTokenLedger
+    from test_character_interior_structured_role import _QueueModel, _result, _Projection, _CURSOR, _NOW
+    from test_background_recovery_regressions import manifest, choices
+    from companion_daemon.world_v2.character_interior.core import CharacterInterior
+    from companion_daemon.world_v2.character_interior.contracts import InteriorOpportunity
+    from companion_daemon.world_v2.character_interior.structured_role import StructuredCharacterRoleFaculty
+    from companion_daemon.world_v2.character_interior.background_route import BackgroundStructuredRoleFaculty
+    valid = _result(status='decision', decision={'payload':choices()})
+    bad = valid  # Valid role contents, but missing the declared transport wrapper.
+    calls = []
+    def handler(request):
+        body=json.loads(request.content)
+        calls.append(body)
+        raw=json.dumps({'result':json.loads(valid)}) if valid_correction and len(calls)==2 else bad
+        return httpx.Response(200,json={'choices':[{'finish_reason':'tool_calls','message':{
+            'content':None,'tool_calls':[{'id':'t1','type':'function','function':{
+                'name':body['tools'][0]['function']['name'],'arguments':raw}}]}}],
+            'usage':{'prompt_tokens':20,'completion_tokens':5,'total_tokens':25}})
+    model=BackgroundGLMModel('fixture','https://fixture.invalid/v1','GLM-5.3-Flash',
+        token_ledger=SubscriptionTokenLedger(tmp_path/'glm.sqlite'),transport=httpx.MockTransport(handler))
+    interactive_model=_QueueModel()
+    interactive=StructuredCharacterRoleFaculty(model=interactive_model,model_id='fixture-interactive')
+    background=BackgroundStructuredRoleFaculty(interactive=interactive,background_model=model,
+        character_disposition=None,life_source_reviewer=None,reference_wire=False)
+    interior=CharacterInterior(projection=_Projection(),role=background)
+    opportunity=InteriorOpportunity(opportunity_ref='opportunity:memory:1',inner_turn_ref='turn:memory:1',
+        world_id='world:test',actor_ref='character:zhizhi',trigger_ref='trigger:memory:1',cursor=_CURSOR,
+        logical_time=_NOW,purpose='memory_consolidation',source_refs=('source:private_self',),capability_manifest=manifest())
+    try:
+        result=await interior.consider(opportunity)
+        assert len(calls)==2 and not interactive_model.calls
+        assert all(c['model']=='GLM-5.3-Flash' for c in calls)
+        correction=json.loads(calls[1]['messages'][-1]['content'])['correction']
+        assert correction['failure_code']=='role_result_schema_invalid'
+        assert 'result object envelope' in json.dumps(correction)
+        if valid_correction:
+            assert result.status=='decided'
+        else:
+            assert result.status!='decided' and result.failure_code
+    finally:
+        await model.aclose()
