@@ -3,7 +3,7 @@
 from .world_outlook import WorldOutlookDraft
 
 
-def outlook_author_schema(*, basis_refs=None, npc_privacy_floors=(), prior_opportunities=()):
+def outlook_author_schema(*, basis_refs=None, npc_privacy_floors=(), prior_opportunities=(), now=None):
     schema = WorldOutlookDraft.model_json_schema()
     fields = schema["$defs"]["OutlookExecution"]["properties"]
     common = ("text", "privacy_class", "duration_minutes")
@@ -54,6 +54,7 @@ def outlook_author_schema(*, basis_refs=None, npc_privacy_floors=(), prior_oppor
                 "properties": {"privacy_class": {"enum": list(privacy_order[privacy_order.index(floor["privacy_class"]):])}},
             }}},
         })
+    prior_opportunities = tuple(n for n in prior_opportunities if now is None or n.closes_at > now)
     if prior_opportunities:
         # Old basis is legal only for an entire unchanged prior node. Do not
         # grant its historical authority to new or edited opportunities.

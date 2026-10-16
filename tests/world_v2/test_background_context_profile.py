@@ -446,3 +446,27 @@ def test_proactive_wire_keeps_source_bound_reply_gap_after_profile_slicing(wrapp
     snapshot['materials']['advisories'] = {'items':[unrelated]} if wrapped else [unrelated]
     hidden = slice_background_inner_life_snapshot(snapshot, profile)
     assert '172800' not in json.dumps(hidden)
+
+
+@pytest.mark.parametrize('purpose', ['world_consequence_draft', 'life_development_draft'])
+@pytest.mark.parametrize('nested', [False, True])
+def test_world_author_facts_are_actor_scoped_before_the_item_cap(purpose, nested):
+    from copy import deepcopy
+
+    def item(subject, label):
+        values = {'subject_ref': subject, 'source_excerpt': label}
+        return {'item_ref': label, 'value': {'values': values} if nested else values}
+    items = [item('user:geoff', 'user education')] * 8 + [item('agent:companion', 'actor education')]
+    context = {'actor_ref': 'agent:companion', 'slices': {
+        'relevant_facts': {'availability': 'available', 'items': items},
+        'world_life': {'availability': 'available', 'items': [
+            {'item_ref': 'event:actual-user-help', 'value': {'context_kind': 'world_consequence',
+                'content': {'text': 'A real support event remains available through its original authority.'}}}]},
+    }}
+    before = deepcopy(context)
+    sliced = slice_background_capsule_context(context, background_context_profile_for_purpose(purpose))
+    assert sliced['slices']['relevant_facts']['items'] == [items[-1]]
+    assert sliced['slices']['world_life'] == context['slices']['world_life']
+    assert context == before
+    character = slice_background_capsule_context(context, background_context_profile_for_purpose('world_stimulus_appraisal'))
+    assert character['slices']['relevant_facts']['items'] == items

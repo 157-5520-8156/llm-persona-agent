@@ -1,20 +1,36 @@
-Candidate GLM calendar integration repairs (2026-10-17), base4a7ad079; real acceptance remains in progress.
-Shared GLM object-root tool adapter .2 now handles exact forced-name→auto/nonstrict transport for all callers,
-including Life Source Review; original logical requests, exact returned tool identity and local validation remain.
-Standard-v8 WorldStimulus prompt/schema aligns mandatory responses and optional fields; historical dialects unchanged.
-Outlook preserves literal prior planning enum data, checks unpublished planning predecessors during same-author
-correction, and keeps published/offered nodes immutable. Biography/planning priorities now apply before source admission.
-Old consequence/detail failures share one yielding slot so they cannot alternate and starve independent work.
-Frozen full-final-v7:10777passed/19skipped/2xfailed/1existingwarning,1278.41s; source hashes unchanged.
-Ruff/diff and Standards/Spec closed. Scenario baseline .114 changes only one mock tool lineage; no behavioral relaxation.
-Live small-World probe: GLM corrected first-publication predecessor and published World.3; one reviewed Experience
-reached the calendar. Its generic campus slots/weekday prose were NOT content acceptance. Source audit found only
-12 everyday prehistory records, so this is not full-character qualification; all old probes/failures remain retained.
-Main acceptance now uses a new clone of full candidate live-v17 (1259 prehistory), named candidate-calendar-full-v1.
-Its first old-Outlook project_at is cold-replaying history; no bypass of semantic hash proof. Warm caches are bounded
-and evictable; cold recovery cost is not qualified. No cue-only recall patch or archive approval rebinding was added.
-Evidence: output/private-audits/candidate-calendar-20261016/{continuation,source-lineage,verification-checkpoint}.json.
-8792 remains a candidate CaptureDelivery view, not QQ. Original production8787/PID79910 remains untouched.
+Candidate calendar mechanism is live (2026-10-17); production QQ remains unchanged.
+Active owner: private serve.py, PID60826,127.0.0.1:8792, CaptureDelivery only; same DB
+output/private-audits/proxy-outlook-validation-20261014/candidate-calendar-full-v3/world.sqlite.
+Uses full retained candidate history (1259 prehistory), not the earlier12-record probe. All probe
+Worlds/failures remain. Independent audit confirms all46132 original full-source event bytes unchanged.
+GLM653/654 published a real world-consequence.3 timetable:4 Chinese-literature subjects,6 weekly
+sessions through2027-01-10. Source9cf181fd...; weeksOct19/26,Nov9,Dec7 each show1period+6classes.
+Existing recurrence expands the requested week; no attendance is synthesized. Real DeepSeek reply
+matched weekday/subject assignments; actual GLM WorldStimulus+LifeSourceReview produced one linked
+Experience. Same input recovered after restart:1observation,1expression plan,4exact terminal Capture
+receipts, no duplicate reply. Initial private observer AttributeError happened beforeHTTP; its failed
+turn and operator restart are retained, separate from provider failure. Service observer now cannot
+fail the provider call. This is not proof of proxy-timeout recovery or end-to-end latency SLA.
+Shared GLM adapter .2 handles object-root native tools and exact forced-name→auto/nonstrict for
+LifeReview too; canonical schemas, exact tool identity, source closure and old replay dialects remain.
+World Author now receives bounded generation-only deployment constraints, and only actor-owned
+facts in its provider capsule. User support events/capabilities and character chat context remain.
+Constraint hash binds fresh request identity; old paid requests resume original bytes, including
+configuration change/removal. No new fact/reference authority is granted by deployment constraints.
+Expired draft nodes leave the current schema; their history/effects/failures remain. Planning predecessor
+checks run before install and again at execution; immutable offered nodes stay immutable.
+Existing lossless reference codec is reused below100KB for explicit new requests (real96.6KB→71KB);
+legacy unmarked small requests stay plain. Biography/planning rank before capped source admission;
+old detail/consequence failures yield together so independent work is not starved.
+Validation:148mechanism tests pass. Full-v9 on final runtime:10787pass/1fail/19skip/2xfail;
+sole failure was an old test reading compressed carrier directly. Test-only formal-decoder fix then
+passed58related tests; all runtime hashes still matchv9. Full suite was not repeated after that test-only
+fix. Ruff/diff and both review axes closed; do not describev9 as an all-green run.
+Release qualification remains incomplete: full-history cold old-snapshot recovery takes minutes;
+not all historical backlog has recovered; no current-version QQ test or continuous soak this turn.
+Evidence: output/private-audits/candidate-calendar-20261016/{full-published-planning,
+full-restart-recovery-audit,calendar-full-after-restart,final-verification,source-lineage}.json.
+Use continuation.json and service-launch-v2.json for current ownership; verify PID before control.
 
 Background provider switched in candidate configuration (2026-10-16), base9bf45cbf.
 New route glm / https://api.edgefn.net/v1 / GLM-5.3-Flash; enabled thinking/low,64000output,180s deadline.

@@ -55,6 +55,7 @@ class BackgroundContextProfile:
     capsule_slices: tuple[str, ...] = ()
     capsule_slice_limits: Mapping[str, int] = ()
     capsule_item_exclusions: Mapping[str, frozenset[str]] = ()
+    capsule_actor_facts_only: bool = False
     # Compacting the rendered inventory is presentation only.  Proven by a
     # structural diff against the full rendering: it removes exactly
     # content_hash, direct_source_refs and authority_refs, adds nothing and
@@ -239,6 +240,7 @@ _CHARACTER_CONTINUITY_LIMITS = {
 _PROFILES: tuple[BackgroundContextProfile, ...] = (
     BackgroundContextProfile(
         profile_id="world_consequence_author",
+        capsule_actor_facts_only=True,
         purposes=frozenset({"world_consequence_draft"}),
         # The external World author does not decide or continue her private
         # emotional arc. Character cognition retains its full continuity
@@ -262,6 +264,7 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
     ),
     BackgroundContextProfile(
         profile_id="life_world_author",
+        capsule_actor_facts_only=True,
         purposes=frozenset({"life_development_draft"}),
         snapshot_material_keys=_LIFE_ECOLOGY_MATERIALS,
         snapshot_material_limits={"world_planning": 4, "recent_self_experiences": 4, "relevant_facts": 8},
@@ -564,6 +567,18 @@ def slice_background_capsule_context(
             continue
         excluded_kinds = dict(profile.capsule_item_exclusions).get(name, frozenset())
         items = lane.get("items")
+        if name == "relevant_facts" and profile.capsule_actor_facts_only and isinstance(items, list):
+            # External authoring needs this actor's facts, not the user's
+            # private profile. Causal World events and capabilities stay intact.
+            actor = context.get("actor_ref")
+            selected = []
+            for item in items:
+                value = item.get("value") if isinstance(item, dict) else None
+                if isinstance(value, dict):
+                    values = value.get("values", value)
+                    if isinstance(actor, str) and isinstance(values, dict) and values.get("subject_ref") == actor:
+                        selected.append(item)
+            lane = {**lane, "items": selected}
         if excluded_kinds and isinstance(items, list):
             lane = {
                 **lane,
@@ -633,6 +648,7 @@ def profile_audit_record(profile: BackgroundContextProfile) -> dict[str, object]
         "capsule_item_exclusions": {
             key: sorted(kinds) for key, kinds in dict(profile.capsule_item_exclusions).items()
         },
+        **({"capsule_fact_scope": "actor_only"} if profile.capsule_actor_facts_only else {}),
         **({"inventory_presentation": "source-inventory-without-host-proofs.1"}
            if profile.omit_inventory_proofs else {}),
     }

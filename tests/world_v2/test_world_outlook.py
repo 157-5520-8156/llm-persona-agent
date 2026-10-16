@@ -711,7 +711,9 @@ class ProductionAuthor:
     async def complete(self, messages, **kwargs):
         from datetime import datetime
 
-        packet = json.loads(messages[-1]["content"])
+        from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
+
+        packet = decode_outlook_request(messages[-1]["content"])
         self.calls.append(packet)
         assert packet["contract"] == "world-outlook-request.1"
         now = datetime.fromisoformat(packet["logical_time"])
@@ -925,8 +927,9 @@ def test_private_npc_script_cannot_be_authored_with_weaker_visibility():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("replacement_constraints", [None, ("Changed configuration after the paid request.",), ()])
 async def test_saved_author_result_resumes_install_after_crash_without_rebilling(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, replacement_constraints
 ):
     class Crash(BaseException):
         pass
@@ -934,6 +937,9 @@ async def test_saved_author_result_resumes_install_after_crash_without_rebilling
     ledger, wake, store, author, runtime = setup(
         tmp_path, lambda w: [{"decision": "revise", "draft": draft_value(w)}]
     )
+    if replacement_constraints is not None:
+        runtime = WorldOutlookRuntime(ledger=ledger, store=store, author=author, actor_ref=OWNER,
+                                      authoring_constraints=("Original configured background.",))
     original = store.install
 
     def crash_install(*args, **kwargs):
@@ -952,6 +958,9 @@ async def test_saved_author_result_resumes_install_after_crash_without_rebilling
         runtime.store = SQLiteWorldOutlookStore(
             path=tmp_path / "outlook.sqlite", world_id=WORLD_ID, actor_ref=OWNER
         )
+        if replacement_constraints is not None:
+            runtime = WorldOutlookRuntime(ledger=ledger, store=runtime.store, author=author, actor_ref=OWNER,
+                                          authoring_constraints=replacement_constraints)
         result = await runtime.refresh(
             projection=ledger.project(),
             context={},
@@ -960,6 +969,19 @@ async def test_saved_author_result_resumes_install_after_crash_without_rebilling
         assert result["status"] == "ready"
         assert len(author.calls) == 1
         assert runtime.store.head() is not None
+        if replacement_constraints is not None:
+            from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
+            original_packet = decode_outlook_request(author.calls[0][1]["content"])
+            assert runtime.store.head()[2]["authoring_constraints_hash"] == original_packet["authoring_constraints"]["digest"]
+            assert runtime.view()["needs_revision"] is True
+            author.outputs.append({"decision": "keep", "review_at": (NOW + timedelta(days=2)).isoformat(),
+                                   "reason": "Keep the unchanged opportunities under the new configuration."})
+            updated = await runtime.refresh(projection=ledger.project(), context={},
+                                            manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)))
+            assert updated["status"] == "ready" and len(author.calls) == 2
+            new_packet = decode_outlook_request(author.calls[1][1]["content"])
+            assert new_packet.get("authoring_constraints", {}).get("digest") != original_packet["authoring_constraints"]["digest"]
+            assert runtime.store.head()[2].get("authoring_constraints_hash") == new_packet.get("authoring_constraints", {}).get("digest")
         assert len(ledger.project().world_occurrences) == 0
     finally:
         runtime.close()
@@ -1136,5 +1158,45 @@ async def test_planning_invalid_predecessor_is_corrected_before_install(tmp_path
         assert 'supersede its exact current publication' in author.calls[1][-1]['content']
         assert store.head()[1].opportunities[0].execution.planning.supersedes_occurrence_ref is None
         assert ledger.project()==before
+    finally:
+        runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_deployment_background_constrains_authoring_without_becoming_fact_authority(tmp_path):
+    from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
+
+    ledger, wake, store, author, _ = setup(tmp_path, lambda w: [{'decision':'revise','draft':draft_value(w)}])
+    constraints = ('Configured character studies Chinese language and literature.',)
+    runtime = WorldOutlookRuntime(ledger=ledger,store=store,author=author,actor_ref=OWNER,
+                                  authoring_constraints=constraints)
+    try:
+        before = ledger.project()
+        result = await runtime.refresh(projection=before,context={},manifest=_manifest(wake,pinned_cursor=_projection_cursor(ledger)))
+        assert result['status']=='ready'
+        packet = decode_outlook_request(author.calls[0][1]['content'])
+        assert packet['authoring_constraints']['stable_identity_facts'] == list(constraints)
+        assert packet['authoring_constraints']['authority']=='generation_constraints_only'
+        assert packet['basis_refs']==[wake.event_id]
+        assert not packet['condition_sources'] and not packet['history_offer']['items']
+        assert ledger.project()==before
+        assert store.head()[2]['authoring_constraints_hash'] == packet['authoring_constraints']['digest']
+        from companion_daemon.world_v2.world_outlook import validate_draft
+        invalid = draft_value(wake)
+        invalid['opportunities'][0]['basis_refs'] = [constraints[0]]
+        with pytest.raises(ValueError, match='lacks offered basis'):
+            validate_draft(WorldOutlookDraft.model_validate_json(json.dumps(invalid)), projection=before,
+                           actor_ref=OWNER, parent_revision=None, basis_refs=(wake.event_id,), sources={}, npc_refs=())
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize('constraints', [('x',) * 17, ('字' * 1400,)])
+def test_authoring_constraints_are_bounded_configuration(tmp_path, constraints):
+    ledger, _, store, author, runtime = setup(tmp_path, lambda w: [])
+    try:
+        with pytest.raises(ValueError, match='4096 bytes'):
+            WorldOutlookRuntime(ledger=ledger,store=store,author=author,actor_ref=OWNER,authoring_constraints=constraints)
+        assert not author.calls
     finally:
         runtime.close()

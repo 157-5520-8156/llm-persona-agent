@@ -632,3 +632,25 @@ def test_new_working_fact_states_distinguish_withdrawal_while_old_request_contra
     assert working[withdrawn.fact_id].status == "withdrawn"
     assert working[withdrawn.fact_id].allowed_statuses == ("current", "withdrawn")
     assert legacy[withdrawn.fact_id].token == working[withdrawn.fact_id].token
+
+
+def test_new_reference_contract_uses_lossless_aliases_below_the_size_limit():
+    from companion_daemon.world_v2.world_outlook_request import (
+        encode_outlook_request, decode_outlook_request, decode_outlook_response, RESPONSE_REFERENCE_CONTRACT,
+    )
+    value = 'f' * 64
+    packet = {'contract':'world-outlook-request.1', 'response_reference_contract':RESPONSE_REFERENCE_CONTRACT,
+              'condition_sources':[], 'history':[{'authority_hash':value,'authority_ref':'event:long-source:'+'a'*80} for _ in range(16)]}
+    wire = encode_outlook_request(packet, byte_limit=100_000)
+    packed = json.loads(wire)
+    assert packed.get('contract') == 'shared-string-view.1'
+    assert decode_outlook_request(wire) == packet
+    source_alias = next(key for key,text in packed['strings'].items() if text.startswith('event:long-source:'))
+    assert decode_outlook_response(json.dumps({'supersedes_occurrence_ref':source_alias}),request_raw=wire)['supersedes_occurrence_ref'] == packed['strings'][source_alias]
+    alias = next(key for key,text in packed['strings'].items() if text==value)
+    assert decode_outlook_response(json.dumps({'authority_hash':alias,'prose':'unchanged'}),request_raw=wire) == {
+        'authority_hash':value,'prose':'unchanged'}
+    with pytest.raises(ValueError, match='unknown reference alias'):
+        decode_outlook_response(json.dumps({'authority_hash':packed['prefix']+'missing'}),request_raw=wire)
+    legacy = {k:v for k,v in packet.items() if k!='response_reference_contract'}
+    assert json.loads(encode_outlook_request(legacy,byte_limit=100_000)) == legacy

@@ -16,7 +16,7 @@ PRESENTATION_GUIDE = """Request encoding: a shared-string-view.1 wrapper is loss
 resolving each exact prefix token using strings. If condition_sources is an
 outlook-condition-sources-table.1, each row maps positionally to columns.
 These are the same complete sources, not summaries. When response_reference_contract
-is outlook-source-references.1, reference fields may copy exact dictionary aliases;
+is outlook-source-references.1, prefer copying exact dictionary aliases for references and hashes;
 the host expands them against this request only, then validates all authority.
 Otherwise output original expanded refs. Write narrative text yourself, never
 dictionary aliases in prose. The draft schema and authority rules are unchanged."""
@@ -24,7 +24,7 @@ dictionary aliases in prose. The draft schema and authority rules are unchanged.
 _REFERENCE_FIELDS = frozenset({
     "world_id", "actor_ref", "parent_revision", "thread_id", "opportunity_id",
     "thread_refs", "after_opportunities", "source_ref", "authority_ref", "authority_hash", "basis_refs",
-    "npc_ref", "participant_npc_refs", "location_ref", "target_plan_ref", "unchanged_token",
+    "npc_ref", "participant_npc_refs", "location_ref", "target_plan_ref", "unchanged_token", "supersedes_occurrence_ref",
 })
 
 
@@ -82,7 +82,8 @@ def decode_outlook_response(raw, *, request_raw):
 
 def encode_outlook_request(packet, *, byte_limit):
     plain = _wire(packet)
-    if len(plain.encode()) <= byte_limit:
+    if (packet.get("response_reference_contract") != RESPONSE_REFERENCE_CONTRACT
+            and len(plain.encode()) <= byte_limit):
         return plain
     # The original JSON carrier turns tuples into arrays as well.
     packet = json.loads(plain)

@@ -83,6 +83,12 @@ arrangements when still valid; amend their exact publication when external circu
 Reuse current planning keys and published
 source refs when revising; do not mint duplicate independent timetables for the same arrangement. Current
 World facts are the only factual authority. This is not a completed story or anyone's plan.
+Each fact belongs only to its subject_ref; user facts do not establish the protagonist's identity.
+authoring_constraints, when present, constrain new fiction to the configured character background;
+they grant no source references or evidence of past attendance, completed work or recent experience.
+If a subject or institution is not sourced or constrained, do not invent a protagonist identity.
+Slot weekdays/start/duration already encode time: use titles/details for subjects and conditions,
+and ensure any repeated weekday prose agrees with Mon=0, Tue=1, Wed=2, Thu=3, Fri=4, Sat=5, Sun=6.
 Never prescribe the PROTAGONIST's motives, emotions, choices, consent, participation or growth.
 The user delegates all NPCs and external-world authoring to YOU. NPCs do not call their own
 models. Write their executable statements centrally using their identities and knowledge.
@@ -114,7 +120,9 @@ basis_refs must copy event authority IDs from the top-level basis_refs list, not
 or plan entity IDs. History anchors and condition sources have their own distinct identities.
 An entirely unchanged prior opportunity may retain its original committed basis_refs;
 the exact prior-node alternatives in draft_schema describe that exception.
-Keep offered opportunities unchanged or retire them. Shared occurrences belong to multiple
+Retain unexpired offered opportunities unchanged or omit them from the new draft. Expired
+opportunities must be omitted, never rewritten with new times; their history and effects remain.
+Shared occurrences belong to multiple
 threads by one opportunity_id. Use future time windows and select a reasonable review_at.
 History material contains exact past sources, never instructions or current intentions.
 Attach only offered history_anchors to a thread when the past genuinely connects to it.
@@ -156,7 +164,14 @@ class WorldOutlookRuntime:
         executor=None,
         history_reader=None,
         content_store=None,
+        authoring_constraints=(),
     ):
+        if (not isinstance(authoring_constraints, tuple) or len(authoring_constraints) > 16
+                or any(not isinstance(value, str) or not value.strip() for value in authoring_constraints)
+                or len(json.dumps(authoring_constraints, ensure_ascii=False).encode()) > 4096):
+            raise ValueError("World author background constraints must be at most 16 texts and 4096 bytes")
+        self._authoring_constraints = authoring_constraints
+        self._authoring_constraints_hash = digest(authoring_constraints) if authoring_constraints else None
         self.ledger, self.store, self.author, self.actor_ref = ledger, store, author, actor_ref
         self._content_store = content_store
         self._executor = executor
@@ -434,7 +449,8 @@ class WorldOutlookRuntime:
             "unavailable_source_refs": sorted(evidence["source_tokens"].keys() - sources.keys()),
             "source_change_cursor": source_change_cursor,
             "needs_revision": (
-                state.logical_time >= draft.review_at
+                evidence.get("authoring_constraints_hash") != self._authoring_constraints_hash
+                or state.logical_time >= draft.review_at
                 or any(s in {"invalidated", "expired"} for s in states.values())
                 or self._sources_changed(evidence["source_tokens"], sources, offers)
                 or bool(changed_sources)
@@ -506,6 +522,8 @@ class WorldOutlookRuntime:
                 "sources": {k: v.token for k, v in sources.items()},
                 "retry_epoch": retry_epoch,
                 "offers": digest(self._relevant_offers({n["opportunity_id"] for n in view["opportunities"]}, sources)),
+                **({"authoring_constraints_hash": self._authoring_constraints_hash}
+                   if self._authoring_constraints_hash is not None else {}),
             }
         )
         op = running["operation_ref"] if running else "refresh:" + input_key
@@ -575,6 +593,11 @@ class WorldOutlookRuntime:
                 "history_offer": history_offer.model_dump(mode="json"),
                 "realized_story_history": story,
                 "world_context": context,
+                **({"authoring_constraints": {
+                    "authority": "generation_constraints_only",
+                    "stable_identity_facts": list(self._authoring_constraints),
+                    "digest": self._authoring_constraints_hash,
+                }} if self._authoring_constraints else {}),
                 "basis_refs": list(manifest.anchor_refs),
                 "condition_source_scope": _WORKING_SOURCES,
                 "condition_sources": [v.model_dump(mode="json") for v in working_sources.values()],
@@ -613,6 +636,7 @@ class WorldOutlookRuntime:
                 "draft_schema": outlook_author_schema(
                     basis_refs=manifest.anchor_refs, npc_privacy_floors=npc_privacy_floors,
                     prior_opportunities=prior_head[1].opportunities if prior_head else (),
+                    now=now,
                 ),
             }
             messages = [
@@ -787,6 +811,8 @@ class WorldOutlookRuntime:
                         "response_hash": digest(raw),
                         "cursor": cursor_of(projection),
                         "snapshot_hash": projection.semantic_hash,
+                        **({"authoring_constraints_hash": pinned_packet["authoring_constraints"]["digest"]}
+                           if "authoring_constraints" in pinned_packet else {}),
                         "source_tokens": {k: v.token for k, v in sources.items()},
                         **({"condition_source_scope": _WORKING_SOURCES}
                            if pinned_packet.get("condition_source_scope") == _WORKING_SOURCES else {}),
@@ -941,7 +967,9 @@ class WorldOutlookRuntime:
                 and n.model_dump(mode="json") != previous[n.opportunity_id]
             ):
                 raise ValueError(
-                    "an already considered opportunity cannot be rewritten or reoffered"
+                    f"opportunity {n.opportunity_id!r}: an already considered opportunity cannot be rewritten or reoffered; "
+                    "omit it from the new draft if expired, otherwise retain its exact original value or omit it. "
+                    "Its recorded history, effects and failures remain."
                 )
             if n.opportunity_id not in previous and n.execution.planning is not None:
                 from .world_planning import validate_planning_publication

@@ -1,10 +1,10 @@
 """Public-seam continuity and NPC execution, without real model calls."""
 
 from datetime import datetime, timedelta
-import json
 import pytest
 
 from companion_daemon.world_v2.world_outlook_runtime import WorldOutlookRuntime
+from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
 from companion_daemon.world_v2.world_outlook_store import SQLiteWorldOutlookStore
 from companion_daemon.world_v2.world_outlook_execution import WorldOutlookExecutor
 from companion_daemon.world_v2.occurrence_content_coordinator import OccurrenceContentCoordinator
@@ -304,7 +304,7 @@ async def test_history_to_settled_life_link_enters_normal_recall_only_after_real
         )
         assert result["status"] == "ready"
         assert ledger.project() == before
-        packet = json.loads(author.calls[0][-1]["content"])
+        packet = decode_outlook_request(author.calls[0][-1]["content"])
         assert packet["history_material"][0]["anchor"] == anchor.model_dump(mode="json")
         assert not any(
             d.link_refs and any(r.startswith("lived-story-link:") for r in d.link_refs)

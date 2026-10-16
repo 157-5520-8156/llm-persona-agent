@@ -3699,6 +3699,7 @@ def build_sqlite_world_v2_turn_application(
     npc_actor_model: NpcEcologyModel | None = None,
     open_world_event_model: OpenWorldEventModel | None = None,
     life_world_author_model: LifeDevelopmentModel | None = None,
+    world_author_background_constraints: tuple[str, ...] = (),
     life_world_author_source_rewriter: LifeDevelopmentModel | None = None,
     life_source_closure_reviewer: LifeDevelopmentModel | None = None,
     perception_input_source: PerceptionInputSource | None = None,
@@ -4576,6 +4577,7 @@ def build_sqlite_world_v2_turn_application(
                     path=path, world_id=config.world_id, actor_ref=config.companion_actor_ref,
                 ),
                 author=life_world_author_model, actor_ref=config.companion_actor_ref,
+                authoring_constraints=world_author_background_constraints,
                 history_reader=recall_coordinator.world_author_history,
                 npc_refs_reader=lambda state: tuple(
                     v.npc_ref for v in npc_identity_views(state, content_store=life_content_store)

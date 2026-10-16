@@ -158,3 +158,18 @@ async def test_old_pinned_outlook_request_cannot_gain_prepared_details(tmp_path,
         assert "did not offer planning or prepared details" in author.calls[1][-1]["content"]
     finally:
         runtime.close()
+
+
+def test_expired_prior_nodes_are_not_offered_as_retainable_schema_values(tmp_path):
+    from datetime import timedelta
+    from test_life_development_runtime import NOW
+
+    _, wake, _, _, runtime = setup(tmp_path, lambda w: [])
+    try:
+        draft = WorldOutlookDraft.model_validate_json(json.dumps(draft_value(wake)))
+        schema = outlook_author_schema(basis_refs=('event:new-clock',), prior_opportunities=draft.opportunities,
+                                       now=NOW + timedelta(days=8))
+        validator = Draft202012Validator({'$defs': schema['$defs'], '$ref': '#/$defs/OutlookOpportunity'})
+        assert all(not validator.is_valid(node.model_dump(mode='json')) for node in draft.opportunities)
+    finally:
+        runtime.close()
