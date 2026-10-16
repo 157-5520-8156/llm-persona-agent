@@ -65,14 +65,14 @@ def outlook_author_schema(*, basis_refs=None, npc_privacy_floors=(), prior_oppor
         {"required": ["ready_statuses"], "properties": {"ready_statuses": {"minItems": 1}}},
         {"required": ["unchanged_token"], "properties": {"unchanged_token": {"type": "string"}}},
     ]
-    # Pydantic's repeated display titles are annotation only. Keeping the
+    # Pydantic's display titles/defaults are annotation only. Keeping the
     # actual fields, types and constraints makes the richer schema affordable.
-    def without_titles(value):
+    def without_annotations(value):
         if isinstance(value, dict):
-            return {key: without_titles(child) for key, child in value.items()
-                    if not (key == "title" and isinstance(child, str))}
+            return {key: without_annotations(child) for key, child in value.items()
+                    if not (key == "default" or key == "title" and isinstance(child, str))}
         if isinstance(value, list):
-            return [without_titles(child) for child in value]
+            return [without_annotations(child) for child in value]
         return value
 
-    return without_titles(schema)
+    return without_annotations(schema)
