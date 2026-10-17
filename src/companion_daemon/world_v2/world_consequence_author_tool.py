@@ -25,6 +25,8 @@ from .life_development_output_schema import life_possibility_output_schema
 CONTRACT = "world-consequence-author-tool.5"
 TOOL_NAME = "author_world_consequence_v5"
 EVENT_CONTRACT = "world-consequence-author-tool.6"
+REQUIRED_EVENT_CONTRACT = "world-consequence-author-tool.7"
+COURSE_EVENT_CONTRACT = "world-consequence-author-tool.8"
 _CONTRACTS = {
     "world-consequence-author-tool.1": "author_world_consequence_v1",
     "world-consequence-author-tool.2": "author_world_consequence_v2",
@@ -32,18 +34,32 @@ _CONTRACTS = {
     "world-consequence-author-tool.4": "author_world_consequence_v4",
     CONTRACT: TOOL_NAME,
     EVENT_CONTRACT: "author_world_consequence_v6",
+    REQUIRED_EVENT_CONTRACT: "author_world_consequence_v7",
+    COURSE_EVENT_CONTRACT: "author_world_consequence_v8",
 }
 
 
 def world_consequence_author_tool_contract(
     *, provider: object, contract_id: str = CONTRACT,
+    closing_offset_seconds: int | None = None,
+    event_detail_privacy_class: str | None = None,
 ) -> dict[str, object]:
     if not isinstance(contract_id, str) or contract_id not in _CONTRACTS:
         raise ValueError("unknown World author tool contract")
+    if contract_id in {REQUIRED_EVENT_CONTRACT, COURSE_EVENT_CONTRACT}:
+        if type(closing_offset_seconds) is not int or not 60 <= closing_offset_seconds <= 86340:
+            raise ValueError("required event detail tool needs its final release offset")
+    elif closing_offset_seconds is not None:
+        raise ValueError("only the required event detail tool takes a final release offset")
+    if contract_id == COURSE_EVENT_CONTRACT:
+        if event_detail_privacy_class not in {"public", "shareable", "personal", "private"}:
+            raise ValueError("ordinary course tool needs exact role-visible source privacy")
+    elif event_detail_privacy_class is not None:
+        raise ValueError("only the ordinary course tool takes source privacy")
     tool_name = _CONTRACTS[contract_id]
     # Only the static schema is reusable. Provider mode is resolved anew on
     # every invocation; callers receive an owned copy they may safely bind.
-    tools = deepcopy(_static_author_tools(contract_id))
+    tools = deepcopy(_static_author_tools(contract_id, closing_offset_seconds, event_detail_privacy_class))
     transport = resolve_single_tool_transport(
         provider=getattr(provider, "authority_origin", provider),
         tools=tools,
@@ -53,14 +69,20 @@ def world_consequence_author_tool_contract(
     return {"tools": tools, "tool_choice": transport.tool_choice}
 
 
-@lru_cache(maxsize=len(_CONTRACTS))
-def _static_author_tools(contract_id: str) -> list[dict[str, object]]:
+@lru_cache(maxsize=32)
+def _static_author_tools(contract_id: str, closing_offset_seconds: int | None = None,
+                         event_detail_privacy_class: str | None = None) -> list[dict[str, object]]:
     tool_name = _CONTRACTS[contract_id]
-    propose = life_possibility_output_schema(outcome_contract="world-consequence.2", authorized_attempt_claims=contract_id in {CONTRACT, EVENT_CONTRACT},
-                                               event_details=contract_id == EVENT_CONTRACT)
-    if contract_id in {"world-consequence-author-tool.3", "world-consequence-author-tool.4", CONTRACT, EVENT_CONTRACT}:
+    event_detail_tool = contract_id in {EVENT_CONTRACT, REQUIRED_EVENT_CONTRACT, COURSE_EVENT_CONTRACT}
+    propose = life_possibility_output_schema(outcome_contract="world-consequence.2",
+        authorized_attempt_claims=contract_id in {CONTRACT, EVENT_CONTRACT, REQUIRED_EVENT_CONTRACT, COURSE_EVENT_CONTRACT},
+        event_details=event_detail_tool, required_event_details=contract_id in {REQUIRED_EVENT_CONTRACT, COURSE_EVENT_CONTRACT},
+        closing_offset_seconds=closing_offset_seconds,
+        ordinary_course_detail=contract_id == COURSE_EVENT_CONTRACT,
+        event_detail_privacy_class=event_detail_privacy_class)
+    if contract_id in {"world-consequence-author-tool.3", "world-consequence-author-tool.4", CONTRACT, EVENT_CONTRACT, REQUIRED_EVENT_CONTRACT}:
         _bind_nonempty_visual_environment(propose)
-    if contract_id in {"world-consequence-author-tool.4", CONTRACT, EVENT_CONTRACT}:
+    if contract_id in {"world-consequence-author-tool.4", CONTRACT, EVENT_CONTRACT, REQUIRED_EVENT_CONTRACT}:
         for kind in ("ProvisionalNpcDraft", "ProvisionalPlaceDraft"):
             propose["$defs"][kind]["properties"]["narrative_tags"]["items"]["pattern"] = _NARRATIVE_TAG.pattern
     # The two branches have disjoint source_kind literals. Keep that exact
@@ -71,7 +93,7 @@ def _static_author_tools(contract_id: str) -> list[dict[str, object]]:
     binding.pop("discriminator")
     propose = _inline_refs(propose, propose["$defs"])
     proposals = (
-        [propose] if contract_id == "world-consequence-author-tool.1"
+        [propose] if contract_id in {"world-consequence-author-tool.1", COURSE_EVENT_CONTRACT}
         else _located_visual_branches(propose)
     )
     schema = {
@@ -79,7 +101,7 @@ def _static_author_tools(contract_id: str) -> list[dict[str, object]]:
         "properties": {
             "replacement": {
                 "anyOf": [
-                    LifeDevelopmentNoOpDraft.model_json_schema(mode="validation"),
+                    *([] if contract_id in {REQUIRED_EVENT_CONTRACT, COURSE_EVENT_CONTRACT} else [LifeDevelopmentNoOpDraft.model_json_schema(mode="validation")]),
                     *proposals,
                 ]
             }
@@ -96,7 +118,13 @@ def _static_author_tools(contract_id: str) -> list[dict[str, object]]:
         "type": "function",
         "function": {
             "name": tool_name,
-            "description": "Return the complete World Author no_op or propose decision.",
+            "description": (f"Return two external course outcomes and complete timed steps at privacy "
+                            f"{event_detail_privacy_class}: opening at 0 seconds, closing at {closing_offset_seconds} seconds."
+                            if contract_id == COURSE_EVENT_CONTRACT else
+                            f"Return a complete reviewed event detail proposal: opening at 0 seconds, "
+                            f"closing at {closing_offset_seconds} seconds."
+                            if contract_id == REQUIRED_EVENT_CONTRACT
+                            else "Return the complete World Author no_op or propose decision."),
             "strict": True,
             "parameters": parameters,
         },
@@ -186,7 +214,7 @@ def bind_world_consequence_author_tool(
     if "world_author_wire" in user:
         raise ValueError("World author wire is already bound")
     user["world_author_wire"] = _wire_identity(tool_contract)
-    if user["world_author_wire"]["contract"] in {"world-consequence-author-tool.4", CONTRACT, EVENT_CONTRACT}:
+    if user["world_author_wire"]["contract"] in {"world-consequence-author-tool.4", CONTRACT, EVENT_CONTRACT, REQUIRED_EVENT_CONTRACT}:
         output = user.get("output_contract")
         if isinstance(output, dict) and isinstance(output.get("propose"), dict):
             # Native parameters already carry every shape, enum and description.
@@ -255,7 +283,12 @@ def recover_world_consequence_author_tool(
     contract_id = marker.get("contract") if isinstance(marker, dict) else None
     if not isinstance(contract_id, str) or contract_id not in _CONTRACTS:
         raise ValueError("original World author tool transport identity changed")
-    contract = world_consequence_author_tool_contract(provider=provider, contract_id=contract_id)
+    required_detail = (user.get("capability_manifest") or {}).get("event_detail_capability") or {}
+    contract = world_consequence_author_tool_contract(provider=provider, contract_id=contract_id,
+        closing_offset_seconds=(required_detail.get("closing_offset_seconds")
+            if contract_id in {REQUIRED_EVENT_CONTRACT, COURSE_EVENT_CONTRACT} else None),
+        event_detail_privacy_class=(required_detail.get("privacy_class")
+            if contract_id == COURSE_EVENT_CONTRACT else None))
     if user["world_author_wire"] != _wire_identity(contract):
         raise ValueError("original World author tool transport identity changed")
     return contract
@@ -274,6 +307,6 @@ def _wire_identity(tool_contract: dict[str, object]) -> dict[str, object]:
         "tool_contract_sha256": hashlib.sha256(encoded.encode("utf-8")).hexdigest(),
         "arguments_contract": (
             "exact_replacement_envelope_of_native_tool_schema"
-            if contract_id in {"world-consequence-author-tool.4", CONTRACT, EVENT_CONTRACT} else "exact_replacement_envelope_of_output_contract"
+            if contract_id in {"world-consequence-author-tool.4", CONTRACT, EVENT_CONTRACT, REQUIRED_EVENT_CONTRACT} else "exact_replacement_envelope_of_output_contract"
         ),
     }

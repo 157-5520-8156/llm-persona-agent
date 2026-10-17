@@ -18,6 +18,42 @@ def detail_operation(occurrence_id):
     return "event-detail:" + digest(occurrence_id)
 
 
+def read_accepted_detail_program(*, ledger, content_store, projection, occurrence):
+    """Verify an accepted program from World authority, independently of the queue."""
+    index = occurrence.event_detail_program
+    if index is None:
+        raise ValueError("event detail occurrence has no accepted program")
+    located = ledger.lookup_event_commit(occurrence.trigger_ref)
+    if located is None or located[1].ledger_sequence > projection.ledger_sequence:
+        raise ValueError("event detail proposal is unavailable at this prefix")
+    event = WorldEvent.model_validate_json(located[0].model_dump_json())
+    raw = event.payload()
+    if event.event_type != "ProposalRecorded" or raw.get("proposal_kind") != "life_development" or raw.get("effect_ref") != occurrence.occurrence_id:
+        raise ValueError("event detail source is not an accepted World Author proposal")
+    from .reducers import _validate_life_development_deliberation_binding
+    _validate_life_development_deliberation_binding(projection, raw)
+    manifest = LifeDevelopmentCapabilityManifest.model_validate_json(json.dumps(raw["world_author_deliberation"]["capability_manifest"]))
+    binding = raw["world_author_deliberation"]
+    original = content_store.read_exact(content_ref=binding["raw_content_refs"][-1])
+    if original is None or original.content_kind != "raw_model_result":
+        raise ValueError("original prepared event author body is unavailable")
+    from .life_content_store import life_content_payload_hash
+    if original.content_payload_hash != binding["response_hashes"][-1] or life_content_payload_hash(original.text) != original.content_payload_hash:
+        raise ValueError("original event author body differs from its audit")
+    original_time = next(r.logical_time for r in projection.committed_world_event_refs
+                         if r.world_revision == manifest.pinned_cursor.world_revision)
+    draft = parse_world_author_draft(raw=original.text, manifest=manifest, logical_time=original_time)
+    if (event_detail_index(draft, manifest.event_detail_capability) != index
+            or digest(raw["possibility_authority"]) != raw["possibility_authority_hash"]
+            or raw.get("world_author_source_closure_review", {}).get("decision") != "supported"
+            or raw.get("world_author_novel_origin_review", {}).get("decision") != "supported"):
+        raise ValueError("prepared detail lacks exact reviewed authority")
+    source = next((e for e in projection.committed_world_event_refs if e.event_id == index.capability.source_event_ref), None)
+    if source is None or source.payload_hash != index.capability.source_payload_hash or source.world_revision != index.capability.source_world_revision:
+        raise ValueError("prepared detail source has changed")
+    return draft, index
+
+
 class EventDetailRuntime:
     def __init__(self, *, ledger, store, executor, actor_ref, content_store):
         self.ledger, self.store, self.executor, self.actor_ref = ledger, store, executor, actor_ref
@@ -56,35 +92,10 @@ class EventDetailRuntime:
         occurrence = next(o for o in projection.world_occurrences if o.occurrence_id == pointer["occurrence_ref"])
         if occurrence.trigger_ref != pointer["proposal_event_ref"] or occurrence.event_detail_program is None:
             raise ValueError("event detail lost its accepted occurrence")
-        located = self.ledger.lookup_event_commit(pointer["proposal_event_ref"])
-        if located is None or located[1].ledger_sequence > projection.ledger_sequence:
-            raise ValueError("event detail proposal is unavailable at this prefix")
-        event = WorldEvent.model_validate_json(located[0].model_dump_json())
-        raw = event.payload()
-        if event.event_type != "ProposalRecorded" or raw.get("proposal_kind") != "life_development" or raw.get("effect_ref") != occurrence.occurrence_id:
-            raise ValueError("event detail source is not an accepted World Author proposal")
-        from .reducers import _validate_life_development_deliberation_binding
-        _validate_life_development_deliberation_binding(projection, raw)
-        manifest = LifeDevelopmentCapabilityManifest.model_validate_json(json.dumps(raw["world_author_deliberation"]["capability_manifest"]))
-        binding = raw["world_author_deliberation"]
-        original = self.content_store.read_exact(content_ref=binding["raw_content_refs"][-1])
-        if original is None or original.content_kind != "raw_model_result":
-            raise ValueError("original prepared event author body is unavailable")
-        from .life_content_store import life_content_payload_hash
-        if original.content_payload_hash != binding["response_hashes"][-1] or life_content_payload_hash(original.text) != original.content_payload_hash:
-            raise ValueError("original event author body differs from its audit")
-        original_time = next(r.logical_time for r in projection.committed_world_event_refs
-                             if r.world_revision == manifest.pinned_cursor.world_revision)
-        draft = parse_world_author_draft(raw=original.text, manifest=manifest, logical_time=original_time)
-        index = event_detail_index(draft, manifest.event_detail_capability)
-        if (index != occurrence.event_detail_program or index.model_dump(mode="json") != pointer["program_index"]
-                or digest(raw["possibility_authority"]) != raw["possibility_authority_hash"]):
+        draft, index = read_accepted_detail_program(ledger=self.ledger, content_store=self.content_store,
+                                                     projection=projection, occurrence=occurrence)
+        if index.model_dump(mode="json") != pointer["program_index"]:
             raise ValueError("prepared detail differs from its original author bytes")
-        if raw.get("world_author_source_closure_review", {}).get("decision") != "supported" or raw.get("world_author_novel_origin_review", {}).get("decision") != "supported":
-            raise ValueError("prepared detail has no complete source review")
-        source = next((e for e in projection.committed_world_event_refs if e.event_id == index.capability.source_event_ref), None)
-        if source is None or source.payload_hash != index.capability.source_payload_hash or source.world_revision != index.capability.source_world_revision:
-            raise ValueError("prepared detail source has changed")
         return occurrence, draft, index
 
     def _source_live(self, capability, projection):
@@ -101,8 +112,19 @@ class EventDetailRuntime:
             return bool(plan and plan.owner_actor_ref == self.actor_ref and plan.status == "active"
                         and plan.authority_origin and plan.authority_origin.accepted_event_ref == capability.source_event_ref)
         occurrence = next((o for o in projection.world_occurrences if o.occurrence_id == capability.entity_ref), None)
-        return bool(occurrence and self.actor_ref in occurrence.participant_refs
-                    and occurrence.status == "active" and occurrence.entity_revision == capability.entity_revision)
+        if occurrence is None or self.actor_ref not in occurrence.participant_refs:
+            return False
+        if occurrence.status == "active":
+            return occurrence.entity_revision == capability.entity_revision
+        # Settlement selects a previously authored branch; it does not revoke
+        # the accepted programme while the original event window remains open.
+        # Cancellation and expiry still close all unpublished phases.
+        return bool(occurrence.status == "settled" and occurrence.entity_revision > capability.entity_revision
+                    and occurrence.activated_at == capability.starts_at
+                    and occurrence.settled_at is not None
+                    and occurrence.settled_at < capability.ends_at
+                    and occurrence.event_detail_program is not None
+                    and occurrence.event_detail_program.capability == capability)
 
     def advance(self, *, wake_event_ref):
         with self.ledger.serialized_commit_sequence():
@@ -126,7 +148,7 @@ class EventDetailRuntime:
                     failure = {"code": type(exc).__name__, "detail": str(exc)[:1000],
                                "observed_at": state.logical_time.isoformat()}
                     self.store.attempt(row["operation_ref"], ordinal=ordinal, payload=failure)
-                    self.store.update_event_detail(row["operation_ref"], previous=payload, payload={
+                    self.store.update_running_operation(row["operation_ref"], kind="event_detail", previous=payload, payload={
                         **payload, "failure_count": ordinal, "failure_code": type(exc).__name__,
                         "next_due_at": (state.logical_time + timedelta(seconds=30)).isoformat(),
                     })
@@ -204,7 +226,7 @@ class EventDetailRuntime:
         current = self.store.operation(op)
         if current["state"] == "running":
             due = self._next_for(occurrence, index, state.logical_time)
-            self.store.update_event_detail(op, previous=current["payload"], payload={
+            self.store.update_running_operation(op, kind="event_detail", previous=current["payload"], payload={
                 **current["payload"], "failure_code": None,
                 "next_due_at": (due or index.capability.ends_at).isoformat(),
             })

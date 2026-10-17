@@ -1,12 +1,13 @@
 """Prepared prose crosses the same public author/review path, then clock-gated publication."""
 import json
-from datetime import timedelta
+from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
 
 import pytest
 
 from companion_daemon.world_v2.event_detail_runtime import EventDetailRuntime
+from companion_daemon.world_v2.event_detail_contract import EventDetailCapability, validate_event_details
 from companion_daemon.world_v2.life_content import LifeContentCompiler
 from companion_daemon.world_v2.occurrence_content_coordinator import OccurrenceContentCoordinator
 from companion_daemon.world_v2.world_outlook_execution import WorldOutlookExecutor
@@ -26,6 +27,92 @@ from test_world_consequence_producer import _advance as advance_aftermath
 build_app = _build_app_fixture
 
 FUTURE = "FUTURE_DETAIL_CANARY：走廊另一端响起短暂的脚步声。"
+
+
+def test_new_course_detail_capability_requires_a_full_timed_program():
+    from companion_daemon.world_v2.life_development_output_schema import life_possibility_output_schema
+    from jsonschema import Draft202012Validator
+    from test_world_consequence_producer import _draft
+    now = datetime.fromisoformat("2026-10-19T08:15:00+08:00")
+    cap = EventDetailCapability(source_kind="world_occurrence", source_event_ref="event:activate:class",
+        source_payload_hash="a" * 64, source_world_revision=1, entity_ref="occurrence:class", entity_revision=2,
+        starts_at=now, ends_at=now + timedelta(minutes=100), privacy_class="shareable",
+        required_program=True, closing_offset_seconds=99 * 60)
+    value = _draft(SimpleNamespace(event_id="event:clock", world_id="world:test", logical_time=now))
+    value["event_details"] = []
+    from companion_daemon.world_v2.life_development_draft import LifeDevelopmentPossibilityDraft
+    draft = LifeDevelopmentPossibilityDraft.model_validate_json(json.dumps(value))
+    with pytest.raises(ValueError, match="detail"):
+        validate_event_details(draft, cap, logical_time=now)
+    schema = life_possibility_output_schema(outcome_contract="world-consequence.2", event_details=True,
+                                           required_event_details=True, closing_offset_seconds=99 * 60)
+    assert "event_details" in schema["required"]
+    assert schema["properties"]["event_details"]["minItems"] >= 2
+    assert not Draft202012Validator(schema).is_valid(value)
+    claim = value["claim_declarations"][0]["claim_id"]
+    value["event_details"] = [{"after_seconds": 0, "text": "教室开始上课。", "claim_refs": [claim]},
+                              {"after_seconds": 99 * 60, "text": "课程临近结束。", "claim_refs": [claim]}]
+    validate_event_details(LifeDevelopmentPossibilityDraft.model_validate_json(json.dumps(value)), cap, logical_time=now)
+    assert Draft202012Validator(schema).is_valid(value)
+    value["event_details"][1]["after_seconds"] = 60
+    with pytest.raises(ValueError, match="final.minute|final-minute"):
+        validate_event_details(LifeDevelopmentPossibilityDraft.model_validate_json(json.dumps(value)), cap, logical_time=now)
+
+
+def test_ordinary_course_profile_keeps_complete_steps_without_unrelated_effect_shapes():
+    from companion_daemon.world_v2.life_development_output_schema import life_possibility_output_schema
+    from companion_daemon.world_v2.life_development_draft import LifeDevelopmentPossibilityDraft
+    from test_world_consequence_producer import _draft
+    from jsonschema import Draft202012Validator
+
+    now = datetime.fromisoformat("2026-10-19T08:15:00+08:00")
+    cap = EventDetailCapability(contract="event-detail-capability.2", source_kind="world_occurrence",
+        source_event_ref="event:activate:class", source_payload_hash="a" * 64,
+        source_world_revision=1, entity_ref="occurrence:class", entity_revision=2,
+        starts_at=now, ends_at=now + timedelta(minutes=100), privacy_class="private",
+        required_program=True, closing_offset_seconds=99 * 60)
+    value = _draft(SimpleNamespace(event_id="event:clock", world_id="world:test", logical_time=now))
+    value.update(location_ref=None, location_capability_ref=None, entity_refs=[], privacy_class="private")
+    for outcome in value["outcomes"]:
+        outcome.update(privacy_class="private", visual_evidence=None, provisional_npcs=[],
+                       provisional_places=[], objective_biographical_transition=None,
+                       dynamic_life_direction=None)
+    claim = value["claim_declarations"][0]["claim_id"]
+    value["event_details"] = [
+        {"after_seconds": 0, "text": "教室开始开放。", "claim_refs": [claim]},
+        {"after_seconds": 99 * 60, "text": "这节课临近结束。", "claim_refs": [claim]},
+    ]
+    schema = life_possibility_output_schema(outcome_contract="world-consequence.2",
+        event_details=True, required_event_details=True, closing_offset_seconds=99 * 60,
+        ordinary_course_detail=True, event_detail_privacy_class="private")
+    assert Draft202012Validator(schema).is_valid(value)
+    validate_event_details(LifeDevelopmentPossibilityDraft.model_validate_json(json.dumps(value)), cap, logical_time=now)
+    value["outcomes"][0]["visual_evidence"] = {"claim_refs": [claim], "activity_description": "多余画面"}
+    assert not Draft202012Validator(schema).is_valid(value)
+    with pytest.raises(ValueError, match="ordinary course"):
+        validate_event_details(LifeDevelopmentPossibilityDraft.model_validate_json(json.dumps(value)), cap, logical_time=now)
+    with pytest.raises(ValueError, match="role-visible"):
+        EventDetailCapability.model_validate_json(json.dumps({**cap.model_dump(mode="json"), "privacy_class": "withhold"}))
+
+
+def test_settled_course_keeps_accepted_detail_authority_until_original_window_ends():
+    now = datetime.fromisoformat("2026-10-19T08:15:00+08:00")
+    cap = EventDetailCapability(contract="event-detail-capability.2", source_kind="world_occurrence",
+        source_event_ref="event:activate:class", source_payload_hash="a" * 64,
+        source_world_revision=1, entity_ref="occurrence:class", entity_revision=2,
+        starts_at=now, ends_at=now + timedelta(minutes=100), privacy_class="private",
+        required_program=True, closing_offset_seconds=99 * 60)
+    runtime = object.__new__(EventDetailRuntime)
+    runtime.actor_ref = ACTOR
+    occurrence = SimpleNamespace(occurrence_id=cap.entity_ref, participant_refs=(ACTOR,),
+        status="settled", entity_revision=3, activated_at=now,
+        settled_at=now + timedelta(minutes=30), event_detail_program=SimpleNamespace(capability=cap))
+    assert runtime._source_live(cap, SimpleNamespace(world_occurrences=(occurrence,)))
+    occurrence.status = "cancelled"
+    assert not runtime._source_live(cap, SimpleNamespace(world_occurrences=(occurrence,)))
+    occurrence.status = "settled"
+    occurrence.event_detail_program = None
+    assert not runtime._source_live(cap, SimpleNamespace(world_occurrences=(occurrence,)))
 
 
 class DetailAuthor(_AttemptAuthor):

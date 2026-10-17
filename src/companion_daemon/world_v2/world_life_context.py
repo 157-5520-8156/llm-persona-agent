@@ -62,6 +62,9 @@ class WorldLifeContextItem(FrozenModel):
     # settlement.  False is the empty-album case, not a request to create one.
     photo_in_hand: bool = False
     world_planning: WorldPlanningReading | None = Field(default=None, exclude_if=lambda value: value is None)
+    participation_scope: Literal["external_event_not_character_attendance_or_presence"] | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
 
 
 class ActiveWorldOccurrencePremise(FrozenModel):
@@ -93,6 +96,9 @@ class ActiveWorldOccurrenceContextItem(FrozenModel):
     activated_at: datetime
     status: Literal["active"] = "active"
     premise: ActiveWorldOccurrencePremise
+    participation_scope: Literal["external_event_not_character_attendance_or_presence"] | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
     privacy_class: PrivacyClass
     proposal_source: ActiveWorldOccurrenceProposalBinding
     source_bindings: tuple[
@@ -367,6 +373,7 @@ class WorldLifeContextCompiler:
         self,
         *,
         life_content: LifeContentCompiler | None = None,
+        ledger=None,
         active_occurrence_reader: ActiveWorldOccurrenceReader | None = None,
         active_activity_reader: ActiveActivityReader | None = None,
         planned_activity_reader: PlannedActivityReader | None = None,
@@ -375,6 +382,7 @@ class WorldLifeContextCompiler:
         biography_timezone: ZoneInfo | None = None,
     ) -> None:
         self._life_content = life_content
+        self._ledger = ledger
         self._active_occurrence_reader = active_occurrence_reader
         self._active_activity_reader = active_activity_reader
         self._planned_activity_reader = planned_activity_reader
@@ -488,6 +496,10 @@ class WorldLifeContextCompiler:
                 )
                 if privacy == "withhold" or ranks[privacy] > ranks[viewer_privacy_ceiling]:
                     continue
+            proposal = (self._ledger.lookup_event_commit(occurrence.trigger_ref)
+                        if self._ledger is not None and occurrence.activation_authority == "world_outlook" else None)
+            detail_origin = (proposal[0].payload().get("central_authorship", {}).get("event_detail_origin")
+                             if proposal is not None and proposal[0].source == "world-outlook-execution.1" else None)
             items.append(
                 WorldLifeContextItem(
                     occurrence_id=occurrence.occurrence_id,
@@ -506,6 +518,8 @@ class WorldLifeContextCompiler:
                     ),
                     content=excerpts.get(occurrence.occurrence_id),
                     world_planning=planning[occurrence.occurrence_id][0] if occurrence.occurrence_id in planning else None,
+                    participation_scope=("external_event_not_character_attendance_or_presence"
+                                         if detail_origin is not None else None),
                     photo_in_hand=settlement_has_available_photo(
                         projection,
                         settlement_ref=settlement.event_id,

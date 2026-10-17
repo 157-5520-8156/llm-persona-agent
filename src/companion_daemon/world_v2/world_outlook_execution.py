@@ -148,6 +148,9 @@ class WorldOutlookExecutor:
 
             if node.execution.kind in NPC_EXECUTION_KINDS:
                 return self._npcs.execute(node=node, wake_event_ref=wake_event_ref, origin=origin)
+            if (origin.get("planning_instance_origin", {}).get("planning_contract") == "world-planning.3"
+                    and node.closes_at - state.logical_time < timedelta(minutes=2)):
+                return SimpleNamespace(status="rejected", reason_code="planning_detail_window_too_short")
             ref = occurrence_ref(state.world_id, self._owner, node.opportunity_id)
             existing = next((o for o in state.world_occurrences if o.occurrence_id == ref), None)
             if existing is None:

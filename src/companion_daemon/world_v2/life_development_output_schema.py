@@ -18,13 +18,25 @@ _HISTORICAL_OUTCOME_DESCRIPTION = (
 
 
 def life_possibility_output_schema(*, outcome_contract: str | None = None,
-                                  authorized_attempt_claims: bool = False, event_details: bool = False) -> dict[str, object]:
+                                  authorized_attempt_claims: bool = False, event_details: bool = False,
+                                  required_event_details: bool = False,
+                                  closing_offset_seconds: int | None = None,
+                                  ordinary_course_detail: bool = False,
+                                  event_detail_privacy_class: str | None = None) -> dict[str, object]:
     schema = LifeDevelopmentPossibilityDraft.model_json_schema(mode="validation")
     definitions = schema["$defs"]
     if event_details:
         for field in ("causal_authority", "outcome_resolution_authority"):
             schema["properties"][field] = {"type": "string", "const": "world_contingency"}
         definitions["LifeDevelopmentTimingDraft"]["properties"]["mode"] = {"type": "string", "const": "now"}
+        if required_event_details:
+            if closing_offset_seconds is None or closing_offset_seconds < 60:
+                raise ValueError("required event detail needs its exact final release offset")
+            schema["required"].append("event_details")
+            steps = schema["properties"]["event_details"]
+            steps["minItems"] = 2
+            steps["allOf"] = [{"contains": {"required": ["after_seconds"],
+                "properties": {"after_seconds": {"const": offset}}}} for offset in (0, closing_offset_seconds)]
     if not event_details:
         schema["properties"].pop("event_details", None)
         definitions.pop("EventDetailStep", None)
@@ -62,4 +74,22 @@ def life_possibility_output_schema(*, outcome_contract: str | None = None,
         outcome["description"] = _HISTORICAL_OUTCOME_DESCRIPTION
     else:
         raise ValueError("unknown life possibility output contract")
+    if ordinary_course_detail:
+        if not required_event_details or event_detail_privacy_class not in {
+            "public", "shareable", "personal", "private"
+        }:
+            raise ValueError("ordinary course detail requires a role-visible source privacy")
+        properties = schema["properties"]
+        for key in ("location_ref", "location_capability_ref"):
+            properties[key] = {"type": "null"}
+        properties["entity_refs"] = {"type": "array", "maxItems": 0, "items": {"type": "string"}}
+        properties["privacy_class"] = {"type": "string", "const": event_detail_privacy_class}
+        properties["outcomes"]["minItems"] = properties["outcomes"]["maxItems"] = 2
+        outcome_properties = definitions["LifeDevelopmentOutcomeDraft"]["properties"]
+        outcome_properties["privacy_class"] = {"type": "string", "const": event_detail_privacy_class}
+        for key in ("provisional_npcs", "provisional_places"):
+            outcome_properties[key] = {"type": "array", "maxItems": 0,
+                                       "items": outcome_properties[key]["items"]}
+        for key in ("objective_biographical_transition", "dynamic_life_direction", "visual_evidence"):
+            outcome_properties[key] = {"type": "null"}
     return schema

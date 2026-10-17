@@ -67,7 +67,7 @@ class PlanningException(FrozenModel):
 
 
 class WorldPlanningDraft(FrozenModel):
-    contract: Literal["world-planning.1", "world-planning.2"] = "world-planning.1"
+    contract: Literal["world-planning.1", "world-planning.2", "world-planning.3"] = "world-planning.1"
     planning_key: str = Field(pattern=r"^[a-z][a-z0-9_-]{0,95}$")
     title: str = Field(min_length=1, max_length=160)
     summary: str = Field(min_length=1, max_length=1200)
@@ -97,6 +97,11 @@ class WorldPlanningDraft(FrozenModel):
         elif (self.detailed_through is None or not self.starts_on <= self.detailed_through <= self.ends_on
               or self.review_at is None or self.review_at.tzinfo is None or self.review_at.utcoffset() is None):
             raise ValueError("rolling planning needs explicit detail coverage and an aware review deadline")
+        if self.contract == "world-planning.3" and (
+            any(not s.event_text or not s.prepare_details or s.duration_minutes < 2 for s in self.slots)
+            or any(e.duration_minutes is not None and e.duration_minutes < 2 for e in self.exceptions)
+        ):
+            raise ValueError("world-planning.3 requires a script and at least two minutes for every prepared event detail")
         if any(s.event_text and s.duration_minutes > 720 for s in self.slots):
             raise ValueError("one authored planning event can last at most twelve hours")
         prior_end = None
@@ -206,13 +211,13 @@ def expand_planning(planning: WorldPlanningDraft, *, world_id: str, starts_at: d
             # One slot has at most one occurrence per original date. In v2 its
             # identity survives a rule-time edit as well as an explicit exception.
             identity = json.dumps([world_id, planning.planning_key, slot.slot_id,
-                                   day.isoformat() if planning.contract == "world-planning.2" else original.isoformat()], separators=(",", ":"))
+                                   day.isoformat() if planning.contract != "world-planning.1" else original.isoformat()], separators=(",", ":"))
             instances.append(PlanningInstance(
                 instance_ref="planning-instance:" + hashlib.sha256(identity.encode()).hexdigest(),
                 title=slot.title, detail=slot.detail + ("\n" + exception.explanation if exception else ""),
                 original_start=original, starts_at=actual, ends_at=end,
                 status="cancelled" if exception and exception.action == "cancel" else "scheduled",
-                **({"slot_id": slot.slot_id} if planning.contract == "world-planning.2" else {}),
+                **({"slot_id": slot.slot_id} if planning.contract != "world-planning.1" else {}),
             ))
     return tuple(sorted(instances, key=lambda i: (i.starts_at, i.instance_ref))[:limit])
 
@@ -330,7 +335,7 @@ def validate_planning_publication(planning, *, projection, actor_ref, occurrence
         previous = selected_world_consequence(store=store, projection=projection, occurrence=head,
             actor_ref=actor_ref, viewer_privacy_ceiling="private").world_planning
         executed = set()
-        if previous.contract == "world-planning.2" and ledger is not None:
+        if previous.contract in {"world-planning.2", "world-planning.3"} and ledger is not None:
             # Earlier starts are already protected by the time boundary. Only
             # this exact-clock race needs activation evidence; never traverse
             # every historical publication for each occurrence.
@@ -410,7 +415,7 @@ def planning_event_offers(*, projection, publications, ledger, actor_ref):
     now = projection.logical_time
     for publication in publications:
         planning = publication.planning
-        if planning.contract != "world-planning.2" or publication.effective_until is not None:
+        if planning.contract not in {"world-planning.2", "world-planning.3"} or publication.effective_until is not None:
             continue
         # Earliest bounded batch, re-expanded at each clock: elapsed instances leave
         # the window, so a dense later week cannot block today's valid work.
@@ -448,6 +453,7 @@ def planning_event_offers(*, projection, publications, ledger, actor_ref):
             origin = {**original["central_authorship"], "actor_ref": actor_ref,
                 "planning_instance_origin": {"publication_ref": occurrence.occurrence_id,
                     "publication_event_ref": publication.source_event_ref, "publication_hash": publication.source_payload_hash,
-                    "instance_ref": instance.instance_ref, "ends_at": instance.ends_at.isoformat()}}
+                    "instance_ref": instance.instance_ref, "ends_at": instance.ends_at.isoformat(),
+                    **({"planning_contract": "world-planning.3"} if planning.contract == "world-planning.3" else {})}}
             result[node_id] = (node, origin)
     return result

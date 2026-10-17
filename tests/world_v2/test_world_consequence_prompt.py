@@ -262,6 +262,42 @@ def test_bound_detail_prompt_cannot_offer_a_new_character_choice_or_independent_
     assert packet['output_contract']['propose']['properties']['causal_authority']['const'] == 'world_contingency'
 
 
+def test_required_course_detail_prompt_has_exact_timing_without_no_op():
+    authority, context = _inputs()
+    context['capability_manifest']['event_detail_capability'] = {
+        'source_kind': 'world_occurrence', 'required_program': True,
+        'closing_offset_seconds': 5340,
+    }
+    messages = compile_world_consequence_messages(
+        user_context=context, authority=authority, execution_materials=())
+    packet = json.loads(messages[1]['content'])
+    assert 'no_op' not in packet['output_contract']
+    assert 'no_op remains valid' not in messages[0]['content']
+    assert 'after_seconds=0' in messages[0]['content']
+    assert 'after_seconds=5340' in messages[0]['content']
+    assert 'protagonist' in messages[0]['content']
+    assert 'narrative:' in messages[0]['content']
+    assert 'outcome.claim_refs' in messages[0]['content']
+
+
+def test_ordinary_course_prompt_narrows_only_the_new_event_capability():
+    authority, context = _inputs()
+    context['capability_manifest']['event_detail_capability'] = {
+        'contract': 'event-detail-capability.2', 'source_kind': 'world_occurrence',
+        'required_program': True, 'closing_offset_seconds': 5940, 'privacy_class': 'private',
+    }
+    messages = compile_world_consequence_messages(
+        user_context=context, authority=authority, execution_materials=())
+    packet = json.loads(messages[1]['content'])
+    schema = packet['output_contract']['propose']
+    assert packet['world_author_prompt_contract'] == 'world-consequence-prompt.3'
+    assert schema['properties']['location_ref'] == {'type': 'null'}
+    assert schema['properties']['privacy_class']['const'] == 'private'
+    assert schema['$defs']['LifeDevelopmentOutcomeDraft']['properties']['visual_evidence'] == {'type': 'null'}
+    assert 'no_op' not in packet['output_contract']
+    assert 'Fate may schedule a separate encounter' in messages[0]['content']
+
+
 def test_current_prompt_deduplicates_identical_location_capabilities_only():
     authority, context = _inputs()
     capabilities = [{'location_ref':'room:one', 'capability_ref':'cap:one', 'privacy_class':'private'}]

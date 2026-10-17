@@ -124,6 +124,18 @@ quotas or required plot developments. Choose the content yourself; no_op remains
 自然语言字段用中文；协议键、枚举与来源坐标保持原样。
 """
 
+_COURSE_GUIDANCE = """You are the World Author. Return one complete propose JSON object under output_contract
+for an already active external course. Author its full environmental progression now; only due
+event_details become visible later. A timetable proves time and a venue, never the character's
+attendance, perception, action, feeling or response. Existing-world claims need exact entailing
+pinned sources. New external facts need proposal-scoped novel_world_generation declarations cited
+by every field relying on them. Copy offered anchors and preserve source privacy, timing and all
+cross_field_authority boundaries. This ordinary course detail has no typed new people or places,
+visual evidence, biographical/life-direction effect, user-channel completion or character choice;
+Fate may schedule a separate encounter. Write natural-language fields in Chinese; preserve protocol
+keys, enums and source coordinates.
+"""
+
 
 def _without_schema_annotations(node):
     """Remove display metadata at schema nodes, never domain properties/literals."""
@@ -187,9 +199,13 @@ def compile_world_consequence_messages(
     scope = next((key for key in ("completed_activity_consequence", "active_attempt_consequence", "event_detail_capability")
                   if manifest.get(key) is not None), None)
     has_details = manifest.get("event_detail_capability") is not None
+    detail_capability = manifest.get("event_detail_capability") or {}
+    required_details = bool(detail_capability.get("required_program"))
+    ordinary_course_detail = required_details and detail_capability.get("contract") == "event-detail-capability.2"
+    closing_offset = detail_capability.get("closing_offset_seconds")
     bound_attempt = scope in {"completed_activity_consequence", "active_attempt_consequence"}
     value["world_author_task"] = scope or "open_world_possibility"
-    value["world_author_prompt_contract"] = "world-consequence-prompt.2"
+    value["world_author_prompt_contract"] = "world-consequence-prompt.3" if ordinary_course_detail else "world-consequence-prompt.2"
     boundary["world_consequence"] = {
         "contract": "world-consequence.2", "environment_text": "external_world_consequences_only",
         "authorized_attempt_result": {
@@ -221,7 +237,11 @@ def compile_world_consequence_messages(
             if isinstance(allowed, list) and "authorized_attempt_result" not in allowed:
                 allowed.append("authorized_attempt_result")
     _reference_duplicate_capabilities(boundary, manifest)
-    schema = life_possibility_output_schema(outcome_contract="world-consequence.2", authorized_attempt_claims=bool(authority.execution_bindings), event_details=has_details)
+    schema = life_possibility_output_schema(outcome_contract="world-consequence.2",
+        authorized_attempt_claims=bool(authority.execution_bindings), event_details=has_details,
+        required_event_details=required_details, closing_offset_seconds=closing_offset,
+        ordinary_course_detail=ordinary_course_detail,
+        event_detail_privacy_class=detail_capability.get("privacy_class") if ordinary_course_detail else None)
     if scope is not None:
         resolutions = ["world_contingency"]
         if not has_details and manifest.get("allow_external_observation_outcomes"):
@@ -245,7 +265,8 @@ def compile_world_consequence_messages(
     elif bound_attempt:
         consequence["required"] = [*consequence["required"], "authorized_attempt_result"]
         consequence["properties"]["authorized_attempt_result"] = {"$ref": "#/$defs/AuthorizedAttemptResult"}
-    value["output_contract"] = {"no_op": {"decision": "no_op"}, "propose": _without_schema_annotations(schema)}
+    value["output_contract"] = {**({} if required_details else {"no_op": {"decision": "no_op"}}),
+                                "propose": _without_schema_annotations(schema)}
     value["execution_authority"] = authority.model_dump(mode="json")
     value["execution_materials"] = [item.model_dump(mode="json") for item in execution_materials]
     if "recent_life_texture" in value:
@@ -279,6 +300,13 @@ def compile_world_consequence_messages(
             "execution binding. Describe a concrete full, partial or unsuccessful result; a disclaimer "
             "about missing evidence is not itself an activity result.\n"
         )
+    elif required_details:
+        guidance = (
+            "Continue the already active external event in event_detail_capability.source_event_ref. "
+            "This request requires now/world_contingency and a complete event_details programme; "
+            "no_op and an empty programme are invalid. Keep its sourced setting and do not invent a "
+            "new opportunity or the protagonist's participation.\n"
+        )
     elif has_details:
         guidance = (
             "Continue only the active external event identified by event_detail_capability.source_event_ref. "
@@ -309,6 +337,28 @@ def compile_world_consequence_messages(
             "or relationship changes. Unreleased details stop on pause, departure or source change. Each "
             "step must leave 60 seconds before ends_at; all step texts together are limited to 8000 characters.\n"
         )
+        if required_details:
+            guidance += (
+                f"Author the opening at after_seconds=0 and the final-minute scene at "
+                f"after_seconds={closing_offset}, with any useful intermediate steps. "
+                "Author the complete external progression now; only its scheduled steps become visible later. "
+                + ("For this ordinary class, write exactly two external outcomes and the timed steps. "
+                   "Set proposal and outcome privacy_class exactly to event_detail_capability.privacy_class. "
+                   "Keep location fields null, entity_refs and provisional people/places empty, and "
+                   "visual, biographical and life-direction effects null; scene prose belongs in "
+                   "event_details and world_consequence.environment_text. "
+                   "The separate Fate lane may schedule significant encounters. "
+                   if ordinary_course_detail else "")
+                + (
+                "If visual evidence is included, declare and reference each current visual fact, "
+                "including weather, light, objects and activity, or omit optional assertions; "
+                "every visual_evidence.claim_refs entry must also appear in that outcome.claim_refs; "
+                "the course schedule alone proves none of those scene details. "
+                "If introducing a provisional person or place, narrative_tags use "
+                "narrative: followed by lowercase letters, digits, dots, underscores or hyphens. "
+                if not ordinary_course_detail else "")
+                + "\n"
+            )
     if value.get("occasion_mode") == "disturbance":
         guidance += (
             "This is a disturbance occasion: at least one outcome needs dynamic_life_direction describing "
@@ -342,8 +392,13 @@ def compile_world_consequence_messages(
         stable_fields = ("output_contract", "claim_classification_contract", "authored_subject", "world_author_wire")
         value = {**{key: value[key] for key in stable_fields if key in value},
                  **{key: item for key, item in value.items() if key not in stable_fields}}
+    core = _COURSE_GUIDANCE if ordinary_course_detail else _CORE_GUIDANCE
+    if required_details and not ordinary_course_detail:
+        core = core.replace("no_op, or one source-bound", "one source-bound").replace(
+            "Choose the content yourself; no_op remains valid.",
+            "Choose the external content for this already active event; a complete detail programme is required.")
     messages = [
-        {"role": "system", "content": _CORE_GUIDANCE + (
+        {"role": "system", "content": core + (
             "The following system message carries this request's exact task/binding guidance.\n" if cache_stable_prefix else guidance
         )},
         {"role": "user", "content": json.dumps(value, ensure_ascii=False, separators=(",", ":"))},

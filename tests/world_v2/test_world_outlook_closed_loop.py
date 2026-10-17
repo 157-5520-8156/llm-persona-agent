@@ -100,6 +100,9 @@ class _WorldAuthor:
                 nodes.append(node)
                 retired = True
             if retired:
+                long_term = deepcopy(current.get("long_term", []))
+                if long_term and packet.get("draft_schema_contract") == "world-outlook-author-schema.7":
+                    long_term[-1]["ends_on"] = (now + timedelta(days=365)).date().isoformat()
                 return json.dumps(
                     {
                         "decision": "revise",
@@ -111,7 +114,7 @@ class _WorldAuthor:
                             "review_at": (now + timedelta(days=1)).isoformat(),
                             "horizon_end": current["horizon_end"],
                             "threads": current["threads"],
-                            **({"long_term": current["long_term"]} if "long_term" in current else {}),
+                            **({"long_term": long_term} if long_term else {}),
                             "opportunities": nodes,
                         },
                     },

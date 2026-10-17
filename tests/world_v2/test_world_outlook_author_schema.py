@@ -18,6 +18,8 @@ def test_rolling_planning_schema_matches_nonnull_runtime_contract():
     from test_rolling_world_planning import semester
     from companion_daemon.world_v2.world_planning import WorldPlanningDraft
     schema = outlook_author_schema(rolling_planning=True)
+    assert schema["$defs"]["WorldPlanningDraft"]["properties"]["contract"]["const"] == "world-planning.3"
+    assert schema["$defs"]["PlanningSlot"]["properties"]["prepare_details"] == {"type": "boolean", "const": True}
     validator = Draft202012Validator({"$ref": "#/$defs/WorldPlanningDraft", "$defs": schema["$defs"]})
     value = semester(datetime.fromisoformat("2026-10-17T21:25:02+08:00")).model_dump(mode="json")
     for field in ("review_at", "detailed_through"):
@@ -47,6 +49,33 @@ def test_rolling_date_bounds_use_the_planning_timezone_across_utc_midnight():
     fields = schema["$defs"]["WorldPlanningDraft"]["properties"]
     assert "2026-10-25" in fields["detailed_through"]["description"]
     assert "2026-10-18" in schema["properties"]["long_term"]["description"]
+    assert "one year" in schema["properties"]["long_term"]["description"]
+
+
+def test_new_annual_outline_requirement_preserves_old_paid_schema(tmp_path):
+    from datetime import timedelta
+    ledger, wake, _, _, runtime = setup(tmp_path, lambda w: [])
+    try:
+        now = ledger.project().logical_time
+        value = draft_value(wake)
+        value["long_term"] = [{"stage_id": "year", "starts_on": now.date().isoformat(),
+                               "ends_on": (now + timedelta(days=90)).date().isoformat(),
+                               "situation": "可调整的远期学校生活。"}]
+        pinned = {"rolling_preparation": {"due": [], "known_publications": []},
+                  "current_outlook": {"opportunities": []}}
+        old = WorldOutlookDraft.model_validate_json(json.dumps(value, ensure_ascii=False))
+        runtime._validate_preparation(old, {**pinned, "draft_schema_contract": "world-outlook-author-schema.6"}, ledger.project())
+        historical_keep = {**pinned, "rolling_preparation": {"due": [],
+            "outline_due": True, "known_publications": []}}
+        runtime._validate_preparation(old, {**historical_keep, "draft_schema_contract": "world-outlook-author-schema.6"},
+                                      ledger.project(), kept_current=True)
+        with pytest.raises(ValueError, match="365|year"):
+            runtime._validate_preparation(old, {**pinned, "draft_schema_contract": "world-outlook-author-schema.7"}, ledger.project())
+        value["long_term"][0]["ends_on"] = (now + timedelta(days=365)).date().isoformat()
+        runtime._validate_preparation(WorldOutlookDraft.model_validate_json(json.dumps(value, ensure_ascii=False)),
+            {**pinned, "draft_schema_contract": "world-outlook-author-schema.7"}, ledger.project())
+    finally:
+        runtime.close()
 
 
 @pytest.mark.asyncio

@@ -1353,6 +1353,9 @@ def parse_world_author_draft(
             violations=structured_violations,
         ) from exc
     if isinstance(draft, LifeDevelopmentNoOpDraft):
+        if manifest.event_detail_capability is not None and manifest.event_detail_capability.required_program:
+            raise LifeDevelopmentDraftError("required_event_detail_missing",
+                "An active external event requires its complete timed detail programme; no_op cannot complete it.")
         return draft
     active = manifest.active_attempt_consequence
     if active is not None:

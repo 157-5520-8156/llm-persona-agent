@@ -50,6 +50,8 @@ from .world_consequence_authoring_context import build_world_consequence_authori
 from .world_consequence_author_tool import (
     CONTRACT as CURRENT_WORLD_AUTHOR_TOOL_CONTRACT,
     EVENT_CONTRACT as EVENT_WORLD_AUTHOR_TOOL_CONTRACT,
+    REQUIRED_EVENT_CONTRACT as REQUIRED_EVENT_WORLD_AUTHOR_TOOL_CONTRACT,
+    COURSE_EVENT_CONTRACT as COURSE_EVENT_WORLD_AUTHOR_TOOL_CONTRACT,
     bind_world_consequence_author_tool,
     recover_world_consequence_author_tool,
     world_consequence_author_tool_contract,
@@ -1427,6 +1429,14 @@ class LifeDevelopmentProposalReader:
             return authority, located[0], located[1]
 
         proposal_located = self._ledger.lookup_event_commit(occurrence.trigger_ref)
+        if (proposal_located is not None
+                and proposal_located[0].source == "world-outlook-execution.1"
+                and proposal_located[0].payload().get("central_authorship", {}).get("event_detail_origin")):
+            return self._read_active_event_detail(
+                occurrence=occurrence, proposal_located=proposal_located,
+                projection=projection, actor_ref=actor_ref,
+                max_premise_characters=max_premise_characters,
+            )
         if (
             proposal_located is None
             or proposal_located[0].event_type != "ProposalRecorded"
@@ -1594,6 +1604,134 @@ class LifeDevelopmentProposalReader:
                     authority_world_revision=activation_ref.world_revision,
                     authority_payload_hash=activation_ref.payload_hash,
                 ),
+            ),
+        )
+
+    def _read_active_event_detail(
+        self, *, occurrence, proposal_located, projection, actor_ref, max_premise_characters,
+    ) -> ActiveWorldOccurrenceContextItem | None:
+        """Expose only a released, reviewed event phase as an active premise."""
+        from .event_detail_runtime import read_accepted_detail_program
+        from .life_content_store import life_content_payload_hash
+        from .life_events import WorldOccurrenceActivatedPayload, WorldOccurrenceCommittedPayload
+        from .world_consequence_contract import WorldConsequenceV2
+
+        proposal, proposal_commit = proposal_located
+        committed = {ref.event_id: ref for ref in projection.committed_world_event_refs}
+        if (proposal.event_id not in proposal_commit.event_ids
+                or proposal_commit.ledger_sequence > projection.ledger_sequence):
+            return None
+        payload = proposal.payload()
+        origin = payload["central_authorship"]["event_detail_origin"]
+        parent = next((item for item in projection.world_occurrences
+                       if item.trigger_ref == origin.get("proposal_event_ref")
+                       and item.event_detail_program is not None), None)
+        if parent is None:
+            return None
+        draft, index = read_accepted_detail_program(
+            ledger=self._ledger, content_store=self._store,
+            projection=projection, occurrence=parent,
+        )
+        phase = origin.get("phase")
+        if (not isinstance(phase, int) or isinstance(phase, bool)
+                or not 0 <= phase < index.step_count
+                or origin.get("program_hash") != index.program_hash
+                or origin.get("source_event_ref") != index.capability.source_event_ref):
+            return None
+        step = draft.event_details[phase]
+        due = index.capability.starts_at + timedelta(seconds=step.after_seconds)
+        source = next((item for item in projection.world_occurrences
+                       if item.occurrence_id == index.capability.entity_ref), None)
+        source_still_authorized = bool(source and (
+            (source.status == "active" and source.entity_revision == index.capability.entity_revision)
+            or (source.status == "settled" and source.entity_revision > index.capability.entity_revision
+                and source.activated_at == index.capability.starts_at
+                and source.settled_at is not None and source.settled_at < index.capability.ends_at
+                and source.event_detail_program == index)
+        ))
+        if (origin.get("due_at") != due.isoformat() or due > projection.logical_time
+                or not source_still_authorized
+                or actor_ref not in source.participant_refs):
+            return None
+        if step.outcome_index is not None and (
+            parent.status != "settled" or parent.settled_outcome_ref != parent.candidate_outcome_refs[step.outcome_index]
+        ):
+            return None
+        script = payload.get("script", {})
+        privacy_rank = {name: rank for rank, name in enumerate(
+            ("public", "shareable", "personal", "private", "withhold"))}
+        if (script.get("kind") != "environment" or script.get("text") != step.text
+                or payload.get("occurrence_id") != occurrence.occurrence_id
+                or occurrence.participant_refs != (actor_ref,)
+                or occurrence.activation_authority != "world_outlook"
+                or script.get("privacy_class") != occurrence.visibility
+                or privacy_rank[occurrence.visibility] < max(
+                    privacy_rank[index.capability.privacy_class],
+                    privacy_rank[draft.privacy_class], privacy_rank[parent.visibility])
+                or occurrence.time_window.closes_at != occurrence.activated_at + timedelta(minutes=1)
+                or occurrence.time_window.closes_at > index.capability.ends_at):
+            return None
+        occurrence_ref = next((ref for ref in reversed(projection.committed_world_event_refs)
+                               if ref.logical_time == occurrence.activated_at
+                               if ref.event_type == "WorldOccurrenceCommitted"
+                               and (located := self._ledger.lookup_event_commit(ref.event_id)) is not None
+                               and located[0].payload().get("occurrence", {}).get("occurrence_id") == occurrence.occurrence_id), None)
+        if occurrence_ref is None:
+            return None
+        committed_event = self._ledger.lookup_event_commit(occurrence_ref.event_id)
+        if committed_event is None or committed_event[0].payload_hash != occurrence_ref.payload_hash:
+            return None
+        committed_payload = WorldOccurrenceCommittedPayload.model_validate_json(committed_event[0].payload_json)
+        original = committed_payload.occurrence
+        if (original.occurrence_id != occurrence.occurrence_id
+                or original.trigger_ref != proposal.event_id
+                or original.entity_revision != 1
+                or original.visibility != occurrence.visibility):
+            return None
+        activation_ref = committed.get("event:activate:" + occurrence.occurrence_id)
+        if activation_ref is None:
+            return None
+        activated_event = self._ledger.lookup_event_commit(activation_ref.event_id)
+        if activated_event is None or activated_event[0].payload_hash != activation_ref.payload_hash:
+            return None
+        activation = WorldOccurrenceActivatedPayload.model_validate_json(activated_event[0].payload_json)
+        if (activation.expected_entity_revision != 1
+                or original.model_copy(update={"entity_revision": 2, "status": "active",
+                    "activated_at": activation.activated_at,
+                    "satisfied_precondition_refs": activation.satisfied_precondition_refs}) != occurrence):
+            return None
+        if len(occurrence.candidate_outcomes) != 1:
+            return None
+        candidate = occurrence.candidate_outcomes[0]
+        stored = self._store.read_exact(content_ref=candidate.content_ref)
+        consequence = WorldConsequenceV2.model_validate_json(stored.text) if stored is not None else None
+        if (stored is None or stored.content_kind != "outcome_candidate"
+                or stored.content_payload_hash != candidate.content_payload_hash
+                or life_content_payload_hash(stored.text) != stored.content_payload_hash
+                or consequence.contract != "world-consequence.2"
+                or consequence.environment_text != step.text
+                or consequence.world_planning is not None
+                or consequence.story_navigation is not None):
+            return None
+        text = step.text[:max_premise_characters]
+        return ActiveWorldOccurrenceContextItem(
+            occurrence_id=occurrence.occurrence_id, occurrence_entity_revision=occurrence.entity_revision,
+            participant_refs=occurrence.participant_refs, location_ref=occurrence.location_ref,
+            time_window=occurrence.time_window, activated_at=occurrence.activated_at,
+            premise=ActiveWorldOccurrencePremise(content_ref=candidate.content_ref,
+                content_payload_hash=candidate.content_payload_hash, text=text, truncated=text != step.text),
+            participation_scope="external_event_not_character_attendance_or_presence",
+            privacy_class=occurrence.visibility,
+            proposal_source=ActiveWorldOccurrenceProposalBinding(
+                authority_event_ref=proposal.event_id, authority_ledger_sequence=proposal_commit.ledger_sequence,
+                authority_payload_hash=proposal.payload_hash),
+            source_bindings=(
+                WorldLifeSourceBinding(authority_event_ref=occurrence_ref.event_id,
+                    authority_world_revision=occurrence_ref.world_revision,
+                    authority_payload_hash=occurrence_ref.payload_hash),
+                WorldLifeSourceBinding(authority_event_ref=activation_ref.event_id,
+                    authority_world_revision=activation_ref.world_revision,
+                    authority_payload_hash=activation_ref.payload_hash),
             ),
         )
 
@@ -1967,10 +2105,18 @@ class LifeDevelopmentRuntime:
             "world_id": self._ledger.world_id, "active_attempt_event_ref": event_ref,
         })
 
-    def pending_world_event_detail_ref(self, *, after_world_revision=None):
+    def pending_world_event_detail_ref(self, *, after_world_revision=None, required_planning_only=False,
+                                       excluded_refs=frozenset()):
+        refs = self.pending_world_event_detail_refs(after_world_revision=after_world_revision,
+            required_planning_only=required_planning_only, excluded_refs=excluded_refs, limit=1)
+        return refs[0] if refs else None
+
+    def pending_world_event_detail_refs(self, *, after_world_revision=None, required_planning_only=False,
+                                        excluded_refs=frozenset(), limit=8, projection=None):
         if self._world_outlook is None:
-            return None
-        state = self._ledger.project()
+            return ()
+        state = projection if projection is not None else self._ledger.project()
+        found = []
         for occurrence in reversed(state.world_occurrences):
             if (occurrence.status != "active" or self._owner not in occurrence.participant_refs
                     or occurrence.time_window.closes_at <= state.logical_time
@@ -1982,7 +2128,13 @@ class LifeDevelopmentRuntime:
             value = proposal[0].payload()
             if not value.get("script", {}).get("prepare_details") or value.get("central_authorship", {}).get("event_detail_origin"):
                 continue
+            is_required_course = (value.get("central_authorship", {}).get("planning_instance_origin", {})
+                                  .get("planning_contract") == "world-planning.3")
+            if required_planning_only and not is_required_course:
+                continue
             source = "event:activate:" + occurrence.occurrence_id
+            if source in excluded_refs:
+                continue
             located = self._ledger.lookup_event_commit(source)
             if located is None:
                 continue
@@ -1992,8 +2144,10 @@ class LifeDevelopmentRuntime:
                 continue
             proposal_id = self._event_detail_proposal_id(source)
             if self._ledger.lookup_event_commit("event:life-development:proposal:" + _digest(proposal_id)) is None:
-                return source
-        return None
+                found.append(source)
+                if len(found) >= limit:
+                    break
+        return tuple(found)
 
     def _event_detail_proposal_id(self, event_ref):
         return "proposal:life-development:" + _digest({"world_id": self._ledger.world_id, "event_detail_source_ref": event_ref})
@@ -3085,11 +3239,16 @@ class LifeDevelopmentRuntime:
                 if origin is None or not origin[0].payload().get("script", {}).get("prepare_details"):
                     raise ValueError("world source did not authorize event detail preparation")
                 source_tokens = origin[0].payload().get("prepared_detail_source_tokens", [])
-                capability = EventDetailCapability(source_kind="world_occurrence", source_event_ref=source.event_id,
+                prepared_origin = origin[0].payload().get("central_authorship", {}).get("planning_instance_origin", {})
+                required_course_detail = prepared_origin.get("planning_contract") == "world-planning.3"
+                capability = EventDetailCapability(contract="event-detail-capability.2" if required_course_detail
+                    else "event-detail-capability.1", source_kind="world_occurrence", source_event_ref=source.event_id,
                     source_payload_hash=source.payload_hash, source_world_revision=ref.world_revision,
                     entity_ref=occurrence.occurrence_id, entity_revision=occurrence.entity_revision,
                     starts_at=occurrence.activated_at, ends_at=occurrence.time_window.closes_at, privacy_class=occurrence.visibility,
-                    source_tokens=tuple(source_tokens))
+                    source_tokens=tuple(source_tokens), required_program=required_course_detail,
+                    **({"closing_offset_seconds": int((occurrence.time_window.closes_at - occurrence.activated_at).total_seconds()) - 60}
+                       if required_course_detail else {}))
                 if not self._world_outlook.event_details._source_live(capability, projection):
                     raise ValueError("world event detail conditions changed before preparation")
                 anchors = {wake.event_id, source.event_id}
@@ -5573,14 +5732,14 @@ class LifeDevelopmentRuntime:
             content_store=self._store, binding=original_binding,
             expected_request_hash=author_deliberation.request_hashes[-1],
         )
-        messages = [
-            *messages,
-            {"role": "assistant", "content": rejected_raw},
-            _world_consequence_source_correction_message(
-                original_messages=messages, rejected_raw=rejected_raw,
-                manifest_hash=manifest.manifest_hash, review=review,
-            ),
-        ]
+        correction = _world_consequence_source_correction_message(
+            original_messages=messages, rejected_raw=rejected_raw,
+            manifest_hash=manifest.manifest_hash, review=review,
+        )
+        if _required_detail_wire(messages):
+            messages = _world_consequence_native_rejection_messages(messages, rejected_raw, correction)
+        else:
+            messages = [*messages, {"role": "assistant", "content": rejected_raw}, correction]
         request_hash = _messages_hash(messages)
         request_binding = record_world_author_request(content_store=self._store, messages=messages)
         try:
@@ -5632,6 +5791,8 @@ class LifeDevelopmentRuntime:
         rejected_raw: str,
         review: LifeDevelopmentSourceClosureReview | LifeDevelopmentNovelOriginReview,
     ) -> _LifeDevelopmentModelRun:
+        required_detail = bool(manifest.event_detail_capability and manifest.event_detail_capability.required_program)
+        ordinary_course = required_detail and manifest.event_detail_capability.contract == "event-detail-capability.2"
         hard_boundary_contract = _world_author_hard_boundary_contract(
             manifest=manifest,
             owner_actor_ref=self._owner,
@@ -5662,7 +5823,9 @@ class LifeDevelopmentRuntime:
                         "claim_classification_contract": (
                             _world_author_claim_classification_contract()
                         ),
-                        "output_contract": _world_author_source_rewrite_output_contract(),
+                        "output_contract": (_world_author_source_rewrite_propose_repair_output_contract(
+                            event_detail_capability=manifest.event_detail_capability) if required_detail
+                            else _world_author_source_rewrite_output_contract()),
                         "correction_obligations": {
                             "unsupported_existing_claim": (
                                 "either_cite_exact_entailing_pinned_sources_or_replace_"
@@ -5683,7 +5846,7 @@ class LifeDevelopmentRuntime:
                             ),
                         },
                         "replacement_contract": {
-                            "allowed_decisions": ["no_op", "propose"],
+                            "allowed_decisions": ["propose"] if required_detail else ["no_op", "propose"],
                             "output": "one_complete_replacement_object",
                             "existing_world_claims": (
                                 "must_be_semantically_entailed_by_exact_source_refs"
@@ -5691,8 +5854,8 @@ class LifeDevelopmentRuntime:
                             "novel_world_generation": {
                                 "proposal_scoped_environment": "allowed",
                                 "adverse_or_unfavorable_event": "allowed",
-                                "provisional_npc": "allowed",
-                                "scoped_novel_place": "allowed",
+                                "provisional_npc": "separate_fate_event_only" if ordinary_course else "allowed",
+                                "scoped_novel_place": "separate_fate_event_only" if ordinary_course else "allowed",
                             },
                             "typed_location": (
                                 "if_present_must_match_the_semantic_execution_coordinate"
@@ -5702,12 +5865,12 @@ class LifeDevelopmentRuntime:
                             "purpose": ("transport_completion_only_not_content_selection"),
                             "complete_json_required": True,
                             "maximum_outcomes": 2,
-                            "maximum_claim_declarations": 4,
-                            "maximum_provisional_npcs_per_outcome": 1,
+                            "maximum_claim_declarations": 12 if required_detail else 4,
+                            "maximum_provisional_npcs_per_outcome": 0 if ordinary_course else 1,
                             "maximum_premise_characters": 480,
                             "maximum_claim_summary_characters": 360,
                             "maximum_outcome_text_characters": 600,
-                            "maximum_optional_visual_objects": 2,
+                            "maximum_optional_visual_objects": 0 if ordinary_course else 2,
                             "optional_annexes": (
                                 "include_only_when_the_authored_possibility_needs_them"
                             ),
@@ -5716,10 +5879,15 @@ class LifeDevelopmentRuntime:
                             "Return one complete replacement as the same World Author "
                             "using only the same pinned Context and capability manifest. "
                             "Resolve every exact source-closure coordinate, then "
-                            "revalidate the whole replacement. You may freely choose "
-                            "no_op or a different possibility, including genuinely novel "
-                            "proposal-scoped people, places, adverse events, and "
-                            "outcomes. An unsupported existing claim is not repaired by "
+                            "revalidate the whole replacement. "
+                            + ("This active event still requires complete timed details; return propose. "
+                               if required_detail else "You may freely choose no_op or a different possibility. ")
+                            + ("Keep typed people/places, visual, biographical and life-direction "
+                               "effects absent; author the complete external timed scene and two "
+                               "outcomes instead. " if ordinary_course else
+                               "You may author genuinely novel proposal-scoped people, places, "
+                               "adverse events and outcomes. ")
+                            + "An unsupported existing claim is not repaired by "
                             "attaching broad source ids: cite exact entailing evidence, "
                             "or replace it with genuinely new proposal-scoped material "
                             "and declare that material as novel_world_generation with "
@@ -5729,7 +5897,13 @@ class LifeDevelopmentRuntime:
                             "encounter or relationship starting point is allowed as an "
                             "unsettled proposal. Do not invent evidence or preserve a "
                             "typed location that contradicts the semantic Plan or "
-                            "occurrence. The reviewer has not decided what story, motive, "
+                            "occurrence. "
+                            + ("Check all visual_evidence fields in the replacement: each current "
+                               "weather, light, object or activity assertion needs its own cited "
+                               "claim in both visual_evidence.claim_refs and its outcome.claim_refs, "
+                               "or omit the optional assertion. A course schedule proves "
+                               "none of those scene details. " if required_detail else "")
+                            + "The reviewer has not decided what story, motive, "
                             "mood, or behavior you should author."
                         ),
                     },
@@ -5849,11 +6023,12 @@ class LifeDevelopmentRuntime:
                     _world_author_rewrite_declared_decision(rewritten_raw) == "propose"
                 )
                 output_contract = (
-                    _world_author_source_rewrite_propose_repair_output_contract()
-                    if propose_repair_required
+                    _world_author_source_rewrite_propose_repair_output_contract(
+                        event_detail_capability=manifest.event_detail_capability if required_detail else None)
+                    if propose_repair_required or required_detail
                     else _world_author_source_rewrite_output_contract()
                 )
-                allowed_decisions = ["propose"] if propose_repair_required else ["no_op", "propose"]
+                allowed_decisions = ["propose"] if propose_repair_required or required_detail else ["no_op", "propose"]
                 messages = [
                     *messages,
                     {"role": "assistant", "content": rewritten_raw},
@@ -5891,7 +6066,7 @@ class LifeDevelopmentRuntime:
                                     "output": "one_complete_replacement_object",
                                     "semantic_decision": (
                                         "preserve_initial_propose"
-                                        if propose_repair_required
+                                        if propose_repair_required or required_detail
                                         else "not_yet_parser_verified"
                                     ),
                                     "repair_obligation": (
@@ -5983,7 +6158,16 @@ class LifeDevelopmentRuntime:
                 ]
             elif getattr(self._world_author, "supports_strict_tool_choice", False) is True:
                 from .world_consequence_author_tool import EVENT_CONTRACT
-                tool_contract = (world_consequence_author_tool_contract(provider=self._world_author, contract_id=EVENT_CONTRACT)
+                from .world_consequence_author_tool import REQUIRED_EVENT_CONTRACT
+                from .world_consequence_author_tool import COURSE_EVENT_CONTRACT
+                required_detail = manifest.event_detail_capability is not None and manifest.event_detail_capability.required_program
+                ordinary_course = required_detail and manifest.event_detail_capability.contract == "event-detail-capability.2"
+                tool_contract = (world_consequence_author_tool_contract(provider=self._world_author,
+                                     contract_id=COURSE_EVENT_CONTRACT if ordinary_course else
+                                                 REQUIRED_EVENT_CONTRACT if required_detail else EVENT_CONTRACT,
+                                     closing_offset_seconds=manifest.event_detail_capability.closing_offset_seconds if required_detail else None,
+                                     event_detail_privacy_class=(manifest.event_detail_capability.privacy_class
+                                         if ordinary_course else None))
                                  if manifest.event_detail_capability is not None
                                  else world_consequence_author_tool_contract(provider=self._world_author))
                 messages = bind_world_consequence_author_tool(
@@ -6129,11 +6313,21 @@ class LifeDevelopmentRuntime:
                                     "manifest_hash": manifest.manifest_hash,
                                 },
                                 "output_contract": {
-                                    "no_op": {"decision": "no_op"},
+                                    **({} if manifest.event_detail_capability is not None and manifest.event_detail_capability.required_program
+                                       else {"no_op": {"decision": "no_op"}}),
                                     "propose": (
                                         life_possibility_output_schema(
                                             outcome_contract=manifest.outcome_contract,
-                                            event_details=manifest.event_detail_capability is not None
+                                            event_details=manifest.event_detail_capability is not None,
+                                            required_event_details=bool(manifest.event_detail_capability and manifest.event_detail_capability.required_program),
+                                            closing_offset_seconds=(manifest.event_detail_capability.closing_offset_seconds
+                                                if manifest.event_detail_capability else None),
+                                            ordinary_course_detail=bool(manifest.event_detail_capability and
+                                                manifest.event_detail_capability.contract == "event-detail-capability.2"),
+                                            event_detail_privacy_class=(manifest.event_detail_capability.privacy_class
+                                                if manifest.event_detail_capability and
+                                                manifest.event_detail_capability.contract == "event-detail-capability.2"
+                                                else None),
                                         )
                                     ),
                                 },
@@ -6166,7 +6360,8 @@ class LifeDevelopmentRuntime:
                                     "system_supplied_story_content": "none",
                                 },
                                 "replacement_contract": {
-                                    "allowed_decisions": ["no_op", "propose"],
+                                    "allowed_decisions": (["propose"] if manifest.event_detail_capability is not None and manifest.event_detail_capability.required_program
+                                                          else ["no_op", "propose"]),
                                     "authority_inputs": [
                                         "capability_manifest",
                                         "cross_field_authority",
@@ -6184,7 +6379,8 @@ class LifeDevelopmentRuntime:
                                     "output": "one_complete_replacement_object",
                                 },
                                 "instruction": _world_author_reselection_instruction(
-                                    failure_code=exc.code
+                                    failure_code=exc.code,
+                                    allow_no_op=not bool(manifest.event_detail_capability and manifest.event_detail_capability.required_program),
                                 ),
                             },
                             ensure_ascii=False,
@@ -6605,7 +6801,7 @@ class LifeDevelopmentRuntime:
                             "no_op": {"decision": "no_op"},
                             "propose": life_possibility_output_schema(
                                 outcome_contract=manifest.outcome_contract,
-                                            event_details=manifest.event_detail_capability is not None
+                                event_details=manifest.event_detail_capability is not None,
                             ),
                         },
                         # Pydantic's generated JSON Schema cannot express the
@@ -7341,13 +7537,23 @@ def _world_author_source_rewrite_output_contract() -> dict[str, object]:
     }
 
 
-def _world_author_source_rewrite_propose_repair_output_contract() -> dict[str, object]:
+def _world_author_source_rewrite_propose_repair_output_contract(*, event_detail_capability=None) -> dict[str, object]:
     return {
-        "contract": _WORLD_AUTHOR_SOURCE_REWRITE_PROPOSE_REPAIR_CONTRACT,
+        "contract": ("world-author-source-rewrite.4"
+                     if event_detail_capability is not None
+                     and event_detail_capability.contract == "event-detail-capability.2"
+                     else "world-author-source-rewrite.3" if event_detail_capability is not None
+                     else _WORLD_AUTHOR_SOURCE_REWRITE_PROPOSE_REPAIR_CONTRACT),
         "provider_wire_envelope": {
             "replacement": "exactly_one_complete_propose_object",
         },
-        "propose": life_possibility_output_schema(),
+        "propose": (life_possibility_output_schema(outcome_contract="world-consequence.2",
+            event_details=True, required_event_details=True,
+            closing_offset_seconds=event_detail_capability.closing_offset_seconds,
+            ordinary_course_detail=event_detail_capability.contract == "event-detail-capability.2",
+            event_detail_privacy_class=(event_detail_capability.privacy_class
+                if event_detail_capability.contract == "event-detail-capability.2" else None))
+            if event_detail_capability is not None else life_possibility_output_schema()),
     }
 
 
@@ -7471,12 +7677,16 @@ def _world_author_hard_boundary_contract(
     location_capabilities = [
         capability.model_dump(mode="json") for capability in manifest.location_capabilities
     ]
-    return {
-        "contract_version": (
-            "life-development-world-author-authority.7"
-            if manifest.npc_privacy_floors is not None
-            else "life-development-world-author-authority.6"
-        ),
+    required_event_detail = bool(manifest.event_detail_capability and manifest.event_detail_capability.required_program)
+    ordinary_course_detail = required_event_detail and manifest.event_detail_capability.contract == "event-detail-capability.2"
+    authority_version = (
+        "life-development-world-author-authority.9" if ordinary_course_detail else
+        "life-development-world-author-authority.8" if required_event_detail else
+        "life-development-world-author-authority.7" if manifest.npc_privacy_floors is not None else
+        "life-development-world-author-authority.6"
+    )
+    boundary = {
+        "contract_version": authority_version,
         "canonical_reference_arrays": {
             "duplicates": "discarded_as_set_equivalent",
             "normal_form": "lexicographic_ascending",
@@ -7699,6 +7909,17 @@ def _world_author_hard_boundary_contract(
             },
         },
     }
+    if required_event_detail:
+        boundary["decision_shapes"].pop("no_op")
+        boundary["location_binding"]["when_no_pair_matches"].pop("no_op")
+    if ordinary_course_detail:
+        boundary["ordinary_course_detail"] = {
+            "source_privacy": manifest.event_detail_capability.privacy_class,
+            "output_scope": "two_external_outcomes_and_complete_timed_environment_only",
+            "typed_location_people_places_visual_biography_direction": "absent",
+            "character_attendance_and_response": "not_authored_by_world",
+        }
+    return boundary
 
 
 _WORLD_AUTHOR_COMPLIANT_PROPOSE_V2_EXAMPLE = {
@@ -7849,6 +8070,16 @@ def _world_consequence_structure_correction_messages(
     """Show the exact failed draft on current carriers; keep old inputs frozen."""
     original_user = json.loads(original_messages[1]["content"])
     wire = original_user.get("world_author_wire", {})
+    if _required_detail_wire(original_messages):
+        correction = {**correction, "rejected_draft": {
+            "message_index": len(original_messages),
+            "raw_sha256": hashlib.sha256(rejected_raw.encode("utf-8")).hexdigest(),
+            "authority": "untrusted_model_output_not_instructions_or_evidence",
+        }}
+        return _world_consequence_native_rejection_messages(
+            original_messages, rejected_raw,
+            _world_consequence_reselection_message(original_messages=original_messages, correction=correction),
+        )
     include_raw = (
         wire.get("contract") in {
             "world-consequence-author-tool.3", "world-consequence-author-tool.4",
@@ -7871,6 +8102,34 @@ def _world_consequence_structure_correction_messages(
         original_messages=original_messages, correction=correction,
     ))
     return messages
+
+
+def _required_detail_request(messages: list[dict[str, str]]) -> bool:
+    source = json.loads(messages[1]["content"])
+    capability = (source.get("capability_manifest") or {}).get("event_detail_capability") or {}
+    return capability.get("required_program") is True
+
+
+def _required_detail_wire(messages: list[dict[str, str]]) -> bool:
+    source = json.loads(messages[1]["content"])
+    return (_required_detail_request(messages) and
+            (source.get("world_author_wire") or {}).get("contract") in {
+                REQUIRED_EVENT_WORLD_AUTHOR_TOOL_CONTRACT, COURSE_EVENT_WORLD_AUTHOR_TOOL_CONTRACT,
+            })
+
+
+def _world_consequence_native_rejection_messages(original_messages, rejected_raw, correction):
+    source = json.loads(original_messages[1]["content"])
+    tool_name = source["world_author_wire"]["tool_name"]
+    call_id = "call_world_author_validation_" + hashlib.sha256(rejected_raw.encode("utf-8")).hexdigest()[:16]
+    return [*original_messages,
+        {"role": "assistant", "content": None, "tool_calls": [{"id": call_id, "type": "function",
+            "function": {"name": tool_name, "arguments": rejected_raw}}]},
+        {"role": "tool", "tool_call_id": call_id, "content": canonical_json({
+            "status": "validation_rejected", "no_world_effect": True,
+            "correction": json.loads(correction["content"]),
+        })},
+    ]
 
 
 def _world_consequence_reselection_message(
@@ -7896,6 +8155,9 @@ def _world_consequence_source_correction_message(
     *, original_messages: list[dict[str, str]], rejected_raw: str, manifest_hash: str,
     review: LifeDevelopmentSourceClosureReview | LifeDevelopmentNovelOriginReview,
 ) -> dict[str, str]:
+    required_detail = _required_detail_request(original_messages)
+    manifest = (json.loads(original_messages[1]["content"]).get("capability_manifest") or {})
+    ordinary_course = (manifest.get("event_detail_capability") or {}).get("contract") == "event-detail-capability.2"
     return _world_consequence_reselection_message(
         original_messages=original_messages,
         correction={
@@ -7903,12 +8165,16 @@ def _world_consequence_source_correction_message(
             "rejected_draft_hash": _digest(rejected_raw),
             "capability_manifest_hash": manifest_hash,
             # The first request has a no_op specimen, not this full schema.
-            "no_op_output_contract": LifeDevelopmentNoOpDraft.model_json_schema(),
+            **({} if required_detail else {"no_op_output_contract": LifeDevelopmentNoOpDraft.model_json_schema()}),
             "instruction": (
                 "Return one complete replacement as the same World Author. Use only "
                 "the original pinned evidence and offered execution authority above. "
-                "Resolve each exact source-closure failure. You may choose no_op or "
-                "a different possibility. Do not author the character's interior, "
+                "Resolve each exact source-closure failure. "
+                + ("Return a complete timed detail programme for this active event. " if required_detail
+                   else "You may choose no_op or a different possibility. ")
+                + ("Keep ordinary course location, typed people/places, visual and life-direction "
+                   "fields empty as specified by the original output_contract. " if ordinary_course else "")
+                + "Do not author the character's interior, "
                 "choices, or unauthorised completed actions as environment facts. "
                 "The host will not write or repair your prose. There is one correction."
             ),
@@ -7916,7 +8182,7 @@ def _world_consequence_source_correction_message(
     )
 
 
-def _world_author_reselection_instruction(*, failure_code: str) -> str:
+def _world_author_reselection_instruction(*, failure_code: str, allow_no_op: bool = True) -> str:
     instruction = (
         "Return one complete replacement using only the same pinned Context and "
         "capability manifest. Choose every event, direction, privacy, visual, and "
@@ -7946,7 +8212,9 @@ def _world_author_reselection_instruction(*, failure_code: str) -> str:
             "place-dependent claims, prose and visuals consistently; dropping "
             "coordinates alone does not authorize unsupported place assertions. "
             "Keep the original task binding, timing and source obligations. "
-            "no_op remains available. The system has not selected the replacement event, "
+            + ("no_op remains available. " if allow_no_op else
+               "This bound event still requires a complete timed propose. ")
+            + "The system has not selected the replacement event, "
             "NPCs, direction, or outcome."
         )
     return instruction
@@ -8010,7 +8278,7 @@ def _world_author_repair_coordinates(
                 "illegal_repair": "drop_location_fields_but_retain_unsupported_place_dependent_content",
                 "covering_now": covering_now,
                 "selected_location_later_interval": selected_later,
-                "no_op_remains_available": True,
+                "no_op_remains_available": not bool(getattr(manifest.event_detail_capability, "required_program", False)),
             }
         ]
     if error.code == "unsupported_anchor_ref":

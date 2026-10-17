@@ -13,7 +13,7 @@ class EventDetailSourceToken(FrozenModel):
 
 
 class EventDetailCapability(FrozenModel):
-    contract: Literal["event-detail-capability.1"] = "event-detail-capability.1"
+    contract: Literal["event-detail-capability.1", "event-detail-capability.2"] = "event-detail-capability.1"
     source_kind: Literal["activity_execution", "world_occurrence"]
     source_event_ref: str = Field(min_length=1, max_length=512)
     source_payload_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -24,6 +24,9 @@ class EventDetailCapability(FrozenModel):
     ends_at: datetime
     privacy_class: PrivacyClass
     source_tokens: tuple[EventDetailSourceToken, ...] = Field(default=(), max_length=12, exclude_if=lambda value: not value)
+    required_program: bool = Field(default=False, exclude_if=lambda value: not value)
+    closing_offset_seconds: int | None = Field(default=None, ge=60, le=86340,
+                                                exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def bounded_window(self):
@@ -31,6 +34,15 @@ class EventDetailCapability(FrozenModel):
             raise ValueError("event details need aware times")
         if not 60 <= (self.ends_at - self.starts_at).total_seconds() <= 86400:
             raise ValueError("one prepared event covers one minute to one day")
+        if self.required_program and self.closing_offset_seconds != int((self.ends_at - self.starts_at).total_seconds()) - 60:
+            raise ValueError("required event detail needs its exact final release offset")
+        if not self.required_program and self.closing_offset_seconds is not None:
+            raise ValueError("optional event detail cannot claim a required closing offset")
+        if self.contract == "event-detail-capability.2" and (
+            not self.required_program or self.source_kind != "world_occurrence"
+            or self.privacy_class == "withhold"
+        ):
+            raise ValueError("ordinary course detail needs a role-visible active world event")
         return self
 
 
@@ -50,6 +62,8 @@ def validate_event_details(draft, capability, *, logical_time):
             or draft.outcome_resolution_authority != "world_contingency" or draft.timing.mode != "now"):
         raise ValueError("event detail preparation authors only current external World contingencies")
     if not steps:
+        if capability is not None and capability.required_program:
+            raise ValueError("this event requires a complete timed detail programme")
         return
     if capability is None or draft.causal_authority != "world_contingency" or draft.timing.mode != "now":
         raise ValueError("prepared detail needs an explicit current event capability")
@@ -58,9 +72,21 @@ def validate_event_details(draft, capability, *, logical_time):
     ranks = {"public":0,"shareable":1,"personal":2,"private":3,"withhold":4}
     if ranks[draft.privacy_class] < ranks[capability.privacy_class]:
         raise ValueError("event detail cannot weaken its source privacy")
+    if capability.contract == "event-detail-capability.2" and (
+        draft.privacy_class != capability.privacy_class or draft.location_ref is not None
+        or draft.location_capability_ref is not None or draft.entity_refs
+        or any(outcome.privacy_class != capability.privacy_class
+               or outcome.visual_evidence is not None or outcome.provisional_npcs
+               or outcome.provisional_places or outcome.objective_biographical_transition is not None
+               or outcome.dynamic_life_direction is not None for outcome in draft.outcomes)
+    ):
+        raise ValueError("ordinary course details require only source-private external steps and outcomes")
     offsets = [s.after_seconds for s in steps]
     if offsets != sorted(set(offsets)):
         raise ValueError("event detail offsets must be increasing and distinct")
+    if capability.required_program and (len(steps) < 2 or offsets[0] != 0
+                                        or offsets[-1] != capability.closing_offset_seconds):
+        raise ValueError("required event detail must include opening and final-minute scenes")
     if offsets[-1] + 60 > (capability.ends_at - capability.starts_at).total_seconds():
         raise ValueError("each detail must leave its publication window inside the event")
     claims = {c.claim_id: c for c in draft.claim_declarations}

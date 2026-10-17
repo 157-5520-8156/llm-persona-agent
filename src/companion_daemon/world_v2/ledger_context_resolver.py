@@ -1619,6 +1619,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         self._reviewed_npc_identity_summaries = reviewed_npc_identity_summaries or {}
         self._world_life = WorldLifeContextCompiler(
             life_content=self._life_content,
+            ledger=ledger,
             planned_activity_reader=CompositePlannedActivityReader(
                 ChatLifeIntentPlannedReader(ledger=ledger),
                 WorldLifeIntentPlannedReader(ledger=ledger),

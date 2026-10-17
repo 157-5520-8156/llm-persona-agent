@@ -16,7 +16,7 @@ lock: implementations must persist the key
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 import inspect
 import logging
 import re
@@ -266,7 +266,84 @@ class LifeEcologyRuntime:
         if self._world_outlook is None:
             return None
         options = {"include_preparation": not self.background_budget_paused()} if callable(getattr(self._world_outlook, "next_preparation_due", None)) else {}
-        return self._world_outlook.next_due(**options)
+        due = self._world_outlook.next_due(**options)
+        pending = getattr(self._life_development_followup, "pending_world_event_detail_ref", None)
+        if (getattr(self._world_outlook, "_rolling_planning", False)
+                and not self.background_budget_paused() and callable(pending)):
+            state = self._ledger.project()
+            batch = getattr(self._life_development_followup, "pending_world_event_detail_refs", None)
+            if callable(batch):
+                sources = batch(required_planning_only=True, limit=8, projection=state)
+            else:
+                # Older injected follow-ups retain their existing single-ref seam.
+                excluded = set()
+                sources = []
+                for _ in range(8):
+                    source = pending(required_planning_only=True, excluded_refs=excluded)
+                    if source is None:
+                        break
+                    excluded.add(source)
+                    sources.append(source)
+            occurrences = {item.occurrence_id: item for item in state.world_occurrences if item.status == "active"}
+            for source in sources:
+                occurrence = occurrences.get(source.removeprefix("event:activate:"))
+                retry_due = self._required_detail_retry_due(source_ref=source, logical_time=state.logical_time)
+                if occurrence is not None and retry_due is not None:
+                    detail_due = max(state.logical_time + timedelta(seconds=1), retry_due)
+                    if detail_due <= occurrence.time_window.closes_at - timedelta(minutes=2):
+                        due = min(due, detail_due) if due is not None else detail_due
+        return due
+
+    def _required_detail_retry_operation(self, source_ref):
+        from .world_outlook import digest
+        return "required-detail-retry:" + digest([self._ledger.world_id, source_ref])
+
+    def _required_detail_retry_due(self, *, source_ref, logical_time):
+        row = self._world_outlook.store.operation(self._required_detail_retry_operation(source_ref))
+        if row is None:
+            return logical_time
+        if row["payload"].get("source_ref") != source_ref:
+            raise ValueError("required detail retry belongs to another source")
+        if row["state"] != "running":
+            raise ValueError("accepted detail retry still has an unprepared source")
+        return datetime.fromisoformat(row["payload"]["next_due_at"])
+
+    def _record_required_detail_failure(self, *, source_ref, failure_code, logical_time):
+        store = self._world_outlook.store
+        operation = self._required_detail_retry_operation(source_ref)
+        if store.operation(operation) is None:
+            store.claim(operation, kind="required_detail_retry", payload={
+                "source_ref": source_ref, "failure_count": 0,
+                "next_due_at": logical_time.isoformat(),
+            })
+        prior = store.operation(operation)
+        if prior is None or prior["state"] != "running" or prior["payload"].get("source_ref") != source_ref:
+            raise ValueError("required detail retry receipt changed")
+        occurrence = next((item for item in self._ledger.project().world_occurrences
+                           if source_ref == "event:activate:" + item.occurrence_id), None)
+        if occurrence is None:
+            raise ValueError("required detail retry source disappeared")
+        count = prior["payload"]["failure_count"] + 1
+        remaining = occurrence.time_window.closes_at - logical_time
+        delay = max(timedelta(minutes=1), min(
+            timedelta(minutes=10 if count == 1 else 15), remaining / 3))
+        payload = {**prior["payload"], "failure_count": count,
+                   "failure_code": failure_code,
+                   "next_due_at": (logical_time + delay).isoformat()}
+        store.update_running_operation(operation, kind="required_detail_retry",
+                                       previous=prior["payload"], payload=payload)
+        store.attempt(operation, ordinal=count, payload={
+            "failure_code": failure_code, "observed_at": logical_time.isoformat(),
+            "source_ref": source_ref,
+        })
+
+    def _complete_required_detail_retry(self, *, source_ref, proposal_ref):
+        operation = self._required_detail_retry_operation(source_ref)
+        row = self._world_outlook.store.operation(operation)
+        if row is not None and row["state"] == "running":
+            self._world_outlook.store.finish(operation, state="considered", payload={
+                **row["payload"], "accepted_proposal_ref": proposal_ref,
+            })
 
     def close_outlook(self):
         if self._world_outlook is not None:
@@ -359,6 +436,41 @@ class LifeEcologyRuntime:
                     reason_code="life_ecology.prepaid_technical_failure" if persisted else "life_ecology.technical_failure_persistence_failed",
                     technical_failure_code=failure_code if persisted else None)
         if self.background_budget_paused():
+            pending_detail = getattr(self._life_development_followup, "pending_world_event_detail_ref", None)
+            try:
+                source_ref = (pending_detail(required_planning_only=True)
+                              if current_clock and self._world_outlook is not None
+                              and getattr(self._world_outlook, "_rolling_planning", False)
+                              and callable(pending_detail) else None)
+            except Exception as exc:
+                failure_code = _technical_failure_code("event_details", exc)
+                persisted = await self._complete_technical_failure(
+                    key=key, trigger_id=claim.trigger_id, failure_code=failure_code)
+                return LifeEcologyRunResult(
+                    status="failed_safe", trigger_id=claim.trigger_id,
+                    reason_code="life_ecology.required_event_details_failed" if persisted
+                                else "life_ecology.technical_failure_persistence_failed",
+                    technical_failure_code=failure_code if persisted else None,
+                )
+            if source_ref is not None:
+                if self._required_detail_retry_due(source_ref=source_ref, logical_time=logical_time) <= logical_time:
+                    try:
+                        self._record_required_detail_failure(source_ref=source_ref,
+                            failure_code="event_details.background_budget_paused", logical_time=logical_time)
+                    except Exception as receipt_exc:
+                        self._world_outlook.record_failure(receipt_exc)
+                        failure_code = "event_details.retry_receipt_unavailable"
+                    else:
+                        failure_code = "event_details.background_budget_paused"
+                    persisted = await self._complete_technical_failure(
+                        key=key, trigger_id=claim.trigger_id,
+                        failure_code=failure_code)
+                    return LifeEcologyRunResult(
+                        status="failed_safe", trigger_id=claim.trigger_id,
+                        reason_code="life_ecology.required_event_details_budget_paused" if persisted
+                                    else "life_ecology.technical_failure_persistence_failed",
+                        technical_failure_code=failure_code if persisted else None,
+                    )
             # This is a capacity fact, not a character decision and not a
             # technical failure: today's background envelope is spent, so the
             # wake closes quietly and the next wake may still live.  Visible
@@ -369,6 +481,75 @@ class LifeEcologyRuntime:
                 trigger_id=claim.trigger_id,
                 reason_code="life_ecology.paused_by_budget",
             )
+
+        # A newly activated external course has a mandatory reviewed program.
+        # Prepare it before unrelated aftermath/cooldown work can return early;
+        # publication of its opening phase still uses EventDetailRuntime.
+        pending_detail = getattr(self._life_development_followup, "pending_world_event_detail_ref", None)
+        if (current_clock and self._world_outlook is not None
+                and getattr(self._world_outlook, "_rolling_planning", False)
+                and callable(pending_detail)):
+            source_ref = None
+            failure_recorded = False
+            prepared_accepted = False
+            try:
+                # The prepaid executor itself starts at most eight due events
+                # per clock. Prepare each of those on the same logical wake.
+                excluded = set()
+                for _ in range(8):
+                    source_ref = pending_detail(required_planning_only=True, excluded_refs=excluded)
+                    if source_ref is None:
+                        break
+                    excluded.add(source_ref)
+                    failure_recorded = False
+                    prepared_accepted = False
+                    retry_due = self._required_detail_retry_due(
+                        source_ref=source_ref, logical_time=logical_time)
+                    if retry_due is None or retry_due > logical_time:
+                        continue
+                    prepared_detail = await self._life_development_followup.advance_world_event_detail_once(
+                        event_ref=source_ref, wake_event_ref=wake_event_ref,
+                        trace_id=trace_id, correlation_id=correlation_id,
+                    )
+                    if prepared_detail.status not in {"occurrence_committed", "recovered"}:
+                        supplied = str(prepared_detail.reason_code or prepared_detail.status)
+                        normalized = re.sub(r"[^a-z0-9._-]+", "_", supplied.lower()).strip("._-")
+                        failure_code = "event_details." + (normalized[:80] or "unavailable")
+                        failure_recorded = True
+                        self._record_required_detail_failure(source_ref=source_ref,
+                            failure_code=failure_code, logical_time=logical_time)
+                        persisted = await self._complete_technical_failure(
+                            key=key, trigger_id=claim.trigger_id, failure_code=failure_code)
+                        return LifeEcologyRunResult(
+                            status="failed_safe", trigger_id=claim.trigger_id,
+                            reason_code="life_ecology.required_event_details_failed" if persisted
+                                        else "life_ecology.technical_failure_persistence_failed",
+                            technical_failure_code=failure_code if persisted else None,
+                        )
+                    self._complete_required_detail_retry(source_ref=source_ref,
+                        proposal_ref=prepared_detail.proposal_event_ref)
+                    prepared_accepted = True
+                    self._world_outlook.event_details.advance(wake_event_ref=wake_event_ref)
+                    projection = self._ledger.project()
+                    if pending_detail(required_planning_only=True, excluded_refs=excluded - {source_ref}) == source_ref:
+                        raise ValueError("required event detail made no durable progress")
+            except Exception as exc:
+                failure_code = _technical_failure_code("event_details", exc)
+                if source_ref is not None and not failure_recorded and not prepared_accepted:
+                    try:
+                        self._record_required_detail_failure(source_ref=source_ref,
+                            failure_code=failure_code, logical_time=logical_time)
+                    except Exception as receipt_exc:
+                        self._world_outlook.record_failure(receipt_exc)
+                        failure_code = "event_details.retry_receipt_unavailable"
+                persisted = await self._complete_technical_failure(
+                    key=key, trigger_id=claim.trigger_id, failure_code=failure_code)
+                return LifeEcologyRunResult(
+                    status="failed_safe", trigger_id=claim.trigger_id,
+                    reason_code="life_ecology.required_event_details_failed" if persisted
+                                else "life_ecology.technical_failure_persistence_failed",
+                    technical_failure_code=failure_code if persisted else None,
+                )
 
         # Missing/expiring external arrangements are technical preparation,
         # independent of the role-life cadence and unrelated failed outcomes.

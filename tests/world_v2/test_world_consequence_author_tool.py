@@ -309,6 +309,55 @@ def test_source_correction_recovers_exact_wire_or_retains_unmarked_json():
         recover_world_consequence_author_tool(messages=before, provider=provider)
 
 
+def test_required_course_detail_tool_has_no_no_op_and_recovers_its_original_offset():
+    from companion_daemon.world_v2.world_consequence_author_tool import REQUIRED_EVENT_CONTRACT
+
+    provider = SimpleNamespace(supports_strict_tool_choice=True, single_tool_selection_mode="forced")
+    contract = world_consequence_author_tool_contract(provider=provider,
+        contract_id=REQUIRED_EVENT_CONTRACT, closing_offset_seconds=5340)
+    schema = contract["tools"][0]["function"]["parameters"]
+    Draft202012Validator.check_schema(schema)
+    assert not Draft202012Validator(schema).is_valid({"replacement": {"decision": "no_op"}})
+    assert "no_op" not in contract["tools"][0]["function"]["description"]
+    original = [{"role": "system", "content": "unchanged"}, {"role": "user", "content": _json({
+        "capability_manifest": {"event_detail_capability": {"closing_offset_seconds": 5340}},
+    })}]
+    bound = bind_world_consequence_author_tool(messages=original, tool_contract=contract)
+    assert recover_world_consequence_author_tool(messages=bound, provider=provider) == contract
+    tampered = copy.deepcopy(bound)
+    body = json.loads(tampered[1]["content"])
+    body["capability_manifest"]["event_detail_capability"]["closing_offset_seconds"] = 5280
+    tampered[1]["content"] = _json(body)
+    with pytest.raises(ValueError, match="identity changed"):
+        recover_world_consequence_author_tool(messages=tampered, provider=provider)
+
+
+def test_ordinary_course_tool_versions_its_source_privacy_and_small_shape():
+    from companion_daemon.world_v2.world_consequence_author_tool import COURSE_EVENT_CONTRACT
+
+    provider = SimpleNamespace(supports_strict_tool_choice=True, single_tool_selection_mode="forced")
+    contract = world_consequence_author_tool_contract(provider=provider,
+        contract_id=COURSE_EVENT_CONTRACT, closing_offset_seconds=5940,
+        event_detail_privacy_class="private")
+    schema = contract["tools"][0]["function"]["parameters"]
+    Draft202012Validator.check_schema(schema)
+    assert not Draft202012Validator(schema).is_valid({"replacement": {"decision": "no_op"}})
+    assert "private" in contract["tools"][0]["function"]["description"]
+    original = [{"role": "system", "content": "unchanged"}, {"role": "user", "content": _json({
+        "capability_manifest": {"event_detail_capability": {
+            "contract": "event-detail-capability.2", "closing_offset_seconds": 5940,
+            "privacy_class": "private"}},
+    })}]
+    bound = bind_world_consequence_author_tool(messages=original, tool_contract=contract)
+    assert recover_world_consequence_author_tool(messages=bound, provider=provider) == contract
+    tampered = copy.deepcopy(bound)
+    body = json.loads(tampered[1]["content"])
+    body["capability_manifest"]["event_detail_capability"]["privacy_class"] = "personal"
+    tampered[1]["content"] = _json(body)
+    with pytest.raises(ValueError, match="identity changed"):
+        recover_world_consequence_author_tool(messages=tampered, provider=provider)
+
+
 @pytest.mark.parametrize("contract_id", [None, [], {}, "world-consequence-author-tool.unknown"])
 def test_invalid_pinned_contract_id_is_an_explicit_identity_failure(contract_id):
     provider = SimpleNamespace(supports_strict_tool_choice=True)

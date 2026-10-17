@@ -350,16 +350,18 @@ class SQLiteWorldOutlookStore:
             return datetime.fromisoformat(row[0])
         return None
 
-    def update_event_detail(self, operation_id, *, previous, payload):
+    def update_running_operation(self, operation_id, *, kind, previous, payload):
+        if kind not in {"event_detail", "required_detail_retry"}:
+            raise ValueError("unsupported running outlook operation kind")
         with self._lock:
             changed = self._db.execute(
                 "UPDATE world_outlook_operations SET payload=? WHERE world_id=? AND actor_ref=? "
-                "AND operation_id=? AND kind='event_detail' AND state='running' AND json(payload)=json(?)",
+                "AND operation_id=? AND kind=? AND state='running' AND json(payload)=json(?)",
                 (json.dumps(payload, ensure_ascii=False, sort_keys=True), *self._scope(), operation_id,
-                 json.dumps(previous, ensure_ascii=False, sort_keys=True)),
+                 kind, json.dumps(previous, ensure_ascii=False, sort_keys=True)),
             ).rowcount
         if changed != 1:
-            raise ValueError("event detail progress changed concurrently")
+            raise ValueError("running outlook operation progress changed concurrently")
 
     def wake_event_details(self, *, entity_ref, at):
         # Source transitions wake existing preparations; they do not write facts.

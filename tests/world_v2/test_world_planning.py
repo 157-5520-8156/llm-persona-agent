@@ -32,6 +32,24 @@ def test_recurrence_is_known_schedule_not_attendance():
     assert "不证明角色参加" in value.public_text()
 
 
+def test_new_planning_requires_event_start_detail_without_changing_old_publications():
+    import json
+    from companion_daemon.world_v2.world_planning import expand_planning
+    base = planning().model_dump(mode="json")
+    base["slots"][0]["event_text"] = "教室按课表开放。"
+    legacy = WorldPlanningDraft.model_validate_json(json.dumps({**base, "contract": "world-planning.2",
+        "detailed_through": "2026-10-26", "review_at": at(19).isoformat()}))
+    assert legacy.slots[0].prepare_details is False
+    upgraded = {**legacy.model_dump(mode="json"), "contract": "world-planning.3"}
+    with pytest.raises(ValueError, match="detail"):
+        WorldPlanningDraft.model_validate_json(json.dumps(upgraded))
+    upgraded["slots"][0]["prepare_details"] = True
+    current = WorldPlanningDraft.model_validate_json(json.dumps(upgraded))
+    before = expand_planning(legacy, world_id="test", starts_at=at(12), ends_at=at(19), effective_from=at(1))
+    after = expand_planning(current, world_id="test", starts_at=at(12), ends_at=at(19), effective_from=at(1))
+    assert before[0].instance_ref == after[0].instance_ref
+
+
 def test_move_preserves_identity_and_is_visible_in_replacement_week():
     original, = expand(planning())
     moved = planning(exceptions=[{"slot_id": "literature", "original_date": "2026-10-12", "action": "reschedule",
@@ -80,9 +98,9 @@ async def test_outlook_publishes_planning_into_real_role_context_without_attenda
                 value = planning(slots=[{"slot_id": "friday", "title": "周五文学课", "detail": "由学校安排的文学课程。",
                                         "weekdays": [4], "start_minute": 840, "duration_minutes": 120}])
                 if "rolling_preparation" in packet:
-                    value = planning(contract="world-planning.2", detailed_through="2026-10-30",
+                        value = planning(contract="world-planning.3", detailed_through="2026-10-30",
                         review_at=at(21, 10).isoformat(), slots=[{**value.slots[0].model_dump(mode="json"),
-                        "event_text": "学校的周五文学课程开始授课。"}])
+                            "event_text": "学校的周五文学课程开始授课。", "prepare_details": True}])
                 node["external_possibility"] = "学校即将公布本学期的课程安排。"
                 node["execution"] = {"kind": "planning", "text": "学校公布课程安排。", "planning": value.model_dump(mode="json"),
                                      "duration_minutes": 1, "privacy_class": "private"}

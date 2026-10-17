@@ -14,20 +14,26 @@ def outlook_author_schema(*, basis_refs=None, npc_privacy_floors=(), prior_oppor
         schema["required"].append("long_term")
         schema["properties"]["long_term"]["minItems"] = 1
         planning = schema["$defs"]["WorldPlanningDraft"]
-        planning["properties"]["contract"] = {"const": "world-planning.2", "type": "string"}
+        planning["properties"]["contract"] = {"const": "world-planning.3", "type": "string"}
         planning["required"].extend(("contract", "detailed_through", "review_at", "phases"))
         for field in ("detailed_through", "review_at"):
             planning["properties"][field] = next(s for s in planning["properties"][field]["anyOf"] if s.get("type") != "null")
         slots = schema["$defs"]["PlanningSlot"]
-        slots["required"].append("event_text")
+        slots["required"].extend(("event_text", "prepare_details"))
         slots["properties"]["event_text"] = next(s for s in slots["properties"]["event_text"]["anyOf"] if s.get("type") != "null")
+        slots["properties"]["prepare_details"] = {"type": "boolean", "const": True}
+        slots["properties"]["duration_minutes"] = {"type": "integer", "minimum": 2, "maximum": 720}
+        exception = schema["$defs"]["PlanningException"]
+        exception["properties"]["duration_minutes"] = {
+            "anyOf": [{"type": "integer", "minimum": 2, "maximum": 720}, {"type": "null"}],
+        }
         if now is not None:
             local_day = now.astimezone(ZoneInfo("Asia/Shanghai")).date()
             review = f"After {now.isoformat()} and no later than {(now + timedelta(days=7)).isoformat()}. This is the next background review, not the end of the term."
             planning["properties"]["review_at"]["description"] = review
             schema["properties"]["review_at"]["description"] = review
             planning["properties"]["detailed_through"]["description"] = f"At least {(local_day + timedelta(days=7)).isoformat()}, or ends_on for a finite arrangement ending sooner."
-            schema["properties"]["long_term"]["description"] = f"Cover continuously from {local_day.isoformat()} for at least 90 days; explicitly describe uncertain intervals."
+            schema["properties"]["long_term"]["description"] = f"Cover continuously from {local_day.isoformat()} for at least one year (365 days); explicitly describe uncertain intervals."
         if history_offer is not None:
             offered = {item.anchor: item.privacy_class for item in history_offer.items}
             prior_threads = tuple(t for t in prior_threads if all(a in offered for a in t.history_anchors))
@@ -91,6 +97,7 @@ def outlook_author_schema(*, basis_refs=None, npc_privacy_floors=(), prior_oppor
         if rolling_planning and kind == "planning":
             properties["duration_minutes"] = {"type": "integer", "const": 1,
                 "description": "The publication step lasts one minute; scheduled events have their own durations."}
+            properties["privacy_class"] = {"type": "string", "enum": ["public", "shareable", "personal", "private"]}
             variants[-1]["required"].append("duration_minutes")
     schema["$defs"]["OutlookExecution"] = {"oneOf": variants}
     opportunity = schema["$defs"]["OutlookOpportunity"]

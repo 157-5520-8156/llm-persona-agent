@@ -602,6 +602,7 @@ def _experience_entry(
                 "status",
                 "privacy_class",
                 "premise",
+                "participation_scope",
             )
             if value.get("context_kind") == "active_world_occurrence"
             else (
@@ -615,6 +616,7 @@ def _experience_entry(
                 "content",
                 "photo_in_hand",
                 "world_planning",
+                "participation_scope",
             )
         )
         semantic = {key: value[key] for key in fields if key in value}

@@ -31,6 +31,8 @@ def semester(now, **changes):
         ],
         **changes,
     }
+    if value["contract"] == "world-planning.3":
+        value["slots"] = [{**slot, "prepare_details": True} for slot in value["slots"]]
     return WorldPlanningDraft.model_validate_json(json.dumps(value, ensure_ascii=False))
 
 
@@ -59,6 +61,40 @@ def test_rule_time_edit_keeps_identity_and_cannot_reoffer_started_instance():
 
 
 @pytest.mark.asyncio
+async def test_outlook_reuses_verified_old_head_until_history_generation_changes(tmp_path, monkeypatch):
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    app, model = _build(tmp_path / "verified-head.sqlite", "world:verified-head",
+                        at(16, 10), _Role(), RollingAuthor())
+    try:
+        for minute in (1, 2, 3, 4):
+            await tick(app, at(16, 10) + timedelta(minutes=minute), f"verified-head-{minute}")
+        runtime = app._life_ecology._world_outlook
+        old_cursor = runtime.store.head()[2]["cursor"]
+        original = app._ledger.project_at
+        calls = []
+
+        def counted(cursor):
+            if cursor.model_dump(mode="json") == old_cursor:
+                calls.append(cursor)
+            return original(cursor)
+
+        monkeypatch.setattr(app._ledger, "project_at", counted)
+        runtime._verified_head_source = None
+        runtime.view()
+        assert calls
+        first = len(calls)
+        runtime.view()
+        assert len(calls) == first
+        generation = app._ledger.verified_history_generation()
+        monkeypatch.setattr(app._ledger, "verified_history_generation", lambda: generation + 1)
+        runtime.view()
+        assert len(calls) > first
+    finally:
+        await app.aclose()
+        await model.aclose()
+
+
+@pytest.mark.asyncio
 async def test_five_domains_and_dense_weeks_keep_all_authoritative_schedules(tmp_path, monkeypatch):
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
 
@@ -78,7 +114,7 @@ async def test_five_domains_and_dense_weeks_keep_all_authoritative_schedules(tmp
                 key = "domain-" + str(i)
                 if key in known | pending or len(nodes) == 4:
                     continue
-                plan = semester(now, planning_key=key, phases=[], slots=[{
+                plan = semester(now, contract="world-planning.3", planning_key=key, phases=[], slots=[{
                     "slot_id": "s" + str(j), "title": "课", "detail": "课程", "weekdays": list(range(7)),
                     "start_minute": 840, "duration_minutes": 30, "event_text": "课程开放"} for j in range(14)])
                 nodes.append({"opportunity_id": key, "thread_refs": ["ordinary"], "external_possibility": "公布安排",
@@ -109,6 +145,8 @@ async def test_five_domains_and_dense_weeks_keep_all_authoritative_schedules(tmp
         assert runtime.next_due() == at(16, 14)
         for minute in (0, 1):
             await tick(app, at(16, 14) + timedelta(minutes=minute), f"dense-start-{minute}")
+            if minute == 0:
+                assert runtime.next_due() == at(16, 14) + timedelta(seconds=1)
         effects = [o for o in runtime.store.offers() if o["state"] == "considered"
                    and o["payload"].get("origin", {}).get("planning_instance_origin")]
         assert len(effects) >= 16
@@ -142,12 +180,12 @@ class RollingAuthor:
         if (published and not due and not self.cancel_monday
                 and all(datetime.fromisoformat(n["closes_at"]) > now for n in current["opportunities"])):
             return json.dumps({"decision": "keep", "review_at": (now + timedelta(days=1)).isoformat(), "reason": "原安排仍有效"})
-        p = semester(now, **({"supersedes_occurrence_ref": published[0]["occurrence_ref"]} if published else {}))
+        p = semester(now, contract="world-planning.3", **({"supersedes_occurrence_ref": published[0]["occurrence_ref"]} if published else {}))
         if self.cancel_monday:
-            p = semester(now, supersedes_occurrence_ref=published[0]["occurrence_ref"], exceptions=[{
+            p = semester(now, contract="world-planning.3", supersedes_occurrence_ref=published[0]["occurrence_ref"], exceptions=[{
                 "slot_id": "class", "original_date": "2026-10-19", "action": "cancel", "explanation": "学校临时停课通知。"}])
         if self.reschedule_monday:
-            p = semester(now, supersedes_occurrence_ref=published[0]["occurrence_ref"], exceptions=[{
+            p = semester(now, contract="world-planning.3", supersedes_occurrence_ref=published[0]["occurrence_ref"], exceptions=[{
                 "slot_id": "class", "original_date": "2026-10-19", "action": "reschedule",
                 "new_start": at(19, 16).isoformat(), "duration_minutes": 90, "explanation": "学校临时调课通知。"}])
         node = {"opportunity_id": "publish-" + str(len(self.calls)), "thread_refs": ["school"],
@@ -163,6 +201,201 @@ class RollingAuthor:
                     "ends_on": (now + timedelta(days=365)).date().isoformat(), "planning_key": "school-year", "situation": FUTURE}],
                  "opportunities": [node]}
         return json.dumps({"decision": "revise", "draft": draft}, ensure_ascii=False)
+
+
+def course_detail_draft(wake, *, hidden, closing_offset):
+    from test_world_consequence_producer import _draft
+
+    value = _draft(wake)
+    value.update(authored_subject_ref="actor:companion", location_ref=None,
+                 location_capability_ref=None, privacy_class="private")
+    for outcome in value["outcomes"]:
+        outcome.update(experienced_by_ref="actor:companion", privacy_class="private", visual_evidence=None)
+    claim = [value["claim_declarations"][0]["claim_id"]]
+    value["event_details"] = [
+        {"after_seconds": 0, "text": "教室开始开放。", "claim_refs": claim},
+        {"after_seconds": 120, "text": hidden, "claim_refs": claim},
+        {"after_seconds": closing_offset, "text": "本节课临近结束。", "claim_refs": claim},
+    ]
+    return json.dumps(value, ensure_ascii=False)
+
+
+@pytest.mark.asyncio
+async def test_new_course_prepares_full_detail_at_activation_and_releases_only_opening(tmp_path, monkeypatch):
+    from companion_daemon.world_v2.life_content import LifeContentCompiler
+    from companion_daemon.world_v2.life_development_runtime import LifeDevelopmentProposalReader
+    from companion_daemon.world_v2.character_interior.snapshot_compiler import _experience_entry
+    from companion_daemon.world_v2.world_life_context import WorldLifeContextCompiler
+    from companion_daemon.world_v2.schemas import ProjectionCursor
+    from companion_daemon.world_v2.world_outlook_runtime import cursor_of
+    from test_day_open_world_consequence_material import _author_runtime
+    from test_life_development_runtime import _SequenceModel, _novel_origin_review
+    from test_world_author_request_audit import _ReceivedAuthor
+
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    app, model = _build(tmp_path / "automatic-course.sqlite", "world:automatic-course",
+                        at(16, 10), _Role(), RollingAuthor())
+    try:
+        for minute in (1, 2, 3, 4):
+            await tick(app, at(16, 10) + timedelta(minutes=minute), f"course-plan-{minute}")
+        runtime = app._life_ecology._world_outlook
+        experiences_before = len(app._ledger.project().experiences)
+        wake = await tick(app, at(19, 14), "course-start", ecology=False)
+        hidden = "PRIVATE_CLASS_DETAIL：教学楼外传来临时广播。"
+        author = _ReceivedAuthor(app._life_content_store, [course_detail_draft(
+            app._ledger.lookup_event_commit(wake)[0], hidden=hidden, closing_offset=89 * 60)])
+        development = _author_runtime(app._ledger, app._life_content_store, author,
+            actor="actor:companion", critic=_SequenceModel(
+                model="fixture:detail-review", outputs=(_novel_origin_review(decision="supported"),)))
+        development._world_outlook = runtime
+        app._life_ecology._life_development_followup = development
+
+        result = await app.advance_life_ecology_once(wake_event_ref=wake,
+                                                     trace_id="course-start", correlation_id="course-start")
+        assert result.status not in {"failed_safe", "rejected"}, result
+        active = [o for o in app._ledger.project().world_occurrences
+                  if o.status == "active" and o.event_detail_program is not None]
+        assert len(active) == 1
+        assert active[0].event_detail_program.offsets == (0, 120, 89 * 60)
+        assert len(author.received) == 1
+        assert development.pending_world_event_detail_ref(required_planning_only=True) is None
+        state = app._ledger.project()
+        phase = next(o for o in state.world_occurrences
+                     if o.status == "active" and o.occurrence_id != active[0].occurrence_id
+                     and o.trigger_ref.startswith("event:world-outlook:execution:")
+                     and app._ledger.lookup_event_commit(o.trigger_ref)[0].payload()
+                        .get("central_authorship", {}).get("event_detail_origin", {}).get("phase") == 0)
+        premise = LifeDevelopmentProposalReader(ledger=app._ledger, content_store=app._life_content_store)
+        visible = premise.read_active_occurrence(occurrence_id=phase.occurrence_id,
+            expected_cursor=ProjectionCursor(**cursor_of(state)), actor_ref="actor:companion",
+            viewer_privacy_ceiling="private")
+        assert visible is not None and visible.premise.text == "教室开始开放。"
+        assert visible.participation_scope == "external_event_not_character_attendance_or_presence"
+        role_reading = _experience_entry({"source_ref": phase.occurrence_id,
+            "value": visible.model_dump(mode="json")}, lane="world_life", include_source_kind=True)
+        assert role_reading["participation_scope"] == visible.participation_scope
+        context = WorldLifeContextCompiler(
+            life_content=LifeContentCompiler(store=app._life_content_store),
+            active_occurrence_reader=premise,
+        ).compile(projection=state, actor_ref="actor:companion",
+                  cursor=ProjectionCursor(**cursor_of(state)), viewer_privacy_ceiling="private")
+        assert "教室开始开放" in json.dumps([item.model_dump(mode="json") for item in context], ensure_ascii=False)
+        assert hidden not in json.dumps([item.model_dump(mode="json") for item in context], ensure_ascii=False)
+        assert not state.plans and len(state.experiences) == experiences_before
+
+        due_wake = await tick(app, at(19, 14) + timedelta(minutes=2), "course-next-phase", ecology=False)
+        assert runtime.event_details.advance(wake_event_ref=due_wake) == 1
+        state = app._ledger.project()
+        second = next(o for o in state.world_occurrences if o.status == "active"
+                      and o.trigger_ref.startswith("event:world-outlook:execution:")
+                      and app._ledger.lookup_event_commit(o.trigger_ref)[0].payload()
+                         .get("central_authorship", {}).get("event_detail_origin", {}).get("phase") == 1)
+        next_visible = premise.read_active_occurrence(occurrence_id=second.occurrence_id,
+            expected_cursor=ProjectionCursor(**cursor_of(state)), actor_ref="actor:companion",
+            viewer_privacy_ceiling="private")
+        assert next_visible is not None and next_visible.premise.text == hidden
+        from test_world_consequence_aftermath import _aftermath, _NoCharacterCalls
+        from test_world_consequence_producer import _advance as advance_aftermath
+        settled_wake = await tick(app, at(19, 14) + timedelta(minutes=3), "course-phase-settled", ecology=False)
+        await advance_aftermath(_aftermath(app._ledger, app._life_content_store, _NoCharacterCalls()),
+                                app._ledger.lookup_event_commit(settled_wake)[0])
+        state = app._ledger.project()
+        first = next(o for o in state.world_occurrences if o.occurrence_id == phase.occurrence_id)
+        assert first.status == "settled"
+        settled_context = WorldLifeContextCompiler(
+            ledger=app._ledger, life_content=LifeContentCompiler(store=app._life_content_store),
+        ).compile(projection=state, actor_ref="actor:companion",
+                  cursor=ProjectionCursor(**cursor_of(state)), viewer_privacy_ceiling="private")
+        first_reading = next(item for item in settled_context
+                             if getattr(item, "occurrence_id", None) == first.occurrence_id)
+        assert first_reading.participation_scope == "external_event_not_character_attendance_or_presence"
+        role_reading = _experience_entry({"source_ref": first.occurrence_id,
+            "value": first_reading.model_dump(mode="json")}, lane="world_life", include_source_kind=True)
+        assert role_reading["participation_scope"] == first_reading.participation_scope
+    finally:
+        await app.aclose()
+        await model.aclose()
+
+
+@pytest.mark.asyncio
+async def test_required_course_detail_retries_before_its_window_ends_after_two_failures(tmp_path, monkeypatch):
+    from test_day_open_world_consequence_material import _author_runtime
+    from test_life_development_runtime import _SequenceModel, _novel_origin_review
+    from test_world_author_request_audit import _ReceivedAuthor
+
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    app, model = _build(tmp_path / "course-retry.sqlite", "world:course-retry",
+                        at(16, 10), _Role(), RollingAuthor())
+    try:
+        for minute in (1, 2, 3, 4):
+            await tick(app, at(16, 10) + timedelta(minutes=minute), f"retry-plan-{minute}")
+        runtime = app._life_ecology._world_outlook
+        author = _ReceivedAuthor(app._life_content_store,
+                                 [TimeoutError("fixture timeout one"), TimeoutError("fixture timeout two")])
+        development = _author_runtime(app._ledger, app._life_content_store, author,
+            actor="actor:companion", critic=_SequenceModel(
+                model="fixture:detail-review", outputs=(_novel_origin_review(decision="supported"),)))
+        development._world_outlook = runtime
+        app._life_ecology._life_development_followup = development
+        wake = await tick(app, at(19, 14), "retry-course-start", ecology=False)
+        for attempt in (1, 2):
+            result = await app.advance_life_ecology_once(
+                wake_event_ref=wake, trace_id=f"retry-course-{attempt}",
+                correlation_id=f"retry-course-{attempt}")
+            assert result.status == "failed_safe" and result.technical_failure_code.startswith("event_details.")
+            source = development.pending_world_event_detail_ref(required_planning_only=True)
+            assert source
+            now = app._ledger.project().logical_time
+            due = app._life_ecology._required_detail_retry_due(source_ref=source, logical_time=now)
+            assert now < due <= now + timedelta(minutes=15)
+            assert app._life_ecology.next_outlook_due() <= due
+            if attempt == 1:
+                unrelated_wake = await tick(app, now + timedelta(minutes=1),
+                                            "retry-course-unrelated", ecology=False)
+                await app.advance_life_ecology_once(wake_event_ref=unrelated_wake,
+                    trace_id="retry-course-unrelated", correlation_id="retry-course-unrelated")
+                assert len(author.received) == 1, "an unrelated clock must not spend the course retry early"
+                wake = await tick(app, due, "retry-course-second", ecology=False)
+        third_wake = await tick(app, due, "retry-course-third", ecology=False)
+        # The valid replacement uses the third current Clock as its authored
+        # proposal anchor while keeping the original class start and offset.
+        author.outputs.append(course_detail_draft(app._ledger.lookup_event_commit(third_wake)[0],
+            hidden="课程后段的新情况。", closing_offset=89 * 60))
+        recovered = await app.advance_life_ecology_once(
+            wake_event_ref=third_wake, trace_id="retry-course-third",
+            correlation_id="retry-course-third")
+        assert recovered.status not in {"failed_safe", "rejected"}, recovered
+        assert any(o.event_detail_program is not None
+                   and o.event_detail_program.capability.required_program
+                   for o in app._ledger.project().world_occurrences)
+        assert len(author.received) == 3
+        receipt = runtime.store.operation(app._life_ecology._required_detail_retry_operation(source))
+        assert receipt["state"] == "considered" and receipt["payload"]["failure_count"] == 2
+    finally:
+        await app.aclose()
+        await model.aclose()
+
+
+@pytest.mark.asyncio
+async def test_late_new_course_cannot_start_without_time_for_required_program(tmp_path, monkeypatch):
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    app, model = _build(tmp_path / "late-course.sqlite", "world:late-course",
+                        at(16, 10), _Role(), RollingAuthor())
+    try:
+        for minute in (1, 2, 3, 4):
+            await tick(app, at(16, 10) + timedelta(minutes=minute), f"late-plan-{minute}")
+        runtime = app._life_ecology._world_outlook
+        wake = await tick(app, at(19, 15) + timedelta(minutes=29), "late-course", ecology=False)
+        node = next(n for n in runtime.ready() if n["opportunity_id"].startswith("planning-"))
+        result = runtime.execute_offer(node, wake_event_ref=wake)
+        assert result.status == "rejected" and result.reason_code == "planning_detail_window_too_short"
+        assert not runtime._executor.has_effect(node)
+        assert not any(o.trigger_ref.startswith("event:world-outlook:execution:")
+                       and o.time_window.closes_at == at(19, 15) + timedelta(minutes=30)
+                       for o in app._ledger.project().world_occurrences)
+    finally:
+        await app.aclose()
+        await model.aclose()
 
 
 async def tick(app, now, key, *, ecology=True):
@@ -227,8 +460,14 @@ async def test_published_next_month_phase_enters_chat_and_clock_executes_one_ext
         for outcome in value["outcomes"]:
             outcome.update(experienced_by_ref="actor:companion", privacy_class="private", visual_evidence=None)
         canary = "PRIVATE_CLASS_DETAIL：教室广播响起一段音乐。"
-        value["event_details"] = [{"after_seconds": 120, "text": canary,
-                                   "claim_refs": [value["claim_declarations"][0]["claim_id"]]}]
+        value["event_details"] = [
+            {"after_seconds": 0, "text": "教室开始开放。",
+             "claim_refs": [value["claim_declarations"][0]["claim_id"]]},
+            {"after_seconds": 120, "text": canary,
+             "claim_refs": [value["claim_declarations"][0]["claim_id"]]},
+            {"after_seconds": 89 * 60, "text": "本节课临近结束。",
+             "claim_refs": [value["claim_declarations"][0]["claim_id"]]},
+        ]
         detail_author = _ReceivedAuthor(app._life_content_store, [json.dumps(value, ensure_ascii=False)])
         detail_development = _author_runtime(app._ledger, app._life_content_store, detail_author, actor="actor:companion",
             critic=_SequenceModel(model="fixture:detail-review", outputs=(_novel_origin_review(decision="supported"),)))
@@ -238,7 +477,7 @@ async def test_published_next_month_phase_enters_chat_and_clock_executes_one_ext
         prepared = await detail_development.advance_world_event_detail_once(event_ref=source,
             wake_event_ref=wake, trace_id="class-details", correlation_id="class-details")
         assert prepared.status == "occurrence_committed", prepared
-        assert runtime.event_details.advance(wake_event_ref=wake) == 0
+        assert runtime.event_details.advance(wake_event_ref=wake) == 1
         state = app._ledger.project()
         reading = LifeContentCompiler(store=app._life_content_store).compile(cursor=ProjectionCursor(**cursor_of(state)),
             actor_ref="actor:companion", viewer_privacy_ceiling="private", projection=state)
