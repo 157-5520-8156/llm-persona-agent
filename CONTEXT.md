@@ -2201,6 +2201,19 @@ schedule. It can establish what is scheduled; it cannot establish the character'
 choices, feelings or successful completion. A character may act to change an arrangement, but
 her private intention alone does not change the external arrangement.
 
+A rolling arrangement has a coarse calendar of externally announced phases and a shorter
+window of detailed recurring events. A training week may replace ordinary classes; an empty
+phase schedule means no recurring appointments in that phase, not missing attendance.
+The end of detailed coverage is a request for further World authoring, not the end of life.
+
+## Long-range World Outlook
+
+A revisable, private outline of possible external developments over months or years.
+It supplies continuity for shorter arrangements and events, never the character's decisions
+or foreknowledge. Only published external arrangements are available to her as future knowledge.
+Review and coverage deadlines concern background preparation; they do not prescribe a behavior
+or require a dramatic event. Actual choices and consequences can revise the remaining future.
+
 ## Prepared Event Detail
 
 Privately prepared external event content, including its possible progression. Preparation is

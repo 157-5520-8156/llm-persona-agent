@@ -263,7 +263,10 @@ class LifeEcologyRuntime:
         return self._world_outlook.store.head(as_of=as_of) if self._world_outlook is not None else None
 
     def next_outlook_due(self):
-        return self._world_outlook.next_due() if self._world_outlook is not None else None
+        if self._world_outlook is None:
+            return None
+        options = {"include_preparation": not self.background_budget_paused()} if callable(getattr(self._world_outlook, "next_preparation_due", None)) else {}
+        return self._world_outlook.next_due(**options)
 
     def close_outlook(self):
         if self._world_outlook is not None:
@@ -304,6 +307,7 @@ class LifeEcologyRuntime:
         if due_at is None and schedule is not None:
             due_at = schedule.next_consideration_at
         development_due = due_at is None or logical_time >= due_at
+        preparation_attempted, preparation_failure = False, None
         key = LifeEcologyRunKey(
             world_id=self._ledger.world_id,
             wake_event_ref=wake_event_ref,
@@ -329,11 +333,12 @@ class LifeEcologyRuntime:
                 trigger_id=claim.trigger_id,
                 reason_code="life_ecology.run_in_progress",
             )
-        if self._world_outlook is not None and any(
+        current_clock = any(
             ref.event_id == wake_event_ref and ref.event_type == "ClockAdvanced"
             and ref.logical_time == projection.logical_time
             for ref in projection.committed_world_event_refs
-        ):
+        )
+        if self._world_outlook is not None and current_clock:
             # Historical task retries keep their original wake; they cannot
             # release prepaid details at a newer time. The current clock owns
             # that independent progression, including when budget is paused.
@@ -341,10 +346,18 @@ class LifeEcologyRuntime:
             # expense. A spent planning budget must not freeze it mid-action.
             try:
                 self._world_outlook.advance_prepaid_npcs(wake_event_ref=wake_event_ref)
+                publish = getattr(self._aftermath_followup, "advance_planning_once", None)
+                if getattr(self._world_outlook, "_rolling_planning", False) and callable(publish):
+                    await publish(wake_event_ref=wake_event_ref, trace_id=trace_id, correlation_id=correlation_id)
                 projection = self._ledger.project()
             except Exception as exc:
                 self._world_outlook.record_failure(exc)
-                _LOG.warning("prepaid NPC execution unavailable: %s", type(exc).__name__)
+                failure_code = _technical_failure_code("prepaid", exc)
+                persisted = await self._complete_technical_failure(
+                    key=key, trigger_id=claim.trigger_id, failure_code=failure_code)
+                return LifeEcologyRunResult(status="failed_safe", trigger_id=claim.trigger_id,
+                    reason_code="life_ecology.prepaid_technical_failure" if persisted else "life_ecology.technical_failure_persistence_failed",
+                    technical_failure_code=failure_code if persisted else None)
         if self.background_budget_paused():
             # This is a capacity fact, not a character decision and not a
             # technical failure: today's background envelope is spent, so the
@@ -356,6 +369,26 @@ class LifeEcologyRuntime:
                 trigger_id=claim.trigger_id,
                 reason_code="life_ecology.paused_by_budget",
             )
+
+        # Missing/expiring external arrangements are technical preparation,
+        # independent of the role-life cadence and unrelated failed outcomes.
+        if current_clock and callable(getattr(self._world_outlook, "next_preparation_due", None)):
+            try:
+                preparation_due = self._world_outlook.next_preparation_due(projection=projection)
+                if preparation_due is not None and preparation_due <= projection.logical_time:
+                    preparation_attempted = True
+                    prepared = await self._life_development_followup.prepare_outlook_once(wake_event_ref=wake_event_ref)
+                    if isinstance(prepared, dict) and prepared.get("status") == "technical_failure":
+                        preparation_failure = str(prepared.get("failure_code") or "preparation_failed")
+            except Exception as exc:
+                preparation_failure = type(exc).__name__
+            if preparation_failure is not None:
+                try:
+                    self._world_outlook.record_preparation_failure(projection=projection, code=preparation_failure)
+                except Exception as exc:
+                    self._world_outlook.record_failure(exc)
+                    _LOG.warning("planning preparation failure receipt unavailable: %s", type(exc).__name__)
+                preparation_failure = "outlook." + preparation_failure[:88]
 
         try:
             await self._activate_due_occurrences(
@@ -526,8 +559,8 @@ class LifeEcologyRuntime:
             if callable(stimulus_reader):
                 npc_has_stimulus = bool(stimulus_reader(projection=projection))
 
-        life_development_status: str | None = None
-        life_development_failure_code: str | None = None
+        life_development_status: str | None = "technical_failure" if preparation_failure else None
+        life_development_failure_code: str | None = preparation_failure
         completion_ref = None
         # Failed old causal work must not own every later due slot. Yield both
         # consequence and detail work together so they cannot starve independent
@@ -587,7 +620,7 @@ class LifeEcologyRuntime:
                 self._world_outlook.reconcile_accepted_offers(wake_event_ref=wake_event_ref)
                 # Existing execution/settlement and causal NPC work keep priority.
                 if (
-                    development_due and completion_ref is None and active_attempt_ref is None and event_detail_ref is None
+                    development_due and not preparation_attempted and completion_ref is None and active_attempt_ref is None and event_detail_ref is None
                     and not npc_has_due_work and not npc_has_stimulus
                 ):
                     prepare = getattr(self._life_development_followup, "prepare_outlook_once", None)

@@ -18,6 +18,130 @@ from test_world_outlook import (
 from test_life_development_runtime import _manifest, _projection_cursor
 
 
+def test_prior_selectors_restore_only_complete_pinned_objects_and_not_new_prose():
+    from companion_daemon.world_v2.world_outlook_request import ROLLING_REFERENCE_CONTRACT, decode_outlook_response
+    from companion_daemon.world_v2.shared_string_view import pack_shared_strings
+    node = {"opportunity_id": "prior", "execution": {"text": "完整的原始正文，不能重新措辞。" * 6}, "state": "ready"}
+    thread = {"thread_id": "story", "situation": "原先的外部故事", "open_question": "尚未确定"}
+    request = pack_shared_strings({"response_reference_contract": ROLLING_REFERENCE_CONTRACT,
+        "current_outlook": {"opportunities": [node], "threads": [thread]}, "repeat": [node] * 3})
+    raw_request = json.dumps(request)
+    response = {"draft": {"opportunities": [{"retain_opportunity_id": "prior"}], "threads": [{"retain_thread_id": "story"}]}}
+    restored = decode_outlook_response(json.dumps(response), request_raw=raw_request)
+    assert restored["draft"] == {"opportunities": [{k: v for k, v in node.items() if k != "state"}], "threads": [thread]}
+    for bad in ({"retain_opportunity_id": "unknown"}, {"retain_opportunity_id": "prior", "execution": {"text": "改写"}}):
+        with pytest.raises(ValueError, match="complete pinned object"):
+            decode_outlook_response(json.dumps({"draft": {"opportunities": [bad]}}), request_raw=raw_request)
+    alias = next(iter(request["strings"]))
+    for prose in (alias, "课程内容是 " + alias):
+        with pytest.raises(ValueError, match="not new prose"):
+            decode_outlook_response(json.dumps({"draft": {"long_term": [{"situation": prose}]}}), request_raw=raw_request)
+
+
+def test_anchor_selection_copies_exact_offered_tuple_and_never_repairs_authority_fields():
+    from companion_daemon.world_v2.world_outlook_request import ROLLING_REFERENCE_CONTRACT, decode_outlook_response
+    anchor = {"source_kind": "occurrence", "source_ref": "occurrence:one", "authority_ref": "event:settled-one",
+              "authority_revision": 37, "authority_hash": "b" * 64}
+    packet = {"response_reference_contract": ROLLING_REFERENCE_CONTRACT,
+              "current_outlook": {"threads": [], "opportunities": []},
+              "draft_schema": {"$defs": {"StoryAnchor": {"properties": {"history_anchor_ref": {}}}}},
+              "history_offer": {"items": [{"anchor": anchor, "privacy_class": "private"}]}}
+    response = {"draft": {"threads": [{"thread_id": "story", "history_anchors": [{"history_anchor_ref": "occurrence:one"}]}]}}
+    decoded = decode_outlook_response(json.dumps(response), request_raw=json.dumps(packet))
+    assert decoded["draft"]["threads"][0]["history_anchors"] == [anchor]
+    for bad in ({"history_anchor_ref": "unknown"}, {"history_anchor_ref": "occurrence:one", "authority_hash": "c" * 64}):
+        response["draft"]["threads"][0]["history_anchors"] = [bad]
+        with pytest.raises(ValueError, match="exact offered source"):
+            decode_outlook_response(json.dumps(response), request_raw=json.dumps(packet))
+    response["draft"]["threads"][0]["history_anchors"] = [{"history_anchor_ref": "occurrence:one"}]
+    packet["draft_schema"] = {}  # Older paid .2 requests never offered this selector.
+    with pytest.raises(ValueError, match="exact offered source"):
+        decode_outlook_response(json.dumps(response), request_raw=json.dumps(packet))
+    packet["response_tool_contract"] = "world-outlook-native.4"
+    with pytest.raises(ValueError, match="occurrence:one.*story.*exact offered source"):
+        decode_outlook_response(json.dumps(response), request_raw=json.dumps(packet))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("original_contract", ["world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4"])
+async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contract(tmp_path, monkeypatch, original_contract):
+    from companion_daemon.subscription_usage import BackgroundGLMModel, SubscriptionTokenLedger
+    from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
+    from companion_daemon.world_v2.world_outlook_runtime import WorldOutlookRuntime, _outlook_request_hash
+    from companion_daemon.world_v2.world_outlook_store import SQLiteWorldOutlookStore
+    from jsonschema import Draft202012Validator
+    from test_life_development_runtime import NOW, WORLD_ID, OWNER
+    requests = []
+    ledger, wake, store, _, runtime = setup(tmp_path, lambda w: [])
+    runtime._rolling_planning = True
+    monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime._NATIVE_RESULT", original_contract)
+
+    def provider(request):
+        body = json.loads(request.content)
+        requests.append(body)
+        packet = decode_outlook_request(body["messages"][1]["content"])
+        assert body["tool_choice"] == "auto" and "response_format" not in body
+        assert "For each response, call world_outlook_v6 once" in body["messages"][0]["content"]
+        value = draft_value(wake)
+        for node, identity in zip(value["opportunities"], packet["new_opportunity_ids"], strict=False):
+            node["opportunity_id"] = identity
+        value["horizon_end"] = (NOW + timedelta(days=30)).isoformat()
+        value["long_term"] = [{"stage_id": "year", "starts_on": NOW.date().isoformat(),
+                              "ends_on": (NOW + timedelta(days=365)).date().isoformat(), "situation": "仍可改变的外部生活阶段"}]
+        result = {"decision": "revise", "draft": value}
+        tool = body["tools"][0]
+        Draft202012Validator.check_schema(tool["function"]["parameters"])
+        assert Draft202012Validator(tool["function"]["parameters"]).is_valid(result)
+        assert packet["response_tool_contract"] == original_contract
+        if len(requests) == 1:
+            result["draft"]["actor_ref"] = "actor:wrong-owner"
+        elif original_contract in {"world-outlook-native.3", "world-outlook-native.4"}:
+            assistant, feedback = body["messages"][-2:]
+            assert assistant["role"] == "assistant" and assistant["content"] is None
+            assert assistant["tool_calls"][0]["function"]["name"] == "world_outlook_v6"
+            assert json.loads(assistant["tool_calls"][0]["function"]["arguments"])["draft"]["actor_ref"] == "actor:wrong-owner"
+            assert feedback["role"] == "tool" and feedback["tool_call_id"] == assistant["tool_calls"][0]["id"]
+            assert "World, owner or predecessor mismatch" in feedback["content"]
+        else:
+            assert [m["role"] for m in body["messages"][-2:]] == ["assistant", "user"]
+        return httpx.Response(200, json={"choices": [{"finish_reason": "tool_calls", "message": {
+            "role": "assistant", "content": None, "tool_calls": [{"id": "result", "type": "function", "function": {
+                "name": "world_outlook_v6", "arguments": json.dumps(result)}}]}}],
+            "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20}})
+
+    model = BackgroundGLMModel("test", "https://fixture.invalid/v1", "GLM-5.3-Flash",
+        token_ledger=SubscriptionTokenLedger(tmp_path / "tokens.sqlite"), transport=httpx.MockTransport(provider))
+    runtime.author = model
+    class Crash(BaseException):
+        pass
+    original_install = store.install
+    def crash(*args, **kwargs):
+        raise Crash()
+    monkeypatch.setattr(store, "install", crash)
+    args = dict(projection=ledger.project(), context={}, manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)))
+    try:
+        with pytest.raises(Crash):
+            await runtime.refresh(**args)
+        assert len(requests) == 2
+        monkeypatch.setattr(store, "install", original_install)
+        operation = store.running_refresh(cursor={k: getattr(ledger.project(), k) for k in ("world_revision", "deliberation_revision", "ledger_sequence")})
+        attempts = store.attempts(operation["operation_ref"])
+        assert attempts[0]["status"] == "invalid" and attempts[1]["status"] == "valid"
+        paid = attempts[1]
+        expected_hash = _outlook_request_hash(paid["messages"], paid["response_tools"])
+        runtime.close()
+        monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime._NATIVE_RESULT", "world-outlook-native.4")
+        reopened = SQLiteWorldOutlookStore(path=tmp_path / "outlook.sqlite", world_id=WORLD_ID, actor_ref=OWNER)
+        runtime = WorldOutlookRuntime(ledger=ledger, store=reopened, author=model, actor_ref=OWNER, rolling_planning=False)
+        monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime.outlook_result_tool", lambda *_: pytest.fail("paid tools must not be regenerated"))
+        assert (await runtime.refresh(**args))["status"] == "ready"
+        assert len(requests) == 2
+        assert reopened.head()[2]["request_hash"] == expected_hash
+    finally:
+        runtime.close()
+        await model.aclose()
+
+
 @pytest.mark.asyncio
 async def test_refresh_input_stays_bounded_as_unreferenced_terminal_history_grows(tmp_path):
     from companion_daemon.world_v2.schemas import EvidenceRef, PlanStateProjection

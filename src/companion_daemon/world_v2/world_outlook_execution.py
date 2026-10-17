@@ -260,15 +260,15 @@ class WorldOutlookExecutor:
                     OccurrenceContentCommitRequest(
                         world_id=state.world_id,
                         occurrence=WorldOccurrenceProjection(
-                            activation_authority="world_outlook" if origin.get("event_detail_origin") else "clock",
+                            activation_authority="world_outlook" if origin.get("event_detail_origin") or origin.get("planning_instance_origin") else "clock",
                             occurrence_id=ref,
                             entity_revision=1,
                             trigger_ref=proposal_id,
                             participant_refs=participants,
                             time_window=DueWindow(
                                 opens_at=state.logical_time,
-                                closes_at=state.logical_time
-                                + timedelta(minutes=node.execution.duration_minutes),
+                                closes_at=(node.closes_at if origin.get("planning_instance_origin") else
+                                    state.logical_time + timedelta(minutes=node.execution.duration_minutes)),
                             ),
                             candidate_outcome_refs=(content.candidate_result_ref,),
                             visibility=node.execution.privacy_class,

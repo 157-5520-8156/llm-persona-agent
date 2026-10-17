@@ -32,7 +32,7 @@ def life_possibility_output_schema(*, outcome_contract: str | None = None,
     consequence = definitions["WorldConsequenceV2"]["properties"]
     consequence.pop("world_planning", None)
     consequence["contract"] = {"const": "world-consequence.2", "default": "world-consequence.2", "title": "Contract", "type": "string"}
-    for key in ("WorldPlanningDraft", "PlanningSlot", "PlanningException"):
+    for key in ("WorldPlanningDraft", "PlanningSlot", "PlanningException", "PlanningPhase"):
         definitions.pop(key, None)
     if not authorized_attempt_claims:
         # Frozen legacy/v1-v4 wire: adding a new live declaration must not

@@ -165,6 +165,7 @@ class LifeContentCompiler:
             projection=projection, store=self._store, actor_ref=actor_ref,
             privacy_ceiling=viewer_privacy_ceiling,
             user_channel_limited_content_refs=user_channel_limited_content_refs, limit=4,
+            ends_at=projection.logical_time + timedelta(days=730),
         )
         result = {}
         for publication in publications:
@@ -188,6 +189,7 @@ class LifeContentCompiler:
             planning = publication.planning
             result[publication.occurrence_ref] = (WorldPlanningReading(
                 title=planning.title, summary=planning.summary, starts_on=planning.starts_on, ends_on=planning.ends_on,
+                phases=planning.phases, detailed_through=planning.detailed_through,
                 upcoming=expand_planning(planning, world_id=projection.world_id,
                     starts_at=projection.logical_time, ends_at=projection.logical_time + timedelta(days=7),
                     effective_from=publication.published_at, effective_until=publication.effective_until, limit=12),

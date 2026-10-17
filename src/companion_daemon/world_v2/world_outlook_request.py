@@ -12,6 +12,8 @@ from .shared_string_view import (
 _COLUMNS = ("source_ref", "source_kind", "status", "allowed_statuses", "token")
 _TABLE = "outlook-condition-sources-table.1"
 RESPONSE_REFERENCE_CONTRACT = "outlook-source-references.1"
+ROLLING_REFERENCE_CONTRACT = "outlook-source-references.3"
+_PRIOR_ROLLING_CONTRACT = "outlook-source-references.2"
 PRESENTATION_GUIDE = """Request encoding: a shared-string-view.1 wrapper is lossless. Read value,
 resolving each exact prefix token using strings. If condition_sources is an
 outlook-condition-sources-table.1, each row maps positionally to columns.
@@ -20,11 +22,23 @@ is outlook-source-references.1, prefer copying exact dictionary aliases for refe
 the host expands them against this request only, then validates all authority.
 Otherwise output original expanded refs. Write narrative text yourself, never
 dictionary aliases in prose. The draft schema and authority rules are unchanged."""
+ROLLING_PRESENTATION_GUIDE = """In outlook-source-references.3, native-tool constants/enums use
+expanded IDs. Prefer those expanded IDs in the response; the exact source dictionary remains readable.
+To retain an unchanged prior opportunity use only {"retain_opportunity_id":"offered id"}; for an
+unchanged prior thread use only {"retain_thread_id":"offered id"}. The host restores that complete
+pinned object, including its exact prose and source bindings. No additional/override fields are legal.
+New or revised prose must be your own text, never a dictionary alias. New and retained objects both
+undergo the same complete authority, privacy, expiry and planning validation.
+When StoryAnchor offers history_anchor_ref, select {"history_anchor_ref":"offered source_ref"}
+instead of copying its hash/revision/event fields. The host restores that exact offered anchor;
+you still decide which sources to link. Unknown references and override fields are rejected."""
 
 _REFERENCE_FIELDS = frozenset({
     "world_id", "actor_ref", "parent_revision", "thread_id", "opportunity_id",
     "thread_refs", "after_opportunities", "source_ref", "authority_ref", "authority_hash", "basis_refs",
     "npc_ref", "participant_npc_refs", "location_ref", "target_plan_ref", "unchanged_token", "supersedes_occurrence_ref",
+    "retain_opportunity_id", "retain_thread_id",
+    "history_anchor_ref",
 })
 
 
@@ -55,7 +69,8 @@ def decode_outlook_response(raw, *, request_raw):
     response = json.loads(raw)
     request = json.loads(request_raw)
     expanded = decode_outlook_request(request_raw)
-    if expanded.get("response_reference_contract") != RESPONSE_REFERENCE_CONTRACT:
+    contract = expanded.get("response_reference_contract")
+    if contract not in {RESPONSE_REFERENCE_CONTRACT, _PRIOR_ROLLING_CONTRACT, ROLLING_REFERENCE_CONTRACT}:
         return response
     strings = request.get("strings", {}) if request.get("contract") == SHARED_STRINGS else {}
     prefix = request.get("prefix") if strings else None
@@ -77,12 +92,58 @@ def decode_outlook_response(raw, *, request_raw):
             return [visit(item) for item in value]
         return value
 
-    return visit(response)
+    response = visit(response)
+    if contract in {_PRIOR_ROLLING_CONTRACT, ROLLING_REFERENCE_CONTRACT}:
+        def reject_alias(value):
+            if isinstance(value, str) and prefix and (prefix in value if contract == ROLLING_REFERENCE_CONTRACT else value.startswith(prefix)):
+                raise ValueError("dictionary aliases are not new prose; use an exact prior-object selector or author full new text")
+            if isinstance(value, dict):
+                for child in value.values():
+                    reject_alias(child)
+            elif isinstance(value, list):
+                for child in value:
+                    reject_alias(child)
+        reject_alias(response)
+        if isinstance(response, dict) and isinstance(response.get("draft"), dict):
+            view = expanded["current_outlook"]
+            for field, selector, identity in (("opportunities", "retain_opportunity_id", "opportunity_id"),
+                                               ("threads", "retain_thread_id", "thread_id")):
+                offered = {n[identity]: {k: v for k, v in n.items() if k != "state"} for n in view[field]}
+                restored = []
+                for item in response["draft"].get(field, ()):
+                    if isinstance(item, dict) and selector in item:
+                        if set(item) != {selector} or not isinstance(item[selector], str) or item[selector] not in offered:
+                            raise ValueError("prior outlook selector must name one complete pinned object without overrides")
+                        restored.append(offered[item[selector]])
+                    else:
+                        restored.append(item)
+                if field in response["draft"]:
+                    response["draft"][field] = restored
+            anchor_schema = expanded.get("draft_schema", {}).get("$defs", {}).get("StoryAnchor", {})
+            anchors = {item["anchor"]["source_ref"]: item["anchor"] for item in expanded.get("history_offer", {}).get("items", ())}
+            for thread in response["draft"].get("threads", ()):
+                if not isinstance(thread, dict):
+                    continue
+                restored = []
+                for anchor in thread.get("history_anchors", ()):
+                    if isinstance(anchor, dict) and "history_anchor_ref" in anchor:
+                        ref = anchor["history_anchor_ref"]
+                        if ("history_anchor_ref" not in anchor_schema.get("properties", {})
+                                or set(anchor) != {"history_anchor_ref"} or not isinstance(ref, str) or ref not in anchors):
+                            if expanded.get("response_tool_contract") == "world-outlook-native.4":
+                                raise ValueError(f"history anchor selector {ref!r} in thread {thread.get('thread_id')!r} must name one exact offered source without overrides; use only history_offer.items[].anchor.source_ref, not an unavailable anchor from the prior outlook")
+                            raise ValueError("history anchor selector must name one exact offered source without overrides")
+                        restored.append(anchors[ref])
+                    else:
+                        restored.append(anchor)
+                if "history_anchors" in thread:
+                    thread["history_anchors"] = restored
+    return response
 
 
 def encode_outlook_request(packet, *, byte_limit):
     plain = _wire(packet)
-    if (packet.get("response_reference_contract") != RESPONSE_REFERENCE_CONTRACT
+    if (packet.get("response_reference_contract") not in {RESPONSE_REFERENCE_CONTRACT, _PRIOR_ROLLING_CONTRACT, ROLLING_REFERENCE_CONTRACT}
             and len(plain.encode()) <= byte_limit):
         return plain
     # The original JSON carrier turns tuples into arrays as well.

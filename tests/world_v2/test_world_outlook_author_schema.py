@@ -13,6 +13,42 @@ from test_life_development_runtime import _manifest, _projection_cursor
 from companion_daemon.world_v2.world_outlook_author_schema import outlook_author_schema
 
 
+def test_rolling_planning_schema_matches_nonnull_runtime_contract():
+    from datetime import datetime
+    from test_rolling_world_planning import semester
+    from companion_daemon.world_v2.world_planning import WorldPlanningDraft
+    schema = outlook_author_schema(rolling_planning=True)
+    validator = Draft202012Validator({"$ref": "#/$defs/WorldPlanningDraft", "$defs": schema["$defs"]})
+    value = semester(datetime.fromisoformat("2026-10-17T21:25:02+08:00")).model_dump(mode="json")
+    for field in ("review_at", "detailed_through"):
+        bad = {**value, field: None}
+        with pytest.raises(ValueError):
+            WorldPlanningDraft.model_validate_json(json.dumps(bad))
+        assert not validator.is_valid(bad)
+
+
+def test_native_schema_requires_pinned_predecessor_and_due_publications():
+    from test_life_development_runtime import NOW, WORLD_ID, OWNER
+    from companion_daemon.world_v2.world_outlook_author_schema import outlook_result_tool
+    schema = outlook_author_schema(rolling_planning=True, now=NOW,
+        identity={"world_id": WORLD_ID, "actor_ref": OWNER, "parent_revision": "a" * 64},
+        preparation={"due": [{"planning_key": "school", "supersedes_occurrence_ref": "occurrence:prior"}]})
+    assert {"parent_revision", "opportunities"} <= set(schema["required"])
+    tool = outlook_result_tool(schema, allow_keep=False)
+    assert set(tool["function"]["parameters"]["properties"]) == {"decision", "draft"}
+    assert set(tool["function"]["parameters"]["required"]) == {"decision", "draft"}
+    validator = Draft202012Validator(tool["function"]["parameters"])
+    assert not validator.is_valid({"decision": "keep", "review_at": NOW.isoformat(), "reason": "尚未准备"})
+
+
+def test_rolling_date_bounds_use_the_planning_timezone_across_utc_midnight():
+    from datetime import datetime
+    schema = outlook_author_schema(rolling_planning=True, now=datetime.fromisoformat("2026-10-17T20:00:00+00:00"))
+    fields = schema["$defs"]["WorldPlanningDraft"]["properties"]
+    assert "2026-10-25" in fields["detailed_through"]["description"]
+    assert "2026-10-18" in schema["properties"]["long_term"]["description"]
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("kind,field,value", [
     ("environment", "location_ref", "location:library"),

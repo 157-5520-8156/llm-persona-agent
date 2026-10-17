@@ -122,6 +122,12 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
                 if period_end > period_start:
                     add("planning", publication.occurrence_ref, period_start, period_end,
                         publication.privacy_class, (publication, None))
+                for phase in p.phases:
+                    phase_start = max(period_start, datetime.combine(phase.starts_on, time(), zone))
+                    phase_end = min(period_end, datetime.combine(phase.ends_on + timedelta(days=1), time(), zone))
+                    if phase_end > phase_start:
+                        add("planning", publication.occurrence_ref + ":phase:" + phase.phase_id,
+                            phase_start, phase_end, publication.privacy_class, (publication, phase))
                 instances = expand_planning(p, world_id=projection.world_id, starts_at=start, ends_at=end,
                     effective_from=publication.published_at, effective_until=publication.effective_until, limit=97)
                 planning_truncated |= len(instances) > 96
@@ -149,6 +155,11 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
                 or any(evidence["cursor"][k] > v for k, v in cursor.model_dump().items())):
             outlook_state = "unavailable"
         else:
+            from .world_outlook import OutlookStage
+            for stage in draft.long_term:
+                add("outlook", "stage:" + stage.stage_id,
+                    datetime.combine(stage.starts_on, time(), zone),
+                    datetime.combine(stage.ends_on + timedelta(days=1), time(), zone), "private", stage)
             for item in draft.opportunities:
                 add("outlook", item.opportunity_id, item.opens_at, item.closes_at,
                     "withhold" if {"public": 0, "shareable": 1, "personal": 2, "private": 3, "withhold": 4}[item.execution.privacy_class]
@@ -188,11 +199,16 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
             if reading.plan_id is not None:
                 related.append(("plan", reading.plan_id))
         elif kind == "planning":
+            from .world_planning import PlanningPhase
             publication, instance = item
             if instance is None:
                 title, detail = publication.planning.title, publication.planning.summary
                 time_kind = "period"
                 status = "客观规划 · 已公布"
+            elif isinstance(instance, PlanningPhase):
+                title, detail = instance.title, instance.summary
+                time_kind, status = "period", "阶段安排 · 已公布"
+                related.append(("planning", publication.occurrence_ref))
             else:
                 title, detail = instance.title, instance.detail
                 status = "已取消的安排" if instance.status == "cancelled" else "已公布的安排"
@@ -234,18 +250,22 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
             except ValueError:
                 pass
         elif kind == "outlook":
-            title = item.external_possibility
+            from .world_outlook import OutlookStage
+            title = item.situation if isinstance(item, OutlookStage) else item.external_possibility
+            if isinstance(item, OutlookStage):
+                time_kind = "period"
             status = "候选窗口已结束" if now and closes <= now else "候选机会 · 未定"
-            detail = item.external_possibility + "\n\n这是命运机制保留的外部可能性，受条件和角色选择影响，不代表已发生或角色已经知晓。"
+            detail = title + "\n\n这是命运机制保留的外部可能性，受条件和角色选择影响，不代表已发生或角色已经知晓。"
             from .world_outlook_execution import occurrence_ref
-            realized_ref = occurrence_ref(projection.world_id, actor_ref, item.opportunity_id)
+            realized_ref = None if isinstance(item, OutlookStage) else occurrence_ref(projection.world_id, actor_ref, item.opportunity_id)
             realized = next((o for o in projection.world_occurrences if o.occurrence_id == realized_ref
                              and o.status in {"active", "settled"}), None)
             if realized is not None:
                 status = "已落实为世界事件"
                 detail = item.external_possibility + "\n\n这项机会已经产生世界事件；具体结果和角色的经历分别记录。"
                 related.append(("world", realized_ref))
-            related.extend(("outlook", ref) for ref in item.after_opportunities)
+            if not isinstance(item, OutlookStage):
+                related.extend(("outlook", ref) for ref in item.after_opportunities)
         elif kind == "commitment":
             title, detail = "约定的时间窗口", "约定的状态与期限；此处没有可核验的约定正文。"
             status = _STATUS_LABELS.get(item.values.status, "约定状态未识别")

@@ -111,6 +111,7 @@ class _WorldAuthor:
                             "review_at": (now + timedelta(days=1)).isoformat(),
                             "horizon_end": current["horizon_end"],
                             "threads": current["threads"],
+                            **({"long_term": current["long_term"]} if "long_term" in current else {}),
                             "opportunities": nodes,
                         },
                     },
@@ -154,6 +155,9 @@ class _WorldAuthor:
                 },
             ],
             "opportunities": [node],
+            **({"long_term": [{"stage_id": "ordinary-life", "starts_on": now.date().isoformat(),
+                "ends_on": (now + timedelta(days=365)).date().isoformat(),
+                "situation": FUTURE}]} if "rolling_preparation" in packet else {}),
         }
         for key, day, text in (("second-notice", 1, SECOND), ("independent-notice", 2, THIRD)):
             later = deepcopy(node)

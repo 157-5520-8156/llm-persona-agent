@@ -225,7 +225,8 @@ class OccurrenceContentCoordinator:
                 if request.source != "world-outlook-execution.1" or request.actor != "worker:world-outlook":
                     raise ValueError("planning publication requires its World Outlook execution")
                 validate_planning_publication(planning, projection=self._ledger.project(),
-                    actor_ref=request.occurrence.participant_refs[0], occurrence_ref=request.occurrence.occurrence_id, store=self._store)
+                    actor_ref=request.occurrence.participant_refs[0], occurrence_ref=request.occurrence.occurrence_id,
+                    store=self._store, ledger=self._ledger)
             if candidate.result_contract in WORLD_CONSEQUENCE_CONTRACTS:
                 navigation = WorldConsequenceV2.model_validate_json(candidate.text).story_navigation
                 if navigation is not None:

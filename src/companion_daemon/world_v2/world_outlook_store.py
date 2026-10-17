@@ -62,6 +62,8 @@ class SQLiteWorldOutlookStore:
                 END;
                 CREATE INDEX IF NOT EXISTS world_outlook_offer_node ON world_outlook_operations(
                     world_id,actor_ref,json_extract(payload,'$.node.opportunity_id')) WHERE kind='offer';
+                CREATE INDEX IF NOT EXISTS world_outlook_planning_instance ON world_outlook_operations(
+                    world_id,actor_ref,json_extract(payload,'$.origin.planning_instance_origin.instance_ref')) WHERE kind='offer';
                 CREATE INDEX IF NOT EXISTS world_outlook_work ON world_outlook_operations(
                     world_id,actor_ref,kind,state);
                 CREATE INDEX IF NOT EXISTS world_outlook_offer_owner ON world_outlook_operations(
@@ -448,6 +450,20 @@ class SQLiteWorldOutlookStore:
                 raise ValueError("outlook attempt content binding mismatch")
             result[ordinal] = payload
         return result
+
+    def planning_offers(self, instance_refs):
+        """Indexed exact-instance reads; completed years do not enter clock work."""
+        refs = sorted(set(instance_refs))
+        result = []
+        with self._lock:
+            for start in range(0, len(refs), 128):
+                batch = refs[start:start + 128]
+                rows = self._db.execute(
+                    "SELECT operation_id,state,payload FROM world_outlook_operations WHERE world_id=? AND actor_ref=? "
+                    "AND kind='offer' AND json_extract(payload,'$.origin.planning_instance_origin.instance_ref') IN ("
+                    + ",".join("?" for _ in batch) + ")", (*self._scope(), *batch)).fetchall()
+                result.extend({"operation_ref": key, "state": state, "payload": json.loads(payload)} for key, state, payload in rows)
+        return tuple(result)
 
     def revisions(self):
         with self._lock:

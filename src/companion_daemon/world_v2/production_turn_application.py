@@ -4573,6 +4573,7 @@ def build_sqlite_world_v2_turn_application(
 
             world_outlook = WorldOutlookRuntime(
                 ledger=ledger, content_store=life_content_store,
+                rolling_planning=True,
                 store=SQLiteWorldOutlookStore(
                     path=path, world_id=config.world_id, actor_ref=config.companion_actor_ref,
                 ),

@@ -730,6 +730,9 @@ class ProductionAuthor:
                 closes_at=(now + timedelta(days=7)).isoformat(),
             )
         draft["threads"][0]["open_question"] = "PRIVATE_FUTURE_SENTINEL"
+        if "rolling_preparation" in packet:
+            draft["long_term"] = [{"stage_id": "ordinary-life", "starts_on": now.date().isoformat(),
+                "ends_on": (now + timedelta(days=365)).date().isoformat(), "situation": "PRIVATE_FUTURE_SENTINEL"}]
         return json.dumps({"decision": "revise", "draft": draft})
 
 

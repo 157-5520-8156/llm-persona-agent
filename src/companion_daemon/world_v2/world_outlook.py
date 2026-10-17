@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import hashlib
 import json
 from typing import Literal, get_args
@@ -62,6 +62,20 @@ class OutlookThread(FrozenModel):
     history_anchors: tuple[StoryAnchor, ...] = Field(
         default=(), max_length=8, exclude_if=lambda v: not v
     )
+
+
+class OutlookStage(FrozenModel):
+    stage_id: str = Field(pattern=r"^[a-z][a-z0-9_-]{0,63}$")
+    starts_on: date
+    ends_on: date
+    situation: str = Field(min_length=1, max_length=600)
+    planning_key: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]{0,95}$")
+
+    @model_validator(mode="after")
+    def bounded_window(self):
+        if not 0 <= (self.ends_on - self.starts_on).days <= 730:
+            raise ValueError("long-range stage must be a bounded forward period")
+        return self
 
 
 class OutlookExecution(FrozenModel):
@@ -144,6 +158,7 @@ class WorldOutlookDraft(FrozenModel):
     horizon_end: datetime
     threads: tuple[OutlookThread, ...] = Field(min_length=1, max_length=6)
     opportunities: tuple[OutlookOpportunity, ...] = Field(default=(), max_length=24)
+    long_term: tuple[OutlookStage, ...] = Field(default=(), max_length=16, exclude_if=lambda v: not v)
 
     @model_validator(mode="after")
     def graph_is_closed(self):
@@ -153,6 +168,8 @@ class WorldOutlookDraft(FrozenModel):
         nodes = {n.opportunity_id: n for n in self.opportunities}
         if len(threads) != len(self.threads) or len(nodes) != len(self.opportunities):
             raise ValueError("outlook identities must be unique")
+        if len({s.stage_id for s in self.long_term}) != len(self.long_term):
+            raise ValueError("long-range stage identities must be unique")
         if self.review_at > self.horizon_end:
             raise ValueError("review lies beyond the horizon")
         visited, active = set(), set()

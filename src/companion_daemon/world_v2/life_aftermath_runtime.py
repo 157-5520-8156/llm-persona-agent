@@ -276,6 +276,24 @@ class LifeAftermathRuntime:
         self._random = RandomAuthority(ledger=ledger, source="world-v2:life-aftermath-random")
         self._memory_decision_locks: dict[str, asyncio.Lock] = {}
 
+    async def advance_planning_once(self, *, wake_event_ref: str, trace_id: str, correlation_id: str):
+        """Settle one prepaid external publication, without a character decision."""
+        state = self._ledger.project()
+        wake = next((e for e in state.committed_world_event_refs if e.event_id == wake_event_ref
+                     and e.event_type == "ClockAdvanced" and e.logical_time == state.logical_time), None)
+        if wake is None:
+            return None
+        publication = next((o for o in state.world_occurrences if o.status == "active"
+            and self._owner_actor_ref in o.participant_refs
+            and o.activated_at is not None and o.time_window.closes_at <= state.logical_time
+            and len(o.candidate_outcomes) == 1
+            and o.candidate_outcomes[0].result_contract == "world-consequence.3"
+            and o.candidate_outcomes[0].causal_authority == "world_contingency"), None)
+        if publication is None:
+            return None
+        return await self._settle(occurrence=publication, wake=wake, logical_time=state.logical_time,
+                                  trace_id=trace_id, correlation_id=correlation_id)
+
     async def advance_once(
         self, *, wake_event_ref: str, trace_id: str, correlation_id: str
     ) -> LifeAftermathResult:
