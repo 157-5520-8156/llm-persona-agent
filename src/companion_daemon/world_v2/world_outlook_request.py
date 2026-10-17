@@ -11,13 +11,17 @@ from .shared_string_view import (
 
 _COLUMNS = ("source_ref", "source_kind", "status", "allowed_statuses", "token")
 _TABLE = "outlook-condition-sources-table.1"
+_RECORDS_TABLE = "outlook-records-table.1"
+_RECORD_TABLE_FIELDS = ("plan_schedules", "npc_capabilities", "npc_activity_location_capabilities")
 RESPONSE_REFERENCE_CONTRACT = "outlook-source-references.1"
 ROLLING_REFERENCE_CONTRACT = "outlook-source-references.3"
 _PRIOR_ROLLING_CONTRACT = "outlook-source-references.2"
 PRESENTATION_GUIDE = """Request encoding: a shared-string-view.1 wrapper is lossless. Read value,
 resolving each exact prefix token using strings. If condition_sources is an
 outlook-condition-sources-table.1, each row maps positionally to columns.
-These are the same complete sources, not summaries. When response_reference_contract
+The same rule applies to plan_schedules, npc_capabilities and
+npc_activity_location_capabilities in outlook-records-table.1.
+These are the same complete values, not summaries. When response_reference_contract
 is outlook-source-references.1, prefer copying exact dictionary aliases for references and hashes;
 the host expands them against this request only, then validates all authority.
 Otherwise output original expanded refs. Write narrative text yourself, never
@@ -57,6 +61,20 @@ def decode_outlook_request(raw):
         packet["condition_sources"] = [
             dict(zip(_COLUMNS, row, strict=True)) for row in sources["rows"]
         ]
+    for field in _RECORD_TABLE_FIELDS:
+        table = packet.get(field)
+        if not isinstance(table, dict) or table.get("contract") != _RECORDS_TABLE:
+            continue
+        if (set(table) != {"contract", "columns", "rows"}
+                or not isinstance(table["columns"], list) or not table["columns"]
+                or not all(isinstance(column, str) for column in table["columns"])
+                or len(table["columns"]) != len(set(table["columns"]))
+                or not isinstance(table["rows"], list)):
+            raise ValueError("invalid outlook records table")
+        try:
+            packet[field] = [dict(zip(table["columns"], row, strict=True)) for row in table["rows"]]
+        except (TypeError, ValueError) as exc:
+            raise ValueError("invalid outlook records table rows") from exc
     return packet
 
 
@@ -156,6 +174,14 @@ def encode_outlook_request(packet, *, byte_limit):
             "columns": list(_COLUMNS),
             "rows": [[source[key] for key in _COLUMNS] for source in sources],
         }
+    for field in _RECORD_TABLE_FIELDS:
+        rows = packet.get(field)
+        if not isinstance(rows, list) or len(rows) < 2 or not isinstance(rows[0], dict):
+            continue
+        columns = sorted(rows[0])
+        if columns and all(isinstance(row, dict) and set(row) == set(columns) for row in rows):
+            tabular[field] = {"contract": _RECORDS_TABLE, "columns": columns,
+                              "rows": [[row[column] for column in columns] for row in rows]}
     # The explicit history offer repeats exact 64-byte authority hashes already
     # shown in Context. Intern these as well; never trim sources to fit the cap.
     candidates = (plain, _wire(tabular), _wire(pack_shared_strings(tabular)),

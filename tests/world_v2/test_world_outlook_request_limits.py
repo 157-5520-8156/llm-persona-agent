@@ -371,6 +371,28 @@ def test_source_table_and_string_dictionary_preserve_every_value():
     assert len(raw.encode()) < len(json.dumps(packet, ensure_ascii=False).encode())
 
 
+def test_live_plan_and_location_tables_round_trip_without_dropping_authority():
+    from companion_daemon.world_v2.world_outlook_request import encode_outlook_request, decode_outlook_request
+
+    packet = {
+        "response_reference_contract": "outlook-source-references.3",
+        "condition_sources": [],
+        "plan_schedules": [{"plan_id": f"plan:{i}", "owner_actor_ref": "actor:companion",
+            "status": "planned", "activity_kind": "school", "scheduled_window": {"opens_at": "2026-10-20T10:00:00+08:00"},
+            "location_ref": None, "participant_refs": ["actor:companion"]} for i in range(17)],
+        "npc_activity_location_capabilities": [{"location_ref": f"location:{i}",
+            "availability_kind": "reviewed_schedule", "privacy_class": "private",
+            "timezone_name": "Asia/Shanghai", "weekdays": [0, 1, 2, 3, 4],
+            "local_windows": ["09:00-17:00"], "authority_refs": [f"event:{i}"]} for i in range(10)],
+    }
+    wire = encode_outlook_request(packet, byte_limit=1)
+    assert decode_outlook_request(wire) == packet
+    assert len(wire.encode()) < len(json.dumps(packet, ensure_ascii=False).encode())
+    malformed = {"contract": "outlook-records-table.1", "columns": ["plan_id", "plan_id"], "rows": [["a", "b"]]}
+    with pytest.raises(ValueError, match="records table"):
+        decode_outlook_request(json.dumps({"plan_schedules": malformed}))
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("interrupted", [False, True])
 async def test_script_retry_on_later_clock_reuses_its_execution_proposal(

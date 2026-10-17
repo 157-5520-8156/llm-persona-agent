@@ -132,3 +132,14 @@ a replacement for the execution and authoring checks.
 The scheduler's mandatory-detail peek now reads one projection and scans pending course sources
 once per peek instead of up to eight complete scans. Its one remaining scan still grows with
 the projected event history; a long-running soak is needed before making a latency claim.
+
+The live candidate's later historical prefix (about 49,000 World events) exposed a separate
+request-size boundary: the old lossless encoder produced 100,842 bytes against the existing
+100,000-byte limit, so the candidate refresh recorded `outlook_input_too_large` before any GLM
+call and left its `.2` timetable in place. The existing request codec now also writes uniform
+plan and reviewed-location capability rows as reversible column tables. On a newer copy of the
+same candidate, decoding remained exact and the encoded request measured 96,834 bytes. This
+does not raise the limit, drop evidence, change old paid request bytes or prove indefinite
+headroom as concurrently active plans and capabilities grow. The normal GLM refresh then
+accepted a new `.7` outline on that later full-history copy; the live candidate owner still
+needs its own successful refresh before the owner dashboard may claim the new schedule.
