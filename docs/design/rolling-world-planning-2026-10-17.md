@@ -143,3 +143,30 @@ does not raise the limit, drop evidence, change old paid request bytes or prove 
 headroom as concurrently active plans and capabilities grow. The normal GLM refresh then
 accepted a new `.7` outline on that later full-history copy; the live candidate owner still
 needs its own successful refresh before the owner dashboard may claim the new schedule.
+Two later candidate prefixes exceeded the same limit even with the reversible tables:
+100,396 and 101,794 bytes. The largest advisory duplicate was the World Author's
+`world_life` slice (over 22 KB), alongside the separately supplied current outlook,
+realized story history and exact history offer. A narrower shared capsule cap was rejected
+because it removed unique prose from ordinary World consequence/course authors and Outlook
+source admission. Outlook now admits all original sources and selects history first, then
+omits only duplicated proof envelopes from its provider presentation. Every life item ref,
+privacy and semantic value, including unique narrative prose, remains. Ordinary authors,
+the character's own context, World ledger, reviews and the hard input limit are unchanged.
+Oversize still fails with a retained technical receipt; future active-source combinations
+remain to be measured.
+
+In the candidate owner, GLM accepted revision 7 after one invalid history-anchor response;
+the old attempts remain. Its private outline covers through 2027-10-18, and its
+`world-planning.3` publication settled in that same World. The owner agenda read from a
+consistent database copy shows the autumn-term arrangement and six published classes in
+each of the weeks starting October 19 and October 26. Every new slot requires preparation
+at activation. This is the actual candidate schedule, still CaptureDelivery rather than QQ.
+
+The final proof-only presentation was also tested against a pre-publication full-history
+copy. The request was 97,685 bytes with all 79 offered source records and every life item
+narrative retained. One GLM attempt returned HTTP 502 and stayed recorded; the next retry
+hour accepted an annual `.7` outline through 2027-10-31 and a `.3` planning candidate.
+Full regression on that final source passed 10,822 tests (19 skipped, 2 expected failures),
+and Ruff passed. First cold full-history verification still blocks the candidate event loop
+for minutes; neither these isolated successes nor green tests establish a latency SLA or
+long-running QQ qualification.

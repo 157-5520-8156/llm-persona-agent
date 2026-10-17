@@ -393,6 +393,32 @@ def test_live_plan_and_location_tables_round_trip_without_dropping_authority():
         decode_outlook_request(json.dumps({"plan_schedules": malformed}))
 
 
+def test_outlook_compacts_only_proofs_after_admitting_both_life_sources():
+    from types import SimpleNamespace
+    from companion_daemon.world_v2.world_outlook_runtime import (
+        _outlook_presentation_context, _planning_source_refs,
+    )
+
+    context = {"slices": {"world_life": {"availability": "available", "items": [
+        {"item_ref": "occurrence:first", "source_hash": "a" * 64,
+         "source_bindings": [{"ref": "event:first", "immutable_hash": "b" * 64}],
+         "value": {"text": "first", "source": {"authority_event_ref": "event:first"}}},
+        {"item_ref": "occurrence:second", "source_hash": "c" * 64,
+         "source_bindings": [{"ref": "event:second", "immutable_hash": "d" * 64}],
+         "value": {"text": "second", "source_bindings": [{"ref": "event:second"}]}},
+    ]}}}
+    offered = _planning_source_refs({"opportunities": []}, context, SimpleNamespace(items=()), ())
+    shown = _outlook_presentation_context(context)
+    assert offered == {"occurrence:first", "occurrence:second"}
+    assert [item["item_ref"] for item in shown["slices"]["world_life"]["items"]] == ["occurrence:first", "occurrence:second"]
+    assert [item["value"]["text"] for item in shown["slices"]["world_life"]["items"]] == ["first", "second"]
+    assert all("source_bindings" not in item and "source_hash" not in item
+               for item in shown["slices"]["world_life"]["items"])
+    assert all("source" not in item["value"] and "source_bindings" not in item["value"]
+               for item in shown["slices"]["world_life"]["items"])
+    assert len(context["slices"]["world_life"]["items"]) == 2
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("interrupted", [False, True])
 async def test_script_retry_on_later_clock_reuses_its_execution_proposal(

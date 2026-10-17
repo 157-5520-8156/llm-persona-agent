@@ -59,6 +59,32 @@ def _planning_source_refs(view, context, history_offer, story):
     return frozenset(refs)
 
 
+def _outlook_presentation_context(context):
+    """Omit duplicate proof envelopes after complete source admission.
+
+    Every life item's ref and semantic value remain visible. Its authority is
+    pinned in the original Context and the exact condition-source catalog;
+    source selection must read the original before this presentation is made.
+    """
+    slices = context.get("slices", {})
+    lane = slices.get("world_life") if isinstance(slices, dict) else None
+    items = lane.get("items") if isinstance(lane, dict) else None
+    if not isinstance(items, list):
+        return context
+    presented = []
+    for item in items:
+        if not isinstance(item, dict) or not isinstance(item.get("value"), dict):
+            presented.append(item)
+            continue
+        value = {key: content for key, content in item["value"].items()
+                 if key not in {"source_bindings", "source", "proposal_source",
+                                "result_payload_ref", "result_payload_hash"}}
+        presented.append({**{key: content for key, content in item.items()
+                             if key not in {"source_bindings", "source_hash", "value_hash"}},
+                          "value": value})
+    return {**context, "slices": {**slices, "world_life": {**lane, "items": presented}}}
+
+
 _SYSTEM = """You are the World Author maintaining a PRIVATE, NON-FACTUAL rolling outlook.
 Organize a few persistent, intersecting life situations and external opportunities.
 Storyfulness comes from distinct people, unresolved situations, setbacks, opportunities and
@@ -833,7 +859,7 @@ class WorldOutlookRuntime:
                 "history_material": history,
                 "history_offer": history_offer.model_dump(mode="json"),
                 "realized_story_history": story,
-                "world_context": context,
+                "world_context": _outlook_presentation_context(context) if self._rolling_planning else context,
                 **({"authoring_constraints": {
                     "authority": "generation_constraints_only",
                     "stable_identity_facts": list(self._authoring_constraints),
