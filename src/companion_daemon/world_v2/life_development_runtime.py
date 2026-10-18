@@ -55,6 +55,7 @@ from .world_consequence_author_tool import (
     bind_world_consequence_author_tool,
     recover_world_consequence_author_tool,
     world_consequence_author_tool_contract,
+    supports_world_author_tools,
 )
 from .world_consequence_prompt import (
     compile_world_consequence_messages, validate_world_consequence_offered_bindings,
@@ -6156,7 +6157,7 @@ class LifeDevelopmentRuntime:
                     if index == 1 else dict(message)
                     for index, message in enumerate(messages)
                 ]
-            elif getattr(self._world_author, "supports_strict_tool_choice", False) is True:
+            elif supports_world_author_tools(self._world_author):
                 from .world_consequence_author_tool import EVENT_CONTRACT
                 from .world_consequence_author_tool import REQUIRED_EVENT_CONTRACT
                 from .world_consequence_author_tool import COURSE_EVENT_CONTRACT

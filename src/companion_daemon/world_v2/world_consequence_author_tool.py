@@ -39,6 +39,17 @@ _CONTRACTS = {
 }
 
 
+def supports_world_author_tools(provider: object) -> bool:
+    """Native result capability is separate from provider-forced selection.
+
+    Auto carriers still require the exact named result and full local schema
+    validation. Unknown providers retain their original JSON transport.
+    """
+    origin = getattr(provider, "authority_origin", provider)
+    return (getattr(origin, "supports_strict_tool_choice", False) is True
+            or getattr(origin, "supports_single_tool_result", False) is True)
+
+
 def world_consequence_author_tool_contract(
     *, provider: object, contract_id: str = CONTRACT,
     closing_offset_seconds: int | None = None,
@@ -277,7 +288,7 @@ def recover_world_consequence_author_tool(
             if not all(callable(getattr(model, "complete_json", None)) for model in (provider, origin)):
                 raise TypeError("original World author JSON transport is unavailable")
         return {}
-    if getattr(provider, "supports_strict_tool_choice", False) is not True:
+    if not supports_world_author_tools(provider):
         raise ValueError("original World author tool transport is unavailable")
     marker = user["world_author_wire"]
     contract_id = marker.get("contract") if isinstance(marker, dict) else None

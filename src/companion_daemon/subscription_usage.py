@@ -126,6 +126,7 @@ class BackgroundGLMModel(_BackgroundTokenBudget, DeepSeekChatModel):
 
     provider = "glm"
     supports_strict_tool_choice = False
+    supports_single_tool_result = True
 
     def __init__(self, *args, reasoning_effort="low", **kwargs):
         if reasoning_effort not in {"low", "high", "max"}:

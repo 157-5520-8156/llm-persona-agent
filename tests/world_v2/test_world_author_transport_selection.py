@@ -16,6 +16,8 @@ from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
 from companion_daemon.world_v2.world_consequence_author_tool import (
     recover_world_consequence_author_tool, world_consequence_author_tool_contract,
 )
+
+
 from test_life_development_runtime import (
     OWNER, WORLD_ID, _PinnedCapsuleCompiler, _SequenceModel,
     _novel_origin_review, _source_closure_review, _seed_clock,
@@ -166,3 +168,43 @@ def test_config_and_cli_keep_auto_default_and_accept_explicit_json(tmp_path):
     assert WorldV2TurnApplicationConfig(**config, world_author_transport="json_object").world_author_transport == "json_object"
     with pytest.raises(ValueError, match="world author transport"):
         WorldV2TurnApplicationConfig(**config, world_author_transport="unsupported")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("response_kind", ["valid", "bare_json", "wrong_tool"])
+async def test_glm_world_author_uses_existing_auto_tool_carrier_without_claiming_strict_selection(tmp_path, response_kind):
+    from companion_daemon.subscription_usage import BackgroundGLMModel, SubscriptionTokenLedger
+    ledger = SQLiteWorldLedger(path=tmp_path / "glm.sqlite", world_id=WORLD_ID)
+    store = SQLiteImmutableLifeContentStore(path=tmp_path / "glm.sqlite", world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    requests = []
+
+    def respond(request):
+        wire = json.loads(request.content)
+        requests.append(wire)
+        assert wire['tool_choice'] == 'auto'
+        assert len(wire['tools']) == 1 and wire['tools'][0]['function']['name'] == 'author_world_consequence_v5'
+        assert 'strict' not in wire['tools'][0]['function']
+        if response_kind == 'bare_json':
+            return _json_response({'decision': 'no_op'})
+        response = _tool_response(wire, _json({'replacement': {'decision': 'no_op'}}))
+        if response_kind == 'wrong_tool':
+            value = response.json()
+            value['choices'][0]['message']['tool_calls'][0]['function']['name'] = 'wrong'
+            return httpx.Response(200, json=value)
+        return response
+
+    provider = BackgroundGLMModel('fixture', 'https://fixture.invalid/v1', 'GLM-5.3-Flash',
+        token_ledger=SubscriptionTokenLedger(tmp_path/'subscription.sqlite'), transport=httpx.MockTransport(respond))
+    adapter = RoleBoundLifeDevelopmentModelAdapter(model=provider, role='world_author')
+    try:
+        assert not provider.supports_strict_tool_choice
+        runtime = _runtime(ledger, store, wake, adapter, transport='auto')
+        result = await _advance(runtime, wake)
+        assert result.status == ('no_op' if response_kind == 'valid' else 'technical_failure')
+        original_json = [{'role':'system','content':'original'}, {'role':'user','content':'{}'}]
+        assert recover_world_consequence_author_tool(messages=original_json, provider=adapter) == {}
+    finally:
+        await provider.aclose()
+        store.close()
+        ledger.close()
