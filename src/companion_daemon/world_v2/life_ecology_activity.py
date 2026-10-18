@@ -274,12 +274,6 @@ class ActivityOpeningCatalog:
             "catalog_version": self._catalog_version,
             "world_id": projection.world_id,
             "wake_event_ref": wake_event_ref,
-            "cursor": {
-                "world_revision": projection.world_revision,
-                "deliberation_revision": projection.deliberation_revision,
-                "ledger_sequence": projection.ledger_sequence,
-            },
-            "projection_semantic_hash": projection.semantic_hash,
             "logical_time": projection.logical_time.isoformat() if projection.logical_time else None,
             "eligible_bindings": [binding.hash_material() for binding in eligible_bindings],
             "blocked_plan_count": blocked_plan_count,
@@ -292,8 +286,6 @@ class ActivityOpeningCatalog:
             # Bind the exact world, clock and eligible plans instead of every
             # unrelated deliberation in the projection. Older catalogues keep
             # their complete original material for immutable replay.
-            catalog_material.pop("cursor")
-            catalog_material.pop("projection_semantic_hash")
             wake = next(item for item in projection.committed_world_event_refs if item.event_id == wake_event_ref)
             plan_ids = {binding.plan_id for binding in eligible_bindings}
             catalog_material.update(
@@ -304,6 +296,13 @@ class ActivityOpeningCatalog:
                     plan.plan_id: plan_authority_projection_hash(plan)
                     for plan in projection.plans if plan.plan_id in plan_ids
                 },
+            )
+        else:
+            catalog_material.update(
+                cursor={"world_revision": projection.world_revision,
+                        "deliberation_revision": projection.deliberation_revision,
+                        "ledger_sequence": projection.ledger_sequence},
+                projection_semantic_hash=projection.semantic_hash,
             )
         catalog_hash = _digest(catalog_material)
         openings = tuple(

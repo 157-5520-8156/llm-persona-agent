@@ -1093,19 +1093,20 @@ class DashboardHomeSnapshotModule:
     async def capture(
         self,
         runtime_observation: DashboardRuntimeObservation | None = None,
-        *, week: date | None = None,
+        *, week: date | None = None, page: int | None = None,
     ) -> DashboardHomeSnapshot:
         """Capture exactly one projection; blocking compile/lookup stays off-loop."""
 
         async with self._capture_lock:
             if self._ledger.blocks_event_loop:
-                return await asyncio.to_thread(self._capture_sync, runtime_observation, week)
-            return self._capture_sync(runtime_observation, week)
+                return await asyncio.to_thread(self._capture_sync, runtime_observation, week, page)
+            return self._capture_sync(runtime_observation, week, page)
 
     def _capture_sync(
         self,
         runtime_observation: DashboardRuntimeObservation | None,
         week: date | None = None,
+        page: int | None = None,
     ) -> DashboardHomeSnapshot:
         projection = self._ledger.project()
         cursor = ProjectionCursor(
@@ -1138,7 +1139,7 @@ class DashboardHomeSnapshotModule:
             projection.schema_version,
             projection.reducer_bundle_version,
             projection.semantic_hash,
-            runtime_key, week, outlook_state, outlook_head[0] if outlook_head else None,
+            runtime_key, week, page, outlook_state, outlook_head[0] if outlook_head else None,
         )
         if self._cached_key == cache_key and self._cached_snapshot is not None:
             return self._cached_snapshot
@@ -1149,7 +1150,7 @@ class DashboardHomeSnapshotModule:
 
         sections = DashboardHomeSections(
             room=self._room(projection=projection, cursor=cursor),
-            overview_life=self._overview_life(projection=projection, cursor=cursor, week=week,
+            overview_life=self._overview_life(projection=projection, cursor=cursor, week=week, page=page,
                                               outlook_head=outlook_head, outlook_state=outlook_state),
             facts_memory_inner=self._facts_memory_inner(
                 projection=projection,
@@ -1262,7 +1263,7 @@ class DashboardHomeSnapshotModule:
         *,
         projection: LedgerProjection,
         cursor: ProjectionCursor,
-        week: date, outlook_head=None, outlook_state="disabled",
+        week: date, page=None, outlook_head=None, outlook_state="disabled",
     ) -> DashboardOverviewLifeSection:
         metrics = _overview_life_metrics(projection)
         # Only the bounded display candidates need additional immutable reads.
@@ -1304,7 +1305,7 @@ class DashboardHomeSnapshotModule:
         agenda = compile_dashboard_agenda(
             ledger=self._ledger, projection=projection, cursor=cursor,
             store=self._life_content_store, actor_ref=self._life_actor_ref,
-            week_start=week, outlook_head=outlook_head, outlook_state=outlook_state,
+            week_start=week, page=page, outlook_head=outlook_head, outlook_state=outlook_state,
             privacy_ceiling=self._life_privacy_ceiling,
         )
         return DashboardOverviewLifeSection(

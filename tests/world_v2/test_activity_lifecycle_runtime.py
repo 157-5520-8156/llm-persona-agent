@@ -485,7 +485,7 @@ async def test_worker_reports_character_interior_failure_without_forging_no_op()
 
 
 @pytest.mark.asyncio
-async def test_worker_replays_a_real_ledger_from_claimed_clock_to_accepted_activity() -> None:
+async def test_worker_replays_a_real_ledger_from_claimed_clock_to_accepted_activity(monkeypatch) -> None:
     """Exercise the actual reducers rather than a projection-shaped fake ledger.
 
     This is deliberately the first vertical's narrowest legal plan: it is
@@ -494,6 +494,18 @@ async def test_worker_replays_a_real_ledger_from_claimed_clock_to_accepted_activ
     proposal and the accepted effect have each changed their own revision lane.
     """
 
+    from companion_daemon.world_v2 import reducers
+    import sys
+
+    original_projection = reducers.make_projection
+
+    def projection_without_recursive_catalog_rebuild(**kwargs):
+        assert sys._getframe(1).f_code.co_name != "_activity_lifecycle_proposal_recorded", (
+            "every historical activity proposal rebuilds and validates the complete archive"
+        )
+        return original_projection(**kwargs)
+
+    monkeypatch.setattr(reducers, "make_projection", projection_without_recursive_catalog_rebuild)
     world_id = "world:activity-lifecycle-real-ledger"
     issuer = AcceptedLedgerBatchIssuer()
     ledger = WorldLedger.in_memory(world_id=world_id, accepted_batch_issuer=issuer)
@@ -604,6 +616,20 @@ async def test_worker_replays_a_real_ledger_from_claimed_clock_to_accepted_activ
     assert len(replayed.proposal_ids) == 1
     assert len(replayed.acceptance_decisions) == 1
     assert replayed.acceptance_decisions[0].proposal_id == replayed.proposal_ids[0]
+    # Both historical catalog hashes and current tokens stay byte-identical;
+    # only the redundant full-world materialization inside the reducer changed.
+    view = reducers._ActivityCatalogState(
+        state=ledger._state, world_id=world_id, world_revision=replayed.world_revision,
+        deliberation_revision=replayed.deliberation_revision, ledger_sequence=replayed.ledger_sequence,
+    )
+    for version in range(1, 10):
+        catalog = ActivityOpeningCatalog(owner_actor_ref="actor:companion", catalog_version=f"activity-opening.{version}")
+        expected = catalog.openings_for(projection=replayed, wake_event_ref=clock.event_id)
+        assert catalog.openings_for(projection=view, wake_event_ref=clock.event_id) == expected
+        for opening in expected.openings:
+            assert catalog.resolve_opening(projection=view, wake_event_ref=clock.event_id,
+                                           opening_token=opening.opening_token) == catalog.resolve_opening(
+                projection=replayed, wake_event_ref=clock.event_id, opening_token=opening.opening_token)
 
 
 @pytest.mark.asyncio

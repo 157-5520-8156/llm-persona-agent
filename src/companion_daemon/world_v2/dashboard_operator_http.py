@@ -43,6 +43,7 @@ class DashboardHomeSource(Protocol):
         *,
         if_none_match: str | None = None,
         week: date | None = None,
+        page: int | None = None,
     ) -> DashboardHomeFetchResult: ...
 
 
@@ -75,6 +76,7 @@ class QQDashboardHomeHttpAdapter:
         *,
         if_none_match: str | None = None,
         week: date | None = None,
+        page: int | None = None,
     ) -> DashboardHomeFetchResult:
         headers = {
             "Accept": "application/json",
@@ -92,7 +94,7 @@ class QQDashboardHomeHttpAdapter:
                 follow_redirects=False,
             ) as client:
                 async with client.stream("GET", self._url, headers=headers,
-                                         params={"week": week.isoformat()} if week else None) as response:
+                                         params={**({"week": week.isoformat()} if week else {}), **({"page": page} if page is not None else {})} or None) as response:
                     etag = response.headers.get("ETag")
                     if response.status_code == 304:
                         if etag is None or if_none_match is None or etag != if_none_match:

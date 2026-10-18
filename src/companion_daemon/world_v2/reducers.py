@@ -3206,12 +3206,10 @@ def _model_result_recorded(state: ReducerState, event: WorldEvent) -> ReducerSta
     # N results quadratic in the size of the whole conversation.
     existing_audits = []
     for value in state.model_result_audits:
-        header = json.loads(value.audit_json)
         if (
             value.parent_model_call_id == recorded.model_call_id
             or value.model_call_id == recorded.parent_model_call_id
-            or header.get("route", {}).get("router_version") == "physical-provider-audit.1"
-            or header.get("physical_provider_audits")
+            or value.has_physical_provider_binding
         ):
             existing_audits.append((value, RecordedModelResultAudit.model_validate_json(value.audit_json)))
     existing_audits = tuple(existing_audits)
@@ -12828,6 +12826,30 @@ def _validate_activity_lifecycle_effect(
         raise ValueError("activity lifecycle effect does not bind accepted proposal")
 
 
+@dataclass(frozen=True)
+class _ActivityCatalogState:
+    """Read the existing catalog directly from reducer-validated state.
+
+    Rebuilding a complete LedgerProjection here recursively revalidates every
+    unrelated audit for every historical activity proposal. Final projections
+    still receive their full validation. Legacy catalog hashes use the exact
+    same semantic hash, computed only when that frozen contract reads it.
+    """
+
+    state: ReducerState
+    world_id: str
+    world_revision: int
+    deliberation_revision: int
+    ledger_sequence: int
+
+    def __getattr__(self, name):
+        return getattr(self.state, name)
+
+    @property
+    def semantic_hash(self):
+        return semantic_hash(world_id=self.world_id, world_revision=self.world_revision, state=self.state)
+
+
 def _activity_lifecycle_proposal_recorded(
     state: ReducerState,
     event: WorldEvent,
@@ -12886,13 +12908,12 @@ def _activity_lifecycle_proposal_recorded(
     plan = next((item for item in state.plans if item.plan_id == payload.plan_id), None)
     if plan is None or plan.owner_actor_ref is None:
         raise ValueError("activity lifecycle proposal plan is unavailable")
-    projection = make_projection(
+    projection = _ActivityCatalogState(
         world_id=event.world_id,
         world_revision=len(state.committed_world_event_refs),
         deliberation_revision=payload.evaluated_deliberation_revision,
         ledger_sequence=payload.evaluated_ledger_sequence,
         state=state,
-        reducer_bundle_version=REDUCER_BUNDLE_VERSION,
     )
     resolved = ActivityOpeningCatalog(
         owner_actor_ref=plan.owner_actor_ref,

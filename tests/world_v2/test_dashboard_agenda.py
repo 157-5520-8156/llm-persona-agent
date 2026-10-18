@@ -82,6 +82,14 @@ def test_week_filter_is_only_a_normalized_local_date():
     assert requested_week(QueryParams()) is None
 
 
+@pytest.mark.parametrize("query", ["page=-1", "page=01", "page=1&page=2", "page=1000001",
+                                   "page=1&cursor=3", "page=1.5", "page=１２"])
+def test_pagination_does_not_accept_authority_or_ambiguous_filters(query):
+    from companion_daemon.world_v2.dashboard_agenda import requested_page
+    with pytest.raises(ValueError):
+        requested_page(QueryParams(query))
+
+
 @pytest.mark.asyncio
 async def test_week_output_and_immutable_reads_stay_bounded_as_history_grows(tmp_path):
     from companion_daemon.world_v2.dashboard_agenda import ENTRY_LIMIT, compile_dashboard_agenda
@@ -107,6 +115,53 @@ async def test_week_output_and_immutable_reads_stay_bounded_as_history_grows(tmp
     assert len(agenda.model_dump_json()) < 100_000
     assert all(e.content_state == "unavailable" for e in agenda.entries)
     assert ledger.project().semantic_hash == before
+    ledger.close()
+
+
+def test_all_week_records_are_pageable_and_default_page_contains_recent_activity(tmp_path):
+    from companion_daemon.world_v2.dashboard_agenda import ENTRY_LIMIT, compile_dashboard_agenda
+
+    ledger, first = _seed(tmp_path / "pages.sqlite")
+    proposal, cursor = _record(ledger, *_choice(ledger, first))
+    _accept(ledger, proposal, cursor)
+    state = ledger.project()
+    plan, = state.plans
+    start = plan.scheduled_window.opens_at
+    plans = tuple(plan.model_copy(update={
+        "plan_id": f"plan:day-open-life-intent:{i:064x}",
+        "scheduled_window": plan.scheduled_window.model_copy(update={
+            "opens_at": start + timedelta(minutes=i),
+            "closes_at": start + timedelta(minutes=i + 1),
+        }),
+    }) for i in range(275))
+    state = state.model_copy(update={"plans": plans, "logical_time": start + timedelta(hours=6)})
+    options = dict(ledger=ledger, projection=state, cursor=_cursor(ledger), store=None,
+                   actor_ref=ACTOR, privacy_ceiling="private", week_start=week_start_date(start.date()))
+    default = compile_dashboard_agenda(**options)
+    assert default.page == 2
+    pages = [compile_dashboard_agenda(**options, page=p) for p in range(3)]
+    assert all(len(p.entries) <= ENTRY_LIMIT and p.known_count == 275 for p in pages)
+    assert sum(len(p.entries) for p in pages) == 275
+    assert len({e.starts_at for p in pages for e in p.entries}) == 275
+    assert default.entries[-1].starts_at == plans[-1].scheduled_window.opens_at
+    assert [p.page_count for p in pages] == [3, 3, 3]
+    assert compile_dashboard_agenda(**options, page=999).page == 2
+    assert ledger.project().plans == (plan,)
+    ledger.close()
+
+
+@pytest.mark.asyncio
+async def test_legacy_agenda_snapshot_preserves_its_original_visible_hash(tmp_path):
+    from companion_daemon.world_v2.dashboard_home_snapshot import DashboardHomeSnapshot, _snapshot_hash
+    ledger, _ = _seed(tmp_path / "legacy-page.sqlite")
+    module = DashboardHomeSnapshotModule(ledger=ledger, deployment_id="test", boot_id="test", life_actor_ref=ACTOR)
+    payload = (await module.capture()).to_payload()
+    agenda = payload["sections"]["overview_life"]["data"]["agenda"]
+    agenda.pop("page")
+    agenda.pop("page_count")
+    payload["snapshot_hash"] = _snapshot_hash({k: v for k, v in payload.items() if k != "snapshot_hash"})
+    restored = DashboardHomeSnapshot.model_validate_json(json.dumps(payload))
+    assert restored.to_payload() == payload
     ledger.close()
 
 

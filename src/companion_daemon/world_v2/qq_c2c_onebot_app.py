@@ -747,13 +747,14 @@ def create_qq_c2c_onebot_app(
         )
         if denied is not None:
             return denied
-        from .dashboard_agenda import requested_week
+        from .dashboard_agenda import requested_week, requested_page
         try:
             week = requested_week(request.query_params)
+            page = requested_page(request.query_params)
         except ValueError:
-            return JSONResponse({"error": "dashboard accepts only one YYYY-MM-DD week date"}, status_code=400)
+            return JSONResponse({"error": "dashboard accepts one YYYY-MM-DD week and nonnegative page"}, status_code=400)
         runtime_observation = await dashboard_runtime_sampler.capture()
-        snapshot = await host.dashboard_home_snapshot(runtime_observation, **({"week": week} if week is not None else {}))
+        snapshot = await host.dashboard_home_snapshot(runtime_observation, **({"week": week} if week is not None else {}), **({"page": page} if page is not None else {}))
         etag = f'"{snapshot.snapshot_hash}"'
         headers = {"Cache-Control": "private, no-store", "ETag": etag}
         if if_none_match == etag:
@@ -912,13 +913,14 @@ def create_qq_c2c_onebot_app(
         denied = _owner_dashboard_access(request, x_world_v2_internal_token)
         if denied is not None:
             return denied
-        from .dashboard_agenda import requested_week
+        from .dashboard_agenda import requested_week, requested_page
         try:
             week = requested_week(request.query_params)
+            page = requested_page(request.query_params)
         except ValueError:
-            return JSONResponse({"error": "dashboard accepts only one YYYY-MM-DD week date"}, status_code=400)
+            return JSONResponse({"error": "dashboard accepts one YYYY-MM-DD week and nonnegative page"}, status_code=400)
         runtime_observation = await dashboard_runtime_sampler.capture()
-        snapshot = await host.dashboard_home_snapshot(runtime_observation, **({"week": week} if week is not None else {}))
+        snapshot = await host.dashboard_home_snapshot(runtime_observation, **({"week": week} if week is not None else {}), **({"page": page} if page is not None else {}))
         etag = f'"{snapshot.snapshot_hash}"'
         headers = {"Cache-Control": "private, no-store", "ETag": etag}
         if if_none_match == etag:

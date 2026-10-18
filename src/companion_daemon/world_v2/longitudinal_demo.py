@@ -49,11 +49,11 @@ class SameOwnerDashboardSource:
         if not task.cancelled():
             task.exception()
 
-    async def fetch(self, *, if_none_match=None, week=None):
+    async def fetch(self, *, if_none_match=None, week=None, page=None):
         owner = self._owner
         if owner is None:
             raise DashboardHomeSourceError("owner_unavailable")
-        task = asyncio.create_task(owner.dashboard_home_snapshot(**({"week": week} if week is not None else {})))
+        task = asyncio.create_task(owner.dashboard_home_snapshot(**({"week": week} if week is not None else {}), **({"page": page} if page is not None else {})))
         self._reads[task] = owner
         task.add_done_callback(self._read_finished)
         snapshot = await asyncio.shield(task)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import httpx
 import pytest
@@ -42,6 +42,7 @@ async def test_daemon_adapter_reads_only_the_fixed_typed_owner_snapshot() -> Non
 
     first = await adapter.fetch()
     unchanged = await adapter.fetch(if_none_match=etag)
+    await adapter.fetch(week=date(2026, 8, 10), page=2)
 
     assert first.not_modified is False
     assert first.snapshot == snapshot
@@ -52,6 +53,7 @@ async def test_daemon_adapter_reads_only_the_fixed_typed_owner_snapshot() -> Non
     assert [str(item.url) for item in requests] == [
         "http://127.0.0.1:8787/internal/world-v2/dashboard/operator-snapshot",
         "http://127.0.0.1:8787/internal/world-v2/dashboard/operator-snapshot",
+        "http://127.0.0.1:8787/internal/world-v2/dashboard/operator-snapshot?week=2026-08-10&page=2",
     ]
     assert all(item.method == "GET" for item in requests)
     assert all(item.headers["Accept"] == "application/json" for item in requests)

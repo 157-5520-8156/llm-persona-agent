@@ -99,6 +99,29 @@ def _recorded_standalone_physical(
     )
 
 
+def test_old_audit_header_decodes_once_without_changing_payload_or_copied_values(monkeypatch):
+    from companion_daemon.world_v2.proposal_audit_schemas import ModelResultAuditProjection
+    # Read-only metadata fixture, never passed to a reducer or accepted as authority.
+    raw = json.dumps({"route": {"router_version": "ordinary.1"}})
+    value = ModelResultAuditProjection.model_construct(audit_json=raw)
+    before = value.model_dump(mode="json")
+    original = json.loads
+    calls = []
+
+    def counted(text, *args, **kwargs):
+        if text is raw:
+            calls.append(text)
+        return original(text, *args, **kwargs)
+
+    monkeypatch.setattr(json, "loads", counted)
+    assert not any(value.has_physical_provider_binding for _ in range(1000))
+    assert len(calls) == 1
+    assert value.model_dump(mode="json") == before
+    changed = value.model_copy(update={"audit_json": json.dumps({"physical_provider_audits": [{}]})})
+    assert changed.has_physical_provider_binding
+    assert not value.has_physical_provider_binding
+
+
 @pytest.mark.parametrize(
     "failure_code",
     [

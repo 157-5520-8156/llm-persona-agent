@@ -1287,6 +1287,22 @@ class ModelResultAuditProjection(ModelResultRecordedPayload):
     event_ref: str = Field(min_length=1)
     event_payload_hash: str = Field(pattern=_HASH)
 
+    @property
+    def has_physical_provider_binding(self) -> bool:
+        """Pure header decoding, owned by this immutable value, never authority.
+
+        No global archive cache or retained projections. model_copy updates
+        recompute when the exact string object changes; serialization and
+        canonical audit/lineage validation still use the original fields.
+        """
+        cached = self.__dict__.get("_physical_header_cache")
+        if cached is None or cached[0] is not self.audit_json:
+            header = json.loads(self.audit_json)
+            cached = (self.audit_json, bool(header.get("physical_provider_audits") or
+                      header.get("route", {}).get("router_version") == "physical-provider-audit.1"))
+            self.__dict__["_physical_header_cache"] = cached
+        return cached[1]
+
 
 class ProposalAuditProjection(ProposalRecordedV2Payload):
     event_ref: str = Field(min_length=1)

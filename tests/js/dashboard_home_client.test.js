@@ -547,6 +547,8 @@ test('week capture forwards only the selected date on the existing route', async
   let url;
   await client.capture(async value=>{url=value;return {ok:true,status:304};},'old',{week:'2026-10-12'});
   assert.equal(url,'/world-v2/dashboard/home?week=2026-10-12');
+  await client.capture(async value=>{url=value;return {ok:true,status:304};},'old',{week:'2026-10-12',page:0});
+  assert.equal(url,'/world-v2/dashboard/home?week=2026-10-12&page=0');
 });
 
 

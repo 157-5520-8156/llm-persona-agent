@@ -2304,7 +2304,9 @@ class WorldV2TurnApplication:
             continuation_due = activity_continuation_due(
                 self._ledger, actor_ref=self._companion_actor_ref, projection=projection,
             )
-        outlook_due = getattr(self._life_ecology, "next_outlook_due", lambda: None)()
+        outlook_reader = getattr(self._life_ecology, "next_outlook_due", lambda: None)
+        outlook_due = (await asyncio.to_thread(outlook_reader) if self._ledger.blocks_event_loop
+                       else outlook_reader())
         candidates = tuple(
             x for x in (due, outlook_due, day_open_due, reconsideration_due, continuation_due, *(item.due_at for item in pending))
             if x is not None
@@ -3242,11 +3244,11 @@ class WorldV2TurnApplication:
     async def dashboard_home_snapshot(
         self,
         runtime_observation: DashboardRuntimeObservation | None = None,
-        *, week=None,
+        *, week=None, page=None,
     ) -> DashboardHomeSnapshot:
         """Return the fixed private Dashboard contract from the owning ledger."""
 
-        return await self._dashboard_home.capture(runtime_observation, week=week)
+        return await self._dashboard_home.capture(runtime_observation, week=week, **({"page": page} if page is not None else {}))
 
     def _mechanism_detail_sections(self, projection) -> dict[str, dict[str, object]]:
         """Compile bounded per-item mechanism detail for the viewer dashboard.

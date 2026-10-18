@@ -143,7 +143,7 @@ const DashboardHomeClient=(()=>{
     if(!record(payload.cursor)||!record(payload.sections)||!record(payload.sections.room))throw new Error('dashboard room section unavailable');
     return payload;
   }
-  async function capture(fetchSnapshot,etag=null,{timeoutMs=10000,week=null}={}){
+  async function capture(fetchSnapshot,etag=null,{timeoutMs=10000,week=null,page=null}={}){
     const headers={Accept:'application/json'};
     if(etag)headers['If-None-Match']=etag;
     const controller=new AbortController();
@@ -152,7 +152,7 @@ const DashboardHomeClient=(()=>{
       controller.abort();reject(new Error('dashboard snapshot timed out'));
     },timeoutMs);});
     const load=async()=>{
-      const response=await fetchSnapshot(DATA_URL+(week?'?week='+encodeURIComponent(week):''),{credentials:'same-origin',headers,signal:controller.signal});
+      const response=await fetchSnapshot(DATA_URL+((week!==null||page!==null)?'?'+[...(week?['week='+encodeURIComponent(week)]:[]),...(page!==null?['page='+encodeURIComponent(page)]:[])].join('&'):''),{credentials:'same-origin',headers,signal:controller.signal});
       if(response.status===304)return{kind:'not_modified',etag,snapshot:null};
       if(!response.ok)throw new Error('dashboard snapshot unavailable ('+response.status+')');
       const snapshot=validateSnapshot(await response.json());
@@ -676,7 +676,7 @@ if(typeof document!=='undefined'){
       parent.appendChild(element('p','truncated','这里只展示部分摘要，未列出的记录不代表不存在。'));
     }
   }
-  let agendaWeek=null,agendaFilter='all',agendaStatus='all',agendaSelection=null;
+  let agendaWeek=null,agendaPage=null,agendaFilter='all',agendaStatus='all',agendaSelection=null;
   const agendaLabels={planning:'客观规划',experience:'角色经历',plan:'角色计划',world:'实际事件',outlook:'命运候选',commitment:'约定',revisit:'再次考虑',expectation:'回应期待'};
   function renderAgenda(body,snapshot){
     const view=DashboardHomeClient.agendaView(snapshot,agendaFilter,agendaStatus);
@@ -687,7 +687,7 @@ if(typeof document!=='undefined'){
     const navigation=element('div','agenda-navigation');
     const changeWeek=value=>{
       if(displayPaused||loading)return;
-      agendaWeek=value;snapshotEtag=null;loadDashboardHome();
+      agendaWeek=value;agendaPage=null;agendaSelection=null;snapshotEtag=null;loadDashboardHome();
     };
     for(const [label,offset] of [['上一周',-7],['本周',null],['下一周',7]]){
       const button=element('button','button',label);button.type='button';
@@ -696,7 +696,20 @@ if(typeof document!=='undefined'){
       navigation.appendChild(button);
     }
     navigation.appendChild(element('strong','agenda-range',days[0].date+' — '+days[6].date));
-    const filter=element('select','agenda-filter');filter.setAttribute('aria-label','筛选课表内容');
+    if(agenda.page_count>1){
+      for(const [label,target] of [['上一页',agenda.page-1],['当前时间',null],['下一页',agenda.page+1]]){
+        const button=element('button','button',label);button.type='button';
+        button.disabled=displayPaused||loading||(target!==null&&(target<0||target>=agenda.page_count));
+        button.addEventListener('click',()=>{
+          if(displayPaused||loading)return;
+          agendaPage=target;agendaSelection=null;snapshotEtag=null;loadDashboardHome();
+        });
+        navigation.appendChild(button);
+      }
+      navigation.appendChild(element('span','section-note','第 '+(agenda.page+1)+' / '+agenda.page_count+' 页'));
+    }
+
+    const filter=element('select','agenda-filter');filter.setAttribute('aria-label','筛选当前页课表内容');
     for(const [value,label] of [['all','全部内容'],['planning','客观规划'],['experience','角色经历'],['plan','角色计划'],['world','实际事件'],['outlook','命运候选'],['intentions','约定与惦记']]){
       const option=element('option','',label);option.value=value;filter.appendChild(option);
     }
@@ -900,7 +913,7 @@ if(typeof document!=='undefined'){
     if(loading||displayPaused)return;
     loading=true;
     try{
-      const result=await DashboardHomeClient.capture(window.fetch.bind(window),snapshotEtag,{week:agendaWeek});
+      const result=await DashboardHomeClient.capture(window.fetch.bind(window),snapshotEtag,{week:agendaWeek,page:agendaPage});
       // A response already in flight must not replace a deliberately frozen view.
       if(displayPaused)return;
       const snapshot=DashboardHomeClient.snapshotFromCapture(result,lastSnapshot);

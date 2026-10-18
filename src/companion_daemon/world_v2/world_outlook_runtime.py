@@ -969,6 +969,8 @@ class WorldOutlookRuntime:
         self._health = {"status": "technical_failure", "failure_code": code}
 
     async def refresh(self, *, projection, context, manifest, history_trigger_ref=None):
+        generation_reader = getattr(self.ledger, "verified_history_generation", None)
+        source_generation = generation_reader() if callable(generation_reader) else None
         native_result = self._rolling_planning and callable(getattr(self.author, "complete_json", None))
         npc_refs = tuple(
             c.npc_ref for c in manifest.npc_capabilities if c.lifecycle_state == "active"
@@ -1334,6 +1336,8 @@ class WorldOutlookRuntime:
                     },
                 )
             self.store.finish(op, state="accepted", payload={"revision": revision})
+            if callable(generation_reader) and generation_reader() == source_generation:
+                self._verified_head_source = (revision, projection.semantic_hash, source_generation)
         except Exception as exc:
             self.store.finish(op, state="technical_failure", payload={"code": type(exc).__name__})
             self._health = {

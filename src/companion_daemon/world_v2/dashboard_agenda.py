@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
+from bisect import bisect_right
 from typing import Literal
 from zoneinfo import ZoneInfo
 
@@ -40,6 +41,9 @@ class DashboardAgenda(FrozenModel):
     withheld_count: int = Field(ge=0)
     truncated: bool
     entries: tuple[DashboardAgendaEntry, ...] = Field(default=(), max_length=ENTRY_LIMIT)
+    # Omit absent pagination in legacy snapshots so their visible hash is unchanged.
+    page: int | None = Field(default=None, ge=0, exclude_if=lambda value: value is None)
+    page_count: int | None = Field(default=None, ge=0, exclude_if=lambda value: value is None)
 
 
 def week_start_date(value: date) -> date:
@@ -49,11 +53,10 @@ def week_start_date(value: date) -> date:
 
 
 def requested_week(query) -> date | None:
-    """Only a date filter may cross the owner route; no audience or pin controls."""
-    if not query:
+    """Display filters only; no audience or pin controls."""
+    requested_page(query)
+    if "week" not in query:
         return None
-    if set(query) != {"week"} or len(query.getlist("week")) != 1:
-        raise ValueError("only one week date is accepted")
     raw = query["week"]
     value = date.fromisoformat(raw)
     if value.isoformat() != raw:
@@ -61,8 +64,22 @@ def requested_week(query) -> date | None:
     return week_start_date(value)
 
 
+def requested_page(query) -> int | None:
+    if set(query) - {"week", "page"} or any(len(query.getlist(k)) != 1 for k in query):
+        raise ValueError("only one week and page filter are accepted")
+    if "page" not in query:
+        return None
+    raw = query["page"]
+    if not raw.isascii() or not raw.isdecimal() or len(raw) > 7:
+        raise ValueError("page must be a nonnegative integer")
+    value = int(raw)
+    if value > 1_000_000 or str(value) != raw:
+        raise ValueError("page is outside the display range")
+    return value
+
+
 def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
-                             week_start, outlook_head=None, outlook_state="disabled", privacy_ceiling="shareable"):
+                             week_start, outlook_head=None, outlook_state="disabled", privacy_ceiling="shareable", page=None):
     from .dashboard_home_snapshot import _activity_title, _plan_display_status, _STATUS_LABELS
     from .dashboard_expression_reading import expectation_display_status, window_display_status
 
@@ -111,9 +128,10 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
         try:
             publications = planning_publications(projection=projection, store=store, actor_ref=actor_ref,
                 user_channel_limited_content_refs=limited, privacy_ceiling=privacy_ceiling,
-                starts_at=start, ends_at=end, limit=17)
-            planning_truncated = len(publications) > 16
-            for publication in publications[:16]:
+                starts_at=start, ends_at=end, limit=129)
+            if len(publications) > 128:
+                raise ValueError("weekly planning sources exceed the supported domain bound")
+            for publication in publications:
                 p = publication.planning
                 period_start = max(publication.published_at, datetime.combine(p.starts_on, time(), zone))
                 period_end = datetime.combine(p.ends_on + timedelta(days=1), time(), zone)
@@ -129,9 +147,11 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
                         add("planning", publication.occurrence_ref + ":phase:" + phase.phase_id,
                             phase_start, phase_end, publication.privacy_class, (publication, phase))
                 instances = expand_planning(p, world_id=projection.world_id, starts_at=start, ends_at=end,
-                    effective_from=publication.published_at, effective_until=publication.effective_until, limit=97)
-                planning_truncated |= len(instances) > 96
-                for instance in instances[:96]:
+                    effective_from=publication.published_at, effective_until=publication.effective_until, limit=256)
+                # 28 slots across seven days plus 32 moved exceptions fit in
+                # the existing 256-instance reader bound. Page their metadata
+                # together with the other records; only selected details read.
+                for instance in instances:
                     add("planning", instance.instance_ref, instance.starts_at, instance.ends_at,
                         publication.privacy_class, (publication, instance))
         except ValueError:
@@ -166,7 +186,13 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
                     > {"public": 0, "shareable": 1, "personal": 2, "private": 3}[privacy_ceiling]
                     else item.execution.privacy_class, item)
     rows.sort(key=lambda row: (row[0], row[2], row[3]))
-    selected = rows[:ENTRY_LIMIT]
+    page_count = max(1, (len(rows) + ENTRY_LIMIT - 1) // ENTRY_LIMIT)
+    if page is None:
+        page = max(0, bisect_right([row[0] for row in rows], now or start) - 1) // ENTRY_LIMIT
+    if type(page) is not int or page < 0:
+        raise ValueError("invalid agenda page")
+    page = min(page, page_count - 1)
+    selected = rows[page * ENTRY_LIMIT:(page + 1) * ENTRY_LIMIT]
     lookup = {(row[2], row[3]): i for i, row in enumerate(selected)}
     entries = []
     for index, (opens, closes, kind, identity, item) in enumerate(selected):
@@ -291,4 +317,5 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
         week_start=week_start, state="ready" if entries else "empty" if now else "unavailable",
         outlook_state=outlook_state, known_count=len(rows), withheld_count=withheld,
         truncated=len(rows) > ENTRY_LIMIT or planning_truncated, entries=entries, planning_state=planning_state,
+        page=page, page_count=page_count,
     )

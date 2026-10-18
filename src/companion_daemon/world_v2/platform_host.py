@@ -286,11 +286,11 @@ class WorldV2PlatformHost:
     async def dashboard_home_snapshot(
         self,
         runtime_observation: DashboardRuntimeObservation | None = None,
-        *, week=None,
+        *, week=None, page=None,
     ) -> DashboardHomeSnapshot:
         """Expose the owning application's fixed private Dashboard capture."""
 
-        return await self._application.dashboard_home_snapshot(runtime_observation, **({"week": week} if week is not None else {}))
+        return await self._application.dashboard_home_snapshot(runtime_observation, **({"week": week} if week is not None else {}), **({"page": page} if page is not None else {}))
 
     async def media_request_for_actions(self, action_ids: tuple[str, ...]) -> bool:
         """Return only the accepted role-owned media wake for these Actions."""

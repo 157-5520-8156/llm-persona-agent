@@ -95,6 +95,41 @@ async def test_outlook_reuses_verified_old_head_until_history_generation_changes
 
 
 @pytest.mark.asyncio
+async def test_fresh_outlook_does_not_replay_its_just_verified_pin_and_due_read_stays_off_loop(tmp_path, monkeypatch):
+    import sys
+    import threading
+    app, model = _build(tmp_path / "fresh-pin.sqlite", "world:fresh-pin", at(16, 10), _Role(), RollingAuthor())
+    runtime = app._life_ecology._world_outlook
+    original = app._ledger.project_at
+
+    def guarded(cursor):
+        if sys._getframe(1).f_code.co_name == "view":
+            head = runtime.store.head()
+            assert head is None or cursor.model_dump() != head[2]["cursor"], "fresh pin replayed genesis"
+        return original(cursor)
+
+    monkeypatch.setattr(app._ledger, "project_at", guarded)
+    try:
+        for minute in (1, 2, 3):
+            await tick(app, at(16, 10) + timedelta(minutes=minute), f"fresh-pin-{minute}")
+        runtime.view()
+        event_loop_thread = threading.get_ident()
+        calls = []
+
+        def due():
+            calls.append(threading.get_ident())
+            assert calls[-1] != event_loop_thread
+            return None
+
+        monkeypatch.setattr(app._life_ecology, "next_outlook_due", due)
+        await app.life_ecology_next_due()
+        assert calls
+    finally:
+        await app.aclose()
+        await model.aclose()
+
+
+@pytest.mark.asyncio
 async def test_five_domains_and_dense_weeks_keep_all_authoritative_schedules(tmp_path, monkeypatch):
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
 
