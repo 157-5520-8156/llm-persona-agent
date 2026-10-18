@@ -62,8 +62,34 @@ def test_anchor_selection_copies_exact_offered_tuple_and_never_repairs_authority
         decode_outlook_response(json.dumps(response), request_raw=json.dumps(packet))
 
 
+def test_schema_once_history_selector_requires_exact_separately_pinned_schema():
+    from companion_daemon.world_v2.world_outlook_request import (
+        ROLLING_REFERENCE_CONTRACT, decode_outlook_response,
+    )
+
+    anchor = {"source_ref": "occurrence:one", "authority_hash": "a" * 64}
+    packet = {"response_tool_contract": "world-outlook-native.7",
+              "response_reference_contract": ROLLING_REFERENCE_CONTRACT,
+              "draft_schema_carrier": "response_tools.world_outlook_v6",
+              "current_outlook": {"threads": [], "opportunities": []},
+              "history_offer": {"items": [{"anchor": anchor}]}}
+    tools = [{"function": {"name": "world_outlook_v6", "parameters": {
+        "$defs": {"StoryAnchor": {"properties": {"history_anchor_ref": {}}}}}}}]
+    response = {"draft": {"threads": [{"history_anchors": [{"history_anchor_ref": "occurrence:one"}]}]}}
+    args = {"request_raw": json.dumps(packet)}
+    with pytest.raises(ValueError, match="exact pinned"):
+        decode_outlook_response(json.dumps(response), **args)
+    decoded = decode_outlook_response(json.dumps(response), response_tools=tools, **args)
+    assert decoded["draft"]["threads"][0]["history_anchors"] == [anchor]
+    for bad in ({"history_anchor_ref": "unknown"},
+                {"history_anchor_ref": "occurrence:one", "authority_hash": "b" * 64}):
+        response["draft"]["threads"][0]["history_anchors"] = [bad]
+        with pytest.raises(ValueError, match="exact offered source"):
+            decode_outlook_response(json.dumps(response), response_tools=tools, **args)
+
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize("original_contract", ["world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4"])
+@pytest.mark.parametrize("original_contract", ["world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.7"])
 async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contract(tmp_path, monkeypatch, original_contract):
     from companion_daemon.subscription_usage import BackgroundGLMModel, SubscriptionTokenLedger
     from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
@@ -75,6 +101,16 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
     ledger, wake, store, _, runtime = setup(tmp_path, lambda w: [])
     runtime._rolling_planning = True
     monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime._NATIVE_RESULT", original_contract)
+    context = {}
+    if original_contract == "world-outlook-native.7":
+        import companion_daemon.world_v2.world_outlook_runtime as module
+        original_schema = module.outlook_author_schema
+
+        def large_schema(**kwargs):
+            return {**original_schema(**kwargs), "description": "schema-contract-" * 2500}
+
+        monkeypatch.setattr(module, "outlook_author_schema", large_schema)
+        context = {"qualification_fixture": "evidence-" * 7500}
 
     def provider(request):
         body = json.loads(request.content)
@@ -97,9 +133,16 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
         Draft202012Validator.check_schema(tool["function"]["parameters"])
         assert Draft202012Validator(tool["function"]["parameters"]).is_valid(result)
         assert packet["response_tool_contract"] == original_contract
+        if original_contract == "world-outlook-native.7":
+            assert "draft_schema" not in packet
+            assert packet["draft_schema_carrier"] == "response_tools.world_outlook_v6"
+            assert packet["world_context"] == {**context, "slices": {}}
+            assert tool["function"]["parameters"]["properties"]["draft"]["description"] == "schema-contract-" * 2500
+            assert len(body["messages"][1]["content"].encode()) < 100_000
+            assert len(json.dumps(tool).encode()) + len(body["messages"][1]["content"].encode()) > 100_000
         if len(requests) == 1:
             result["draft"]["actor_ref"] = "actor:wrong-owner"
-        elif original_contract in {"world-outlook-native.3", "world-outlook-native.4"}:
+        elif original_contract in {"world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.7"}:
             assistant, feedback = body["messages"][-2:]
             assert assistant["role"] == "assistant" and assistant["content"] is None
             assert assistant["tool_calls"][0]["function"]["name"] == "world_outlook_v6"
@@ -122,7 +165,7 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
     def crash(*args, **kwargs):
         raise Crash()
     monkeypatch.setattr(store, "install", crash)
-    args = dict(projection=ledger.project(), context={}, manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)))
+    args = dict(projection=ledger.project(), context=context, manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)))
     try:
         with pytest.raises(Crash):
             await runtime.refresh(**args)

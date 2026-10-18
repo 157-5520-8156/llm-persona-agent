@@ -226,8 +226,8 @@ def test_glm_text_identity_declares_carrier_without_changing_schema(tmp_path, ca
 @pytest.mark.parametrize('unexpected_tool', [False, True])
 async def test_glm_json_schema_profile_sends_the_same_schema_as_text(tmp_path, unexpected_tool):
     from copy import deepcopy
-    schema={'type':'object','anyOf':[
-        {'type':'object','properties':{'decision':{'const':'keep'}},'required':['decision'],'additionalProperties':False},
+    schema={'type':'object','$defs':{'Keep':{'type':'string','const':'keep'}},'anyOf': [
+        {'type':'object','properties':{'decision':{'$ref':'#/$defs/Keep'}},'required':['decision'],'additionalProperties':False},
         {'type':'object','properties':{'decision':{'const':'change'},'value':{'type':'string'}},'required':['decision','value'],'additionalProperties':False}]}
     tools=[{'type':'function','function':{'name':'role_result','parameters':schema}}]
     original = deepcopy(tools)
@@ -258,6 +258,6 @@ async def test_glm_json_schema_profile_sends_the_same_schema_as_text(tmp_path, u
                     tool_choice={'type':'function','function':{'name':'role_result'}})
                 assert out==raw
         assert tools==original and len(seen)==1
-        assert model.model_version.endswith(':json-object-schema.1')
+        assert model.model_version.endswith(':json-object-schema.2')
     finally:
         await model.aclose()

@@ -137,7 +137,7 @@ class BackgroundGLMModel(_BackgroundTokenBudget, DeepSeekChatModel):
         super().__init__(*args, thinking_enabled=True, reasoning_effort=reasoning_effort, **kwargs)
         self.model_version = self.model + ":object-tool-root.2"
         if tool_result_carrier == "json_object":
-            self.model_version = self.model + ":json-object-schema.1"
+            self.model_version = self.model + ":json-object-schema.2"
         elif tool_result_carrier != "native":
             self.model_version += ":json-object-carrier.1"
 
@@ -180,13 +180,14 @@ class BackgroundGLMModel(_BackgroundTokenBudget, DeepSeekChatModel):
         if tools and self._tool_result_carrier == "json_object":
             if len(tools) != 1 or self._expected_response_tool(tools, tool_choice) is None:
                 raise ValueError("GLM JSON schema transport requires one exact declared schema")
-            from .world_v2.character_interior.local_schema_references import expand_local_schema_references
+            # Its JSON root stays in place, so local $defs/$ref keep their
+            # meaning. Expansion is needed only when wrapping a native root.
             function = tools[0]["function"]
             schema_message = {
                 "contract": "single-schema-json-object-request.1",
                 "schema_name": function["name"],
-                "response_schema": expand_local_schema_references(function["parameters"]),
-                "instruction": "Use this schema as the response contract instead of the tool carrier. Return the matching JSON object itself, with no wrapper, tool call, fence or explanatory prose. All original evidence and permissions still apply.",
+                "response_schema": function["parameters"],
+                "instruction": "Use this schema as the response contract instead of the tool carrier. Return the matching JSON object itself, without an additional wrapper, tool call, fence or explanatory prose. All original evidence and permissions still apply.",
             }
             return super().request_payload(
                 [*messages, {"role":"user", "content":json.dumps(schema_message, ensure_ascii=False)}],

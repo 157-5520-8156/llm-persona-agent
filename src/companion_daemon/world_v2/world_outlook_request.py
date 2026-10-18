@@ -79,7 +79,7 @@ def decode_outlook_request(raw):
     return packet
 
 
-def decode_outlook_response(raw, *, request_raw):
+def decode_outlook_response(raw, *, request_raw, response_tools=None):
     """Expand only explicit reference fields; never edit authored prose/choices.
 
     The marker is pinned in the stored request. Old requests keep their original
@@ -138,7 +138,15 @@ def decode_outlook_response(raw, *, request_raw):
                         restored.append(item)
                 if field in response["draft"]:
                     response["draft"][field] = restored
-            anchor_schema = expanded.get("draft_schema", {}).get("$defs", {}).get("StoryAnchor", {})
+            if expanded.get("response_tool_contract") == "world-outlook-native.7":
+                # Only the separately pinned provider schema grants selectors. A
+                # marker in model text is never a replacement for that contract.
+                if (not isinstance(response_tools, list) or len(response_tools) != 1
+                        or response_tools[0].get("function", {}).get("name") != "world_outlook_v6"):
+                    raise ValueError("missing exact pinned outlook response schema")
+                anchor_schema = response_tools[0]["function"]["parameters"].get("$defs", {}).get("StoryAnchor", {})
+            else:
+                anchor_schema = expanded.get("draft_schema", {}).get("$defs", {}).get("StoryAnchor", {})
             anchors = {item["anchor"]["source_ref"]: item["anchor"] for item in expanded.get("history_offer", {}).get("items", ())}
             for thread in response["draft"].get("threads", ()):
                 if not isinstance(thread, dict):

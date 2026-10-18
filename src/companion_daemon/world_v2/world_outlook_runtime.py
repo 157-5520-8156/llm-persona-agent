@@ -29,8 +29,8 @@ from .world_outlook import (
 
 _WORKING_SOURCES = "outlook-working-sources.1"
 _ROLLING_PLANNING = "rolling-world-planning.3"
-_NATIVE_RESULT = "world-outlook-native.6"
-_NATIVE_RESULTS = frozenset({"world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.5", _NATIVE_RESULT})
+_NATIVE_RESULT = "world-outlook-native.7"
+_NATIVE_RESULTS = frozenset({"world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.5", "world-outlook-native.6", _NATIVE_RESULT})
 _TERMINAL_SOURCE_EVENTS = frozenset({
     "ActivityCompleted", "ActivityAbandoned", "WorldOccurrenceSettled",
     "WorldOccurrenceCancelled", "WorldOccurrenceExpired", "FactCommitted",
@@ -138,7 +138,7 @@ A brief notice already complete in its text need not request another detail pass
 Each opportunity has an execution payload: environment text describes external conditions only;
 npc_statement text is that NPC's exact utterance (a report, not certified truth of its claims).
 Runtime executes these frozen payloads without asking an NPC or another event author to think.
-Choose one execution kind from draft_schema.$defs.OutlookExecution.oneOf; omit fields belonging to other
+Choose one execution kind from the declared response schema's $defs.OutlookExecution.oneOf; omit fields belonging to other
 kinds instead of filling the entire field inventory. Environment and NPC statements do not
 reserve locations/participants or cancel plans. Existing plan dependencies belong in conditions.
 npc_activity starts a typed NPC-owned activity with NPC participants only. Its scripted duration
@@ -158,7 +158,7 @@ prior consideration produced a real accepted effect, not evidence of narrative c
 basis_refs must copy event authority IDs from the top-level basis_refs list, not occurrence
 or plan entity IDs. History anchors and condition sources have their own distinct identities.
 An entirely unchanged prior opportunity may retain its original committed basis_refs;
-the exact prior-node alternatives in draft_schema describe that exception.
+the exact prior-node alternatives in the declared response schema describe that exception.
 Retain unexpired offered opportunities unchanged or omit them from the new draft. Expired
 opportunities must be omitted, never rewritten with new times; their history and effects remain.
 Shared occurrences belong to multiple
@@ -1018,6 +1018,7 @@ class WorldOutlookRuntime:
                 # Unknown/in-flight provider outcome must not be billed twice.
                 return {"status": "running", "operation_ref": op}
         original_model = self.store.operation(op)["payload"]["model"]
+        response_tools = None
         if cached_attempts:
             # Recovery owns the original complete request, including its
             # history and reference offer. A changed query/compiler or an
@@ -1117,6 +1118,15 @@ class WorldOutlookRuntime:
                     new_opportunity_ids=new_ids,
                 ),
             }
+            if native_result:
+                response_tools = [outlook_result_tool(packet["draft_schema"], allow_keep=not (
+                    packet["rolling_preparation"]["due"] or packet["rolling_preparation"]["outline_due"]
+                    or packet.get("world_changes")))]
+                if packet["response_tool_contract"] == "world-outlook-native.7":
+                    # The exact schema is already pinned in response_tools and supplied
+                    # by the provider carrier. Do not duplicate it in the evidence body.
+                    packet.pop("draft_schema")
+                    packet["draft_schema_carrier"] = "response_tools.world_outlook_v6"
             system = _ROLLING_SYSTEM if self._rolling_planning else _SYSTEM
             if native_result:
                 before, _, after = system.partition("Return a JSON object, exactly")
@@ -1133,12 +1143,8 @@ class WorldOutlookRuntime:
                 self._health = {"status": "technical_failure", "failure_code": "outlook_input_too_large"}
                 return self.health()
         pinned_request = decode_outlook_request(messages[1]["content"])
-        response_tools = None
-        if pinned_request.get("response_tool_contract") in _NATIVE_RESULTS:
-            response_tools = (cached_attempts[min(cached_attempts)]["response_tools"] if cached_attempts else
-                              [outlook_result_tool(pinned_request["draft_schema"], allow_keep=not (
-                                  pinned_request["rolling_preparation"]["due"] or pinned_request["rolling_preparation"]["outline_due"]
-                                  or pinned_request.get("world_changes")))])
+        if cached_attempts and pinned_request.get("response_tool_contract") in _NATIVE_RESULTS:
+            response_tools = cached_attempts[min(cached_attempts)]["response_tools"]
         draft = None
         for ordinal in range(2):
             raw = None
@@ -1172,7 +1178,7 @@ class WorldOutlookRuntime:
                     ):
                         raw = await complete_json_object(self.author, messages, temperature=0.3,
                             **({"tools": response_tools, "tool_choice": {"type": "function", "function": {"name": "world_outlook_v6"}}} if response_tools else {}))
-                obj = decode_outlook_response(raw, request_raw=messages[1]["content"])
+                obj = decode_outlook_response(raw, request_raw=messages[1]["content"], response_tools=response_tools)
                 kept_current = False
                 if (
                     isinstance(obj, dict)
@@ -1262,7 +1268,7 @@ class WorldOutlookRuntime:
                 )
                 if ordinal == 0 and raw is not None:
                     error = "Correct the same outlook using only the supplied sources. Exact error: " + str(exc)[:1000]
-                    if pinned_request.get("response_tool_contract") in {"world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.5", "world-outlook-native.6"}:
+                    if pinned_request.get("response_tool_contract") in _NATIVE_RESULTS - {"world-outlook-native.1", "world-outlook-native.2"}:
                         # These are the real, identity-checked native arguments.
                         # The local call id only pairs the validation feedback;
                         # no World effect or successful submission is invented.

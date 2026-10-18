@@ -3135,7 +3135,9 @@ class _SelectingLifeEcologyModel:
             assert tools and len(tools) == 1
             day_open = bool(capsule["capability_manifest"]["payload"].get("self_directed_intent"))
             name = (
-                "character_role_activity_lifecycle_choice_v2" if day_open
+                "character_role_activity_lifecycle_choice_v4"
+                if day_open and capsule["capability_manifest"]["payload"]["contract"].endswith((".6", ".7"))
+                else "character_role_activity_lifecycle_choice_v2" if day_open
                 else "character_role_activity_lifecycle_choice_v1"
             )
             assert tools[0]["function"]["name"] == name

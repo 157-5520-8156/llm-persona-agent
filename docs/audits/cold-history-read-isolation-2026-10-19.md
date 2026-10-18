@@ -26,3 +26,21 @@
 `lock-red.log`、`peek-red.log` 为已复现的失败；`snapshot-lock-result.json` 为大快照对照；
 `reader-recovery-focused.log` 160 项通过。测试覆盖同时追加、只读、关闭、篡改、嵌套原子验证
 及旧任务过期／未过期／来源不明。完整回归和真实服务重启仍待完成。
+
+## 实际刷新输入与 GLM 契约
+
+真实副本的准备路径在调用模型之前触发 `outlook_input_too_large`：编码后 112742 bytes。
+拆分发现 `draft_schema` 自身约 20.8 KB，且同一完整 schema 又放入 `response_tools`。
+新 `world-outlook-native.7` 只在分别持久化的 `response_tools` 提供完整 schema，正文保留其
+载体标记；正文的世界状态、历史、选择、来源 ID 和权限目录不截断。100000 bytes 正文
+上限保持原值。旧付费 .1..6 请求仍读原正文/schema；重启使用原保存的工具及请求 hash，
+不重建已经付费的契约。历史锚点选择必须获该次保存 schema 的许可，未知 ID 或覆盖字段
+继续拒绝。GLM 的 JSON 文本载体不移动 schema 根，因此保留原 `$defs/$ref`，避免无意义
+展开；原 native 根包装仍执行必要的引用重定位。模型版本明确改为 json-object-schema.2。
+
+e4576 全套冻结回归为 10911 passed / 2 failed / 19 skipped / 2 xfailed；原失败日志保留。
+两处旧测试假定只有 v1/v2 活动接口，不认识规划用的 v4。其中替换计划测试还只等待一次
+后台处理；现在分别运行私有规划及新时钟上的执行，继续断言旧计划 abandoned、新计划
+active，且原来源和权限均保留。QQ 垂直用例继续断言计划完成、事件结算及角色经历。
+这只是测试支持现有模型契约，未给生产添加角色模板或改变执行结果。修正后相关 139 项
+通过。新增大请求与冷重启对照覆盖 schema 分离且原证据完整、原付费工具不重新生成。

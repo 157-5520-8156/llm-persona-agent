@@ -190,13 +190,11 @@ class _AuthorityShapedLifeModel:
         tool_choice=None,
     ):  # type: ignore[no-untyped-def]
         assert tools and len(tools) == 1
-        assert tools[0]["function"]["name"] == (
-            "character_role_activity_lifecycle_choice_v1"
-        )
-        assert tool_choice == {
-            "type": "function",
-            "function": {"name": "character_role_activity_lifecycle_choice_v1"},
-        }
+        capability = json.loads(messages[1]["content"])["capability_manifest"]["payload"]
+        name = ("character_role_activity_lifecycle_choice_v4"
+                if capability.get("self_directed_intent") else "character_role_activity_lifecycle_choice_v1")
+        assert tools[0]["function"]["name"] == name
+        assert tool_choice == {"type": "function", "function": {"name": name}}
         return await self.complete(messages, temperature=temperature)
 
     async def complete(self, messages, *, temperature: float = 0.2):  # type: ignore[no-untyped-def]
@@ -1710,6 +1708,15 @@ async def test_production_user_observation_replacement_becomes_optional_change_p
             reason="test",
         )
 
+        # The abandoned predecessor also offers private future planning. Its
+        # explicit no-op is distinct from the pending replacement's execution.
+        await app.tick(
+            tick_id="replacement:execute", logical_time_from=NOW + timedelta(minutes=1),
+            logical_time_to=NOW + timedelta(minutes=1, seconds=1),
+            observed_at=NOW + timedelta(minutes=1, seconds=1),
+            trace_id="trace:replacement:execute", causation_id="scheduler:test",
+            correlation_id="correlation:replacement", reason="test",
+        )
         projection = app._ledger.project()  # noqa: SLF001
         by_id = {item.plan_id: item for item in projection.plans}
         assert by_id["plan:original"].status == "abandoned"
