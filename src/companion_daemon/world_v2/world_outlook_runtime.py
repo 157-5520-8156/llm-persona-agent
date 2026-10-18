@@ -1303,10 +1303,13 @@ class WorldOutlookRuntime:
             return self.health()
         try:
             with self.ledger.serialized_commit_sequence():
-                if cursor_of(self.ledger.project()) != cursor_of(projection):
+                current = self.ledger.project()
+                if cursor_of(current) != cursor_of(projection):
                     self.store.finish(op, state="stale", payload={"cursor": cursor_of(projection)})
                     self._health = {"status": "stale"}
                     return self.health()
+                if current.semantic_hash != projection.semantic_hash:
+                    raise ValueError("outlook belongs to a different source history")
                 revision = self.store.install(
                     draft,
                     evidence={

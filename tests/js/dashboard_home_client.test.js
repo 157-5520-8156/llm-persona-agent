@@ -551,6 +551,25 @@ test('week capture forwards only the selected date on the existing route', async
   assert.equal(url,'/world-v2/dashboard/home?week=2026-10-12&page=0');
 });
 
+test('pagination controls remain usable after snapshot loading completes', async () => {
+  const payload=snapshot({state:'unavailable'});
+  payload.sections.overview_life={state:'ready',data:{metrics:[],highlights:[],agenda:{
+    state:'ready',outlook_state:'disabled',week_start:'2026-10-12',entries:[],
+    known_count:192,withheld_count:0,truncated:true,page:1,page_count:2,
+  }}};
+  const previous=JSON.parse(JSON.stringify(payload));previous.sections.overview_life.data.agenda.page=0;
+  const browser=browserWith([responseFor(payload),responseFor(previous)]);
+  await browser.flush();
+  const descendants=node=>[node,...node.children.flatMap(descendants)];
+  const buttons=descendants(browser.ids.agendaPanel).filter(node=>node.tagName==='button');
+  const prev=buttons.find(node=>node.textContent==='上一页');
+  assert.equal(prev.disabled,false);
+  assert.equal(buttons.find(node=>node.textContent==='下一页').disabled,true);
+  prev.fire('click');await browser.flush();
+  assert.equal(browser.requests[1][0],'/world-v2/dashboard/home?page=0');
+  assert.match(browser.ids.agendaPanel.textContent,/第 1 \/ 2 页/);
+});
+
 
 test('same-title overlapping entries retain distinct detail selections', () => {
   const entry={kind:'plan',title:'同一个标题',starts_at:'2026-10-14T10:00:00+08:00',ends_at:'2026-10-14T11:00:00+08:00'};

@@ -11,6 +11,37 @@ def at(day, hour=0):
     return datetime(2026, 10, day, hour, tzinfo=ZONE)
 
 
+def test_week_publication_iterator_keeps_128_domains_plus_midweek_revision(monkeypatch):
+    from types import SimpleNamespace as NS
+    from companion_daemon.world_v2 import life_content_reading, occurrence_result_content_runtime
+    from companion_daemon.world_v2.world_planning import iter_planning_publications, planning_index, planning_publications
+    # A source-reader fixture: canonical publication/permission validation has
+    # separate negative coverage. Exercise selection and revision lineage here.
+    bodies, occurrences = {}, []
+    for i in range(129):
+        key = i if i < 128 else 0
+        ref = f"occurrence:{i}"
+        value = planning(planning_key=f"domain-{key}", supersedes_occurrence_ref="occurrence:0" if i == 128 else None)
+        bodies[ref] = value
+        candidate = NS(candidate_result_ref=f"result:{i}", result_contract="world-consequence.3",
+                       world_planning_index=planning_index(value), privacy_class="private", content_ref=f"content:{i}")
+        occurrences.append(NS(status="settled", participant_refs=("actor",), occurrence_id=ref,
+            settled_outcome_ref=candidate.candidate_result_ref, candidate_outcomes=(candidate,),
+            settlement_world_revision=i+1, settled_at=at(16, 10) if i == 128 else at(12), visibility="private",
+            result_payload_ref=f"payload:{i}", settlement_event_ref=f"event:{i}", settlement_payload_hash="a"*64))
+    monkeypatch.setattr(occurrence_result_content_runtime, "require_published_world_consequence", lambda **kw: None)
+    monkeypatch.setattr(life_content_reading, "selected_world_consequence",
+                        lambda **kw: NS(world_planning=bodies[kw['occurrence'].occurrence_id]))
+    options = dict(projection=NS(logical_time=at(18), world_occurrences=occurrences), store=object(), actor_ref="actor",
+                   starts_at=at(12), ends_at=at(19), user_channel_limited_content_refs=frozenset())
+    values = tuple(iter_planning_publications(**options))
+    assert len(values) == 129
+    assert next(p for p in values if p.occurrence_ref == "occurrence:0").effective_until == at(16, 10)
+    assert len(planning_publications(**options, limit=8)) == 8
+    with pytest.raises(ValueError, match="bounded"):
+        planning_publications(**options, limit=257)
+
+
 def planning(**changes):
     return WorldPlanningDraft.model_validate_json(__import__('json').dumps({
         "planning_key": "autumn-classes", "title": "秋季学期课程安排", "summary": "学校已公布的课程安排。",

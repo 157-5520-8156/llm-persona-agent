@@ -699,7 +699,7 @@ if(typeof document!=='undefined'){
     if(agenda.page_count>1){
       for(const [label,target] of [['上一页',agenda.page-1],['当前时间',null],['下一页',agenda.page+1]]){
         const button=element('button','button',label);button.type='button';
-        button.disabled=displayPaused||loading||(target!==null&&(target<0||target>=agenda.page_count));
+        button.disabled=displayPaused||(target!==null&&(target<0||target>=agenda.page_count));
         button.addEventListener('click',()=>{
           if(displayPaused||loading)return;
           agendaPage=target;agendaSelection=null;snapshotEtag=null;loadDashboardHome();

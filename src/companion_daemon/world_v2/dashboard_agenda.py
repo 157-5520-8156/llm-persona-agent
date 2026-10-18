@@ -123,14 +123,12 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
                 item.values.privacy_class, item)
     if store is not None and now is not None:
         from .life_content import collect_user_channel_limited_content_refs
-        from .world_planning import planning_publications, expand_planning
+        from .world_planning import iter_planning_publications, expand_planning
         limited = collect_user_channel_limited_content_refs(ledger=ledger, projection=projection)
         try:
-            publications = planning_publications(projection=projection, store=store, actor_ref=actor_ref,
+            publications = iter_planning_publications(projection=projection, store=store, actor_ref=actor_ref,
                 user_channel_limited_content_refs=limited, privacy_ceiling=privacy_ceiling,
-                starts_at=start, ends_at=end, limit=129)
-            if len(publications) > 128:
-                raise ValueError("weekly planning sources exceed the supported domain bound")
+                starts_at=start, ends_at=end)
             for publication in publications:
                 p = publication.planning
                 period_start = max(publication.published_at, datetime.combine(p.starts_on, time(), zone))

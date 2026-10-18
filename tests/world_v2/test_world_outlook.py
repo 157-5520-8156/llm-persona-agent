@@ -140,6 +140,21 @@ async def test_private_three_thread_outlook_persists_without_world_facts_or_reau
         reopened.close()
 
 
+@pytest.mark.asyncio
+async def test_outlook_rejects_a_forged_hash_at_the_same_current_cursor(tmp_path):
+    ledger, wake, store, _, runtime = setup(
+        tmp_path, lambda w: [{"decision": "revise", "draft": draft_value(w)}]
+    )
+    try:
+        forged = ledger.project().model_copy(update={"semantic_hash": "f" * 64})
+        result = await runtime.refresh(projection=forged, context={},
+            manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)))
+        assert result["status"] == "technical_failure"
+        assert store.head() is None
+    finally:
+        runtime.close()
+
+
 @pytest.mark.parametrize(
     "state,expected",
     [

@@ -149,7 +149,7 @@ async def test_five_domains_and_dense_weeks_keep_all_authoritative_schedules(tmp
                 key = "domain-" + str(i)
                 if key in known | pending or len(nodes) == 4:
                     continue
-                plan = semester(now, contract="world-planning.3", planning_key=key, phases=[], slots=[{
+                plan = semester(now, contract="world-planning.3", planning_key=key, phases=[], detailed_through="2026-10-30", slots=[{
                     "slot_id": "s" + str(j), "title": "课", "detail": "课程", "weekdays": list(range(7)),
                     "start_minute": 840, "duration_minutes": 30, "event_text": "课程开放"} for j in range(14)])
                 nodes.append({"opportunity_id": key, "thread_refs": ["ordinary"], "external_possibility": "公布安排",
@@ -175,6 +175,19 @@ async def test_five_domains_and_dense_weeks_keep_all_authoritative_schedules(tmp
         runtime = app._life_ecology._world_outlook
         pubs = runtime._planning_publications(app._ledger.project())
         assert len(pubs) == 5, runtime.health()
+        # All 98 weekly instances in each published domain remain accessible;
+        # the scheduler's bounded working set is not the display's full week.
+        from companion_daemon.world_v2.dashboard_home_snapshot import DashboardHomeSnapshotModule
+        from companion_daemon.world_v2.dashboard_agenda import week_start_date
+        module = DashboardHomeSnapshotModule(ledger=app._ledger, deployment_id="test", boot_id="pages",
+            life_actor_ref="actor:companion", life_privacy_ceiling="private", life_content_store=app._life_content_store)
+        first = (await module.capture(week=week_start_date(at(19).date()))).sections.overview_life.data.agenda
+        entries = []
+        for page in range(first.page_count):
+            agenda = (await module.capture(week=first.week_start, page=page)).sections.overview_life.data.agenda
+            assert agenda.planning_state == "ready" and len(agenda.entries) <= 96
+            entries.extend(e for e in agenda.entries if e.kind == "planning")
+        assert len(entries) == 5 * 98 + 5
         scheduled = runtime.scheduled()
         assert {n["thread_refs"][0] for n in scheduled} == {"planning:domain-" + str(i) for i in range(5)}
         assert len(scheduled) == 5 * 96

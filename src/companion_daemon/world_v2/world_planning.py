@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time, timedelta
+from itertools import islice
 import hashlib
 import json
 from typing import Literal
@@ -250,12 +251,19 @@ class PlanningPublication(FrozenModel):
 
 def planning_publications(*, projection, store, actor_ref, user_channel_limited_content_refs, privacy_ceiling="private",
                           starts_at=None, ends_at=None, limit=8, include_elapsed_heads=False):
+    if not 1 <= limit <= 256:
+        raise ValueError("planning publication read must be bounded")
+    return tuple(islice(iter_planning_publications(projection=projection, store=store, actor_ref=actor_ref,
+        user_channel_limited_content_refs=user_channel_limited_content_refs, privacy_ceiling=privacy_ceiling,
+        starts_at=starts_at, ends_at=ends_at, include_elapsed_heads=include_elapsed_heads), limit))
+
+
+def iter_planning_publications(*, projection, store, actor_ref, user_channel_limited_content_refs,
+                               starts_at=None, ends_at=None, privacy_ceiling="private", include_elapsed_heads=False):
     """Read current/week-relevant revisions, without scanning historical bodies."""
     from .life_content_reading import selected_world_consequence
     from .occurrence_result_content_runtime import require_published_world_consequence
 
-    if not 1 <= limit <= 256:
-        raise ValueError("planning publication read must be bounded")
     ranks = {"public": 0, "shareable": 1, "personal": 2, "private": 3, "withhold": 4}
     starts_at = starts_at or projection.logical_time
     ends_at = ends_at or starts_at + timedelta(days=7)
@@ -287,20 +295,18 @@ def planning_publications(*, projection, store, actor_ref, user_channel_limited_
     eligible.sort(key=lambda row: row[0].settlement_world_revision, reverse=True)
     # Source restrictions are supplied by the caller's ledger-backed compiler;
     # no raw candidate or unpublished document is a fallback.
-    result = []
     limited = user_channel_limited_content_refs
     eligible = [row for row in eligible if row[1].content_ref not in limited and row[0].result_payload_ref not in limited]
-    for occurrence, candidate, until in eligible[:limit]:
+    for occurrence, candidate, until in eligible:
         require_published_world_consequence(projection=projection, occurrence=occurrence, content_store=store)
         value = selected_world_consequence(store=store, projection=projection, occurrence=occurrence,
             actor_ref=actor_ref, viewer_privacy_ceiling=privacy_ceiling, user_channel_limited_content_refs=limited)
         if value.world_planning is None or planning_index(value.world_planning) != candidate.world_planning_index:
             raise ValueError("planning metadata differs from its published source")
-        result.append(PlanningPublication(planning=value.world_planning, occurrence_ref=occurrence.occurrence_id,
+        yield PlanningPublication(planning=value.world_planning, occurrence_ref=occurrence.occurrence_id,
             source_event_ref=occurrence.settlement_event_ref, source_world_revision=occurrence.settlement_world_revision,
             source_payload_hash=occurrence.settlement_payload_hash, privacy_class=max((occurrence.visibility,candidate.privacy_class),key=ranks.__getitem__),
-            published_at=occurrence.settled_at, effective_until=until))
-    return tuple(result)
+            published_at=occurrence.settled_at, effective_until=until)
 
 
 def validate_planning_publication(planning, *, projection, actor_ref, occurrence_ref, store, ledger=None):
