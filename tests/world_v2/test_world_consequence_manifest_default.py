@@ -340,7 +340,13 @@ async def test_fresh_author_cannot_downgrade_to_legacy_outcome_text(tmp_path, mo
         assert result.status == "technical_failure"
         assert result.reason_code == "life_development.world_author_unavailable"
         assert len(provider.requests) == 2
-        correction = json.loads(provider.requests[1]["messages"][-1]["content"])
+        message = provider.requests[1]["messages"][-1]
+        rejected_call = provider.requests[1]["messages"][-2]["tool_calls"][0]
+        assert message["role"] == "tool" and message["tool_call_id"] == rejected_call["id"]
+        assert rejected_call["function"]["name"] == provider.requests[1]["tools"][0]["function"]["name"]
+        feedback = json.loads(message["content"])
+        assert feedback["status"] == "validation_rejected" and feedback["no_world_effect"]
+        correction = feedback["correction"]
         assert correction["validation_failure"]["code"] == "outcome_contract_mismatch"
         locator = correction["original_authority"]
         assert locator["message_index"] == 1
