@@ -769,7 +769,7 @@ def _validate_activity_lifecycle_payload(
     if noticed is None and completion is not None:
         raise ValueError("activity user_channel_completion requires noticed")
     if noticed is not None and completion != "none":
-        raise ValueError("activity noticed requires user_channel_completion=none")
+        raise ValueError('activity noticed requires user_channel_completion="none" (the literal JSON string, not null or omission)')
     keys = {key for key in payload if key not in {"noticed", "user_channel_completion"}}
     decision = payload.get("decision")
     if decision == "no_op":
@@ -889,7 +889,7 @@ class _ActivityLifecyclePayload(BaseModel):
         if self.noticed is None and self.user_channel_completion is not None:
             raise ValueError("activity user_channel_completion requires noticed")
         if self.noticed is not None and self.user_channel_completion != "none":
-            raise ValueError("activity noticed requires user_channel_completion=none")
+            raise ValueError('activity noticed requires user_channel_completion="none" (the literal JSON string, not null or omission)')
         return self
 
 
@@ -4027,7 +4027,7 @@ class StructuredCharacterRoleFaculty:
                 "decision": "select|no_op",
                 "selected_token": "select only: one offered activity token",
                 "noticed": "optional turn-local subjective attention; audit only, no World fact or completed Action",
-                "user_channel_completion": "with non-null noticed: const none; otherwise omit or null both fields",
+                'user_channel_completion': 'with non-null noticed: the literal JSON string "none" is required; otherwise omit or null both fields',
             }
             if contract.payload_contract in {"character-interior-activity-lifecycle-choice.2", "character-interior-activity-lifecycle-choice.3"}:
                 view["payload_schema"] = {

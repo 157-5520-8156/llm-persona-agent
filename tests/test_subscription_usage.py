@@ -204,18 +204,60 @@ async def test_glm_text_carrier_rejects_ambiguous_or_unconfigured_results(tmp_pa
         await model.aclose()
 
 
-def test_glm_text_auto_identity_declares_carrier_without_changing_schema(tmp_path):
+@pytest.mark.parametrize('carrier,version', [('native_or_json_object','2'),('json_object','3')])
+def test_glm_text_identity_declares_carrier_without_changing_schema(tmp_path, carrier, version):
     from companion_daemon.world_v2.character_interior.single_tool_transport import resolve_single_tool_transport
     model=BackgroundGLMModel('fixture','http://localhost:8788','fixture',token_ledger=ledger(tmp_path),
-        tool_result_carrier='native_or_json_object')
+        tool_result_carrier=carrier)
     tools=[{'type':'function','function':{'name':'role_result','parameters':{'type':'object'}}}]
     choice={'type':'function','function':{'name':'role_result'}}
     result=resolve_single_tool_transport(provider=model,tools=tools,tool_choice=choice,
         identity={'tool_name':'role_result','contract_sha256':'fixture'})
-    assert result.tool_choice=='auto'
+    assert result.tool_choice==('auto' if carrier=='native_or_json_object' else choice)
     assert result.identity['contract_id']=='single-schema-json-text-carrier'
-    assert result.identity['version']=='2'
+    assert result.identity['version']==version
     assert json.loads(result.identity['schema_contract_identity_json'])=={
         'tool_name':'role_result','contract_sha256':'fixture'}
     import asyncio
     asyncio.run(model.aclose())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('unexpected_tool', [False, True])
+async def test_glm_json_schema_profile_sends_the_same_schema_as_text(tmp_path, unexpected_tool):
+    from copy import deepcopy
+    schema={'type':'object','anyOf':[
+        {'type':'object','properties':{'decision':{'const':'keep'}},'required':['decision'],'additionalProperties':False},
+        {'type':'object','properties':{'decision':{'const':'change'},'value':{'type':'string'}},'required':['decision','value'],'additionalProperties':False}]}
+    tools=[{'type':'function','function':{'name':'role_result','parameters':schema}}]
+    original = deepcopy(tools)
+    seen = []
+    raw = '{ "decision":"keep" }'
+    def handler(request):
+        body = json.loads(request.content)
+        seen.append(body)
+        assert 'tools' not in body and 'tool_choice' not in body
+        assert body['response_format']=={'type':'json_object'}
+        envelope=json.loads(body['messages'][-1]['content'])
+        assert envelope['response_schema']==schema
+        message = {'content':raw}
+        if unexpected_tool:
+            message['tool_calls']=[{'type':'function','function':{'name':'role_result','arguments':raw}}]
+        return httpx.Response(200,json={'choices':[{'finish_reason':'stop','message':message}],
+            'usage':{'prompt_tokens':10,'completion_tokens':5,'total_tokens':15}})
+    model=BackgroundGLMModel('fixture','http://localhost:8788','fixture',token_ledger=ledger(tmp_path),
+        tool_result_carrier='json_object',transport=httpx.MockTransport(handler))
+    try:
+        with model_call_scope('activity_lifecycle_choice'):
+            if unexpected_tool:
+                with pytest.raises(ValueError, match='never a tool call'):
+                    await model.complete_json([{'role':'user','content':'same pinned context'}],tools=tools,
+                        tool_choice={'type':'function','function':{'name':'role_result'}})
+            else:
+                out=await model.complete_json([{'role':'user','content':'same pinned context'}],tools=tools,
+                    tool_choice={'type':'function','function':{'name':'role_result'}})
+                assert out==raw
+        assert tools==original and len(seen)==1
+        assert model.model_version.endswith(':json-object-schema.1')
+    finally:
+        await model.aclose()

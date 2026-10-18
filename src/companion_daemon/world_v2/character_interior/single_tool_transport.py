@@ -31,7 +31,9 @@ def resolve_single_tool_transport(
     mode = getattr(provider, "single_tool_selection_mode", "forced")
     carrier = getattr(provider, "single_tool_response_carrier", "native")
     if carrier != "native":
-        if carrier != "native_or_json_object" or mode not in {"forced", "auto"} or len(tools) != 1:
+        if (len(tools) != 1 or not (
+                carrier == "native_or_json_object" and mode in {"forced", "auto"}
+                or carrier == "json_object" and mode == "json_object")):
             raise ValueError("unsupported single-schema JSON text carrier")
         function = tools[0].get("function", {})
         expected = tool_choice.get("function", {}) if isinstance(tool_choice, dict) else {}
@@ -41,7 +43,7 @@ def resolve_single_tool_transport(
                 or tool_choice.get("type") != "function" or identity.get("tool_name") != name):
             raise ValueError("JSON text carrier cannot change the expected schema")
         material = {
-            "contract_id":"single-schema-json-text-carrier", "version":"2" if mode == "auto" else "1",
+            "contract_id":"single-schema-json-text-carrier", "version":"3" if mode == "json_object" else "2" if mode == "auto" else "1",
             "selection_mode":mode, "response_carrier":carrier, "expected_tool_name":name,
             "schema_contract_identity_json":json.dumps(dict(identity),sort_keys=True,separators=(",",":")),
         }

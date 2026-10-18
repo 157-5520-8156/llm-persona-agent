@@ -5251,3 +5251,22 @@ async def test_typed_proposal_correction_does_not_direct_fields_into_decision():
     correction = packet['correction']['field_placement']
     assert 'decision_fields' not in correction
     assert correction['placement_rules_ref'] == 'wire_contract.placement_rules'
+
+
+@pytest.mark.parametrize('notice,completion,valid', [
+    ('quiet',None,False),(None,'none',False),('quiet','none',True),(None,None,True),
+])
+def test_activity_notice_schema_matches_existing_pair_validator(notice, completion, valid):
+    from companion_daemon.world_v2.character_interior.structured_role import _ActivityLifecyclePayload
+    contract=StructuredRoleToolContracts().activity_lifecycle_choice(
+        capability_payload=_manifest('opening:first',kind='activity_lifecycle_choice').payload,
+        source_refs=('source:private_self',),recall_allowed=False)
+    root=contract.provider_tools[0]['function']['parameters']['anyOf'][0]
+    schema=root['properties']['decision']['properties']['payload']
+    value={'decision':'no_op','noticed':notice,'user_channel_completion':completion}
+    assert Draft202012Validator(schema).is_valid(value) is valid
+    if valid:
+        _ActivityLifecyclePayload.model_validate_json(json.dumps(value))
+    else:
+        with pytest.raises(ValueError):
+            _ActivityLifecyclePayload.model_validate_json(json.dumps(value))

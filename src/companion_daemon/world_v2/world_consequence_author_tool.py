@@ -40,9 +40,9 @@ _CONTRACTS = {
 
 
 def supports_world_author_tools(provider: object) -> bool:
-    """Native result capability is separate from provider-forced selection.
+    """One declared result schema is separate from its physical carrier.
 
-    Auto carriers still require the exact named result and full local schema
+    Native and explicit JSON carriers retain that exact schema and full local
     validation. Unknown providers retain their original JSON transport.
     """
     origin = getattr(provider, "authority_origin", provider)

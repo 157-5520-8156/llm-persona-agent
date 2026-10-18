@@ -22,11 +22,13 @@ def settings(tmp_path, **kwargs):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('route,adapter,model_name', [
-    ('anthropic_subscription', SubscriptionAnthropicModel, 'gemini-3.8-flash-medium'),
-    ('glm', BackgroundGLMModel, 'GLM-5.3-Flash'),
+@pytest.mark.parametrize('route,adapter,model_name,carrier', [
+    ('anthropic_subscription', SubscriptionAnthropicModel, 'gemini-3.8-flash-medium', 'native'),
+    ('anthropic_subscription', SubscriptionAnthropicModel, 'gemini-3.8-flash-medium', 'native_or_json_object'),
+    ('glm', BackgroundGLMModel, 'GLM-5.3-Flash', 'native'),
+    ('glm', BackgroundGLMModel, 'GLM-5.3-Flash', 'native_or_json_object'),
+    ('glm', BackgroundGLMModel, 'GLM-5.3-Flash', 'json_object'),
 ])
-@pytest.mark.parametrize('carrier', ['native','native_or_json_object'])
 async def test_configured_split_has_one_logical_author_and_actual_provider_lineage(tmp_path, route, adapter, model_name, carrier):
     comp = build_semantic_chat_composition(settings=settings(tmp_path,
         WORLD_V2_BACKGROUND_PROVIDER=route, WORLD_V2_BACKGROUND_MODEL=model_name,

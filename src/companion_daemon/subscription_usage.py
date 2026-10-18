@@ -131,13 +131,19 @@ class BackgroundGLMModel(_BackgroundTokenBudget, DeepSeekChatModel):
     def __init__(self, *args, reasoning_effort="low", tool_result_carrier="native", **kwargs):
         if reasoning_effort not in {"low", "high", "max"}:
             raise ValueError("GLM-5.3 reasoning effort must be low, high or max")
-        if tool_result_carrier not in {"native", "native_or_json_object"}:
+        if tool_result_carrier not in {"native", "native_or_json_object", "json_object"}:
             raise ValueError("unknown GLM tool result carrier")
         self._tool_result_carrier = tool_result_carrier
         super().__init__(*args, thinking_enabled=True, reasoning_effort=reasoning_effort, **kwargs)
         self.model_version = self.model + ":object-tool-root.2"
-        if tool_result_carrier != "native":
+        if tool_result_carrier == "json_object":
+            self.model_version = self.model + ":json-object-schema.1"
+        elif tool_result_carrier != "native":
             self.model_version += ":json-object-carrier.1"
+
+    @property
+    def single_tool_selection_mode(self):
+        return "json_object" if self._tool_result_carrier == "json_object" else super().single_tool_selection_mode
 
     @property
     def single_tool_response_carrier(self):
@@ -171,6 +177,21 @@ class BackgroundGLMModel(_BackgroundTokenBudget, DeepSeekChatModel):
             tools = deepcopy(tools)
             for tool in tools:
                 tool["function"].pop("strict", None)
+        if tools and self._tool_result_carrier == "json_object":
+            if len(tools) != 1 or self._expected_response_tool(tools, tool_choice) is None:
+                raise ValueError("GLM JSON schema transport requires one exact declared schema")
+            from .world_v2.character_interior.local_schema_references import expand_local_schema_references
+            function = tools[0]["function"]
+            schema_message = {
+                "contract": "single-schema-json-object-request.1",
+                "schema_name": function["name"],
+                "response_schema": expand_local_schema_references(function["parameters"]),
+                "instruction": "Use this schema as the response contract instead of the tool carrier. Return the matching JSON object itself, with no wrapper, tool call, fence or explanatory prose. All original evidence and permissions still apply.",
+            }
+            return super().request_payload(
+                [*messages, {"role":"user", "content":json.dumps(schema_message, ensure_ascii=False)}],
+                temperature=temperature, json_object=True, tools=None, tool_choice=None,
+            )
         if tools and any(self._root_union(tool) for tool in tools):
             if len(tools) != 1:
                 raise ValueError("GLM root-union transport requires one declared tool")
@@ -187,6 +208,13 @@ class BackgroundGLMModel(_BackgroundTokenBudget, DeepSeekChatModel):
                                        tools=tools, tool_choice=tool_choice)
 
     def _response_tool_content(self, message, *, tools, tool_choice, expected_tool_name):
+        if self._tool_result_carrier == "json_object":
+            if (not isinstance(message, dict) or message.get("tool_calls")
+                    or len(tools) != 1 or expected_tool_name is None
+                    or tools[0].get("function", {}).get("name") != expected_tool_name
+                    or message.get("native_stop_reason") != "stop"):
+                raise ValueError("GLM JSON schema response requires one complete text object, never a tool call")
+            return exact_json_object_text(message.get("content"))
         raw = super()._response_tool_content(message, tools=tools, tool_choice=tool_choice,
                                             expected_tool_name=expected_tool_name)
         if raw is None:

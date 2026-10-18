@@ -2086,6 +2086,19 @@ class StructuredRoleToolContracts:
                 "required": ["decision", "selected_token"],
             },
         ]
+        # Mirror the existing canonical validator. An optional attention note
+        # never authorizes a user-channel completion, and the two fields are paired.
+        choices = payload_schema["anyOf"]
+        payload_schema["anyOf"] = [
+            {**deepcopy(choice), "properties": {**choice["properties"], **pair},
+             "required": [*choice["required"], *required]}
+            for choice in choices
+            for pair, required in (
+                ({"noticed":{"type":"null"}, "user_channel_completion":{"type":"null"}}, ()),
+                ({"noticed":{"type":"string"}, "user_channel_completion":{"const":"none","type":"string"}},
+                 ("noticed", "user_channel_completion")),
+            )
+        ]
         source_refs = json.loads(source_refs_json)
         if not isinstance(source_refs, list):
             raise ValueError("activity lifecycle source refs are malformed")
@@ -2101,7 +2114,7 @@ class StructuredRoleToolContracts:
                 "character may select one offered opening or explicitly choose no_op; "
                 "optional noticed records only this turn's subjective attention in the audit; "
                 "it never creates a World fact, committed experience or lasting private impression. "
-                "If noticed is present, user_channel_completion must be the const none; "
+                'If noticed is non-null, user_channel_completion must be the JSON string "none"; '
                 "do not narrate a completed send or reply through the user channel. "
                 "The function constrains capability and transport shape only."
             ),

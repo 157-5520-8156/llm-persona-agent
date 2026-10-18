@@ -527,11 +527,22 @@ class ActivityLifecycleWorker:
                     }} if plan is not None else {}),
                 }
             )
+        # Present current material before missed historical windows. Keep
+        # every legal token; this ordering never selects or abandons a plan.
+        def currentness(item):
+            state = item.get("activity_state", {})
+            window = state.get("scheduled_window")
+            if window is None:
+                return (2, 0)
+            elapsed = state["window_elapsed"]
+            boundary = window["closes_at" if elapsed else "opens_at"]
+            return (int(elapsed), -datetime.fromisoformat(boundary).timestamp())
+        opening_summaries.sort(key=currentness)
         capability = {
             "contract": "character-interior-activity-lifecycle-capability.2",
             "catalog_version": catalog.catalog_version,
             "catalog_hash": catalog.catalog_hash,
-            "offered_tokens": [item.opening_token for item in openings],
+            "offered_tokens": [item["opening_token"] for item in opening_summaries],
             "openings": opening_summaries,
         }
         source_refs = (wake_event_ref,)
