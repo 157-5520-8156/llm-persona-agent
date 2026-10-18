@@ -62,13 +62,14 @@ def test_anchor_selection_copies_exact_offered_tuple_and_never_repairs_authority
         decode_outlook_response(json.dumps(response), request_raw=json.dumps(packet))
 
 
-def test_schema_once_history_selector_requires_exact_separately_pinned_schema():
+@pytest.mark.parametrize("contract", ["world-outlook-native.7", "world-outlook-native.8"])
+def test_schema_once_history_selector_requires_exact_separately_pinned_schema(contract):
     from companion_daemon.world_v2.world_outlook_request import (
         ROLLING_REFERENCE_CONTRACT, decode_outlook_response,
     )
 
     anchor = {"source_ref": "occurrence:one", "authority_hash": "a" * 64}
-    packet = {"response_tool_contract": "world-outlook-native.7",
+    packet = {"response_tool_contract": contract,
               "response_reference_contract": ROLLING_REFERENCE_CONTRACT,
               "draft_schema_carrier": "response_tools.world_outlook_v6",
               "current_outlook": {"threads": [], "opportunities": []},
@@ -89,7 +90,7 @@ def test_schema_once_history_selector_requires_exact_separately_pinned_schema():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("original_contract", ["world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.7"])
+@pytest.mark.parametrize("original_contract", ["world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.7", "world-outlook-native.8"])
 async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contract(tmp_path, monkeypatch, original_contract):
     from companion_daemon.subscription_usage import BackgroundGLMModel, SubscriptionTokenLedger
     from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
@@ -102,7 +103,8 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
     runtime._rolling_planning = True
     monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime._NATIVE_RESULT", original_contract)
     context = {}
-    if original_contract == "world-outlook-native.7":
+    json_carrier = original_contract == "world-outlook-native.8"
+    if original_contract in {"world-outlook-native.7", "world-outlook-native.8"}:
         import companion_daemon.world_v2.world_outlook_runtime as module
         original_schema = module.outlook_author_schema
 
@@ -116,8 +118,16 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
         body = json.loads(request.content)
         requests.append(body)
         packet = decode_outlook_request(body["messages"][1]["content"])
-        assert body["tool_choice"] == "auto" and "response_format" not in body
-        assert "For each response, call world_outlook_v6 once" in body["messages"][0]["content"]
+        if json_carrier:
+            assert body["response_format"] == {"type": "json_object"} and "tools" not in body
+            assert "Do not return an ordinary text/JSON message" not in body["messages"][0]["content"]
+            assert 'This request requires exactly {"decision":"revise","draft":<schema>}' in body["messages"][0]["content"]
+            envelope = json.loads(body["messages"][-1]["content"])
+            tool = {"function": {"parameters": envelope["response_schema"]}}
+        else:
+            assert body["tool_choice"] == "auto" and "response_format" not in body
+            assert "For each response, call world_outlook_v6 once" in body["messages"][0]["content"]
+            tool = body["tools"][0]
         assert "Maintain at least two distinct ongoing external story threads" in body["messages"][0]["content"]
         assert "Respond once per world_changes source" in body["messages"][0]["content"]
         value = draft_value(wake)
@@ -129,11 +139,10 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
         from test_story_outlook_replanning import apply_story_contract
         value = apply_story_contract(value, packet)
         result = {"decision": "revise", "draft": value}
-        tool = body["tools"][0]
         Draft202012Validator.check_schema(tool["function"]["parameters"])
         assert Draft202012Validator(tool["function"]["parameters"]).is_valid(result)
         assert packet["response_tool_contract"] == original_contract
-        if original_contract == "world-outlook-native.7":
+        if original_contract in {"world-outlook-native.7", "world-outlook-native.8"}:
             assert "draft_schema" not in packet
             assert packet["draft_schema_carrier"] == "response_tools.world_outlook_v6"
             assert packet["world_context"] == {**context, "slices": {}}
@@ -142,6 +151,11 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
             assert len(json.dumps(tool).encode()) + len(body["messages"][1]["content"].encode()) > 100_000
         if len(requests) == 1:
             result["draft"]["actor_ref"] = "actor:wrong-owner"
+        elif json_carrier:
+            assistant, feedback = body["messages"][-3:-1]  # Last is the same schema clause.
+            assert assistant["role"] == "assistant" and "tool_calls" not in assistant
+            assert json.loads(assistant["content"])["draft"]["actor_ref"] == "actor:wrong-owner"
+            assert feedback["role"] == "user" and "World, owner or predecessor mismatch" in feedback["content"]
         elif original_contract in {"world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.7"}:
             assistant, feedback = body["messages"][-2:]
             assert assistant["role"] == "assistant" and assistant["content"] is None
@@ -151,12 +165,17 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
             assert "World, owner or predecessor mismatch" in feedback["content"]
         else:
             assert [m["role"] for m in body["messages"][-2:]] == ["assistant", "user"]
+        if json_carrier:
+            return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {
+                "role": "assistant", "content": json.dumps(result)}}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20}})
         return httpx.Response(200, json={"choices": [{"finish_reason": "tool_calls", "message": {
             "role": "assistant", "content": None, "tool_calls": [{"id": "result", "type": "function", "function": {
                 "name": "world_outlook_v6", "arguments": json.dumps(result)}}]}}],
             "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20}})
 
     model = BackgroundGLMModel("test", "https://fixture.invalid/v1", "GLM-5.3-Flash",
+        tool_result_carrier="json_object" if json_carrier else "native",
         token_ledger=SubscriptionTokenLedger(tmp_path / "tokens.sqlite"), transport=httpx.MockTransport(provider))
     runtime.author = model
     class Crash(BaseException):
@@ -464,6 +483,28 @@ def test_outlook_compacts_only_proofs_after_admitting_both_life_sources():
     assert all("source" not in item["value"] and "source_bindings" not in item["value"]
                for item in shown["slices"]["world_life"]["items"])
     assert len(context["slices"]["world_life"]["items"]) == 2
+
+
+def test_outlook_proof_compaction_keeps_privacy_completeness_refs_and_semantics():
+    from copy import deepcopy
+    from companion_daemon.world_v2.world_outlook_runtime import _outlook_presentation_context
+
+    lane = {"availability": "available", "source_refs": ["event:one", "event:two"],
+            "source_hash": "a" * 64, "resolver_proof": {
+                "explicit_authority_refs": ["event:one", "event:two"],
+                "completeness": "bounded", "privacy_floor": "private",
+                "snapshot_hash": "b" * 64}, "items": [{"item_ref": "fact:one", "value": {"text": "原事实"}}]}
+    context = {"slices": {"relevant_facts": lane,
+                          "empty": {k: v for k, v in lane.items() if k != "items"}}}
+    original = deepcopy(context)
+    shown = _outlook_presentation_context(context)
+    assert context == original
+    for name, presented in shown["slices"].items():
+        assert presented["source_refs"] == lane["source_refs"]
+        assert presented["availability"] == "available"
+        assert presented["resolver_proof"] == {"completeness": "bounded", "privacy_floor": "private"}
+        assert "source_hash" not in presented
+    assert shown["slices"]["relevant_facts"]["items"] == lane["items"]
 
 
 @pytest.mark.asyncio

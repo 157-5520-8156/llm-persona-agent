@@ -29,8 +29,8 @@ from .world_outlook import (
 
 _WORKING_SOURCES = "outlook-working-sources.1"
 _ROLLING_PLANNING = "rolling-world-planning.3"
-_NATIVE_RESULT = "world-outlook-native.7"
-_NATIVE_RESULTS = frozenset({"world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.5", "world-outlook-native.6", _NATIVE_RESULT})
+_NATIVE_RESULT = "world-outlook-native.8"
+_NATIVE_RESULTS = frozenset({"world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.5", "world-outlook-native.6", "world-outlook-native.7", _NATIVE_RESULT})
 _TERMINAL_SOURCE_EVENTS = frozenset({
     "ActivityCompleted", "ActivityAbandoned", "WorldOccurrenceSettled",
     "WorldOccurrenceCancelled", "WorldOccurrenceExpired", "FactCommitted",
@@ -73,9 +73,20 @@ def _outlook_presentation_context(context):
         return context
     presented_slices = {}
     for name, lane in slices.items():
-        items = lane.get("items") if isinstance(lane, dict) else None
-        if not isinstance(items, list):
+        if not isinstance(lane, dict):
             presented_slices[name] = lane
+            continue
+        shown_lane = {key: value for key, value in lane.items() if key != "source_hash"}
+        proof = lane.get("resolver_proof")
+        if isinstance(proof, dict):
+            # Full resolver proofs stay in the pinned Context. Availability,
+            # privacy/completeness and all offered source refs stay visible;
+            # repeated cursor hashes and resolver audit lists are not evidence.
+            shown_lane["resolver_proof"] = {key: value for key, value in proof.items()
+                                            if key in {"completeness", "privacy_floor"}}
+        items = lane.get("items")
+        if not isinstance(items, list):
+            presented_slices[name] = shown_lane
             continue
         presented = []
         for item in items:
@@ -88,7 +99,7 @@ def _outlook_presentation_context(context):
                 shown["value"] = {key: value for key, value in item["value"].items()
                     if key not in {"source_bindings", "source", "proposal_source", "result_payload_ref", "result_payload_hash"}}
             presented.append(shown)
-        presented_slices[name] = {**lane, "items": presented}
+        presented_slices[name] = {**shown_lane, "items": presented}
     return {**context, "slices": presented_slices}
 
 
@@ -426,7 +437,10 @@ class WorldOutlookRuntime:
         if (not candidate.long_term or max(s.ends_on for s in candidate.long_term) < today + timedelta(days=minimum_days)
                 or any(s.ends_on < today or s.ends_on > today + timedelta(days=730) for s in candidate.long_term)
                 or candidate.review_at > now + timedelta(days=7)):
-            raise ValueError(f"rolling outline must cover {minimum_days}..730 future days, omit expired stages and review within seven days")
+            raise ValueError(f"rolling outline must cover {minimum_days}..730 future days, omit expired stages and review within seven days; "
+                f"coverage_end={max((s.ends_on for s in candidate.long_term), default=None)}, "
+                f"required_end>={today + timedelta(days=minimum_days)}, review_at={candidate.review_at}, "
+                f"latest_review_at={now + timedelta(days=7)}")
         covered = today - timedelta(days=1)
         for stage in sorted(candidate.long_term, key=lambda s: s.starts_on):
             if stage.starts_on > covered + timedelta(days=1):
@@ -914,6 +928,8 @@ class WorldOutlookRuntime:
                 "retry_epoch": retry_epoch,
                 **({"rolling_planning": _ROLLING_PLANNING} if self._rolling_planning else {}),
                 **({"response_tool_contract": _NATIVE_RESULT} if native_result else {}),
+                **({"response_carrier": getattr(getattr(self.author, "authority_origin", self.author),
+                    "single_tool_response_carrier", "native")} if native_result and _NATIVE_RESULT == "world-outlook-native.8" else {}),
                 "offers": digest(self._relevant_offers({n["opportunity_id"] for n in view["opportunities"]}, sources)),
                 **({"authoring_constraints_hash": self._authoring_constraints_hash}
                    if self._authoring_constraints_hash is not None else {}),
@@ -1052,6 +1068,8 @@ class WorldOutlookRuntime:
                 "response_reference_contract": ROLLING_REFERENCE_CONTRACT if self._rolling_planning else RESPONSE_REFERENCE_CONTRACT,
                 **({"response_tool_contract": _NATIVE_RESULT} if native_result else {}),
                 **({"new_opportunity_ids": list(new_ids)} if new_ids is not None else {}),
+                **({"response_carrier": getattr(getattr(self.author, "authority_origin", self.author),
+                    "single_tool_response_carrier", "native")} if native_result and _NATIVE_RESULT == "world-outlook-native.8" else {}),
                 "world_id": projection.world_id,
                 "actor_ref": self.actor_ref,
                 "logical_time": now.isoformat(),
@@ -1122,7 +1140,7 @@ class WorldOutlookRuntime:
                 response_tools = [outlook_result_tool(packet["draft_schema"], allow_keep=not (
                     packet["rolling_preparation"]["due"] or packet["rolling_preparation"]["outline_due"]
                     or packet.get("world_changes")))]
-                if packet["response_tool_contract"] == "world-outlook-native.7":
+                if packet["response_tool_contract"] in {"world-outlook-native.7", "world-outlook-native.8"}:
                     # The exact schema is already pinned in response_tools and supplied
                     # by the provider carrier. Do not duplicate it in the evidence body.
                     packet.pop("draft_schema")
@@ -1130,7 +1148,14 @@ class WorldOutlookRuntime:
             system = _ROLLING_SYSTEM if self._rolling_planning else _SYSTEM
             if native_result:
                 before, _, after = system.partition("Return a JSON object, exactly")
-                system = before + "For each response, call world_outlook_v6 once with your complete candidate. If validation rejects a candidate, your next response must be a corrected function call. Do not return an ordinary text/JSON message." + after[after.index("\n"): ]
+                if packet.get("response_carrier") == "json_object":
+                    instruction = ("Return exactly one JSON object matching the declared response schema. "
+                        "If validation rejects it, return a corrected JSON object. Do not call a tool.")
+                    if response_tools[0]["function"]["parameters"]["properties"]["decision"]["enum"] == ["revise"]:
+                        instruction += ' This request requires exactly {"decision":"revise","draft":<schema>}; keep, root review_at and root reason are not offered.'
+                else:
+                    instruction = "For each response, call world_outlook_v6 once with your complete candidate. If validation rejects a candidate, your next response must be a corrected function call. Do not return an ordinary text/JSON message."
+                system = before + instruction + after[after.index("\n"): ]
             messages = [
                 {"role": "system", "content": system + "\n" + PRESENTATION_GUIDE + ("\n" + ROLLING_PRESENTATION_GUIDE if self._rolling_planning else "")},
                 {"role": "user", "content": (_encode_story_request(packet) if self._rolling_planning else
@@ -1268,7 +1293,8 @@ class WorldOutlookRuntime:
                 )
                 if ordinal == 0 and raw is not None:
                     error = "Correct the same outlook using only the supplied sources. Exact error: " + str(exc)[:1000]
-                    if pinned_request.get("response_tool_contract") in _NATIVE_RESULTS - {"world-outlook-native.1", "world-outlook-native.2"}:
+                    if (pinned_request.get("response_tool_contract") in _NATIVE_RESULTS - {"world-outlook-native.1", "world-outlook-native.2"}
+                            and pinned_request.get("response_carrier") != "json_object"):
                         # These are the real, identity-checked native arguments.
                         # The local call id only pairs the validation feedback;
                         # no World effect or successful submission is invented.

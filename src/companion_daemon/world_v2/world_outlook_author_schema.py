@@ -60,7 +60,7 @@ def outlook_author_schema(*, basis_refs=None, npc_privacy_floors=(), prior_oppor
             planning["properties"]["review_at"]["description"] = review
             schema["properties"]["review_at"]["description"] = review
             planning["properties"]["detailed_through"]["description"] = f"At least {(local_day + timedelta(days=7)).isoformat()}, or ends_on for a finite arrangement ending sooner."
-            schema["properties"]["long_term"]["description"] = f"Cover continuously from {local_day.isoformat()} for at least one year (365 days); explicitly describe uncertain intervals."
+            schema["properties"]["long_term"]["description"] = f"Cover continuously from {local_day.isoformat()} for at least one year through {(local_day + timedelta(days=365)).isoformat()} (365 future days, not the preceding date); explicitly describe uncertain intervals."
         if history_offer is not None:
             offered = {item.anchor: item.privacy_class for item in history_offer.items}
             prior_threads = tuple(t for t in prior_threads if all(a in offered for a in t.history_anchors))
