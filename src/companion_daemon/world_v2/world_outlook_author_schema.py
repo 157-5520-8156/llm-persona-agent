@@ -190,7 +190,7 @@ def outlook_author_schema(*, basis_refs=None, npc_privacy_floors=(), prior_oppor
     return without_annotations(schema)
 
 
-def outlook_result_tool(draft_schema, *, allow_keep=True):
+def outlook_result_tool(draft_schema, *, allow_keep=True, json_object=False):
     """Native object-root carrier for the same two canonical result shapes."""
     schema = deepcopy(draft_schema)
     definitions = schema.pop("$defs")
@@ -211,4 +211,17 @@ def outlook_result_tool(draft_schema, *, allow_keep=True):
         parameters["properties"].pop("reason")
         parameters["required"] = ["decision", "draft"]
         parameters.pop("allOf")
+    elif json_object:
+        # Same accepted objects, but each JSON branch shows only its own fields.
+        # Native callers retain the original object-root carrier and saved ABI.
+        parameters = tool["function"]["parameters"]
+        fields = parameters["properties"]
+        tool["function"]["parameters"] = {"$defs": definitions, "oneOf": [
+            {"type": "object", "additionalProperties": False,
+             "properties": {"decision": {"const": "keep"}, **{k: fields[k] for k in ("review_at", "reason")}},
+             "required": ["decision", "review_at", "reason"]},
+            {"type": "object", "additionalProperties": False,
+             "properties": {"decision": {"const": "revise"}, "draft": fields["draft"]},
+             "required": ["decision", "draft"]},
+        ]}
     return tool

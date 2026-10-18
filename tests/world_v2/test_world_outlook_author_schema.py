@@ -43,6 +43,24 @@ def test_native_schema_requires_pinned_predecessor_and_due_publications():
     assert not validator.is_valid({"decision": "keep", "review_at": NOW.isoformat(), "reason": "尚未准备"})
 
 
+def test_json_result_branches_preserve_native_validation_without_mixed_field_inventory():
+    from itertools import combinations
+    from companion_daemon.world_v2.world_outlook_author_schema import outlook_result_tool
+
+    schema = {"$defs": {}, "type": "object", "properties": {"value": {"type": "integer"}},
+              "required": ["value"], "additionalProperties": False}
+    native = outlook_result_tool(schema)["function"]["parameters"]
+    text = outlook_result_tool(schema, json_object=True)["function"]["parameters"]
+    assert "oneOf" in text and "properties" not in text
+    validators = [Draft202012Validator(s) for s in (native, text)]
+    fields = {"draft": {"value": 1}, "review_at": "2026-10-20T00:00:00Z", "reason": "仍适用", "metadata": True}
+    for decision in ("keep", "revise", "unknown", None):
+        for count in range(5):
+            for keys in combinations(fields, count):
+                value = {"decision": decision, **{k: fields[k] for k in keys}}
+                assert validators[0].is_valid(value) == validators[1].is_valid(value)
+
+
 def test_rolling_date_bounds_use_the_planning_timezone_across_utc_midnight():
     from datetime import datetime
     schema = outlook_author_schema(rolling_planning=True, now=datetime.fromisoformat("2026-10-17T20:00:00+00:00"))

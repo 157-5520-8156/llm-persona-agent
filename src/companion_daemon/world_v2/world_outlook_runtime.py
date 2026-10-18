@@ -29,13 +29,62 @@ from .world_outlook import (
 
 _WORKING_SOURCES = "outlook-working-sources.1"
 _ROLLING_PLANNING = "rolling-world-planning.3"
-_NATIVE_RESULT = "world-outlook-native.8"
-_NATIVE_RESULTS = frozenset({"world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.5", "world-outlook-native.6", "world-outlook-native.7", _NATIVE_RESULT})
+_NATIVE_RESULT = "world-outlook-native.9"
+_NATIVE_RESULTS = frozenset({"world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.5", "world-outlook-native.6", "world-outlook-native.7", "world-outlook-native.8", _NATIVE_RESULT})
 _TERMINAL_SOURCE_EVENTS = frozenset({
     "ActivityCompleted", "ActivityAbandoned", "WorldOccurrenceSettled",
     "WorldOccurrenceCancelled", "WorldOccurrenceExpired", "FactCommitted",
     "FactCorrected", "FactWithdrawn", "FactCorrectionCompensated", "FactCommittedV2",
 })
+
+
+def _outlook_reference_errors(candidate, pinned):
+    """Diagnose independent reference errors even when the outer shape failed.
+
+    This never repairs, accepts or drops fields. Only the original pinned
+    request supplies the expected IDs/tokens; all canonical validators still run.
+    """
+    draft = candidate.get("draft") if isinstance(candidate, dict) else None
+    if not isinstance(draft, dict):
+        return []
+    sources = {s["source_ref"]: s for s in pinned.get("condition_sources", ())}
+    hashes = {h["anchor"]["authority_hash"] for h in pinned.get("history_offer", {}).get("items", ())}
+    prior = {n["opportunity_id"]: {k: v for k, v in n.items() if k != "state"}
+             for n in pinned.get("current_outlook", {}).get("opportunities", ())}
+    basis = set(pinned.get("basis_refs", ()))
+    errors = []
+    for field in ("opportunities", "long_term"):
+        nodes = draft.get(field)
+        if not isinstance(nodes, list):
+            continue
+        for i, node in enumerate(nodes):
+            if not isinstance(node, dict):
+                continue
+            base = f"draft.{field}[{i}]"
+            refs = node.get("basis_refs")
+            identity = node.get("opportunity_id")
+            prior_node = prior.get(identity) if isinstance(identity, str) else None
+            if field == "opportunities" and node != prior_node and isinstance(refs, list):
+                for j, ref in enumerate(refs):
+                    if isinstance(ref, str) and len(ref) <= 512 and ref not in basis:
+                        errors.append({"path": f"{base}.basis_refs[{j}]", "unavailable_ref": ref,
+                                       "required_source": "top-level basis_refs"})
+            conditions = node.get("conditions")
+            if not isinstance(conditions, list):
+                continue
+            for j, condition in enumerate(conditions):
+                if not isinstance(condition, dict) or not isinstance(condition.get("source_ref"), str):
+                    continue
+                source = sources.get(condition["source_ref"])
+                token = condition.get("unchanged_token")
+                if source is not None and isinstance(token, str) and len(token) <= 128 and token != source["token"]:
+                    errors.append({"path": f"{base}.conditions[{j}].unchanged_token",
+                                   "source_ref": condition["source_ref"], "received": token,
+                                   "required_token": source["token"],
+                                   "received_is_history_authority_hash": token in hashes})
+            if len(errors) >= 4:
+                return errors[:4]
+    return errors[:4]
 
 
 def _planning_source_refs(view, context, history_offer, story):
@@ -929,7 +978,7 @@ class WorldOutlookRuntime:
                 **({"rolling_planning": _ROLLING_PLANNING} if self._rolling_planning else {}),
                 **({"response_tool_contract": _NATIVE_RESULT} if native_result else {}),
                 **({"response_carrier": getattr(getattr(self.author, "authority_origin", self.author),
-                    "single_tool_response_carrier", "native")} if native_result and _NATIVE_RESULT == "world-outlook-native.8" else {}),
+                    "single_tool_response_carrier", "native")} if native_result and _NATIVE_RESULT in {"world-outlook-native.8", "world-outlook-native.9"} else {}),
                 "offers": digest(self._relevant_offers({n["opportunity_id"] for n in view["opportunities"]}, sources)),
                 **({"authoring_constraints_hash": self._authoring_constraints_hash}
                    if self._authoring_constraints_hash is not None else {}),
@@ -1069,7 +1118,7 @@ class WorldOutlookRuntime:
                 **({"response_tool_contract": _NATIVE_RESULT} if native_result else {}),
                 **({"new_opportunity_ids": list(new_ids)} if new_ids is not None else {}),
                 **({"response_carrier": getattr(getattr(self.author, "authority_origin", self.author),
-                    "single_tool_response_carrier", "native")} if native_result and _NATIVE_RESULT == "world-outlook-native.8" else {}),
+                    "single_tool_response_carrier", "native")} if native_result and _NATIVE_RESULT in {"world-outlook-native.8", "world-outlook-native.9"} else {}),
                 "world_id": projection.world_id,
                 "actor_ref": self.actor_ref,
                 "logical_time": now.isoformat(),
@@ -1137,10 +1186,12 @@ class WorldOutlookRuntime:
                 ),
             }
             if native_result:
-                response_tools = [outlook_result_tool(packet["draft_schema"], allow_keep=not (
-                    packet["rolling_preparation"]["due"] or packet["rolling_preparation"]["outline_due"]
-                    or packet.get("world_changes")))]
-                if packet["response_tool_contract"] in {"world-outlook-native.7", "world-outlook-native.8"}:
+                allow_keep = not (packet["rolling_preparation"]["due"] or packet["rolling_preparation"]["outline_due"]
+                                  or packet.get("world_changes"))
+                response_tools = [outlook_result_tool(packet["draft_schema"], allow_keep=allow_keep,
+                    **({"json_object": True} if packet["response_tool_contract"] == "world-outlook-native.9"
+                       and packet.get("response_carrier") == "json_object" else {}))]
+                if packet["response_tool_contract"] in {"world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9"}:
                     # The exact schema is already pinned in response_tools and supplied
                     # by the provider carrier. Do not duplicate it in the evidence body.
                     packet.pop("draft_schema")
@@ -1151,8 +1202,12 @@ class WorldOutlookRuntime:
                 if packet.get("response_carrier") == "json_object":
                     instruction = ("Return exactly one JSON object matching the declared response schema. "
                         "If validation rejects it, return a corrected JSON object. Do not call a tool.")
-                    if response_tools[0]["function"]["parameters"]["properties"]["decision"]["enum"] == ["revise"]:
+                    if not allow_keep:
                         instruction += ' This request requires exactly {"decision":"revise","draft":<schema>}; keep, root review_at and root reason are not offered.'
+                    elif packet["response_tool_contract"] == "world-outlook-native.9":
+                        instruction += ' Return exactly {"decision":"keep","review_at":"future ISO timestamp","reason":"why keep"} OR {"decision":"revise","draft":<schema>}. Never add request metadata or notes to either object.'
+                    if packet["response_tool_contract"] == "world-outlook-native.9":
+                        instruction += ' A condition unchanged_token copies condition_sources.token for that source_ref; history anchor authority_hash is a different namespace.'
                 else:
                     instruction = "For each response, call world_outlook_v6 once with your complete candidate. If validation rejects a candidate, your next response must be a corrected function call. Do not return an ordinary text/JSON message."
                 system = before + instruction + after[after.index("\n"): ]
@@ -1173,6 +1228,7 @@ class WorldOutlookRuntime:
         draft = None
         for ordinal in range(2):
             raw = None
+            obj = None
             try:
                 if ordinal in cached_attempts:
                     cached = cached_attempts[ordinal]
@@ -1293,6 +1349,10 @@ class WorldOutlookRuntime:
                 )
                 if ordinal == 0 and raw is not None:
                     error = "Correct the same outlook using only the supplied sources. Exact error: " + str(exc)[:1000]
+                    if pinned_request.get("response_tool_contract") == "world-outlook-native.9":
+                        reference_errors = _outlook_reference_errors(obj, pinned_request)
+                        if reference_errors:
+                            error += " Independent reference errors (do not confuse authority_hash with a state token): " + json.dumps(reference_errors, ensure_ascii=False)
                     if (pinned_request.get("response_tool_contract") in _NATIVE_RESULTS - {"world-outlook-native.1", "world-outlook-native.2"}
                             and pinned_request.get("response_carrier") != "json_object"):
                         # These are the real, identity-checked native arguments.

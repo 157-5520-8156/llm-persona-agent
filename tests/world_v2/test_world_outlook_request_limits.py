@@ -62,7 +62,7 @@ def test_anchor_selection_copies_exact_offered_tuple_and_never_repairs_authority
         decode_outlook_response(json.dumps(response), request_raw=json.dumps(packet))
 
 
-@pytest.mark.parametrize("contract", ["world-outlook-native.7", "world-outlook-native.8"])
+@pytest.mark.parametrize("contract", ["world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9"])
 def test_schema_once_history_selector_requires_exact_separately_pinned_schema(contract):
     from companion_daemon.world_v2.world_outlook_request import (
         ROLLING_REFERENCE_CONTRACT, decode_outlook_response,
@@ -90,7 +90,7 @@ def test_schema_once_history_selector_requires_exact_separately_pinned_schema(co
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("original_contract", ["world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.7", "world-outlook-native.8"])
+@pytest.mark.parametrize("original_contract", ["world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9"])
 async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contract(tmp_path, monkeypatch, original_contract):
     from companion_daemon.subscription_usage import BackgroundGLMModel, SubscriptionTokenLedger
     from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
@@ -103,8 +103,8 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
     runtime._rolling_planning = True
     monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime._NATIVE_RESULT", original_contract)
     context = {}
-    json_carrier = original_contract == "world-outlook-native.8"
-    if original_contract in {"world-outlook-native.7", "world-outlook-native.8"}:
+    json_carrier = original_contract in {"world-outlook-native.8", "world-outlook-native.9"}
+    if original_contract in {"world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9"}:
         import companion_daemon.world_v2.world_outlook_runtime as module
         original_schema = module.outlook_author_schema
 
@@ -142,7 +142,7 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
         Draft202012Validator.check_schema(tool["function"]["parameters"])
         assert Draft202012Validator(tool["function"]["parameters"]).is_valid(result)
         assert packet["response_tool_contract"] == original_contract
-        if original_contract in {"world-outlook-native.7", "world-outlook-native.8"}:
+        if original_contract in {"world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9"}:
             assert "draft_schema" not in packet
             assert packet["draft_schema_carrier"] == "response_tools.world_outlook_v6"
             assert packet["world_context"] == {**context, "slices": {}}
@@ -150,12 +150,23 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
             assert len(body["messages"][1]["content"].encode()) < 100_000
             assert len(json.dumps(tool).encode()) + len(body["messages"][1]["content"].encode()) > 100_000
         if len(requests) == 1:
-            result["draft"]["actor_ref"] = "actor:wrong-owner"
+            if original_contract == "world-outlook-native.9":
+                result["draft_schema_carrier"] = "copied-request-metadata"
+                result["draft"]["opportunities"][0]["basis_refs"] = ["event:not-offered"]
+            else:
+                result["draft"]["actor_ref"] = "actor:wrong-owner"
         elif json_carrier:
             assistant, feedback = body["messages"][-3:-1]  # Last is the same schema clause.
             assert assistant["role"] == "assistant" and "tool_calls" not in assistant
-            assert json.loads(assistant["content"])["draft"]["actor_ref"] == "actor:wrong-owner"
-            assert feedback["role"] == "user" and "World, owner or predecessor mismatch" in feedback["content"]
+            if original_contract == "world-outlook-native.9":
+                assert json.loads(assistant["content"])["draft_schema_carrier"] == "copied-request-metadata"
+                assert "outlook response shape invalid" in feedback["content"]
+                assert '"unavailable_ref": "event:not-offered"' in feedback["content"]
+                assert '"path": "draft.opportunities[0].basis_refs[0]"' in feedback["content"]
+            else:
+                assert json.loads(assistant["content"])["draft"]["actor_ref"] == "actor:wrong-owner"
+                assert "World, owner or predecessor mismatch" in feedback["content"]
+            assert feedback["role"] == "user"
         elif original_contract in {"world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.7"}:
             assistant, feedback = body["messages"][-2:]
             assert assistant["role"] == "assistant" and assistant["content"] is None
@@ -505,6 +516,25 @@ def test_outlook_proof_compaction_keeps_privacy_completeness_refs_and_semantics(
         assert presented["resolver_proof"] == {"completeness": "bounded", "privacy_floor": "private"}
         assert "source_hash" not in presented
     assert shown["slices"]["relevant_facts"]["items"] == lane["items"]
+
+
+def test_outlook_reference_feedback_finds_hash_confusion_despite_wrong_root_shape():
+    from copy import deepcopy
+    from companion_daemon.world_v2.world_outlook_runtime import _outlook_reference_errors
+
+    candidate = {"decision": "revise", "draft_schema_carrier": "request-metadata",
+                 "draft": {"opportunities": [{"conditions": [{"source_ref": "occurrence:one",
+                                                              "unchanged_token": "a" * 64}]}]}}
+    pinned = {"condition_sources": [{"source_ref": "occurrence:one", "token": "b" * 64}],
+              "history_offer": {"items": [{"anchor": {"authority_hash": "a" * 64}}]}}
+    original = deepcopy(candidate)
+    errors = _outlook_reference_errors(candidate, pinned)
+    assert candidate == original  # Feedback is not local repair or admission.
+    assert errors == [{"path": "draft.opportunities[0].conditions[0].unchanged_token",
+                       "source_ref": "occurrence:one", "received": "a" * 64,
+                       "required_token": "b" * 64, "received_is_history_authority_hash": True}]
+    candidate["draft"]["opportunities"][0]["conditions"][0]["unchanged_token"] = "b" * 64
+    assert _outlook_reference_errors(candidate, pinned) == []
 
 
 @pytest.mark.asyncio

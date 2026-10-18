@@ -138,7 +138,7 @@ def decode_outlook_response(raw, *, request_raw, response_tools=None):
                         restored.append(item)
                 if field in response["draft"]:
                     response["draft"][field] = restored
-            if expanded.get("response_tool_contract") in {"world-outlook-native.7", "world-outlook-native.8"}:
+            if expanded.get("response_tool_contract") in {"world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9"}:
                 # Only the separately pinned provider schema grants selectors. A
                 # marker in model text is never a replacement for that contract.
                 if (not isinstance(response_tools, list) or len(response_tools) != 1
