@@ -49,8 +49,7 @@ def _outlook_reference_errors(candidate, pinned):
         return []
     sources = {s["source_ref"]: s for s in pinned.get("condition_sources", ())}
     hashes = {h["anchor"]["authority_hash"] for h in pinned.get("history_offer", {}).get("items", ())}
-    prior = {n["opportunity_id"]: {k: v for k, v in n.items() if k != "state"}
-             for n in pinned.get("current_outlook", {}).get("opportunities", ())}
+    prior = {n["opportunity_id"] for n in pinned.get("current_outlook", {}).get("opportunities", ())}
     basis = set(pinned.get("basis_refs", ()))
     errors = []
     for field in ("opportunities", "long_term"):
@@ -63,8 +62,10 @@ def _outlook_reference_errors(candidate, pinned):
             base = f"draft.{field}[{i}]"
             refs = node.get("basis_refs")
             identity = node.get("opportunity_id")
-            prior_node = prior.get(identity) if isinstance(identity, str) else None
-            if field == "opportunities" and node != prior_node and isinstance(refs, list):
+            # Canonical validation owns whether a prior node is unchanged;
+            # raw equality would misclassify legal omitted default fields.
+            prior_identity = isinstance(identity, str) and identity in prior
+            if field == "opportunities" and not prior_identity and isinstance(refs, list):
                 for j, ref in enumerate(refs):
                     if isinstance(ref, str) and len(ref) <= 512 and ref not in basis:
                         errors.append({"path": f"{base}.basis_refs[{j}]", "unavailable_ref": ref,

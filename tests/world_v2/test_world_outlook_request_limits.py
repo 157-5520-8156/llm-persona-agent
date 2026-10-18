@@ -537,6 +537,19 @@ def test_outlook_reference_feedback_finds_hash_confusion_despite_wrong_root_shap
     assert _outlook_reference_errors(candidate, pinned) == []
 
 
+def test_reference_feedback_leaves_prior_default_compatibility_to_canonical_validation():
+    from companion_daemon.world_v2.world_outlook_runtime import _outlook_reference_errors
+
+    prior = {"opportunity_id": "old", "basis_refs": ["event:old-authority"],
+             "conditions": [], "after_opportunities": [], "state": "waiting"}
+    pinned = {"basis_refs": ["event:current-authority"], "current_outlook": {"opportunities": [prior]}}
+    assert _outlook_reference_errors({"draft": {"opportunities": [
+        {"opportunity_id": "old", "basis_refs": ["event:old-authority"]},
+    ]}}, pinned) == []
+    # Malformed identity must not cause an exception in the error-report path.
+    assert _outlook_reference_errors({"draft": {"opportunities": [{"opportunity_id": []}]}}, pinned) == []
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("interrupted", [False, True])
 async def test_script_retry_on_later_clock_reuses_its_execution_proposal(
