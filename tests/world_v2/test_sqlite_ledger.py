@@ -2062,3 +2062,145 @@ def test_event_page_uses_event_sequence_when_one_commit_spans_pages(tmp_path, sq
     finally:
         if sqlite:
             ledger.close()
+
+
+
+@pytest.fixture
+def cold_history_case(tmp_path):
+    ledger = SQLiteWorldLedger(path=tmp_path / "cold.sqlite", world_id="world-sqlite-test")
+    ledger.commit(
+        [event("cold-1", "cold-obs-1")],
+        commit_id="cold-1",
+        expected_world_revision=0,
+        expected_deliberation_revision=0,
+    )
+    historical = ledger.project()
+    cursor = ProjectionCursor(
+        world_revision=historical.world_revision,
+        deliberation_revision=0,
+        ledger_sequence=historical.ledger_sequence,
+    )
+    ledger.commit(
+        [event("cold-2", "cold-obs-2")],
+        commit_id="cold-2",
+        expected_world_revision=1,
+        expected_deliberation_revision=0,
+    )
+    ledger._historical_projection_cache.clear()
+    ledger._historical_replay_prefix_cache.clear()
+    try:
+        yield ledger, cursor, historical
+    finally:
+        ledger.close()
+
+
+def test_cold_history_does_not_hold_the_live_head_or_append_lock(cold_history_case, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    ledger, cursor, historical = cold_history_case
+    started, release = Event(), Event()
+    original = SQLiteWorldLedger._replay_locked
+
+    def paused(self, **kwargs):
+        started.set()
+        assert release.wait(5)
+        return original(self, **kwargs)
+
+    monkeypatch.setattr(SQLiteWorldLedger, "_replay_locked", paused)
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        cold = pool.submit(ledger.project_at, cursor)
+        assert started.wait(2)
+        try:
+            current = pool.submit(ledger.project).result(timeout=1)
+            assert current.observation_refs == ("cold-obs-1", "cold-obs-2")
+            pool.submit(
+                ledger.commit,
+                [event("cold-3", "cold-obs-3")],
+                commit_id="cold-3",
+                expected_world_revision=2,
+                expected_deliberation_revision=0,
+            ).result(timeout=1)
+        finally:
+            release.set()
+        assert cold.result(timeout=3) == historical
+    assert ledger.project().observation_refs == ("cold-obs-1", "cold-obs-2", "cold-obs-3")
+
+
+def test_historical_reader_is_read_only_and_close_waits_for_it(cold_history_case, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+    from threading import Event
+
+    ledger, cursor, historical = cold_history_case
+    started, release = Event(), Event()
+    original = SQLiteWorldLedger._replay_locked
+
+    def paused(self, **kwargs):
+        with pytest.raises(sqlite3.OperationalError):
+            self._connection.execute("CREATE TEMP TABLE forbidden(v)")
+        started.set()
+        assert release.wait(5)
+        return original(self, **kwargs)
+
+    monkeypatch.setattr(SQLiteWorldLedger, "_replay_locked", paused)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        cold = pool.submit(ledger.project_at, cursor)
+        assert started.wait(2)
+        closing = pool.submit(ledger.close)
+        try:
+            with pytest.raises(FutureTimeout):
+                closing.result(timeout=0.1)
+        finally:
+            release.set()
+        assert cold.result(timeout=3) == historical
+        closing.result(timeout=3)
+
+
+def test_history_changed_during_snapshot_is_not_cached_or_returned(cold_history_case, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    ledger, cursor, _ = cold_history_case
+    started, release = Event(), Event()
+    original = SQLiteWorldLedger._replay_locked
+
+    def paused(self, **kwargs):
+        started.set()
+        assert release.wait(5)
+        return original(self, **kwargs)
+
+    monkeypatch.setattr(SQLiteWorldLedger, "_replay_locked", paused)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        cold = pool.submit(ledger.project_at, cursor)
+        assert started.wait(2)
+        try:
+            with sqlite3.connect(ledger._database_path) as other:
+                other.execute(
+                    "UPDATE world_v2_events SET event_hash=? WHERE event_id=?", ("0" * 64, "cold-1")
+                )
+        finally:
+            release.set()
+        with pytest.raises(LedgerIntegrityError):
+            cold.result(timeout=3)
+    assert (
+        cursor.world_revision,
+        cursor.deliberation_revision,
+        cursor.ledger_sequence,
+    ) not in ledger._historical_projection_cache
+
+
+def test_nested_historical_validation_retains_the_atomic_writer_view(
+    cold_history_case, monkeypatch
+):
+    ledger, cursor, historical = cold_history_case
+    receivers = []
+    original = SQLiteWorldLedger._replay_locked
+
+    def tracked(self, **kwargs):
+        receivers.append(self)
+        return original(self, **kwargs)
+
+    monkeypatch.setattr(SQLiteWorldLedger, "_replay_locked", tracked)
+    with ledger._thread_lock:
+        assert ledger.project_at(cursor) == historical
+    assert receivers == [ledger]

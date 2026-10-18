@@ -356,3 +356,37 @@ async def test_work_index_preserves_open_order_when_completion_order_is_reversed
         assert ledger.rebuild() == ledger.project()
     finally:
         ledger.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "days,source_readable,expected", [(6, True, "idle"), (8, True, "expired"), (8, False, "idle")]
+)
+async def test_legacy_unreadable_retry_uses_original_ttl_without_faking_recovery(
+    tmp_path, days, source_readable, expected
+):
+    model = _RoleModel(failure=ConnectionError("offline fixture"))
+    path = tmp_path / "legacy-expiry.sqlite"
+    ledger, runtime = _open(path, model, seed=True)
+    try:
+        assert (await runtime.drain_one()).work_status == "technical_failure"
+        failure_hash = ledger.project().model_result_audits[-1].audit_hash
+        _advance(ledger, ledger.project().logical_time + timedelta(days=days))
+        ledger.close()
+        ledger, runtime = _open(path, model)
+        runtime._audited_opportunity_identity = lambda _: None
+        runtime._technical_retry_schedule._identity_for_audit = lambda _: None
+        if not source_readable:
+            runtime._health_source_event = lambda _: None
+        result = await runtime.drain_one()
+        assert (result.work_status if expected == "expired" else result.status) == expected
+        state = ledger.project()
+        assert model.calls == 1 and len(state.model_result_audits) == 1
+        assert state.model_result_audits[-1].audit_hash == failure_hash
+        assert not state.appraisals
+        assert any(
+            (p.runtime_outcome_ref or "").startswith("outcome:causal-opportunity:expired:")
+            for p in state.trigger_processes
+        ) == (expected == "expired")
+    finally:
+        ledger.close()

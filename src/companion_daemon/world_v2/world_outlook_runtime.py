@@ -1809,10 +1809,27 @@ class WorldOutlookRuntime:
             },
         )
 
+    def prepare_source_history(self, *, projection):
+        """Verify restored source history outside the ingress/clock mutex."""
+        self.view(projection=projection)
+
     def next_due(self, *, npc_refs=None, include_preparation=True):
         from datetime import datetime
 
         state = self.ledger.project()
+        head = self.store.head(as_of=cursor_of(state))
+        generation = getattr(self.ledger, "verified_history_generation", lambda: None)()
+        if head is not None and generation is not None:
+            revision, _draft, evidence = head
+            if self._verified_head_source != (revision, evidence["snapshot_hash"], generation):
+                # This is a wake hint, not a source/permission verdict. The
+                # installed background lane must validate before using the draft.
+                dates = [state.logical_time + timedelta(seconds=1)]
+                for reader in (getattr(self._executor, "next_npc_due", None),
+                               getattr(self.event_details, "next_due", None)):
+                    if callable(reader) and (due := reader()) is not None and due > state.logical_time:
+                        dates.append(due)
+                return min(dates)
         view = self.view(npc_refs=npc_refs)
         dates = [
             datetime.fromisoformat(n["opens_at"])

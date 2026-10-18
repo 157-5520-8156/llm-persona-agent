@@ -416,6 +416,24 @@ class LifeEcologyRuntime:
             for ref in projection.committed_world_event_refs
         )
         if self._world_outlook is not None and current_clock:
+            prepare_source = getattr(self._world_outlook, "prepare_source_history", None)
+            if callable(prepare_source):
+                try:
+                    if self._ledger.blocks_event_loop:
+                        await asyncio.to_thread(prepare_source, projection=projection)
+                    else:
+                        prepare_source(projection=projection)
+                except Exception:
+                    _LOG.exception("life outlook source history unavailable wake=%s", wake_event_ref)
+                    persisted = await self._complete_technical_failure(
+                        key=key, trigger_id=claim.trigger_id,
+                        failure_code="outlook.source_history_unavailable",
+                    )
+                    return LifeEcologyRunResult(
+                        status="deferred" if persisted else "failed_safe", trigger_id=claim.trigger_id,
+                        reason_code="life_ecology.outlook_source_history_unavailable",
+                        technical_failure_code="outlook.source_history_unavailable" if persisted else None,
+                    )
             # Historical task retries keep their original wake; they cannot
             # release prepaid details at a newer time. The current clock owns
             # that independent progression, including when budget is paused.

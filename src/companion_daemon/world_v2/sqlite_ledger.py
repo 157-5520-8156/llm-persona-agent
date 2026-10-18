@@ -625,6 +625,7 @@ class SQLiteWorldLedger:
         self._database_path = Path(path).expanduser().absolute()
         self._last_wal_maintenance_monotonic = 0.0
         self._thread_lock = RLock()
+        self._historical_replay_lock = RLock()
         self._database_write_lock = sqlite_write_lock(self._database_path)
         self._head_projection_reads = 0
         self._head_projection_cache_hits = 0
@@ -781,7 +782,7 @@ class SQLiteWorldLedger:
             self._database_write_lock.release()
 
     def close(self) -> None:
-        with self._database_write_lock, self._thread_lock:
+        with self._historical_replay_lock, self._database_write_lock, self._thread_lock:
             self._source_event_parse_cache.clear()
             self._source_event_parse_cache_bytes = 0
             self._connection.close()
@@ -4918,41 +4919,118 @@ class SQLiteWorldLedger:
         while len(self._historical_projection_cache) > self._historical_projection_cache_bound:
             self._historical_projection_cache.pop(next(iter(self._historical_projection_cache)))
 
+    def _cached_projection_at_locked(self, cursor: ProjectionCursor) -> LedgerProjection | None:
+        head = self._project_locked()
+        head_cursor = ProjectionCursor(
+            world_revision=head.world_revision,
+            deliberation_revision=head.deliberation_revision,
+            ledger_sequence=head.ledger_sequence,
+        )
+        if cursor.ledger_sequence > head.ledger_sequence:
+            raise ValueError("requested projection cursor is outside the ledger range")
+        if cursor == head_cursor:
+            self._project_at_head_hits += 1
+            return head
+        cache_key = (
+            cursor.world_revision,
+            cursor.deliberation_revision,
+            cursor.ledger_sequence,
+        )
+        cached = self._historical_projection_cache.get(cache_key)
+        if cached is not None:
+            self._historical_projection_hits += 1
+            # Plain dict insertion order is the eviction order. Refresh a
+            # genuine hit so a frequently re-read turn cursor is not
+            # evicted merely because it was first inserted long ago.
+            self._historical_projection_cache.pop(cache_key)
+            self._historical_projection_cache[cache_key] = cached
+            return cached
+        return None
+
     def project_at(self, cursor: ProjectionCursor) -> LedgerProjection:
+        # Nested reducer/commit validation must retain its existing atomic lock.
+        # Unknown RLock implementations conservatively keep that serial path.
+        nested = getattr(self._thread_lock, "_is_owned", lambda: True)()
         with self._thread_lock:
-            head = self._project_locked()
-            head_cursor = ProjectionCursor(
-                world_revision=head.world_revision,
-                deliberation_revision=head.deliberation_revision,
-                ledger_sequence=head.ledger_sequence,
-            )
-            if cursor.ledger_sequence > head.ledger_sequence:
-                raise ValueError("requested projection cursor is outside the ledger range")
-            if cursor == head_cursor:
-                self._project_at_head_hits += 1
-                return head
-            cache_key = (
-                cursor.world_revision,
-                cursor.deliberation_revision,
-                cursor.ledger_sequence,
-            )
-            cached = self._historical_projection_cache.get(cache_key)
+            cached = self._cached_projection_at_locked(cursor)
             if cached is not None:
-                self._historical_projection_hits += 1
-                # Plain dict insertion order is the eviction order. Refresh a
-                # genuine hit so a frequently re-read turn cursor is not
-                # evicted merely because it was first inserted long ago.
-                self._historical_projection_cache.pop(cache_key)
-                self._historical_projection_cache[cache_key] = cached
                 return cached
-            self._historical_replay_calls += 1
-            projection = self._replay_locked(
-                target_cursor=cursor,
-                target_schema_version=CURRENT_SCHEMA_VERSION,
-                reducer_bundle_version=REDUCER_BUNDLE_VERSION,
-            )
-            self._remember_historical_projection(projection)
+            if nested:
+                self._historical_replay_calls += 1
+                projection = self._replay_locked(target_cursor=cursor,
+                    target_schema_version=CURRENT_SCHEMA_VERSION,
+                    reducer_bundle_version=REDUCER_BUNDLE_VERSION)
+                self._remember_historical_projection(projection)
+                return projection
+        # Serialize only cold readers. Live head reads and appends do not take
+        # this mutex; close waits here before releasing the owning connection.
+        with self._historical_replay_lock:
+            with self._thread_lock:
+                cached = self._cached_projection_at_locked(cursor)
+                if cached is not None:
+                    return cached
+                self._historical_replay_calls += 1
+                view, generation = self._historical_snapshot_locked()
+                counters = (view._total_replay_calls, view._replayed_events, view._historical_prefix_hits)
+            try:
+                # Bind the reducer to its read view, never to the live writer.
+                projection = type(self)._replay_locked(view, target_cursor=cursor,
+                    target_schema_version=CURRENT_SCHEMA_VERSION,
+                    reducer_bundle_version=REDUCER_BUNDLE_VERSION)
+            finally:
+                view._connection.rollback()
+                view._connection.close()
+                with self._thread_lock:
+                    self._total_replay_calls += view._total_replay_calls - counters[0]
+                    self._replayed_events += view._replayed_events - counters[1]
+                    self._historical_prefix_hits += view._historical_prefix_hits - counters[2]
+            with self._thread_lock:
+                self._refresh_verified_external_history_locked()
+                if generation != self._verified_history_generation:
+                    raise ConcurrencyConflict("history changed during historical snapshot replay")
+                key = (CURRENT_SCHEMA_VERSION, REDUCER_BUNDLE_VERSION,
+                       cursor.world_revision, cursor.deliberation_revision, cursor.ledger_sequence)
+                self._historical_replay_prefix_cache.pop(key, None)
+                self._historical_replay_prefix_cache[key] = view._historical_replay_prefix_cache[key]
+                while len(self._historical_replay_prefix_cache) > 4:
+                    self._historical_replay_prefix_cache.pop(next(iter(self._historical_replay_prefix_cache)))
+                self._remember_historical_projection(projection)
             return projection
+
+    def _historical_snapshot_locked(self):
+        """Pin a read-only WAL snapshot to the already verified parent history.
+
+        Every original event hash, upcast and reducer still runs. This is
+        connection/cache isolation, not a persisted snapshot trust shortcut.
+        """
+        connection = sqlite3.connect(self._database_path.as_uri() + "?mode=ro",
+                                     uri=True, isolation_level=None, timeout=10)
+        try:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA query_only = ON")
+            connection.execute("BEGIN")
+            row = connection.execute(
+                "SELECT mutation_epoch FROM world_v2_ledger_mutation_epochs WHERE world_id=?",
+                (self._world_id,),
+            ).fetchone()
+            if row is None or row[0] != self._verified_ledger_epoch:
+                raise ConcurrencyConflict("history changed while pinning historical snapshot")
+            # This private view exposes only the fields consumed by the exact
+            # replay reducer. It carries no writer/issuer or live encode cache.
+            view = object.__new__(type(self))
+            view._connection = connection
+            view._world_id = self._world_id
+            view._historical_replay_prefix_cache = dict(self._historical_replay_prefix_cache)
+            view._legacy_clock_compat_event_ids = self._legacy_clock_compat_event_ids
+            view._epoch_binding_mode_cache = getattr(self, "_epoch_binding_mode_cache", None)
+            view._recent_replay_event_cache = {}
+            view._total_replay_calls = 0
+            view._replayed_events = 0
+            view._historical_prefix_hits = 0
+            return view, self._verified_history_generation
+        except BaseException:
+            connection.close()
+            raise
 
     def _proposal_audit_at(
         self, *, proposal_id: str, cursor: ProjectionCursor

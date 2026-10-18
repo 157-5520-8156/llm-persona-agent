@@ -52,7 +52,7 @@ from ..character_life_response_runtime import (
 )
 from ..world_stimulus_choice_authority import world_life_response_capability
 from ..event_identity import domain_idempotency_key
-from ..errors import ConcurrencyConflict
+from ..errors import ConcurrencyConflict, LedgerIntegrityError
 from ..immediate_emotion_proposal_worker import ImmediateEmotionProposalWorker
 from ..perception import PerceptionResultAcceptedPayload, perception_result_trigger_id
 from ..perception_result_context import PerceptionResultReader
@@ -2644,7 +2644,29 @@ class CharacterInteriorWorldStimulusRuntime:
                 projection, identity=identities[process.trigger_id],
                 source_ref=process.source_evidence_ref,
             ) is None
+            and not self._retry_opportunity_expired(projection, process, identities[process.trigger_id])
         )
+
+    def _retry_opportunity_expired(self, projection, process, identity):
+        """An unreadable retry identity cannot override a proved original TTL.
+
+        This only releases the retry wait. The existing worker records its
+        technical expiry receipt; it does not reconstruct an author identity,
+        call a model, erase the failure, or label it a character no-change.
+        """
+        if projection.logical_time is None or not process.attempt_ids:
+            return False
+        try:
+            policies = tuple(causal_opportunity_policy_from_attempt_id(a) for a in process.attempt_ids)
+            if any(p is None or p.policy_ref != identity.opportunity_policy.policy_ref for p in policies):
+                return False
+            sources = tuple(self._health_source_event(ref) for ref in identity.source_refs)
+            if any(source is None for source in sources):
+                return False
+            return self._opportunity_is_expired(source_events=sources, at=projection.logical_time,
+                                                policy=identity.opportunity_policy)
+        except (ValueError, LedgerIntegrityError):
+            return False
 
     @staticmethod
     def _world_life_response_is_pending(projection, *, audit) -> bool:

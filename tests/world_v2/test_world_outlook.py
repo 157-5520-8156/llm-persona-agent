@@ -1219,3 +1219,31 @@ def test_authoring_constraints_are_bounded_configuration(tmp_path, constraints):
         assert not author.calls
     finally:
         runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_cold_due_peek_defers_full_source_validation_to_background(tmp_path, monkeypatch):
+    ledger, wake, store, author, runtime = setup(
+        tmp_path, lambda w: [{"decision": "revise", "draft": draft_value(w)}]
+    )
+    monkeypatch.setattr(ledger, "verified_history_generation", lambda: 0, raising=False)
+    try:
+        state = ledger.project()
+        await runtime.refresh(
+            projection=state,
+            context={},
+            manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
+        )
+        runtime._verified_head_source = None
+
+        def blocked(_cursor):
+            raise AssertionError("cold source validation reached clock peek")
+
+        monkeypatch.setattr(ledger, "project_at", blocked)
+        assert runtime.next_due() == state.logical_time + timedelta(seconds=1)
+        assert runtime._verified_head_source is None
+        with pytest.raises(AssertionError, match="cold source validation"):
+            runtime.prepare_source_history(projection=state)
+        assert len(author.calls) == 1
+    finally:
+        runtime.close()
