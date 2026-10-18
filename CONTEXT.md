@@ -1,3 +1,35 @@
+2026-10-18 retained candidate repair/qualification result: manual_only / qualification_incomplete.
+Runtime83e2c0db; test-only65d0f0ae; full-v4=10866pass/19skip/2xfail/1existingwarning,
+1437.95s,1716Python hashes unchanged. Earlier v3 stale assertion failure remains recorded.
+Replay/activity/audit caches and agenda pagination repaired75c9951d/63204346; native World carrier
+and exact correction/audit contracts repaired7d2a8e66/83e2c0db. Validators/agency remain unchanged.
+Main candidate35221/8792 still runs CaptureDelivery on the retained candidate-calendar-full-v3 DB;
+final typed read0.762s,Oct19week56entries. ProductionQQ79910/8787 unchanged, no QQ test delivery.
+Accelerated actual-world copy94352/8793 stopped normally15:47:52Z,shutdown_errors=[];
+same continuation/world.sqlite preserved.214passes/0scheduler exceptions,404prepared-wire observations.
+Original logicalOct18 21:22:02->23:50:35 (2h28m33s);wall_limit,NOT24h/cross-day qualified.
+User-authorized one manual disturbance consumed once;55399/55400invalid raw drafts preserved,
+0World/role/planning effects. First missing visual IDs; correction mixed source IDs with claim IDs.
+No reroll, host-authored outcome, relaxed validator, deleted failure or new story framework.
+Actual native correction55123/55124 accepted after both reviews, but had no objective transition.
+Material consequence->structuralOutlook->objectiveplanning replacement->calendar remains UNQUALIFIED.
+Final checks:56131event rows fullrebuild equals savedhead; independentcoldreopen agrees;
+events unchanged. Exact original inbound replay: sameAction,0new events/HTTP/captures.
+Original55348main/54389copy events+66/51attempt bytes unchanged;55/36oldfailedops retained.
+7World-stimulus failedsources have later validproposal/experiences+terminal;15unconfirmed is
+NOT a livebacklog count.7pending contextual retries atstop, none due; legacy missingidentity remains.
+9new programs/19releasedphases: exactorigin/privacy, noearly durable release; notallinput leakage proof.
+Copy agenda329known=328visible+1withheld over4samecursorpages;15newexperience entries visible.
+Cold normaldue213.369s/warm0.09953s; directmanualprofile cold337.897s(advisory317.205s,
+4historicalreplays)/warm0.4896s. Cold provenance still minutes; read speed is notchat SLA.
+Code/review/protocols/rawfailures/terminal evidence: output/private-audits/replay-calendar-repair-20261018/RESULT.md.
+Stopped-copy snapshot is resumable; main candidate and production remain running. No more copy calls admitted.
+Historical owner/status entries below are superseded by this header.
+
+Prior67e660e7actual upgrade evidence lives in output/private-audits/live-story-upgrade-20261018/.
+Its18minute continuation and completion54360->Outlooke725b964response were partial causal progress,
+not a cross-day or material-planning pass. Current owner/repair evidence is the header above.
+
 Multi-thread Fate consequence loop implemented and isolated-qualified (2026-10-18), base7fe99bec.
 Reuses Outlook/Occurrence/Planning/source review; no new story framework or actor behavior policy.
 Fresh Outlook schema8/native6 adds independent possible developments, stage conditions/thread links,
