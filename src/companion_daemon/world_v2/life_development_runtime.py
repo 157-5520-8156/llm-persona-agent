@@ -5737,7 +5737,7 @@ class LifeDevelopmentRuntime:
             original_messages=messages, rejected_raw=rejected_raw,
             manifest_hash=manifest.manifest_hash, review=review,
         )
-        if _required_detail_wire(messages):
+        if _native_rejection_wire(messages):
             messages = _world_consequence_native_rejection_messages(messages, rejected_raw, correction)
         else:
             messages = [*messages, {"role": "assistant", "content": rejected_raw}, correction]
@@ -6382,6 +6382,7 @@ class LifeDevelopmentRuntime:
                                 "instruction": _world_author_reselection_instruction(
                                     failure_code=exc.code,
                                     allow_no_op=not bool(manifest.event_detail_capability and manifest.event_detail_capability.required_program),
+                                    outcome_contract=manifest.outcome_contract,
                                 ),
                             },
                             ensure_ascii=False,
@@ -8071,7 +8072,7 @@ def _world_consequence_structure_correction_messages(
     """Show the exact failed draft on current carriers; keep old inputs frozen."""
     original_user = json.loads(original_messages[1]["content"])
     wire = original_user.get("world_author_wire", {})
-    if _required_detail_wire(original_messages):
+    if _native_rejection_wire(original_messages):
         correction = {**correction, "rejected_draft": {
             "message_index": len(original_messages),
             "raw_sha256": hashlib.sha256(rejected_raw.encode("utf-8")).hexdigest(),
@@ -8111,10 +8112,11 @@ def _required_detail_request(messages: list[dict[str, str]]) -> bool:
     return capability.get("required_program") is True
 
 
-def _required_detail_wire(messages: list[dict[str, str]]) -> bool:
+def _native_rejection_wire(messages: list[dict[str, str]]) -> bool:
     source = json.loads(messages[1]["content"])
-    return (_required_detail_request(messages) and
-            (source.get("world_author_wire") or {}).get("contract") in {
+    contract = (source.get("world_author_wire") or {}).get("contract")
+    return (contract in {CURRENT_WORLD_AUTHOR_TOOL_CONTRACT, EVENT_WORLD_AUTHOR_TOOL_CONTRACT}
+            or _required_detail_request(messages) and contract in {
                 REQUIRED_EVENT_WORLD_AUTHOR_TOOL_CONTRACT, COURSE_EVENT_WORLD_AUTHOR_TOOL_CONTRACT,
             })
 
@@ -8149,6 +8151,13 @@ def _world_consequence_reselection_message(
         "request_hash": _messages_hash(original_messages[:2]),
         "fields": fields,
     }
+    if _native_rejection_wire(original_messages):
+        tool_name = json.loads(original_messages[1]["content"])["world_author_wire"]["tool_name"]
+        payload["instruction"] = (
+            payload.get("instruction", "")
+            + f" Submit the complete replacement through {tool_name} using its exact argument envelope; "
+            "do not return it as plain assistant text."
+        ).strip()
     return {"role": "user", "content": canonical_json(payload)}
 
 
@@ -8183,7 +8192,9 @@ def _world_consequence_source_correction_message(
     )
 
 
-def _world_author_reselection_instruction(*, failure_code: str, allow_no_op: bool = True) -> str:
+def _world_author_reselection_instruction(
+    *, failure_code: str, allow_no_op: bool = True, outcome_contract: str | None = None,
+) -> str:
     instruction = (
         "Return one complete replacement using only the same pinned Context and "
         "capability manifest. Choose every event, direction, privacy, visual, and "
@@ -8197,9 +8208,11 @@ def _world_author_reselection_instruction(*, failure_code: str, allow_no_op: boo
         "or private, supply visual_evidence for that outcome, including ordinary "
         "home life. The system will not "
         "supply narrative tags, "
-        "privacy, visual facts, or event text. Each outcome must keep "
-        "user_channel_completion=none and must not narrate a completed send or "
-        "reply through the user channel."
+        "privacy, visual facts, or event text. "
+        + ("This World result does not authorize a completed send or reply through the user channel."
+           if outcome_contract == "world-consequence.2" else
+           "Each outcome must keep user_channel_completion=none and must not narrate a completed send or "
+           "reply through the user channel.")
     )
     if failure_code == "unsupported_location_window":
         instruction += (

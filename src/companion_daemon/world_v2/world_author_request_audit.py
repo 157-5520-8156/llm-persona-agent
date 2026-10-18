@@ -27,20 +27,50 @@ class WorldAuthorRequestBinding(FrozenModel):
     utf8_bytes: int = Field(ge=1)
 
 
-def _request_json(messages: list[dict[str, str]]) -> str:
-    if not isinstance(messages, list) or not messages or any(
-        not isinstance(message, dict)
-        or set(message) != {"role", "content"}
-        or message["role"] not in {"system", "user", "assistant"}
-        or not isinstance(message["content"], str)
-        for message in messages
-    ):
+def _request_json(messages: list[dict[str, object]]) -> str:
+    if not isinstance(messages, list) or not messages:
+        raise ValueError("world_author_request.invalid_messages")
+    pending = None
+    for message in messages:
+        if not isinstance(message, dict):
+            raise ValueError("world_author_request.invalid_messages")
+        if pending is not None:
+            if (set(message) != {"role", "tool_call_id", "content"}
+                    or message["role"] != "tool" or message["tool_call_id"] != pending
+                    or not isinstance(message["content"], str)):
+                raise ValueError("world_author_request.invalid_messages")
+            pending = None
+        elif (set(message) == {"role", "content"}
+                and message["role"] in ("system", "user", "assistant")
+                and isinstance(message["content"], str)):
+            continue
+        else:
+            try:
+                source = json.loads(messages[1]["content"])
+                name = source["world_author_wire"]["tool_name"]
+                calls = message["tool_calls"]
+                if (set(message) != {"role", "content", "tool_calls"}
+                        or message["role"] != "assistant" or message["content"] is not None
+                        or not isinstance(name, str) or not name
+                        or not isinstance(calls, list) or len(calls) != 1):
+                    raise ValueError
+                call = calls[0]
+                function = call["function"]
+                if (set(call) != {"id", "type", "function"} or call["type"] != "function"
+                        or not isinstance(call["id"], str) or not call["id"]
+                        or set(function) != {"name", "arguments"} or function["name"] != name
+                        or not isinstance(function["arguments"], str) or not function["arguments"]):
+                    raise ValueError
+                pending = call["id"]
+            except (ValueError, TypeError, KeyError, IndexError) as exc:
+                raise ValueError("world_author_request.invalid_messages") from exc
+    if pending is not None:
         raise ValueError("world_author_request.invalid_messages")
     return json.dumps(messages, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 def record_world_author_request(
-    *, content_store: ImmutableLifeContentStore, messages: list[dict[str, str]],
+    *, content_store: ImmutableLifeContentStore, messages: list[dict[str, object]],
 ) -> WorldAuthorRequestBinding:
     """Persist the complete bounded input before making a new-protocol call."""
     text = _request_json(messages)
@@ -67,7 +97,7 @@ def record_world_author_request(
 def read_world_author_request(
     *, content_store: ImmutableLifeContentStore, binding: WorldAuthorRequestBinding,
     expected_request_hash: str,
-) -> list[dict[str, str]]:
+) -> list[dict[str, object]]:
     binding = WorldAuthorRequestBinding.model_validate_json(binding.model_dump_json())
     stored = content_store.read_exact(content_ref=binding.content_ref)
     if (

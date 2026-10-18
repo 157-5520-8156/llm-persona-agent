@@ -532,7 +532,12 @@ async def test_invalid_json_is_preserved_and_only_the_author_can_choose_no_op(tm
         assert len(requests) == 2
         assert requests[1]["messages"][:2] == requests[0]["messages"]
         assert requests[1]["tools"] == requests[0]["tools"]
-        correction = json.loads(requests[1]["messages"][-1]["content"])
+        feedback = requests[1]["messages"][-1]
+        assert feedback["role"] == "tool"
+        rejected_call = requests[1]["messages"][-2]["tool_calls"][0]
+        assert feedback["tool_call_id"] == rejected_call["id"]
+        assert rejected_call["function"]["arguments"] == malformed
+        correction = json.loads(feedback["content"])["correction"]
         assert correction["validation_failure"]["code"] == "invalid_json"
         if invalid_count == 1:
             metadata, _ = _audited(ledger)

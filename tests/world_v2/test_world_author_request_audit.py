@@ -4,15 +4,21 @@ Only the model provider and explicit storage/commit faults are fixtures. No
 accepted model result, audit Proposal or final effect is seeded by these tests.
 """
 
+from copy import deepcopy
 import hashlib
 import json
 import sqlite3
 
 import pytest
 
-from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
+from companion_daemon.world_v2.life_content_store import (
+    InMemoryImmutableLifeContentStore, SQLiteImmutableLifeContentStore,
+)
 from companion_daemon.world_v2.life_development_runtime import LifeDevelopmentRuntime
 from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
+from companion_daemon.world_v2.world_author_request_audit import (
+    read_world_author_request, record_world_author_request,
+)
 from test_life_development_runtime import (
     OWNER,
     WORLD_ID,
@@ -26,6 +32,48 @@ from test_life_development_runtime import (
 
 def _json(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+@pytest.mark.parametrize("fault", [None, "unbound", "wrong_name", "wrong_receipt",
+                                  "dangling", "multiple_calls", "empty_arguments",
+                                  "extra_field", "nontext_receipt"])
+def test_native_rejection_audit_preserves_exact_bound_pair_and_rejects_malformed_history(fault):
+    messages = [
+        {"role": "system", "content": "World Author"},
+        {"role": "user", "content": _json({"world_author_wire": {"tool_name": "author_world_consequence_v6"}})},
+        {"role": "assistant", "content": None, "tool_calls": [{
+            "id": "call_rejected", "type": "function", "function": {
+                "name": "author_world_consequence_v6", "arguments": "{",
+            },
+        }]},
+        {"role": "tool", "tool_call_id": "call_rejected", "content": "validation rejected"},
+    ]
+    if fault == "unbound":
+        messages[1]["content"] = "{}"
+    elif fault == "wrong_name":
+        messages[2]["tool_calls"][0]["function"]["name"] = "another_tool"
+    elif fault == "wrong_receipt":
+        messages[3]["tool_call_id"] = "another_call"
+    elif fault == "dangling":
+        messages.pop()
+    elif fault == "multiple_calls":
+        messages[2]["tool_calls"].append(deepcopy(messages[2]["tool_calls"][0]))
+    elif fault == "empty_arguments":
+        messages[2]["tool_calls"][0]["function"]["arguments"] = ""
+    elif fault == "extra_field":
+        messages[2]["extra"] = True
+    elif fault == "nontext_receipt":
+        messages[3]["content"] = {"status": "rejected"}
+    store = InMemoryImmutableLifeContentStore()
+    if fault is not None:
+        with pytest.raises(ValueError, match="world_author_request.invalid_messages"):
+            record_world_author_request(content_store=store, messages=messages)
+        return
+    before = deepcopy(messages)
+    binding = record_world_author_request(content_store=store, messages=messages)
+    assert messages == before
+    assert read_world_author_request(content_store=store, binding=binding,
+                                    expected_request_hash=binding.content_payload_hash) == before
 
 
 class _CurrentManifest(_StaticManifestCompiler):

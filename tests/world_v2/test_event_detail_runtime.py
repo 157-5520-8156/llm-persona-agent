@@ -448,4 +448,9 @@ def test_detail_native_schema_and_correction_keep_world_authority_and_original_f
     contract = world_consequence_author_tool_contract(provider="anthropic",contract_id=EVENT_CONTRACT)
     messages = bind_world_consequence_author_tool(messages=[{"role":"system","content":"test"},{"role":"user","content":"{}"}],tool_contract=contract)
     fixed = _world_consequence_structure_correction_messages(original_messages=messages,rejected_raw='{"invalid":"exact original"}',correction={"validation_failure":{"code":"test"}})
-    assert fixed[-2] == {"role":"assistant","content":'{"invalid":"exact original"}'}
+    assert fixed[:-2] == messages
+    call = fixed[-2]["tool_calls"][0]
+    assert call["function"] == {"name": "author_world_consequence_v6", "arguments": '{"invalid":"exact original"}'}
+    assert fixed[-2]["content"] is None
+    assert fixed[-1]["role"] == "tool" and fixed[-1]["tool_call_id"] == call["id"]
+    assert json.loads(fixed[-1]["content"])["correction"]["validation_failure"] == {"code": "test"}

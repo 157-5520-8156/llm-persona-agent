@@ -125,6 +125,19 @@ def _assert_authority_locator(messages, correction):
         assert original[original_field]  # Readable material remains in this same request.
 
 
+def _assert_native_correction(messages, original, rejected_raw):
+    assert messages[:-2] == original
+    assert messages[-2]["role"] == "assistant" and messages[-2]["content"] is None
+    call = messages[-2]["tool_calls"][0]
+    name = json.loads(original[1]["content"])["world_author_wire"]["tool_name"]
+    assert call["function"] == {"name": name, "arguments": rejected_raw}
+    assert messages[-1]["role"] == "tool" and messages[-1]["tool_call_id"] == call["id"]
+    feedback = json.loads(messages[-1]["content"])
+    assert feedback["status"] == "validation_rejected" and feedback["no_world_effect"]
+    assert name in feedback["correction"]["instruction"]
+    return feedback["correction"]
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("current, tool_id", [
     (False, None),
@@ -133,6 +146,8 @@ def _assert_authority_locator(messages, correction):
     (True, "world-consequence-author-tool.2"),
     (True, "world-consequence-author-tool.3"),
     (True, "world-consequence-author-tool.4"),
+    (True, "world-consequence-author-tool.5"),
+    (True, "world-consequence-author-tool.6"),
     (True, "json_object"),
 ])
 async def test_structure_correction_preserves_authority_and_cold_request_bytes(
@@ -166,7 +181,9 @@ async def test_structure_correction_preserves_authority_and_cold_request_bytes(
         assert len(wire.requests) == 2
         first, second = [item["messages"] for item in wire.requests]
         correction = json.loads(second[-1]["content"])
-        if tool_id in {"world-consequence-author-tool.3", "world-consequence-author-tool.4", "json_object"}:
+        if tool_id in {"world-consequence-author-tool.5", "world-consequence-author-tool.6"}:
+            correction = _assert_native_correction(second, first, "{")
+        elif tool_id in {"world-consequence-author-tool.3", "world-consequence-author-tool.4", "json_object"}:
             assert second[:-2] == first
             assert second[-2] == {"role": "assistant", "content": "{"}
             assert correction["rejected_draft"] == {
@@ -183,6 +200,7 @@ async def test_structure_correction_preserves_authority_and_cold_request_bytes(
         assert correction["rejected_draft_hash"] == hashlib.sha256(_json("{").encode()).hexdigest()
         assert "repair_coordinates" in correction
         if current:
+            assert "user_channel_completion" not in correction["instruction"]
             _assert_authority_locator(second, correction)
             for body, stored in zip(wire.requests, wire.stored, strict=True):
                 assert stored is not None and stored.text == _json(body["messages"])
@@ -351,11 +369,8 @@ async def test_source_correction_preserves_initial_authority_and_reviews_the_com
         assert len(wire.requests) == 3
         assert focused.calls == general.calls == (1 if no_op else 2)
         initial, shape, source = [request["messages"] for request in wire.requests]
-        assert shape[:-2] == initial
-        assert shape[-2] == {"role": "assistant", "content": "{"}
-        assert source[:-2] == shape
-        assert source[-2] == {"role": "assistant", "content": rejected_arguments}
-        correction = json.loads(source[-1]["content"])
+        _assert_native_correction(shape, initial, "{")
+        correction = _assert_native_correction(source, shape, rejected_arguments)
         _assert_authority_locator(source, correction)
         assert correction["no_op_output_contract"] == {
             "additionalProperties": False,
