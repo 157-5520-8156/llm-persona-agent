@@ -2284,9 +2284,11 @@ class StructuredCharacterRoleFaculty:
             if extras:
                 user_payload["correction"]["field_placement"] = {
                     "root_fields": list(_WireRoleResult.model_fields),
-                    "decision_fields": list(_WireDecision.model_fields),
+                    **({"decision_fields": list(_WireDecision.model_fields)}
+                       if wire["decision_shape"] is not None else {}),
+                    "placement_rules_ref": "wire_contract.placement_rules",
                     "unexpected_root_fields": extras,
-                    "instruction": "Use the original nested decision shape. Do not copy capability metadata into the root; resubmit the whole result. No result has been accepted.",
+                    "instruction": "Follow this request's wire_contract.placement_rules for its decision.payload or proposals carrier. Never put purpose fields or capability metadata at the root. Resubmit the whole result; no result has been accepted.",
                 }
         snapshot = user_payload.get("inner_life_snapshot")
         if isinstance(snapshot, dict):

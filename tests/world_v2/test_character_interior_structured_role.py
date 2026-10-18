@@ -5235,3 +5235,19 @@ async def test_root_field_error_explains_nesting_without_repairing_output():
     assert "source_refs" not in placement["root_fields"]
     assert "source_refs" in placement["decision_fields"]
     assert placement["unexpected_root_fields"] == ["source_refs"]
+
+
+@pytest.mark.asyncio
+async def test_typed_proposal_correction_does_not_direct_fields_into_decision():
+    model = _RequiredToolQueueModel(_world_stimulus_no_change_result())
+    role = StructuredCharacterRoleFaculty(model=model, model_id='test')
+    await role.experience(await _request(phase='experience', purpose='world_stimulus_appraisal',
+        capability_manifest=_world_stimulus_manifest(), correction_ordinal=1,
+        correction_failure_code='role_result_schema_invalid',
+        correction_failure_detail=json.dumps([{'type':'extra_forbidden',
+            'loc':['life_responses'], 'msg':'Extra inputs are not permitted'}])))
+    packet = json.loads(model.calls[0][0][1]['content'])
+    assert packet['wire_contract']['decision_shape'] is None
+    correction = packet['correction']['field_placement']
+    assert 'decision_fields' not in correction
+    assert correction['placement_rules_ref'] == 'wire_contract.placement_rules'
