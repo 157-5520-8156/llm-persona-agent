@@ -232,9 +232,15 @@ def test_same_local_day_cannot_gain_second_plan_by_replacing_first_clock(tmp_pat
     lambda c: c["self_directed_intent"].update(first_clock_payload_hash="0" * 64,
                                                 selected_clock_payload_hash="0" * 64),
 ])
-def test_recorded_role_cannot_upgrade_false_catalog_or_clock_proof(tmp_path, mutate):
+@pytest.mark.parametrize("plan_only", [False, True])
+def test_recorded_role_cannot_upgrade_false_catalog_or_clock_proof(tmp_path, mutate, plan_only):
     ledger, first = _seed(tmp_path / "bad.sqlite")
-    result, cap, causal = _choice(ledger, first, mutate_cap=mutate)
+    def change(cap):
+        if plan_only:
+            cap["contract"] = "character-interior-activity-lifecycle-capability.7"
+        mutate(cap)
+    result, cap, causal = _choice(ledger, first, mutate_cap=change,
+                               agenda=[INTENT] if plan_only else None)
     proposal, cursor = _record(ledger, result, cap, causal)
     with pytest.raises(ValueError, match="(catalog|clock_source)_invalid"):
         _accept(ledger, proposal, cursor)

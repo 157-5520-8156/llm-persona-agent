@@ -43,7 +43,7 @@ def validate_completion_source(state, source, *, actor_ref, cursor_revision):
     return event
 
 
-def latest_completion_source(state, *, actor_ref, include_abandoned=False):
+def latest_completion_source(state, *, actor_ref, include_abandoned=False, allow_existing_plans=False):
     """Offer the latest terminal activity; legacy callers keep completion-only semantics."""
     terminal_statuses = {"completed", "abandoned"} if include_abandoned else {"completed"}
     candidates = [
@@ -55,10 +55,10 @@ def latest_completion_source(state, *, actor_ref, include_abandoned=False):
         return None
     plan = max(candidates, key=lambda x: x.authority_origin.accepted_world_revision)
     origin = plan.authority_origin
-    # The existing activity catalog owns remaining live plans. Wait for that
-    # work to end instead of spinning fresh empty-catalog opportunities while
-    # another owned plan still requires a lifecycle choice.
-    if any(
+    # Legacy empty-life callers keep their original eligibility. Current
+    # plan-only opportunities may coexist with execution/lifecycle work;
+    # they grant no start, pause, cancellation or other actor's participation.
+    if not allow_existing_plans and any(
         x.owner_actor_ref == actor_ref and x.status in {"planned", "active", "paused"}
         for x in state.plans
     ):

@@ -3107,13 +3107,13 @@ class StructuredCharacterRoleFaculty:
             return replace(
                 contract,
                 payload_contract=("character-interior-activity-lifecycle-choice.4"
-                                  if manifest.payload["contract"].endswith(".6") else
+                                  if manifest.payload["contract"].endswith((".6", ".7")) else
                                   "character-interior-activity-lifecycle-choice.3"
                                   if manifest.payload["contract"].endswith(".5") else
                                   "character-interior-activity-lifecycle-choice.2"),
                 offered_token_fields=(),
                 validator=(_validate_day_open_agenda_payload
-                           if manifest.payload["contract"].endswith(".6") else _validate_day_open_reconsider_payload
+                           if manifest.payload["contract"].endswith((".6", ".7")) else _validate_day_open_reconsider_payload
                            if manifest.payload["contract"].endswith(".5") else _validate_day_open_payload),
             )
         return contract

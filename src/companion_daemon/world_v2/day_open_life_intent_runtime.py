@@ -84,7 +84,7 @@ def _role_material(result, capability_payload, *, world_id):
     payload = decision.get("payload")
     from .day_open_life_intent_contract import RECONSIDER_CHOICE_CONTRACT, DayOpenReconsiderChoice
 
-    agenda = capability.contract.endswith(".6")
+    agenda = capability.contract.endswith((".6", ".7"))
     current = agenda or capability.contract.endswith(".5")
     if not isinstance(payload, dict) or payload.get("contract") != (
         AGENDA_CHOICE_CONTRACT if agenda else RECONSIDER_CHOICE_CONTRACT if current else DAY_OPEN_CHOICE_CONTRACT
@@ -138,7 +138,7 @@ def materialize_day_open_proposal(result, capability_payload, *, world_id: str):
         for ref, (revision, hash_) in sorted(source_material.items())
     )
     identity = digest(result.model_dump(mode="json"))
-    agenda = capability.contract.endswith(".6")
+    agenda = capability.contract.endswith((".6", ".7"))
     payload = (DayOpenLifeAgendaPayload if agenda else DayOpenLifeIntentPayload)(
         **({"life_intents": intents} if agenda else intents[0].model_dump(mode="json")),
         actor_ref=result.actor_ref,
@@ -278,7 +278,8 @@ def _derive_day_open_life_plans(*, state, world_id: str, proposal_id: str, owner
     if selected_head is None or selected_head.logical_time != selected.logical_time:
         raise DayOpenLifeIntentError("selection_clock_invalid")
     origin = DayOpenLifeIntentOrigin(
-        contract=("day-open-life-intent-origin.4" if agenda else
+        contract=("day-open-life-intent-origin.5" if capability.contract.endswith(".7") else
+                  "day-open-life-intent-origin.4" if agenda else
                   "day-open-life-intent-origin.3" if capability.contract.endswith(".5") else
                   "day-open-life-intent-origin.2" if completion else "day-open-life-intent-origin.1"),
         agenda_index=0 if agenda else None,
@@ -457,6 +458,10 @@ class DayOpenLifeIntentRuntime:
             # The current capability permits future planning alongside an
             # existing activity. It grants no start/pause/complete effect.
             permitted.add("openings_available")
+        if origin.contract == "day-open-life-intent-origin.5":
+            # This version is an intent-only grant, not an execution catalog.
+            # Its exact original clock/catalog/model bindings still apply.
+            permitted.update({"openings_available", "blocked_by_missing_capability"})
         if catalog.status not in permitted or catalog.catalog_hash != declared["catalog_hash"]:
             raise DayOpenLifeIntentError("original_catalog_invalid")
 

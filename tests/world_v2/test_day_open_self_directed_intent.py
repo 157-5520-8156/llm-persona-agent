@@ -433,7 +433,7 @@ async def test_day_open_primary_budget_denial_is_explicit_and_sends_zero_http(
 
 
 @pytest.mark.asyncio
-async def test_pending_day_open_releases_to_real_chat_plan_when_empty_catalog_disappears(
+async def test_pending_planning_keeps_failure_and_yields_execution_after_role_declines(
     tmp_path, monkeypatch, build_app
 ):
     import sqlite3
@@ -479,6 +479,7 @@ async def test_pending_day_open_releases_to_real_chat_plan_when_empty_catalog_di
         plans = app.export_replay_evidence().projection.plans
         assert len(plans) == 1 and plans[0].status == "planned"
         assert plans[0].plan_id.startswith("plan:chat-life-intent:")
+        provider.choose = False  # The character chooses no additional plan.
         before = app.export_replay_evidence().projection.logical_time
         at = first_at + timedelta(seconds=30)
         await app.tick(
@@ -491,9 +492,11 @@ async def test_pending_day_open_releases_to_real_chat_plan_when_empty_catalog_di
             correlation_id="catalog-changed",
             reason="test_clock",
         )
-        assert len(provider.day_requests) == 1, (
-            "a nonempty catalog must not mint another empty opportunity"
-        )
+        at2 = at + timedelta(seconds=1)
+        await app.tick(tick_id="execute-existing", logical_time_from=at, logical_time_to=at2,
+                       observed_at=at2, trace_id="trace:execute-existing", causation_id="clock:execute-existing",
+                       correlation_id="catalog-changed", reason="test_clock")
+        assert len(provider.day_requests) == 2
         assert len(provider.lifecycle_requests) == 1
         after = app.export_replay_evidence().projection.plans
         assert len(after) == 1 and after[0].plan_id == plans[0].plan_id
@@ -503,8 +506,9 @@ async def test_pending_day_open_releases_to_real_chat_plan_when_empty_catalog_di
             row = json.loads(
                 connection.execute("SELECT body FROM world_v2_day_open_opportunities").fetchone()[0]
             )
-        assert row["terminal"] and row["terminal_reason"] == "catalog_no_longer_empty"
-        assert len(row["attempts"]) == 1
+        assert row["terminal"] and row["terminal_reason"] == "role_no_op"
+        assert len(row["attempts"]) == 2
+        assert row["attempts"][0]["failure_code"] is not None
     finally:
         app.close()
         await model.aclose()
@@ -919,7 +923,7 @@ async def test_expired_pause_leads_to_owned_choice_then_fresh_intention(tmp_path
 
 
 @pytest.mark.asyncio
-async def test_rolling_agenda_reaches_wire_chat_and_does_not_refill_in_future_gap(tmp_path, monkeypatch, build_app):
+async def test_rolling_agenda_reaches_wire_chat_and_role_can_decline_refill_in_future_gap(tmp_path, monkeypatch, build_app):
     from companion_daemon.world_v2.day_open_opportunity import activity_continuation_due
     from companion_daemon.world_v2.day_open_life_intent_runtime import DayOpenLifeIntentPlannedReader
     from companion_daemon.world_v2.schemas import ProjectionCursor
@@ -935,13 +939,15 @@ async def test_rolling_agenda_reaches_wire_chat_and_does_not_refill_in_future_ga
     try:
         for minute in (1, 2, 6, 7):
             provider.lifecycle_choice = "complete" if minute == 6 else "start"
+            if minute == 7:
+                provider.choose = False
             at = NOW + timedelta(minutes=minute)
             await app.tick(tick_id=f"agenda-{minute}", logical_time_from=previous, logical_time_to=at,
                            observed_at=at, trace_id=f"trace:agenda-{minute}", causation_id=f"clock:agenda-{minute}",
                            correlation_id="agenda", reason="test_clock")
             previous = at
         state = app.export_replay_evidence().projection
-        assert len(state.plans) == 2 and len(provider.day_requests) == 1
+        assert len(state.plans) == 2 and len(provider.day_requests) == 2
         assert len(state.chat_life_plan_considerations) == 1
         assert state.chat_life_plan_considerations[0].status == "selected"
 
@@ -1002,6 +1008,72 @@ async def test_agenda_activity_extra_decision_sources_are_corrected_by_same_role
         state = app.export_replay_evidence().projection
         assert state.plans[0].status == "active"
         assert state.chat_life_plan_considerations[0].status == "selected"
+    finally:
+        app.close()
+        await model.aclose()
+
+
+@pytest.mark.asyncio
+async def test_missed_old_intention_does_not_block_new_owned_planning(
+    tmp_path, monkeypatch, build_app
+):
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    provider = _DayOpenHTTP()
+    provider.agenda = [
+        INTENT,
+        {
+            **INTENT,
+            "intention": "一项后来错过窗口的旧打算。",
+            "start_after_seconds": 180,
+            "duration_seconds": 60,
+        },
+    ]
+    model = DeepSeekChatModel(
+        "offline",
+        "https://fixture.invalid",
+        "deepseek-v4-flash",
+        thinking_enabled=False,
+        transport=httpx.MockTransport(provider),
+    )
+    app = build_app(tmp_path / "missed-intention.sqlite", model, ecology=True)
+    previous = NOW
+    try:
+        for minute in (1, 2, 6, 7, 8):
+            provider.lifecycle_choice = (
+                "complete" if minute == 6 else "no_op" if minute >= 7 else "start"
+            )
+            if minute >= 6:
+                provider.agenda = None
+            at = NOW + timedelta(minutes=minute)
+            await app.tick(
+                tick_id=f"missed-{minute}",
+                logical_time_from=previous,
+                logical_time_to=at,
+                observed_at=at,
+                trace_id=f"trace:missed-{minute}",
+                causation_id=f"clock:missed-{minute}",
+                correlation_id="missed-intention",
+                reason="test_clock",
+            )
+            previous = at
+        evidence = app.export_replay_evidence()
+        assert len(provider.day_requests) == 2, (
+            "past cleanup options hid the existing planning mechanism"
+        )
+        assert len(evidence.projection.plans) == 3
+        old = [
+            p
+            for p in evidence.projection.plans
+            if p.scheduled_window and p.scheduled_window.closes_at < previous
+        ]
+        assert any(p.status == "planned" for p in old), (
+            "the fix must not abandon or delete the old intention"
+        )
+        request = json.loads(provider.day_requests[-1]["messages"][1]["content"])
+        assert request["capability_manifest"]["payload"]["offered_tokens"] == []
+        assert request["capability_manifest"]["payload"]["self_directed_intent"][
+            "completion_source"
+        ]
     finally:
         app.close()
         await model.aclose()

@@ -98,7 +98,7 @@ class DayOpenLifeIntentCapability(FrozenModel):
 
 
 class DayOpenActivityCapability(FrozenModel):
-    contract: Literal["character-interior-activity-lifecycle-capability.3", "character-interior-activity-lifecycle-capability.4", "character-interior-activity-lifecycle-capability.5", "character-interior-activity-lifecycle-capability.6"]
+    contract: Literal["character-interior-activity-lifecycle-capability.3", "character-interior-activity-lifecycle-capability.4", "character-interior-activity-lifecycle-capability.5", "character-interior-activity-lifecycle-capability.6", "character-interior-activity-lifecycle-capability.7"]
     catalog_version: str = Field(min_length=1, max_length=128)
     catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     offered_tokens: tuple[str, ...] = Field(max_length=0)
@@ -107,7 +107,7 @@ class DayOpenActivityCapability(FrozenModel):
 
     @model_validator(mode="after")
     def continuation_version_is_explicit(self):
-        if self.contract.endswith(".6"):
+        if self.contract.endswith((".6", ".7")):
             if self.self_directed_intent.contract != "day-open-life-intent-capability.4":
                 raise ValueError("agenda requires its explicit capability")
             return self
@@ -146,7 +146,7 @@ class DayOpenEvaluatedCursor(FrozenModel):
 
 
 class DayOpenLifeIntentOrigin(FrozenModel):
-    contract: Literal["day-open-life-intent-origin.1", "day-open-life-intent-origin.2", "day-open-life-intent-origin.3", "day-open-life-intent-origin.4"] = "day-open-life-intent-origin.1"
+    contract: Literal["day-open-life-intent-origin.1", "day-open-life-intent-origin.2", "day-open-life-intent-origin.3", "day-open-life-intent-origin.4", "day-open-life-intent-origin.5"] = "day-open-life-intent-origin.1"
     agenda_index: int | None = Field(default=None, ge=0, le=7, exclude_if=lambda value: value is None)
     reconsideration_ref: str | None = Field(default=None, pattern=r"^reconsider:[0-9a-f]{64}$", exclude_if=lambda v: v is None)
     completion_source: ActivityCompletionSource | None = Field(
@@ -184,7 +184,7 @@ class DayOpenLifeIntentOrigin(FrozenModel):
 
     @model_validator(mode="after")
     def continuation_version_is_explicit(self):
-        if self.contract.endswith(".4"):
+        if self.contract.endswith((".4", ".5")):
             if self.agenda_index is None:
                 raise ValueError("agenda origin needs its exact item")
             return self

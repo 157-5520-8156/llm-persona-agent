@@ -179,8 +179,8 @@ def day_open_reconsideration_due(ledger, *, actor_ref):
     return min((row.reconsider_at for row in waiting_reconsiderations(store.records(actor_ref))), default=None)
 
 
-def activity_continuation_due(ledger, *, actor_ref, projection):
-    """A new completion needs a fresh Clock, without installing a second worker."""
+def pending_activity_continuation_source(ledger, *, actor_ref, projection):
+    """Shared producer/consumer eligibility for one genuine owned ending."""
     from .activity_continuation_source import latest_completion_source
 
     try:
@@ -192,10 +192,17 @@ def activity_continuation_due(ledger, *, actor_ref, projection):
     records = store.records(actor_ref)
     if any(not row.terminal for row in records):
         return None  # Existing retries retain their own pin and deadline.
-    source = latest_completion_source(projection, actor_ref=actor_ref, include_abandoned=True)
+    source = latest_completion_source(projection, actor_ref=actor_ref, include_abandoned=True, allow_existing_plans=True)
     if source is None or any(
         row.completion_source is not None and row.completion_source.event_ref == source.event_ref
         for row in records
     ):
         return None
-    return projection.logical_time + timedelta(seconds=1)
+    return source
+
+
+def activity_continuation_due(ledger, *, actor_ref, projection):
+    """A new completion needs a fresh Clock, without installing a second worker."""
+    if pending_activity_continuation_source(ledger,actor_ref=actor_ref,projection=projection) is not None:
+        return projection.logical_time + timedelta(seconds=1)
+    return None

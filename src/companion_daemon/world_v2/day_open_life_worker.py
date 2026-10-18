@@ -71,7 +71,8 @@ class DayOpenLifeWorker:
         from .day_open_life_intent_contract import day_open_opportunity_ref
 
         reconsideration_ref = previous.reconsideration_ref if previous else reconsideration_ref
-        if catalog.status not in {"no_openings", "openings_available"} or (catalog.status != "no_openings" and reconsideration_ref is None):
+        completion_source = previous.completion_source if previous else completion_source
+        if catalog.status not in {"no_openings", "openings_available", "blocked_by_missing_capability"}:
             raise ValueError("day_open.catalog_not_empty")
         wake = next(
             (x for x in projection.committed_world_event_refs if x.event_id == wake_event_ref), None
@@ -111,7 +112,7 @@ class DayOpenLifeWorker:
             purpose="activity_lifecycle_choice",
         ).identity_for_refs(sources, epoch=f"{day_ref}:attempt:{ordinal}")
         payload = {
-            "contract": "character-interior-activity-lifecycle-capability.6",
+            "contract": "character-interior-activity-lifecycle-capability.7",
             "catalog_version": catalog.catalog_version,
             "catalog_hash": catalog.catalog_hash,
             "offered_tokens": [],
@@ -169,7 +170,7 @@ class DayOpenLifeWorker:
                  "One owned activity has ended. " if completion_source else
                  "This is an opportunity to decide how to spend your own time. ")
                 + "Choose a rolling agenda of 1..8 concrete own intentions, no_op, or reconsider. Make each intention useful to remember later, with the steps you actually intend, without inventing a course, appointment or outcome from generic routine. You need not continue the last activity "
-                "or conversation. A Plan is not execution, success, presence or a message. Routine is background. "
+                "or conversation. These are additional private intentions: they do not replace or cancel existing Plans. A Plan is not execution, success, presence or a message. Routine is background. "
                 + ("The previous activity was abandoned, not completed. "
                    if completion_source and completion_source.terminal_kind == "abandoned" else "")
                 + self._prior_intention_note(completion_source)
@@ -228,7 +229,7 @@ class DayOpenLifeWorker:
             if projection.logical_time < row.reconsider_at:
                 return (ActivityLifecycleFollowupResult(status="no_op", reason_code="day_open.reconsideration_wait")
                         if catalog.status == "no_openings" else None)
-            if catalog.status not in {"no_openings", "openings_available"}:
+            if catalog.status not in {"no_openings", "openings_available", "blocked_by_missing_capability"}:
                 return ActivityLifecycleFollowupResult(status="blocked", reason_code=catalog.reason_code)
             # Reconsidering is thought, not execution. An intervening Plan
             # changes the context she sees; it does not cancel her request
@@ -245,7 +246,7 @@ class DayOpenLifeWorker:
             ))
         if row is None:
             records = self.store.records(self.actor_ref)
-            completion = latest_completion_source(projection, actor_ref=self.actor_ref, include_abandoned=True)
+            completion = latest_completion_source(projection, actor_ref=self.actor_ref, include_abandoned=True, allow_existing_plans=True)
             if completion is not None and any(
                 x.completion_source is not None and x.completion_source.event_ref == completion.event_ref
                 for x in records
@@ -279,7 +280,8 @@ class DayOpenLifeWorker:
                 return ActivityLifecycleFollowupResult(
                     status="blocked", reason_code=catalog.reason_code
                 )
-            if catalog.status != "no_openings" and row.reconsideration_ref is None:
+            plan_only_scope = attempt.opportunity.capability_manifest.payload["contract"].endswith(".7")
+            if catalog.status != "no_openings" and row.reconsideration_ref is None and not plan_only_scope:
                 # An already paid terminal still belongs to its original empty
                 # catalog. Without one, changed opportunity eligibility cannot
                 # be presented as another empty-catalog character decision.
@@ -300,9 +302,9 @@ class DayOpenLifeWorker:
                 )
             if attempt.failure_code is not None:
                 if attempt.next_retry_at is None or attempt.next_retry_at > projection.logical_time:
-                    return ActivityLifecycleFollowupResult(
+                    return (ActivityLifecycleFollowupResult(
                         status="no_op", reason_code="day_open.retry_wait"
-                    )
+                    ) if catalog.status == "no_openings" or not plan_only_scope else None)
                 opportunity = self._opportunity(
                     projection=projection,
                     wake_event_ref=wake_event_ref,

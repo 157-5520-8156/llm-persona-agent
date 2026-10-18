@@ -154,12 +154,22 @@ class ActivityLifecycleWorker:
         correlation_id,
         renewed_plan_catalog=False,
     ):
-        if self._day_open_life is not None and self._day_open_life.pending() is not None:
+        if self._day_open_life is not None:
+            from .day_open_opportunity import pending_activity_continuation_source
+
             projection = self._ledger.project()
-            catalog = self._catalog.openings_for(projection=projection, wake_event_ref=wake_event_ref)
+            pending = self._day_open_life.pending()
+            continuation = pending_activity_continuation_source(
+                self._ledger, actor_ref=self._owner_actor_ref, projection=projection,
+            ) if pending is None else None
+            clock = next((ref for ref in reversed(projection.committed_world_event_refs)
+                          if ref.event_id == wake_event_ref), None)
+            fresh_ending = continuation is not None and clock is not None and clock.world_revision > continuation.world_revision
+            catalog = (self._catalog.openings_for(projection=projection,wake_event_ref=wake_event_ref)
+                       if pending is not None or fresh_ending else None)
             handled = await self._day_open_life.advance(
                 projection=projection, wake_event_ref=wake_event_ref, catalog=catalog,
-            )
+            ) if pending is not None or fresh_ending else None
             if handled is not None:
                 return handled
         pending = pending_opportunities(self._ledger, owner_actor_ref=self._owner_actor_ref)

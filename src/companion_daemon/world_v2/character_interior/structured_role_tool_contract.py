@@ -2010,7 +2010,7 @@ class StructuredRoleToolContracts:
                 {"properties": {"decision": {"enum": ["self_directed_intent"]}}, "required": ["life_intent"],
                  "not": {"properties": {"life_intent": {"type": "null"}}}},
             ]
-            agenda = capability_payload["contract"].endswith(".6")
+            agenda = capability_payload["contract"].endswith((".6", ".7"))
             reconsider = agenda or capability_payload["contract"].endswith(".5")
             if reconsider:
                 from ..day_open_life_intent_contract import DayOpenReconsiderChoice
