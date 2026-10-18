@@ -58,3 +58,10 @@ def test_no_attention_with_only_closed_or_unoffered_places_or_disturbance():
     value["occasion_mode"] = "ordinary"
     value["timing_coordinates"]["location_capability_coordinates"] = value["timing_coordinates"]["location_capability_coordinates"][2:]
     assert environment_attention(value) is None
+
+
+def test_ordinary_opportunity_does_not_forbid_story_progression():
+    from companion_daemon.world_v2.world_environment_attention import INDEPENDENT_SCENE_GUIDANCE, ORDINARY_SCENE_LANGUAGE
+    assert '不是推进剧情' not in ORDINARY_SCENE_LANGUAGE
+    assert 'not a request to continue a plot' not in INDEPENDENT_SCENE_GUIDANCE
+    assert 'Choose' in INDEPENDENT_SCENE_GUIDANCE

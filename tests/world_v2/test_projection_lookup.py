@@ -114,3 +114,78 @@ def test_address_cache_also_bounds_total_retained_rows(monkeypatch):
         assert lookup_first(rows, "identity", "11") is rows[-1]
         assert module._RETAINED_ROWS == sum(len(entry[0]) for entry in module._INDEXES.values())
         assert module._RETAINED_ROWS <= 64
+
+
+def test_replay_append_index_keeps_old_and_changed_snapshots_separate(monkeypatch):
+    import companion_daemon.world_v2.projection_lookup as module
+    builds = []
+    original = module._build_index
+    def counted(rows, attribute):
+        builds.append(len(rows))
+        return original(rows, attribute)
+    monkeypatch.setattr(module, '_build_index', counted)
+    with module.replay_lookup_indexes():
+        rows = ()
+        for i in range(128):
+            rows = module.append_indexed(rows, Row(identity=str(i), payload='old'), 'identity')
+            assert module.lookup_first(rows, 'identity', '0') is rows[0]
+        old = rows
+        rows = module.append_indexed(rows, Row(identity='0', payload='duplicate'), 'identity')
+        assert module.lookup_first(rows, 'identity', '0') is old[0]
+        assert module.lookup_first(rows, 'identity', '0', predicate=lambda r:r.payload=='duplicate') is rows[-1]
+        changed = (*rows[:1], rows[1].model_copy(update={'payload':'changed'}), *rows[2:])
+        assert module.lookup_first(changed, 'identity', '1') is changed[1]
+        assert module.lookup_first(old, 'identity', '1') is old[1]
+        with module.replay_lookup_indexes():
+            other = module.append_indexed((), Row(identity='0', payload='other'), 'identity')
+            assert module.lookup_first(other, 'identity', '0') is other[0]
+        assert module.lookup_first(rows, 'identity', '1') is rows[1]
+    assert not module._REPLAY_INDEXES.get()
+    assert max(builds) <= 1  # No growing prefix is rescanned or re-indexed.
+
+
+def test_replay_authority_retains_last_match_and_never_leaks_new_prefix():
+    from companion_daemon.world_v2.projection_lookup import append_indexed, lookup_last, replay_lookup_indexes
+    with replay_lookup_indexes():
+        rows = append_indexed((), Row(identity='key', payload='first'), 'identity')
+        old = rows
+        rows = append_indexed(rows, Row(identity='key', payload='last'), 'identity')
+        assert lookup_first(rows, 'identity', 'key') is rows[0]
+        assert lookup_last(rows, 'identity', 'key') is rows[-1]
+        assert lookup_last(old, 'identity', 'key') is old[0]
+        rows = append_indexed(rows, Row(identity='new', payload='new'), 'identity')
+        assert lookup_last(old, 'identity', 'new') is None
+
+
+def test_replay_cannot_index_mutable_rows_or_retain_its_stream_after_exit():
+    import companion_daemon.world_v2.projection_lookup as module
+    with module.replay_lookup_indexes():
+        row = SimpleNamespace(identity='key')
+        rows = module.append_indexed((), row, 'identity')
+        assert module.lookup_first(rows, 'identity', 'key') is row
+        row.identity = 'changed'
+        assert module.lookup_first(rows, 'identity', 'key') is None
+        assert module.lookup_last(rows, 'identity', 'changed') is row
+    assert module._REPLAY_INDEXES.get() is None
+
+
+def test_replay_probe_then_same_event_does_not_rebuild_the_growing_prefix(monkeypatch):
+    import companion_daemon.world_v2.projection_lookup as module
+    builds = []
+    original = module._build_index
+    def counted(rows,attribute):
+        builds.append(len(rows))
+        return original(rows, attribute)
+    monkeypatch.setattr(module,'_build_index',counted)
+    with module.replay_lookup_indexes():
+        rows=()
+        for i in range(64):
+            row=Row(identity=str(i),payload='accepted')
+            # Ledger legacy Acceptance verification trial-reduces this exact
+            # event, discards that result, then performs the actual fold.
+            trial=module.append_indexed(rows,row,'identity')
+            assert module.lookup_last(rows,'identity',str(i)) is None
+            rows=module.append_indexed(rows,row,'identity')
+            assert module.lookup_first(rows,'identity',str(i)) is row
+            assert module.lookup_last(trial,'identity',str(i)) is row
+    assert max(builds)<=1

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS
+from .projection_lookup import append_indexed, lookup_last
 
 from .character_prehistory import PrehistoryArchiveProjection, PrehistoryRecordProjection, validate_prehistory_state
 from .character_prehistory_reducers import (
@@ -12015,7 +12016,6 @@ def _validate_evidence_authority(
 ) -> None:
     """Resolve evidence against authoritative reducer state; fail closed."""
 
-    authority = {ref.event_id: ref for ref in state.committed_world_event_refs}
     for evidence in evidence_refs:
         kind = evidence.evidence_type
         if not require_all and kind not in {
@@ -12024,7 +12024,7 @@ def _validate_evidence_authority(
         }:
             continue
         if kind in {"committed_world_event", "settled_world_event"}:
-            committed = authority.get(evidence.ref_id)
+            committed = lookup_last(state.committed_world_event_refs, "event_id", evidence.ref_id)
             if (
                 committed is None
                 or evidence.source_world_revision != committed.world_revision
@@ -12035,7 +12035,7 @@ def _validate_evidence_authority(
                 raise ValueError("settled-world evidence is not a settlement event")
             continue
         if kind == "committed_fact":
-            committed = authority.get(evidence.ref_id)
+            committed = lookup_last(state.committed_world_event_refs, "event_id", evidence.ref_id)
             candidates = tuple(
                 item
                 for item in state.fact_transitions
@@ -12108,7 +12108,7 @@ def _validate_evidence_authority(
                 ),
                 None,
             )
-            committed = authority.get(evidence.ref_id)
+            committed = lookup_last(state.committed_world_event_refs, "event_id", evidence.ref_id)
             transition = next(
                 (
                     item
@@ -16019,8 +16019,8 @@ def _reduce_event_impl(
     if definition.revision_class is RevisionClass.WORLD:
         return reduced.model_copy(
             update={
-                "committed_world_event_refs": (
-                    *reduced.committed_world_event_refs,
+                "committed_world_event_refs": append_indexed(
+                    reduced.committed_world_event_refs,
                     CommittedWorldEventRef(
                         event_id=event.event_id,
                         event_type=event.event_type,
@@ -16033,7 +16033,7 @@ def _reduce_event_impl(
                             and event.payload().get("appraisal_trigger_ref") is not None
                             else ()
                         ),
-                    ),
+                    ), "event_id",
                 )
             }
         )

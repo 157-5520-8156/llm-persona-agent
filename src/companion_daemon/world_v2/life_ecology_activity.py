@@ -28,6 +28,7 @@ from .activity_timing import (
     activity_window_completion_allowed,
 )
 from .schema_core import FrozenModel
+from .projection_lookup import lookup_last
 from .schemas import LedgerProjection, PlanStateProjection, plan_authority_projection_hash
 
 
@@ -619,9 +620,8 @@ class ActivityOpeningCatalog:
     def _has_exact_availability_snapshot(
         plan: PlanStateProjection, *, projection: LedgerProjection
     ) -> bool:
-        committed = {item.event_id: item for item in projection.committed_world_event_refs}
         for evidence in plan.evidence_refs:
-            item = committed.get(evidence.ref_id)
+            item = lookup_last(projection.committed_world_event_refs, "event_id", evidence.ref_id)
             if (
                 evidence.evidence_type == "committed_world_event"
                 and item is not None

@@ -24,8 +24,9 @@ GUIDANCE = (
 )
 
 INDEPENDENT_SCENE_GUIDANCE = (
-    "This is an independent ordinary scene opening, not a request to continue a "
-    "plot or resolve the protagonist's agenda. A candidate can be a small, "
+    "This is an independent ordinary opening. Choose whether to continue a sourced "
+    "development or author an unrelated one, and choose its scale, tone and lasting consequences. "
+    "A candidate can be a small, "
     "unremarkable slice of external life; it need not introduce a problem, "
     "obstacle, announcement, task or lasting change. Background world history "
     "constrains contradictions but is not a collection of examples to imitate. "
@@ -36,8 +37,8 @@ INDEPENDENT_SCENE_GUIDANCE = (
 )
 
 ORDINARY_SCENE_LANGUAGE = (
-    "自然语言字段请用中文。当前任务是写普通生活里的一个具体时间片，不是推进剧情："
-    "场景可以平平无奇、没有成果，也不需要给主角安排待办或制造问题。"
+    "自然语言字段请用中文。由你决定本次是平常片刻还是会产生持续后果的发展，"
+    "以及承接既有故事还是发生独立的新事。平静、变化和没有成果都允许；不要因例文或最近话题而照抄。"
     "只创造本次权限允许的外部事实；主角是否参与、注意、喜欢或回应，仍由角色自己决定。"
     "协议键、枚举和来源坐标保持原样。"
 )

@@ -31,6 +31,48 @@ def _inputs():
     return authority, context
 
 
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_missing_nested_fields_do_not_hide_wrong_claim_namespace(wrapped):
+    from datetime import UTC, datetime
+    from companion_daemon.world_v2.life_development_draft import LifeDevelopmentCapabilityManifest, LifeDevelopmentDraftError
+    from companion_daemon.world_v2.life_development_runtime import _world_author_repair_coordinates
+    from companion_daemon.world_v2.schemas import ProjectionCursor
+
+    draft = {"claim_declarations": [{"claim_id": "local:claim:scene"}],
+             "premise_claim_refs": ["event:source"],
+             "outcomes": [{"claim_refs": ["local:claim:scene"],
+                           "visual_evidence": {"objects": [{"description": "object"}]}}]}
+    raw = json.dumps({"replacement": draft} if wrapped else draft)
+    error = LifeDevelopmentDraftError("invalid_shape", "nested object lacks local_ref",
+        violations=({"path": "outcomes.0.visual_evidence.objects.0.local_ref",
+                     "type": "missing", "message": "Field required"},))
+    manifest = LifeDevelopmentCapabilityManifest(version="life-development-capability.test",
+        owner_actor_ref="actor:test", pinned_cursor=ProjectionCursor(
+            world_revision=1, deliberation_revision=0, ledger_sequence=1),
+        outcome_contract="world-consequence.2", max_future_days=30, max_window_minutes=720)
+    coordinates = _world_author_repair_coordinates(raw=raw, error=error, manifest=manifest,
+        hard_boundary_contract={}, logical_time=datetime(2026, 10, 19, tzinfo=UTC))
+    closure = next(c for c in coordinates if c["rule"] == "claim_declaration_exact_closure")
+    assert closure["undeclared_claim_refs"] == ["event:source"]
+    assert closure["declared_claim_ids"] == ["local:claim:scene"]
+    assert json.loads(raw) == ({"replacement": draft} if wrapped else draft)
+
+
+def test_current_author_wire_explains_separate_reference_namespaces():
+    authority, context = _inputs()
+    messages = compile_world_consequence_messages(user_context=context, authority=authority, execution_materials=())
+    assert "claim_declarations[*].claim_id" in messages[0]["content"]
+    assert "claim_declarations[*].source_refs" in messages[0]["content"]
+
+
+def test_disturbance_prompt_preserves_every_supported_durable_effect_lane():
+    authority, context = _inputs()
+    context["occasion_mode"] = "disturbance"
+    guidance = compile_world_consequence_messages(user_context=context, authority=authority, execution_materials=())[0]["content"]
+    assert "provisional NPC/place" in guidance
+    assert "at least one outcome needs dynamic_life_direction" not in guidance
+
+
 def test_historical_output_schema_keeps_the_exact_pre_protocol_fingerprint():
     # Independently recovered from 4fed62c8, including original key insertion
     # order and required-text semantics. New replay never upgrades this wire.
@@ -290,7 +332,7 @@ def test_ordinary_course_prompt_narrows_only_the_new_event_capability():
         user_context=context, authority=authority, execution_materials=())
     packet = json.loads(messages[1]['content'])
     schema = packet['output_contract']['propose']
-    assert packet['world_author_prompt_contract'] == 'world-consequence-prompt.3'
+    assert packet['world_author_prompt_contract'] == 'world-consequence-prompt.4'
     assert schema['properties']['location_ref'] == {'type': 'null'}
     assert schema['properties']['privacy_class']['const'] == 'private'
     assert schema['$defs']['LifeDevelopmentOutcomeDraft']['properties']['visual_evidence'] == {'type': 'null'}
@@ -455,7 +497,7 @@ def test_current_schema_exposes_canonical_coordinate_and_narrative_syntax():
     authority, context = _inputs()
     packet = json.loads(compile_world_consequence_messages(user_context=context,
         authority=authority, execution_materials=())[1]["content"])
-    assert packet["world_author_prompt_contract"] == "world-consequence-prompt.6"
+    assert packet["world_author_prompt_contract"] == "world-consequence-prompt.7"
     definitions = packet["output_contract"]["propose"]["$defs"]
     objective = definitions["ObjectiveBiographicalTransitionDraft"]["properties"]
     assert Draft202012Validator(objective["coordinate_ref"]).is_valid("biography:community.membership")
@@ -467,3 +509,31 @@ def test_current_schema_exposes_canonical_coordinate_and_narrative_syntax():
     tags = Draft202012Validator(definitions["DynamicLifeDirectionDraft"]["properties"]["narrative_tags"]["items"])
     assert tags.is_valid("narrative:community_contact")
     assert not tags.is_valid("community:contact")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('second_no_op', (False, True))
+async def test_disturbance_closure_gets_one_same_author_correction(second_no_op):
+    from companion_daemon.world_v2.ledger import WorldLedger
+    from test_life_development_runtime import (
+        NOW, WORLD_ID, _manifest, _projection_cursor, _runtime, _seed_clock, _SequenceModel,
+    )
+    from test_world_consequence_producer import _draft
+
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    raw = json.dumps(_draft(wake), ensure_ascii=False)
+    author = _SequenceModel(model='fixture:world-author', outputs=(raw,
+        '{"decision":"no_op"}' if second_no_op else raw))
+    runtime, _ = _runtime(ledger=ledger, wake=wake, world_author=author,
+        character_interior=_SequenceModel(model='fixture:unused-role', outputs=()))
+    manifest = _manifest(wake, pinned_cursor=_projection_cursor(ledger)).model_copy(
+        update={'outcome_contract': 'world-consequence.2'})
+    run = await runtime._world_author_draft(context={}, logical_time=NOW, manifest=manifest,
+        wake_event_ref=wake.event_id, occasion_mode='disturbance')
+    assert author.calls == 2
+    correction = json.loads(author.messages[1][-1]['content'])
+    assert correction['validation_failure']['code'] == 'disturbance_missing_consequence'
+    assert run.succeeded is second_no_op
+    assert len(run.attempts) == 2
+    assert ledger.project().ledger_sequence == 1

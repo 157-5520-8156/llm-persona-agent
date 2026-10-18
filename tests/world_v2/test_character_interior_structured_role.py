@@ -5220,3 +5220,18 @@ async def test_proactive_role_can_select_late_fact_alias_with_exact_scope_permis
     assert len(model.calls) == 1
     assert tuple(result["attended_source_refs"]) == (selected_ref,)
     assert tuple(result["decision"]["payload"]["world_claims"][0]["source_refs"]) == (selected_ref,)
+
+
+@pytest.mark.asyncio
+async def test_root_field_error_explains_nesting_without_repairing_output():
+    model = _QueueModel(_result(status="silent"))
+    role = StructuredCharacterRoleFaculty(model=model, model_id="test")
+    request = await _request(correction_ordinal=1,
+        correction_failure_code="role_result_schema_invalid",
+        correction_failure_detail=json.dumps([{"type":"extra_forbidden","loc":["source_refs"],"msg":"Extra inputs are not permitted"}]))
+    await role.consider(request)
+    correction = json.loads(model.calls[0][0][1]["content"])["correction"]
+    placement = correction["field_placement"]
+    assert "source_refs" not in placement["root_fields"]
+    assert "source_refs" in placement["decision_fields"]
+    assert placement["unexpected_root_fields"] == ["source_refs"]

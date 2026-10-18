@@ -23,6 +23,7 @@ from .accepted_ledger_batch import (
     AcceptedLedgerBatchIssuer,
 )
 from .affect_live import materialize_affect_episodes
+from .projection_lookup import replay_lookup_indexes
 from .batch_invariants import (
     reject_accepted_manifest_v3_without_recorder,
     validate_commit_batch,
@@ -6609,6 +6610,7 @@ class SQLiteWorldLedger:
         self._epoch_binding_mode_cache = (head, mode)
         return mode
 
+    @replay_lookup_indexes()
     def _replay_locked(
         self,
         *,

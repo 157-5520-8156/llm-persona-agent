@@ -1,4 +1,5 @@
 """Replay the reviewed archive grant and each exact historical record."""
+from .projection_lookup import append_indexed
 from .character_prehistory import (
     IMPORT_ACTOR, SOURCE, COMPILED_SOURCE, PrehistoryArchiveAcceptedPayload, PrehistoryArchiveProjection,
     PrehistoryRecordImportedPayload, PrehistoryRecordProjection, digest, prehistory_event_id,
@@ -83,4 +84,4 @@ def record_imported(state, event):
         accepted_world_revision=len(state.committed_world_event_refs) + 1,
         accepted_payload_hash=event.payload_hash, accepted_at=event.logical_time,
     )
-    return state.model_copy(update={"prehistory_records": (*state.prehistory_records, projection)})
+    return state.model_copy(update={"prehistory_records": append_indexed(state.prehistory_records, projection, "record.record_id")})

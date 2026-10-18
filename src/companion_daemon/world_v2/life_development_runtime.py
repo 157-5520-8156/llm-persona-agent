@@ -6247,6 +6247,8 @@ class LifeDevelopmentRuntime:
                 )
                 if manifest.outcome_contract == "world-consequence.2":
                     validate_world_consequence_offered_bindings(draft=parsed, messages=messages)
+                if occasion_mode == "disturbance" and isinstance(parsed, LifeDevelopmentPossibilityDraft):
+                    validate_disturbance_consequence_closure(parsed)
                 attempts.append(
                     _LifeDevelopmentAttempt(
                         request_hash=request_hash,
@@ -8345,11 +8347,41 @@ def _world_author_repair_coordinates(
         decoded = {}
 
     coordinates: list[dict[str, object]] = []
+    # Nested schema errors prevent Pydantic's model-level closure check from
+    # running. Report this independent mechanical error in the SAME correction;
+    # do not fill declarations, choose references, or accept the invalid draft.
+    if getattr(manifest, "outcome_contract", None) == "world-consequence.2":
+        body = decoded.get("replacement") if set(decoded) == {"replacement"} else decoded
+        if isinstance(body, dict):
+            declarations = body.get("claim_declarations")
+            outcomes = body.get("outcomes")
+            reference_lists = [body.get("premise_claim_refs", [])]
+            if isinstance(outcomes, list):
+                reference_lists += [o.get("claim_refs", []) for o in outcomes if isinstance(o, dict)]
+            details = body.get("event_details", [])
+            if isinstance(details, list):
+                reference_lists += [s.get("claim_refs", []) for s in details if isinstance(s, dict)]
+            if (isinstance(declarations, list) and declarations
+                    and all(isinstance(c, dict) and isinstance(c.get("claim_id"), str) for c in declarations)
+                    and all(isinstance(refs, list) and all(isinstance(ref, str) for ref in refs)
+                            for refs in reference_lists)):
+                declared = {c["claim_id"] for c in declarations}
+                used = {ref for refs in reference_lists for ref in refs}
+                if used - declared:
+                    coordinates.append({
+                        "rule": "claim_declaration_exact_closure",
+                        "field_paths": ["premise_claim_refs", "outcomes.*.claim_refs", "event_details.*.claim_refs"],
+                        "required_relation": "used claim references equal claim_declarations[*].claim_id; source evidence belongs in claim_declarations[*].source_refs",
+                        "undeclared_claim_refs": sorted(used - declared),
+                        "declared_claim_ids": sorted(declared),
+                        "unused_claim_ids": sorted(declared - used),
+                    })
     for violation in _direct_authority_violations(error.violations):
         message = violation.get("message", "")
         matched = False
         if "premise and outcomes must exactly close over claim declarations" in message:
-            coordinates.append(
+            if not any(c["rule"] == "claim_declaration_exact_closure" for c in coordinates):
+                coordinates.append(
                 {
                     "rule": "claim_declaration_exact_closure",
                     "field_paths": [
@@ -8364,7 +8396,7 @@ def _world_author_repair_coordinates(
                         + ") equals set(claim_declarations[*].claim_id)"
                     ),
                 }
-            )
+                )
             matched = True
         if "outcome effect cannot weaken outcome privacy" in message:
             coordinates.append(

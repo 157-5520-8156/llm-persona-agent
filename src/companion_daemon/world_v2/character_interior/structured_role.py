@@ -2271,6 +2271,23 @@ class StructuredCharacterRoleFaculty:
                     ),
                 } if rejected is not None else {}),
             }
+            # Explain the failing namespace instead of silently moving/removing
+            # fields. The same author must return a complete valid replacement.
+            try:
+                shape_errors = json.loads(request.correction_failure_detail or "")
+            except (TypeError, ValueError):
+                shape_errors = []
+            extras = sorted({e["loc"][0] for e in shape_errors
+                if isinstance(e, dict) and e.get("type") == "extra_forbidden"
+                and isinstance(e.get("loc"), list) and len(e["loc"]) == 1
+                and isinstance(e["loc"][0], str)}) if isinstance(shape_errors, list) else []
+            if extras:
+                user_payload["correction"]["field_placement"] = {
+                    "root_fields": list(_WireRoleResult.model_fields),
+                    "decision_fields": list(_WireDecision.model_fields),
+                    "unexpected_root_fields": extras,
+                    "instruction": "Use the original nested decision shape. Do not copy capability metadata into the root; resubmit the whole result. No result has been accepted.",
+                }
         snapshot = user_payload.get("inner_life_snapshot")
         if isinstance(snapshot, dict):
             user_payload["inner_life_snapshot"] = present_inner_life(snapshot)

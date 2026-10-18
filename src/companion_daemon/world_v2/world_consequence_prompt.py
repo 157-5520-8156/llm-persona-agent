@@ -106,8 +106,12 @@ feeling, memory or response. CharacterInterior owns those choices. An outcome to
 no character authorship; user-channel completion requires authorized Action and receipt.
 Existing-world claims need exact entailing pinned sources. Novel world generation may
 create current proposal-scoped external facts, not earlier friendships, shared history or
-completed experience. Claims must cover every field that relies on them. A Clock proves
-time only; a schedule, residence, personality or intention proves neither presence nor success.
+completed experience. Claims must cover every field that relies on them.
+Reference namespaces are distinct: premise_claim_refs, outcome.claim_refs and detail.claim_refs
+use claim_declarations[*].claim_id, never source event IDs. Original evidence belongs in
+claim_declarations[*].source_refs. Their used claim IDs must close over the declarations.
+Each visual_evidence.objects entry requires its own local_ref as well as its description.
+A Clock proves time only; a schedule, residence, personality or intention proves neither presence nor success.
 Use the exact capabilities and privacy rules in capability_manifest and cross_field_authority.
 anchor_refs must copy offered anchor_refs. A location is optional: omit both location fields
 or copy an offered location_ref/capability_ref pair. timing_coordinates.location_capability_coordinates provides derived
@@ -217,7 +221,7 @@ def compile_world_consequence_messages(
     closing_offset = detail_capability.get("closing_offset_seconds")
     bound_attempt = scope in {"completed_activity_consequence", "active_attempt_consequence"}
     value["world_author_task"] = scope or "open_world_possibility"
-    value["world_author_prompt_contract"] = "world-consequence-prompt.3" if ordinary_course_detail else "world-consequence-prompt.6"
+    value["world_author_prompt_contract"] = "world-consequence-prompt.4" if ordinary_course_detail else "world-consequence-prompt.7"
     boundary["world_consequence"] = {
         "contract": "world-consequence.2", "environment_text": "external_world_consequences_only",
         "authorized_attempt_result": {
@@ -385,9 +389,10 @@ def compile_world_consequence_messages(
             )
     if value.get("occasion_mode") == "disturbance":
         guidance += (
-            "This is a disturbance occasion: at least one outcome needs dynamic_life_direction describing "
-            "the same durable external consequence, with nonempty context_tags, duration_days and privacy "
-            "at least as restrictive as that outcome. Its declarations must cover that material.\n"
+            "This is a disturbance occasion; no_op remains valid. If proposing, at least one outcome "
+            "must carry a durable external consequence through dynamic_life_direction, "
+            "objective_biographical_transition or a provisional NPC/place. Use the selected field's "
+            "complete schema, source declarations and privacy floor. The content and outcome remain yours.\n"
         )
     elif attention is not None:
         guidance += (
