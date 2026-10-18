@@ -1,3 +1,24 @@
+Multi-thread Fate consequence loop implemented and isolated-qualified (2026-10-18), base7fe99bec.
+Reuses Outlook/Occurrence/Planning/source review; no new story framework or actor behavior policy.
+Fresh Outlook schema8/native6 adds independent possible developments, stage conditions/thread links,
+accepted-change responses and exact predecessor planning replacements; accepted material effects wake
+existing background preparation without the ordinary role cadence. Source/privacy/CAS/replay gates remain.
+Fresh consequence prompt6 advertises canonical coordinate syntax. Focused review7/general2 cover exact
+objective coordinate/tag/prefix fields; original paid pre-label6 wire is reconstructible, committed effects
+replay unchanged, unfinished old reviews retain records and receive explicit new-scope requalification.
+Real old snapshot review rejected deposit_600_paid unsupported by a signed lease obligation; new lease
+has no payment assertion. Six controlled choices use real GLM World/reviews/Outlook, simulated48h:
+free/lease/refuse/defer/no-action/novel; persistent300/month+600deposit obligation differs from unsigned
+branches, exact planning replacement verified, novel choice grows a third line. Public hours stay equal.
+Choices are controlled role interventions, not spontaneous DeepSeek agency/QQ/year-long/soak qualification.
+Six cold reopens/rebuilds and original Outlook pins match; production-equivalent18fresh idle clock wakes
+produce0model calls. Full-v4:10839pass/19skip/2xfail/1existingwarning,1272.57s,1705Python hashes unchanged.
+Post-full only opt-in uncollected qualify_story_choices.py received production NPC-reader wiring;
+no runtime/collected test changed; final18wake audit/Ruff/diff pass. All failures/unknown billing retained.
+Evidence: output/private-audits/story-choices-qualified-20261018/RESULT.md and story-choices-20261018/.
+No service deployment this turn: candidate PID90724/8792 still runs earlier imported code; productionQQ
+untouched. Check current owner before control. Current checks prove this component scope, not release.
+
 Candidate calendar mechanism is live (2026-10-17); production QQ remains unchanged.
 Active owner: private serve.py, PID60826,127.0.0.1:8792, CaptureDelivery only; same DB
 output/private-audits/proxy-outlook-validation-20261014/candidate-calendar-full-v3/world.sqlite.

@@ -46,7 +46,7 @@ _REVIEW_CONTRACT = "life-development-source-closure-review.1"
 _WORLD_LIFE_ITEM_ADAPTER = TypeAdapter(WorldLifeModelContextItem)
 _PRIVACY_RANK = {"shareable": 0, "personal": 1, "private": 2, "withhold": 3}
 _NOVEL_ORIGIN_CONTRACT = "life-development-novel-origin-review.5"
-_WORLD_CONSEQUENCE_REVIEW_CONTRACT = "life-development-novel-origin-review.6"
+_WORLD_CONSEQUENCE_REVIEW_CONTRACT = "life-development-novel-origin-review.7"
 _MANIFEST_BINDING_CONTRACT = "life-development-review-manifest-binding.2"
 _EXISTING_WORLD_EVIDENCE_CONTRACT = (
     "life-development-novel-origin-existing-world-evidence.1"
@@ -449,6 +449,15 @@ class LifeDevelopmentWorldConsequenceFinding(LifeDevelopmentOutcomePrerequisiteF
     )
 
 
+class LifeDevelopmentWorldConsequenceObjectiveFinding(LifeDevelopmentObjectiveTransitionFinding):
+    """An exact objective field, including state labels, under the current wire."""
+
+    prose_path: str = Field(pattern=(
+        r"^outcomes\.(0|[1-9][0-9]*)\.objective_biographical_transition\."
+        r"(summary|coordinate_ref|(context_tags|replaces_context_tag_prefixes)\.(0|[1-9][0-9]*))$"
+    ), max_length=256)
+
+
 class LifeDevelopmentWorldConsequenceReview(LifeDevelopmentNovelOriginReview):
     """The existing focused verdict with explicitly versioned consequence paths."""
 
@@ -467,6 +476,14 @@ class LifeDevelopmentPreparedDetailFinding(LifeDevelopmentWorldConsequenceFindin
 class LifeDevelopmentPreparedDetailReview(LifeDevelopmentWorldConsequenceReview):
     # Only drafts with this newly offered capability gain future coordinates.
     unsupported_outcome_prerequisites: tuple[LifeDevelopmentPreparedDetailFinding, ...] = Field(default=(), max_length=8)
+
+
+class LifeDevelopmentObjectiveFieldsReview(LifeDevelopmentWorldConsequenceReview):
+    unsupported_objective_transitions: tuple[LifeDevelopmentWorldConsequenceObjectiveFinding, ...] = Field(default=(), max_length=8)
+
+
+class LifeDevelopmentObjectiveFieldsDetailReview(LifeDevelopmentPreparedDetailReview):
+    unsupported_objective_transitions: tuple[LifeDevelopmentWorldConsequenceObjectiveFinding, ...] = Field(default=(), max_length=8)
 
 
 class LifeDevelopmentSourceClosureError(ValueError):
@@ -879,15 +896,9 @@ def parse_life_development_novel_origin_review(
                 "unknown_novel_origin_outcome_fragment",
                 "focused critic outcome fragment is absent from the exact outcome text",
             )
-    transition_summaries = {
-        f"outcomes.{index}.objective_biographical_transition.summary": (
-            outcome.objective_biographical_transition.summary
-        )
-        for index, outcome in enumerate(draft.outcomes)
-        if outcome.objective_biographical_transition is not None
-    }
+    transition_strings = _objective_transition_coordinates(draft)
     for finding in review.unsupported_objective_transitions:
-        summary = transition_summaries.get(finding.prose_path)
+        summary = transition_strings.get(finding.prose_path)
         if summary is None:
             raise LifeDevelopmentSourceClosureError(
                 "unknown_objective_transition_path",
@@ -896,7 +907,7 @@ def parse_life_development_novel_origin_review(
         if any(fragment not in summary for fragment in finding.exact_fragments):
             raise LifeDevelopmentSourceClosureError(
                 "unknown_objective_transition_fragment",
-                "focused critic transition fragment is absent from the exact summary",
+                "focused critic transition fragment is absent from the exact objective field",
             )
     direction_strings = _dynamic_life_direction_coordinates(draft)
     for finding in review.unsupported_dynamic_life_directions:
@@ -918,7 +929,19 @@ def _uses_world_consequence(draft: LifeDevelopmentPossibilityDraft) -> bool:
     return any(outcome.world_consequence is not None for outcome in draft.outcomes)
 
 
+def _objective_labels_enabled(draft):
+    # Explicit new review dialect. Keeping .6 reconstructible preserves its
+    # original paid request hashes; it never inherits the new label coverage.
+    return _uses_world_consequence(draft) and _WORLD_CONSEQUENCE_REVIEW_CONTRACT != "life-development-novel-origin-review.6"
+
+
+def _general_review_contract(draft):
+    return "life-development-source-closure-review.2" if _objective_labels_enabled(draft) else _REVIEW_CONTRACT
+
+
 def _novel_review_model(draft: LifeDevelopmentPossibilityDraft):
+    if _objective_labels_enabled(draft):
+        return LifeDevelopmentObjectiveFieldsDetailReview if draft.event_details else LifeDevelopmentObjectiveFieldsReview
     if draft.event_details:
         return LifeDevelopmentPreparedDetailReview
     return (
@@ -1030,6 +1053,22 @@ def _world_consequence_actor_boundary() -> str:
     )
 
 
+def _objective_transition_coordinates(draft: LifeDevelopmentPossibilityDraft) -> dict[str, str]:
+    """Structured labels can assert facts too; give reviewers exact coordinates."""
+    values = {}
+    for index, outcome in enumerate(draft.outcomes):
+        effect = outcome.objective_biographical_transition
+        if effect is None:
+            continue
+        prefix = f"outcomes.{index}.objective_biographical_transition"
+        values[f"{prefix}.summary"] = effect.summary
+        if _objective_labels_enabled(draft):
+            values[f"{prefix}.coordinate_ref"] = effect.coordinate_ref
+            for field in ("context_tags", "replaces_context_tag_prefixes"):
+                values.update({f"{prefix}.{field}.{i}": text for i, text in enumerate(getattr(effect, field))})
+    return values
+
+
 def _dynamic_life_direction_coordinates(
     draft: LifeDevelopmentPossibilityDraft,
 ) -> dict[str, str]:
@@ -1051,17 +1090,13 @@ def _general_source_prose_coordinates(
 ) -> dict[str, str]:
     """Return prose over which the general reviewer has negative authority."""
 
-    values: dict[str, str] = {"premise": draft.premise}
+    values: dict[str, str] = {"premise": draft.premise, **_objective_transition_coordinates(draft)}
     for outcome_index, outcome in enumerate(draft.outcomes):
         prefix = f"outcomes.{outcome_index}"
         for npc_index, npc in enumerate(outcome.provisional_npcs):
             values[f"{prefix}.provisional_npcs.{npc_index}.summary"] = npc.summary
         for place_index, place in enumerate(outcome.provisional_places):
             values[f"{prefix}.provisional_places.{place_index}.summary"] = place.summary
-        if outcome.objective_biographical_transition is not None:
-            values[f"{prefix}.objective_biographical_transition.summary"] = (
-                outcome.objective_biographical_transition.summary
-            )
         visual = outcome.visual_evidence
         if visual is None:
             continue
@@ -1987,8 +2022,11 @@ def life_development_source_closure_messages(
         "an existing_world claim or, by itself, justify an unsupported verdict. A newly "
         "authored weather or environmental condition must be covered by its own "
         "novel_world_generation claim, not inferred from calendar context. Identify "
-        "undeclared current facts only in premise, visual evidence, provisional-NPC, "
-        "and provisional-place summaries. Outcome text has no negative coordinate in this general review lane: "
+        + ("undeclared current facts in premise, visual evidence, provisional-NPC/place summaries, "
+           "and all objective-transition fields including coordinate_ref and tags. "
+           "An obligation is not payment; permission is not participation. " if _objective_labels_enabled(draft) else
+           "undeclared current facts only in premise, visual evidence, provisional-NPC, and provisional-place summaries. ")
+        + "Outcome text has no negative coordinate in this general review lane: "
         "do not return an outcome text path or copy an outcome-only fragment into "
         "undeclared_fact_fragments. A separate focused critic reviews only imported "
         "current/prior prerequisites, retroactive history, and completed "
@@ -2059,7 +2097,7 @@ def life_development_source_closure_messages(
             manifest=manifest, execution_authority=execution_authority,
         )
     request = {
-        "review_contract": _REVIEW_CONTRACT,
+        "review_contract": _general_review_contract(draft),
         "reviewed_surface": reviewed_surface,
         "pinned_source_evidence": pinned_source_evidence,
         "evidence_packet_binding": _evidence_packet_binding(
@@ -2075,7 +2113,8 @@ def life_development_source_closure_messages(
             "existing_world_entailment": "exact_cited_sources_only",
             "undeclared_factual_prose": (
                 "premise,provisional_npcs,provisional_places,"
-                "objective_biographical_transition,visual_evidence"
+                + ("objective_biographical_transition_including_coordinate_ref_and_tags,visual_evidence"
+                   if _objective_labels_enabled(draft) else "objective_biographical_transition,visual_evidence")
             ),
             "outcome_text_authority": {
                 "general_reviewer": "no_negative_coordinate_authority",
@@ -2103,7 +2142,7 @@ def life_development_source_closure_messages(
         },
         "parser_coordinate_catalog": _source_closure_coordinate_catalog(draft),
         "output_contract": _review_output_contract(
-            contract=_REVIEW_CONTRACT,
+            contract=_general_review_contract(draft),
             review_model=LifeDevelopmentSourceClosureReview,
         ),
     }
@@ -2151,12 +2190,12 @@ def life_development_source_closure_correction_message(
                     "detail": error.detail,
                     "violations": list(error.violations),
                 },
-                "review_contract": _REVIEW_CONTRACT,
+                "review_contract": _general_review_contract(draft),
                 "parser_coordinate_catalog": _source_closure_coordinate_catalog(
                     draft
                 ),
                 "output_contract": _review_output_contract(
-                    contract=_REVIEW_CONTRACT,
+                    contract=_general_review_contract(draft),
                     review_model=LifeDevelopmentSourceClosureReview,
                 ),
                 "instruction": (
@@ -2241,8 +2280,13 @@ def life_development_novel_origin_messages(
         "friendship, classmate relationship, period of no contact, shared history, "
         "known person, recurring habit, or completed character experience. The same "
         "boundary applies to provisional-NPC, provisional-place, and objective "
-        "biographical-transition summaries. An objective transition may state only "
-        "a present coordinate made true by that exact candidate branch; it cannot "
+        + ("biographical-transition objects, including coordinate_ref and every tag. "
+           "An obligation is not payment; permission is not participation. Reject "
+           "a tag or label that asserts stronger truth than its exact branch, using "
+           "that field's objective_transition_paths coordinate and verbatim fragment. "
+           "An objective transition may state only " if _objective_labels_enabled(draft) else
+           "biographical-transition summaries. An objective transition may state only ")
+        + "a present coordinate made true by that exact candidate branch; it cannot "
         "smuggle in prior history, a character motive, a plan, or a hoped-for future. "
         "Opaque entity/location refs "
         "prove identity coordinates only, not unstated names, "
@@ -2312,8 +2356,10 @@ def life_development_novel_origin_messages(
         "coordinates: each unsupported novel claim uses its exact claim_id and "
         "verbatim fragments from that claim summary; each provisional NPC or place uses its "
         "exact local_ref and verbatim fragments from its summary; each objective "
-        "transition uses its exact supplied summary path and verbatim fragments; each imported "
-        f"outcome prerequisite uses an exact supplied {outcome_path} prose_path and "
+        + ("transition uses its exact supplied objective field path and verbatim fragments; each imported "
+           if _objective_labels_enabled(draft) else
+           "transition uses its exact supplied summary path and verbatim fragments; each imported ")
+        + f"outcome prerequisite uses an exact supplied {outcome_path} prose_path and "
         "verbatim fragments from that one outcome. Each dynamic_life_direction is "
         "a proposed durable world effect: inspect its entire object, including "
         "summary, tags, supersession and duration, against that exact branch and "
@@ -2359,8 +2405,8 @@ def life_development_novel_origin_messages(
             "provisional_npc_origin": "new_person_or_new_relationship_start_only",
             "provisional_place_origin": "new_place_without_invented_prior_history_only",
             "objective_biographical_transition": (
-                "present_objective_coordinate_semantically_entailed_by_exact_"
-                "candidate_text_and_branch_only"
+                "present_objective_coordinate_semantically_entailed_by_exact_candidate_text_and_branch_only"
+                + ("_in_summary_coordinate_ref_and_all_tags; an_obligation_is_not_payment_and_permission_is_not_participation; labels_cannot_assert_stronger_facts_than_the_exact_authorized_result" if _objective_labels_enabled(draft) else "")
             ),
             "dynamic_life_direction": {
                 "surface": "complete_durable_context_object",
@@ -2496,11 +2542,7 @@ def _novel_origin_coordinate_catalog(
             {place.local_ref for outcome in draft.outcomes for place in outcome.provisional_places}
         ),
         "outcome_prerequisite_paths": list(_outcome_prose_coordinates(draft)),
-        "objective_transition_paths": [
-            f"outcomes.{index}.objective_biographical_transition.summary"
-            for index, outcome in enumerate(draft.outcomes)
-            if outcome.objective_biographical_transition is not None
-        ],
+        "objective_transition_paths": list(_objective_transition_coordinates(draft)),
         "dynamic_life_direction_paths": list(_dynamic_life_direction_coordinates(draft)),
         "fragment_rule": (
             "copy_verbatim_substrings_from_the_matching_claim_npc_place_transition_"

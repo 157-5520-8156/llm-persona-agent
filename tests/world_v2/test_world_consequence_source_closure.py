@@ -158,7 +158,7 @@ def test_new_environment_has_exact_focused_coordinates_and_full_execution_author
     assert (
         "outcomes.0.text" not in request["parser_coordinate_catalog"]["outcome_prerequisite_paths"]
     )
-    assert request["review_contract"] == "life-development-novel-origin-review.6"
+    assert request["review_contract"] == "life-development-novel-origin-review.7"
     assert life_development_review_packet_identity(messages)[0] == (
         "life-development-novel-origin-review-evidence-packet.7"
     )
@@ -203,7 +203,7 @@ def test_attempt_field_stays_separate_and_correction_preserves_new_actor_boundar
     assert error.value.code == "unknown_novel_origin_outcome_fragment"
     correction = life_development_novel_origin_correction_message(error=error.value, draft=draft)
     corrected = json.loads(correction["content"])
-    assert corrected["review_contract"] == "life-development-novel-origin-review.6"
+    assert corrected["review_contract"] == "life-development-novel-origin-review.7"
     assert corrected["output_contract"] == request["output_contract"]
     assert corrected["parser_coordinate_catalog"] == request["parser_coordinate_catalog"]
     assert "outcomes.N.text" not in messages[0]["content"] + corrected["instruction"]

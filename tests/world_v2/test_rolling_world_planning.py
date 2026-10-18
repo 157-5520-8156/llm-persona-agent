@@ -121,14 +121,16 @@ async def test_five_domains_and_dense_weeks_keep_all_authoritative_schedules(tmp
                     "lane": "world", "basis_refs": p["basis_refs"][:1], "opens_at": now.isoformat(),
                     "closes_at": (now + timedelta(days=2)).isoformat(),
                     "execution": {"kind": "planning", "text": "公布安排", "planning": plan.model_dump(mode="json"), "duration_minutes": 1}})
-            return json.dumps({"decision": "revise", "draft": {
+            value = {
                 "world_id": p["world_id"], "actor_ref": p["actor_ref"], "parent_revision": p["parent_revision"],
                 "revise_reason": "分批准备", "review_at": (now + timedelta(days=7)).isoformat(),
                 "horizon_end": (now + timedelta(days=30)).isoformat(),
                 "threads": [{"thread_id": "ordinary", "situation": "日常事务", "open_question": "各领域如何推进"}],
                 "long_term": [{"stage_id": "domain-" + str(i), "starts_on": now.date().isoformat(),
                     "ends_on": (now + timedelta(days=365)).date().isoformat(), "situation": "一个独立外部领域",
-                    "planning_key": "domain-" + str(i)} for i in range(5)], "opportunities": nodes}}, ensure_ascii=False)
+                    "planning_key": "domain-" + str(i)} for i in range(5)], "opportunities": nodes}
+            from test_story_outlook_replanning import apply_story_contract
+            return json.dumps({"decision": "revise", "draft": apply_story_contract(value, p)}, ensure_ascii=False)
 
     now = at(16, 10)
     app, model = _build(tmp_path / "domains.sqlite", "world:domains", now, _Role(), Domains())
@@ -200,7 +202,8 @@ class RollingAuthor:
                  "long_term": [{"stage_id": "year", "starts_on": now.date().isoformat(),
                     "ends_on": (now + timedelta(days=365)).date().isoformat(), "planning_key": "school-year", "situation": FUTURE}],
                  "opportunities": [node]}
-        return json.dumps({"decision": "revise", "draft": draft}, ensure_ascii=False)
+        from test_story_outlook_replanning import apply_story_contract
+        return json.dumps({"decision": "revise", "draft": apply_story_contract(draft, packet)}, ensure_ascii=False)
 
 
 def course_detail_draft(wake, *, hidden, closing_offset):

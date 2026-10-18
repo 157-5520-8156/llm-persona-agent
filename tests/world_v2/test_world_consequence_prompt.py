@@ -448,3 +448,22 @@ def test_location_reselection_keeps_the_parsers_unlocated_option_and_visual_obli
     )[0]
     assert 'omit_visual_evidence' not in visual_repair['allowed_repairs']
     assert 'omit_visual_evidence_only_if_unlocated_or_withhold' in visual_repair['allowed_repairs']
+
+
+def test_current_schema_exposes_canonical_coordinate_and_narrative_syntax():
+    from jsonschema import Draft202012Validator
+    authority, context = _inputs()
+    packet = json.loads(compile_world_consequence_messages(user_context=context,
+        authority=authority, execution_materials=())[1]["content"])
+    assert packet["world_author_prompt_contract"] == "world-consequence-prompt.6"
+    definitions = packet["output_contract"]["propose"]["$defs"]
+    objective = definitions["ObjectiveBiographicalTransitionDraft"]["properties"]
+    assert Draft202012Validator(objective["coordinate_ref"]).is_valid("biography:community.membership")
+    assert not Draft202012Validator(objective["coordinate_ref"]).is_valid("biography.community.membership")
+    for name in ("ObjectiveBiographicalTransitionDraft", "DynamicLifeDirectionDraft"):
+        tags = Draft202012Validator(definitions[name]["properties"]["context_tags"]["items"])
+        assert tags.is_valid("resources:lease_obligation")
+        assert not tags.is_valid("resources.lease_obligation")
+    tags = Draft202012Validator(definitions["DynamicLifeDirectionDraft"]["properties"]["narrative_tags"]["items"])
+    assert tags.is_valid("narrative:community_contact")
+    assert not tags.is_valid("community:contact")

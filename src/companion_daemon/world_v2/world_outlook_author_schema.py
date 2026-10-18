@@ -8,8 +8,35 @@ from .world_outlook import WorldOutlookDraft
 
 def outlook_author_schema(*, basis_refs=None, npc_privacy_floors=(), prior_opportunities=(), now=None,
                           rolling_planning=False, prior_threads=(), identity=None, preparation=None, history_offer=None,
-                          new_opportunity_ids=None):
+                          new_opportunity_ids=None, story_planning=False, world_changes=()):
     schema = WorldOutlookDraft.model_json_schema()
+    if story_planning:
+        schema["properties"]["threads"]["minItems"] = 2
+        thread = schema["$defs"]["OutlookThread"]
+        thread["required"].append("developments")
+        thread["properties"]["developments"]["minItems"] = 2
+        stage = schema["$defs"]["OutlookStage"]
+        stage["required"].append("thread_refs")
+        stage["properties"]["thread_refs"]["minItems"] = 1
+        schema["$defs"]["OutlookChangeResponse"]["allOf"] = [{
+            "if": {"properties": {"decision": {"const": "retain"}}},
+            "then": {"properties": {"planning_keys": {"maxItems": 0}}},
+            "else": {"properties": {"thread_refs": {"minItems": 1}}},
+        }]
+        prior_threads = tuple(t for t in prior_threads if t.status == "closed" or len(t.developments) >= 2)
+        if world_changes:
+            schema["required"].append("change_responses")
+            schema["properties"]["change_responses"].update(minItems=len(world_changes), maxItems=len(world_changes))
+            schema["$defs"]["OutlookChangeResponse"]["properties"]["source_ref"] = {
+                "type": "string", "enum": [change["source_ref"] for change in world_changes]}
+        else:
+            schema["properties"]["change_responses"]["maxItems"] = 0
+    else:
+        schema["properties"].pop("change_responses")
+        schema["$defs"].pop("OutlookChangeResponse")
+        schema["$defs"]["OutlookThread"]["properties"].pop("developments")
+        for field in ("thread_refs", "conditions"):
+            schema["$defs"]["OutlookStage"]["properties"].pop(field)
     if rolling_planning:
         schema["required"].append("long_term")
         schema["properties"]["long_term"]["minItems"] = 1

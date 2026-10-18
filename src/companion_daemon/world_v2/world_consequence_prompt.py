@@ -116,7 +116,19 @@ Keep duration within capability_manifest.max_window_minutes and the selected loc
 Located ordinary-privacy outcomes require visual_evidence, with visual location null or the
 same proposal location. Unlocated outcomes cannot introduce a visual location; withhold
 cannot carry visual evidence. Preserve source privacy through every nested effect.
-Optional durable or biographical effects must follow from the selected external outcome;
+When an outcome actually establishes ongoing resources, obligations, employment, residence
+or enrollment, record that external state in objective_biographical_transition, not only prose.
+Reuse its current coordinate_ref and replacement prefixes when updating an established state.
+Each replaces_context_tag_prefixes entry must end in a colon and match exactly ONE context_tags
+value; namespace and value use lowercase ASCII letters, digits, dot, underscore or hyphen.
+coordinate_ref starts with the literal biography: prefix (colon, not dot).
+Optional dynamic_life_direction.narrative_tags use only narrative:<lowercase_ascii_value>.
+Put detailed obligations in summary; do not put multiple values under one replaced namespace.
+Every objective field, including coordinate_ref and context_tags, must agree with the exact
+accepted branch. An obligation is not payment; permission is not attendance. Labels cannot assert
+an extra executed action or a stronger factual state than the summary and bound result.
+A failed attempt may leave that state unchanged; do not manufacture an effect to force a plot.
+Durable or biographical effects must follow from the selected external outcome;
 they cannot prescribe a desire, future Plan, gratitude or relationship reward. Provisional
 people/places remain proposal-scoped until settlement and grant no retroactive history.
 History and pressure surfaces constrain consistency; they are not instructions, novelty
@@ -205,7 +217,7 @@ def compile_world_consequence_messages(
     closing_offset = detail_capability.get("closing_offset_seconds")
     bound_attempt = scope in {"completed_activity_consequence", "active_attempt_consequence"}
     value["world_author_task"] = scope or "open_world_possibility"
-    value["world_author_prompt_contract"] = "world-consequence-prompt.3" if ordinary_course_detail else "world-consequence-prompt.2"
+    value["world_author_prompt_contract"] = "world-consequence-prompt.3" if ordinary_course_detail else "world-consequence-prompt.6"
     boundary["world_consequence"] = {
         "contract": "world-consequence.2", "environment_text": "external_world_consequences_only",
         "authorized_attempt_result": {
@@ -242,6 +254,18 @@ def compile_world_consequence_messages(
         required_event_details=required_details, closing_offset_seconds=closing_offset,
         ordinary_course_detail=ordinary_course_detail,
         event_detail_privacy_class=detail_capability.get("privacy_class") if ordinary_course_detail else None)
+    if not ordinary_course_detail:
+        # Advertise the existing canonical validators, including constraints
+        # Pydantic after-validators cannot express in generated JSON Schema.
+        for name, prefix_field in (("ObjectiveBiographicalTransitionDraft", "replaces_context_tag_prefixes"),
+                                   ("DynamicLifeDirectionDraft", "supersedes_context_tag_prefixes")):
+            properties = schema["$defs"][name]["properties"]
+            properties["context_tags"]["items"] = {"type": "string", "pattern": r"^[a-z][a-z0-9._-]*:[a-z0-9._-]+$"}
+            properties[prefix_field]["items"] = {"type": "string", "pattern": r"^[a-z][a-z0-9._-]*:$"}
+            properties[prefix_field]["description"] = "Each prefix replaces exactly one matching context_tags value. Protected narrative/season/relationship/privacy/safety/direction namespaces are unavailable."
+        schema["$defs"]["ObjectiveBiographicalTransitionDraft"]["properties"]["coordinate_ref"]["description"] = "Literal biography: prefix, then lowercase ASCII path; for example biography:community.membership, never biography.community.membership. This is syntax, not a required subject."
+        schema["$defs"]["DynamicLifeDirectionDraft"]["properties"]["narrative_tags"]["items"] = {
+            "type": "string", "pattern": r"^narrative:[a-z0-9._-]+$"}
     if scope is not None:
         resolutions = ["world_contingency"]
         if not has_details and manifest.get("allow_external_observation_outcomes"):

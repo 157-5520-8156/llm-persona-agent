@@ -733,7 +733,8 @@ class ProductionAuthor:
         if "rolling_preparation" in packet:
             draft["long_term"] = [{"stage_id": "ordinary-life", "starts_on": now.date().isoformat(),
                 "ends_on": (now + timedelta(days=365)).date().isoformat(), "situation": "PRIVATE_FUTURE_SENTINEL"}]
-        return json.dumps({"decision": "revise", "draft": draft})
+        from test_story_outlook_replanning import apply_story_contract
+        return json.dumps({"decision": "revise", "draft": apply_story_contract(draft, packet)})
 
 
 def production_application(tmp_path, author):

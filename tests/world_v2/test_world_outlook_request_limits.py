@@ -82,12 +82,16 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
         packet = decode_outlook_request(body["messages"][1]["content"])
         assert body["tool_choice"] == "auto" and "response_format" not in body
         assert "For each response, call world_outlook_v6 once" in body["messages"][0]["content"]
+        assert "Maintain at least two distinct ongoing external story threads" in body["messages"][0]["content"]
+        assert "Respond once per world_changes source" in body["messages"][0]["content"]
         value = draft_value(wake)
         for node, identity in zip(value["opportunities"], packet["new_opportunity_ids"], strict=False):
             node["opportunity_id"] = identity
         value["horizon_end"] = (NOW + timedelta(days=30)).isoformat()
         value["long_term"] = [{"stage_id": "year", "starts_on": NOW.date().isoformat(),
                               "ends_on": (NOW + timedelta(days=365)).date().isoformat(), "situation": "仍可改变的外部生活阶段"}]
+        from test_story_outlook_replanning import apply_story_contract
+        value = apply_story_contract(value, packet)
         result = {"decision": "revise", "draft": value}
         tool = body["tools"][0]
         Draft202012Validator.check_schema(tool["function"]["parameters"])

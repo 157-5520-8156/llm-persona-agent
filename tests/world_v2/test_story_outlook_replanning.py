@@ -1,0 +1,318 @@
+"""Annual story possibilities change only through accepted World sources."""
+from datetime import timedelta
+import json
+
+import pytest
+
+from companion_daemon.world_v2.world_outlook import WorldOutlookDraft, OutlookSource
+from companion_daemon.world_v2.world_outlook_runtime import WorldOutlookRuntime
+from test_world_outlook import setup, draft_value
+
+
+def story_draft(wake):
+    value = draft_value(wake)
+    for thread in value["threads"]:
+        thread["developments"] = ["外部合作获得持续支持。", "合作条件变化，原有机会可能结束。"]
+    value["long_term"] = [{"stage_id": "year", "starts_on": wake.logical_time.date().isoformat(),
+        "ends_on": (wake.logical_time + timedelta(days=365)).date().isoformat(),
+        "situation": "多条尚可改变的生活线并存。", "thread_refs": ["books", "study", "friends"],
+        "conditions": []}]
+    value["horizon_end"] = (wake.logical_time + timedelta(days=30)).isoformat()
+    return value
+
+
+def apply_story_contract(value, packet):
+    """Legal protocol fixture; real story quality is tested by provider runs."""
+    if packet.get("draft_schema_contract") != "world-outlook-author-schema.8":
+        return value
+    if len(value["threads"]) < 2:
+        value["threads"].append({"thread_id": "independent-family", "situation": "家中的经营条件。",
+                                 "open_question": "外部供货与租约会怎样变化？"})
+    for thread in value["threads"]:
+        thread.setdefault("developments", ["外部机会仍可继续。", "条件发生变化，原有机会结束。"])
+    for stage in value.get("long_term", ()):
+        stage.setdefault("thread_refs", [t["thread_id"] for t in value["threads"] if t.get("status") != "closed"])
+    value.setdefault("change_responses", [{"source_ref": c["source_ref"], "decision": "retain",
+        "thread_refs": [], "planning_keys": [], "reason": "此测试保留独立安排，不推定角色的新选择。"}
+        for c in packet.get("world_changes", ())])
+    return value
+
+
+def test_annual_stages_link_independent_threads_without_changing_legacy_bytes(tmp_path):
+    ledger, wake, _, _, runtime = setup(tmp_path, lambda w: [])
+    try:
+        old = WorldOutlookDraft.model_validate_json(json.dumps(draft_value(wake)))
+        assert "developments" not in old.model_dump(mode="json")["threads"][0]
+        draft = WorldOutlookDraft.model_validate_json(json.dumps(story_draft(wake)))
+        runtime._validate_preparation(draft, {
+            "draft_schema_contract": "world-outlook-author-schema.8",
+            "rolling_preparation": {"due": [], "known_publications": [], "outline_due": False},
+            "current_outlook": {"opportunities": []}, "world_changes": [],
+        }, ledger.project())
+        broken = story_draft(wake)
+        broken["long_term"][0]["thread_refs"] = ["missing"]
+        with pytest.raises(ValueError, match="thread"):
+            WorldOutlookDraft.model_validate_json(json.dumps(broken))
+    finally:
+        runtime.close()
+
+
+def test_material_own_consequence_cannot_be_suppressed_as_ordinary_script_progress():
+    source = OutlookSource(source_ref="occurrence:own", source_kind="occurrence", status="settled",
+        token="a" * 64, allowed_statuses=("active", "settled"))
+    offers = ({"state": "considered", "payload": {"effect_refs": [source.source_ref]}},)
+    assert not WorldOutlookRuntime._sources_changed({}, {source.source_ref: source}, offers)
+    assert WorldOutlookRuntime._sources_changed({}, {source.source_ref: source}, offers,
+                                               material_refs={source.source_ref})
+
+
+def test_dirty_story_wakes_before_weekly_review_without_role_cadence(tmp_path, monkeypatch):
+    ledger, wake, store, _, runtime = setup(tmp_path, lambda w: [])
+    runtime._rolling_planning = True
+    view = {"needs_revision": True, "review_at": (wake.logical_time + timedelta(days=7)).isoformat(),
+        "rolling_preparation": {"published": [], "due": [], "outline_due": False}}
+    monkeypatch.setattr(runtime, "_refresh_identity", lambda *_: ({}, None, "dirty-story"))
+    try:
+        assert runtime.next_preparation_due(projection=ledger.project(), view=view) == wake.logical_time
+        store.claim("refresh:dirty-story", kind="refresh", payload={"input_key": "dirty-story"})
+        store.finish("refresh:dirty-story", state="technical_failure", payload={"code": "fixture_timeout"})
+        assert runtime.next_preparation_due(projection=ledger.project(), view=view) > wake.logical_time
+    finally:
+        runtime.close()
+
+
+def test_every_accepted_change_needs_explicit_story_response(tmp_path):
+    ledger, wake, _, _, runtime = setup(tmp_path, lambda w: [])
+    packet = {"draft_schema_contract": "world-outlook-author-schema.8",
+        "rolling_preparation": {"due": [], "known_publications": [], "outline_due": False},
+        "current_outlook": {"opportunities": []},
+        "world_changes": [{"source_ref": "occurrence:loss", "token": "a" * 64}]}
+    try:
+        value = story_draft(wake)
+        draft = WorldOutlookDraft.model_validate_json(json.dumps(value))
+        packet["current_outlook"] = draft.model_dump(mode="json")
+        with pytest.raises(ValueError, match="change|response"):
+            runtime._validate_preparation(draft, packet, ledger.project())
+        value["change_responses"] = [{"source_ref": "occurrence:loss", "decision": "revise",
+            "thread_refs": ["books", "study"], "planning_keys": [],
+            "reason": "已接受的资源损失改变家庭经营与学习机会。"}]
+        with pytest.raises(ValueError, match="actually changed"):
+            runtime._validate_preparation(WorldOutlookDraft.model_validate_json(json.dumps(value)), packet, ledger.project())
+        value["long_term"][0]["conditions"] = [{"source_ref": "occurrence:loss", "ready_statuses": ["settled"]}]
+        with pytest.raises(ValueError, match="actually changed"):
+            runtime._validate_preparation(WorldOutlookDraft.model_validate_json(json.dumps(value)), packet, ledger.project())
+        value["opportunities"][0]["conditions"] = value["long_term"][0]["conditions"]
+        value["opportunities"][0]["execution"]["text"] = "仅重新措辞的书店筹备公告。"
+        with pytest.raises(ValueError, match="actually changed"):
+            runtime._validate_preparation(WorldOutlookDraft.model_validate_json(json.dumps(value)), packet, ledger.project())
+        value["opportunities"][0]["opens_at"] = (wake.logical_time + timedelta(days=2)).isoformat()
+        value["opportunities"][0]["execution"]["text"] = "书店公告：新的固定租赁支出已生效，旧筹备窗口延期。"
+        runtime._validate_preparation(WorldOutlookDraft.model_validate_json(json.dumps(value)), packet, ledger.project())
+    finally:
+        runtime.close()
+
+
+def test_new_story_schema_cannot_advertise_unoffered_change_responses():
+    from jsonschema import Draft202012Validator
+    from companion_daemon.world_v2.world_outlook_author_schema import outlook_author_schema
+    schema = outlook_author_schema(rolling_planning=True, story_planning=True)
+    assert schema["properties"]["change_responses"]["maxItems"] == 0
+    assert schema["$defs"]["OutlookStage"]["properties"]["thread_refs"]["minItems"] == 1
+    assert schema["$defs"]["OutlookThread"]["properties"]["developments"]["minItems"] == 2
+    Draft202012Validator.check_schema(schema)
+
+
+def test_outlook_fact_presentation_retains_all_semantics_and_privacy():
+    from companion_daemon.world_v2.world_outlook_runtime import _outlook_presentation_context
+    value = {"subject_ref": "actor:companion", "source": "家里的来信", "statement": "租约持续有效。"}
+    context = {"slices": {"relevant_facts": {"items": [{"item_ref": "fact:lease", "value": value,
+        "privacy_class": "private", "source_hash": "a" * 64, "value_hash": "b" * 64,
+        "source_bindings": [{"ref": "event:fact"}]}]}}}
+    shown = _outlook_presentation_context(context)["slices"]["relevant_facts"]["items"]
+    assert shown == [{"item_ref": "fact:lease", "privacy_class": "private", "value": value}]
+    assert "source_bindings" in context["slices"]["relevant_facts"]["items"][0]
+
+
+def test_changed_branch_cannot_silently_rewrite_an_independent_thread(tmp_path):
+    ledger, wake, _, _, runtime = setup(tmp_path, lambda w: [])
+    value = story_draft(wake)
+    old = WorldOutlookDraft.model_validate_json(json.dumps(value))
+    packet = {"world_changes": [{"source_ref": "occurrence:loss"}],
+        "current_outlook": {"threads": old.model_dump(mode="json")["threads"]},
+        "rolling_preparation": {"published": []}}
+    value["change_responses"] = [{"source_ref": "occurrence:loss", "decision": "revise",
+        "thread_refs": ["books"], "planning_keys": [], "reason": "只有经营条件发生变化。"}]
+    value["threads"][1]["situation"] = "系统未经说明替换了独立学业线。"
+    try:
+        with pytest.raises(ValueError, match="unaffected|without a change response"):
+            runtime._validate_story_revision(WorldOutlookDraft.model_validate_json(json.dumps(value)), packet)
+    finally:
+        runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_settled_material_result_drives_annual_revision_and_survives_two_days(tmp_path):
+    from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
+    from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
+    from companion_daemon.world_v2.world_outlook_store import SQLiteWorldOutlookStore
+    from test_life_development_runtime import (WORLD_ID, OWNER, _seed_clock, _manifest,
+        _projection_cursor, _SequenceModel, _source_closure_review, _novel_origin_review)
+    from test_world_outlook import Author
+    from test_world_consequence_producer import _draft, _runtime, _advance
+    from test_world_consequence_aftermath import _aftermath, _NoCharacterCalls
+
+    path = tmp_path / "material.sqlite"
+    ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
+    content = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD_ID)
+    store = SQLiteWorldOutlookStore(path=path, world_id=WORLD_ID, actor_ref=OWNER)
+    wake = _seed_clock(ledger)
+    author = Author([{"decision": "revise", "draft": story_draft(wake)}])
+    outlook = WorldOutlookRuntime(ledger=ledger, store=store, author=author, actor_ref=OWNER,
+                                  content_store=content, rolling_planning=True)
+    try:
+        assert (await outlook.refresh(projection=ledger.project(), context={},
+            manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger))))["status"] == "ready"
+        value = _draft(wake)
+        value.update(privacy_class="private", location_ref=None, location_capability_ref=None)
+        for outcome in value["outcomes"]:
+            outcome.update(privacy_class="private", visual_evidence=None,
+                objective_biographical_transition={"coordinate_ref": "biography:family.resources",
+                    "summary": "新租约开始履行，家庭书店每周有固定营业成本。",
+                    "context_tags": ["family.resources:lease_obligation"],
+                    "replaces_context_tag_prefixes": ["family.resources:"], "privacy_class": "private"})
+        producer = _runtime(ledger, content, wake, _SequenceModel(model="fixture:author", outputs=[json.dumps(value)]),
+            _SequenceModel(model="fixture:review", outputs=[_source_closure_review(decision="supported")]),
+            _SequenceModel(model="fixture:novel", outputs=[_novel_origin_review(decision="supported")]))
+        result = await _advance(producer, wake)
+        assert result.status == "occurrence_committed", result
+        due = _seed_clock(ledger, event_id="material-due", logical_time_from=wake.logical_time,
+                          logical_time=wake.logical_time + timedelta(minutes=20))
+        assert (await _advance(_aftermath(ledger, content, _NoCharacterCalls()), due)).status == "settled"
+        state = ledger.project()
+        assert state.biographical_coordinates[0].coordinate_ref == "biography:family.resources"
+        view = outlook.view(projection=state)
+        assert result.occurrence_id in view["changed_source_refs"]
+        assert outlook.next_preparation_due(projection=state, view=view) == state.logical_time
+        revised = story_draft(due)
+        revised["opportunities"][0]["conditions"] = [{"source_ref": result.occurrence_id, "ready_statuses": ["settled"]}]
+        revised["opportunities"][0]["opens_at"] = (due.logical_time + timedelta(days=2)).isoformat()
+        revised["opportunities"][0]["execution"]["text"] = "书店公告：固定租赁支出已生效，筹备窗口推迟两日。"
+        revised["parent_revision"] = view["revision"]
+        revised["change_responses"] = [{"source_ref": result.occurrence_id, "decision": "revise",
+            "thread_refs": ["books", "study"], "planning_keys": [], "reason": "固定租赁支出改变两线的未来资源条件。"}]
+        author.outputs.append({"decision": "revise", "draft": revised})
+        refreshed = await outlook.refresh(projection=state, context={},
+            manifest=_manifest(due, pinned_cursor=_projection_cursor(ledger)))
+        assert refreshed["status"] == "ready", refreshed
+        from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
+        packet = decode_outlook_request(author.calls[-1][1]["content"])
+        change, = packet["world_changes"]
+        assert change["objective_transition"]["coordinate_ref"] == "biography:family.resources"
+        assert change["consequence"]["environment"]["text"]
+        assert not outlook.view()["changed_source_refs"], "accepted response must consume only its offered changes"
+        _seed_clock(ledger, event_id="material-two-days", logical_time_from=state.logical_time,
+                    logical_time=state.logical_time + timedelta(days=2))
+        coordinate = ledger.project().biographical_coordinates[0]
+        assert "lease_obligation" in coordinate.context_tags[0]
+        assert ledger.rebuild().semantic_hash == ledger.project().semantic_hash
+    finally:
+        outlook.close()
+        content.close()
+        ledger.close()
+    cold = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
+    try:
+        assert cold.project().biographical_coordinates[0] == coordinate
+    finally:
+        cold.close()
+
+
+@pytest.mark.parametrize("nested_privacy,limited", [("withhold", False), ("private", True)])
+def test_change_reader_preserves_nested_privacy_and_compensating_limits(tmp_path, monkeypatch, nested_privacy, limited):
+    from types import SimpleNamespace as NS
+    from companion_daemon.world_v2 import life_content
+    ledger, wake, _, _, runtime = setup(tmp_path, lambda w: [])
+    effect = NS(privacy_class=nested_privacy)
+    selected = NS(candidate_result_ref="result", privacy_class="private", content_ref="content:private",
+                  objective_biographical_transition=effect, result_contract="legacy")
+    occurrence = NS(occurrence_id="occurrence:private", status="settled", visibility="private",
+        candidate_outcomes=(selected,), settled_outcome_ref="result", result_payload_ref="content:private",
+        settlement_event_ref="event:settlement", model_dump=lambda **_: {"id": "private"})
+    monkeypatch.setattr(life_content, "collect_user_channel_limited_content_refs",
+        lambda **kwargs: frozenset({"content:private"}) if limited else frozenset())
+    monkeypatch.setattr(runtime, "_entities", lambda *_: {"plans": (), "facts": (), "world_occurrences": (occurrence,)})
+    # Only the descriptor is allowed. Any sidecar access would fail this test.
+    selected.content_payload_hash = "a" * 64
+    try:
+        change, = runtime._world_changes(ledger.project(), (occurrence.occurrence_id,))
+        assert change["objective_transition"] is None
+        assert change["consequence"] is None
+        assert change["content_unavailable"] is limited
+        if not limited:
+            assert not runtime._material_consequence(occurrence)
+    finally:
+        runtime.close()
+
+
+def test_change_presentation_fits_actual_headroom_without_losing_source_or_hash():
+    from companion_daemon.world_v2.world_outlook_runtime import _encode_story_request
+    from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
+    packet = {"condition_sources": [], "current_outlook": {}, "fixed_context": "x" * 97500,
+        "world_changes": [{"source_ref": "occurrence:large", "status": "settled", "token": "a" * 64,
+            "settlement_event_ref": "event:accepted", "objective_transition": {
+                "summary": "长期义务" * 3000, "context_tags": ["resources:" + "a" * 110000]}}]}
+    encoded = _encode_story_request(packet)
+    assert len(encoded.encode()) <= 100000
+    shown = decode_outlook_request(encoded)
+    assert shown["fixed_context"] == packet["fixed_context"]
+    change, = shown["world_changes"]
+    assert change["source_ref"] == "occurrence:large" and change["token"] == "a" * 64
+    assert change["settlement_event_ref"] == "event:accepted"
+    assert change["material_truncated"] is True and len(change["presented_material_hash"]) == 64
+
+
+def test_opaque_zero_evidence_cannot_be_used_to_fit_or_consume_a_change():
+    from companion_daemon.world_v2.world_outlook_runtime import _encode_story_request
+    from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
+    packet = {"condition_sources": [], "fixed_context": "x" * 99400,
+        "world_changes": [{"source_ref": "occurrence:large", "token": "a" * 64,
+            "objective_transition": {"summary": "持续的租金义务" * 2000}}]}
+    encoded = _encode_story_request(packet)
+    assert len(encoded.encode()) > 100000  # Existing admission guard must fail, not consume it.
+    change, = decode_outlook_request(encoded)["world_changes"]
+    assert len(change["material_excerpt_json"]) == 512
+    assert "持续的租金义务" in change["material_excerpt_json"]
+
+
+def test_objective_tag_cannot_escape_exact_negative_source_review():
+    from companion_daemon.world_v2.ledger import WorldLedger
+    from companion_daemon.world_v2.life_development_draft import parse_world_author_draft
+    from companion_daemon.world_v2.life_development_source_closure import (
+        parse_life_development_novel_origin_review, _novel_origin_coordinate_catalog,
+        _source_closure_coordinate_catalog,
+    )
+    from test_life_development_runtime import (WORLD_ID, NOW, _seed_clock, _location_capability,
+        _location_bound_world_draft, _manifest, _projection_cursor, _novel_origin_review)
+    ledger = WorldLedger.in_memory(world_id=WORLD_ID)
+    wake = _seed_clock(ledger)
+    raw = json.loads(_location_bound_world_draft(wake=wake,
+        capability=_location_capability(), timing={"mode": "now", "duration_minutes": 30},
+        privacy_class="personal", objective_transition={"coordinate_ref": "biography:lease",
+            "summary": "签署租约，承担押金义务；没有付款证据。",
+            "context_tags": ["obligation:deposit_600_paid"],
+            "replaces_context_tag_prefixes": ["obligation:"], "privacy_class": "personal"}))
+    for outcome in raw["outcomes"]:
+        outcome["world_consequence"] = {"contract": "world-consequence.2", "environment_text": outcome.pop("text")}
+    manifest = _manifest(wake, pinned_cursor=_projection_cursor(ledger)).model_copy(update={"outcome_contract": "world-consequence.2"})
+    draft = parse_world_author_draft(raw=json.dumps(raw), manifest=manifest, logical_time=NOW)
+    path = "outcomes.0.objective_biographical_transition.context_tags.0"
+    assert path in _novel_origin_coordinate_catalog(draft)["objective_transition_paths"]
+    assert path in _source_closure_coordinate_catalog(draft)["undeclared_fact_paths"]
+    finding = {"prose_path": path, "violation_kinds": ["objective_transition_not_entailed_by_candidate"],
+               "exact_fragments": ["obligation:deposit_600_paid"]}
+    review = parse_life_development_novel_origin_review(raw=_novel_origin_review(decision="unsupported",
+        unsupported_objective_transitions=(finding,)), draft=draft)
+    assert review.decision == "unsupported"
+    bad = {**finding, "exact_fragments": ["obligation:other_paid"]}
+    with pytest.raises(ValueError, match="fragment"):
+        parse_life_development_novel_origin_review(raw=_novel_origin_review(decision="unsupported",
+            unsupported_objective_transitions=(bad,)), draft=draft)

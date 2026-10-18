@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 import hashlib
 import json
-from typing import Literal, get_args
+from typing import Annotated, Literal, get_args
 
 from pydantic import Field, model_validator
 
@@ -62,6 +62,9 @@ class OutlookThread(FrozenModel):
     history_anchors: tuple[StoryAnchor, ...] = Field(
         default=(), max_length=8, exclude_if=lambda v: not v
     )
+    developments: tuple[Annotated[str, Field(min_length=1, max_length=600)], ...] = Field(
+        default=(), max_length=3, exclude_if=lambda v: not v,
+    )
 
 
 class OutlookStage(FrozenModel):
@@ -70,6 +73,8 @@ class OutlookStage(FrozenModel):
     ends_on: date
     situation: str = Field(min_length=1, max_length=600)
     planning_key: str | None = Field(default=None, pattern=r"^[a-z][a-z0-9_-]{0,95}$")
+    thread_refs: tuple[str, ...] = Field(default=(), max_length=6, exclude_if=lambda v: not v)
+    conditions: tuple[OutlookDependency, ...] = Field(default=(), max_length=12, exclude_if=lambda v: not v)
 
     @model_validator(mode="after")
     def bounded_window(self):
@@ -148,6 +153,16 @@ class OutlookOpportunity(FrozenModel):
         return self
 
 
+class OutlookChangeResponse(FrozenModel):
+    """Author's revision decision about one accepted source, never a new fact."""
+
+    source_ref: str = Field(min_length=1, max_length=512)
+    decision: Literal["revise", "retain"]
+    thread_refs: tuple[str, ...] = Field(max_length=6)
+    planning_keys: tuple[str, ...] = Field(default=(), max_length=4)
+    reason: str = Field(min_length=1, max_length=600)
+
+
 class WorldOutlookDraft(FrozenModel):
     contract: Literal["world-outlook-draft.1"] = "world-outlook-draft.1"
     world_id: str = Field(min_length=1, max_length=256)
@@ -159,6 +174,7 @@ class WorldOutlookDraft(FrozenModel):
     threads: tuple[OutlookThread, ...] = Field(min_length=1, max_length=6)
     opportunities: tuple[OutlookOpportunity, ...] = Field(default=(), max_length=24)
     long_term: tuple[OutlookStage, ...] = Field(default=(), max_length=16, exclude_if=lambda v: not v)
+    change_responses: tuple[OutlookChangeResponse, ...] = Field(default=(), max_length=32, exclude_if=lambda v: not v)
 
     @model_validator(mode="after")
     def graph_is_closed(self):
@@ -170,6 +186,13 @@ class WorldOutlookDraft(FrozenModel):
             raise ValueError("outlook identities must be unique")
         if len({s.stage_id for s in self.long_term}) != len(self.long_term):
             raise ValueError("long-range stage identities must be unique")
+        if any(not set(s.thread_refs) <= threads for s in self.long_term):
+            raise ValueError("long-range stage references an unknown thread")
+        if len({r.source_ref for r in self.change_responses}) != len(self.change_responses):
+            raise ValueError("one accepted change needs one response")
+        if any(not set(r.thread_refs) <= threads or r.decision == "revise" and not r.thread_refs
+               for r in self.change_responses):
+            raise ValueError("change response must name its affected threads")
         if self.review_at > self.horizon_end:
             raise ValueError("review lies beyond the horizon")
         visited, active = set(), set()
@@ -346,17 +369,34 @@ def validate_draft(
             location_capabilities=location_capabilities,
             check_busy=False,
         )
-        for condition in node.conditions:
-            source = sources.get(condition.source_ref)
-            if source is None:
-                raise ValueError("outlook condition references an unavailable source")
-            requested = set(condition.ready_statuses) | set(condition.invalid_statuses)
-            if requested - set(source.allowed_statuses):
-                raise ValueError("condition uses a state outside the offered entity schema")
-            if source.status in condition.invalid_statuses:
-                raise ValueError("new outlook condition is already invalid")
-            if condition.unchanged_token is not None and condition.unchanged_token != source.token:
-                raise ValueError("outlook source token does not match current state")
+        validate_conditions(node.conditions, sources)
+    for stage in draft.long_term:
+        validate_conditions(stage.conditions, sources)
+
+
+def validate_conditions(conditions, sources):
+    for condition in conditions:
+        source = sources.get(condition.source_ref)
+        if source is None:
+            raise ValueError("outlook condition references an unavailable source")
+        if (set(condition.ready_statuses) | set(condition.invalid_statuses)) - set(source.allowed_statuses):
+            raise ValueError("condition uses a state outside the offered entity schema")
+        if source.status in condition.invalid_statuses:
+            raise ValueError("new outlook condition is already invalid")
+        if condition.unchanged_token is not None and condition.unchanged_token != source.token:
+            raise ValueError("outlook source token does not match current state")
+
+
+def dependency_state(conditions, sources):
+    state = "ready"
+    for condition in conditions:
+        source = sources.get(condition.source_ref)
+        if (source is None or source.status in condition.invalid_statuses
+                or condition.unchanged_token is not None and condition.unchanged_token != source.token):
+            return "invalidated"
+        if condition.ready_statuses and source.status not in condition.ready_statuses:
+            state = "waiting"
+    return state
 
 
 def opportunity_states(
@@ -378,18 +418,9 @@ def opportunity_states(
             state = "invalidated"
         else:
             state = "ready" if now >= node.opens_at else "waiting"
-            for condition in node.conditions:
-                source = sources.get(condition.source_ref)
-                if (
-                    source is None
-                    or source.status in condition.invalid_statuses
-                    or condition.unchanged_token is not None
-                    and condition.unchanged_token != source.token
-                ):
-                    state = "invalidated"
-                    break
-                if condition.ready_statuses and source.status not in condition.ready_statuses:
-                    state = "waiting"
+            dependency = dependency_state(node.conditions, sources)
+            if dependency == "invalidated" or dependency == "waiting" and state != "invalidated":
+                state = dependency
             for parent in node.after_opportunities:
                 if parent in produced:
                     continue

@@ -115,7 +115,7 @@ def _assert_review_input(messages, original_request, expected, *, focused, focus
         assert "text" not in surface
         assert surface["world_consequence"] == outcome["world_consequence"]
     if focused:
-        assert user["review_contract"] == "life-development-novel-origin-review.6"
+        assert user["review_contract"] == "life-development-novel-origin-review.7"
         assert (
             "outcomes.0.world_consequence.environment_text"
             in (user["parser_coordinate_catalog"]["outcome_prerequisite_paths"])

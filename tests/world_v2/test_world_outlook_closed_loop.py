@@ -67,6 +67,9 @@ class _WorldAuthor:
         now = datetime.fromisoformat(packet["logical_time"])
         if packet["parent_revision"]:
             current = packet["current_outlook"]
+            if self.follow_plan is None:
+                self.follow_plan = next((p["plan_id"] for p in packet.get("plan_schedules", ())
+                                         if p["owner_actor_ref"] == packet["actor_ref"]), None)
             retired = any(n["state"] == "invalidated" for n in current["opportunities"])
             nodes = [
                 {k: v for k, v in n.items() if k != "state"}
@@ -99,9 +102,9 @@ class _WorldAuthor:
                 node["execution"]["text"] = "资料整理区新增了可领取的目录卡。"
                 nodes.append(node)
                 retired = True
-            if retired:
+            if retired or packet.get("world_changes"):
                 long_term = deepcopy(current.get("long_term", []))
-                if long_term and packet.get("draft_schema_contract") == "world-outlook-author-schema.7":
+                if long_term and packet.get("draft_schema_contract") in {"world-outlook-author-schema.7", "world-outlook-author-schema.8"}:
                     long_term[-1]["ends_on"] = (now + timedelta(days=365)).date().isoformat()
                 return json.dumps(
                     {
@@ -116,6 +119,9 @@ class _WorldAuthor:
                             "threads": current["threads"],
                             **({"long_term": long_term} if long_term else {}),
                             "opportunities": nodes,
+                            "change_responses": [{"source_ref": c["source_ref"], "decision": "retain",
+                                "thread_refs": [], "planning_keys": [], "reason": "测试中只重排依赖该计划的机会。"}
+                                for c in packet.get("world_changes", ())],
                         },
                     },
                     ensure_ascii=False,
@@ -172,7 +178,8 @@ class _WorldAuthor:
             )
             later["execution"]["text"] = text
             draft["opportunities"].append(later)
-        return json.dumps({"decision": "revise", "draft": draft}, ensure_ascii=False)
+        from test_story_outlook_replanning import apply_story_contract
+        return json.dumps({"decision": "revise", "draft": apply_story_contract(draft, packet)}, ensure_ascii=False)
 
 
 class _Role(_ResponseHTTP):

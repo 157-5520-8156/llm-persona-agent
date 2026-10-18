@@ -43,6 +43,7 @@ _REFERENCE_FIELDS = frozenset({
     "npc_ref", "participant_npc_refs", "location_ref", "target_plan_ref", "unchanged_token", "supersedes_occurrence_ref",
     "retain_opportunity_id", "retain_thread_id",
     "history_anchor_ref",
+    "planning_key", "planning_keys",
 })
 
 

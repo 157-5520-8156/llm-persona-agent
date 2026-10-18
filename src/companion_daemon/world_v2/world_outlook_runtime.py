@@ -23,13 +23,14 @@ from .world_outlook import (
     source_catalog,
     validate_draft,
     opportunity_states,
+    dependency_state,
 )
 
 
 _WORKING_SOURCES = "outlook-working-sources.1"
-_ROLLING_PLANNING = "rolling-world-planning.2"
-_NATIVE_RESULT = "world-outlook-native.5"
-_NATIVE_RESULTS = frozenset({"world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", _NATIVE_RESULT})
+_ROLLING_PLANNING = "rolling-world-planning.3"
+_NATIVE_RESULT = "world-outlook-native.6"
+_NATIVE_RESULTS = frozenset({"world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.5", _NATIVE_RESULT})
 _TERMINAL_SOURCE_EVENTS = frozenset({
     "ActivityCompleted", "ActivityAbandoned", "WorldOccurrenceSettled",
     "WorldOccurrenceCancelled", "WorldOccurrenceExpired", "FactCommitted",
@@ -40,6 +41,7 @@ _TERMINAL_SOURCE_EVENTS = frozenset({
 def _planning_source_refs(view, context, history_offer, story):
     """Exact displayed references, not a relevance or character-choice heuristic."""
     refs = {c["source_ref"] for n in view["opportunities"] for c in n["conditions"]}
+    refs.update(c["source_ref"] for stage in view.get("long_term", ()) for c in stage.get("conditions", ()))
     refs.update(n["execution"]["target_plan_ref"] for n in view["opportunities"]
                 if n["execution"].get("target_plan_ref"))
     refs.update(item.anchor.source_ref for item in history_offer.items)
@@ -67,22 +69,27 @@ def _outlook_presentation_context(context):
     source selection must read the original before this presentation is made.
     """
     slices = context.get("slices", {})
-    lane = slices.get("world_life") if isinstance(slices, dict) else None
-    items = lane.get("items") if isinstance(lane, dict) else None
-    if not isinstance(items, list):
+    if not isinstance(slices, dict):
         return context
-    presented = []
-    for item in items:
-        if not isinstance(item, dict) or not isinstance(item.get("value"), dict):
-            presented.append(item)
+    presented_slices = {}
+    for name, lane in slices.items():
+        items = lane.get("items") if isinstance(lane, dict) else None
+        if not isinstance(items, list):
+            presented_slices[name] = lane
             continue
-        value = {key: content for key, content in item["value"].items()
-                 if key not in {"source_bindings", "source", "proposal_source",
-                                "result_payload_ref", "result_payload_hash"}}
-        presented.append({**{key: content for key, content in item.items()
-                             if key not in {"source_bindings", "source_hash", "value_hash"}},
-                          "value": value})
-    return {**context, "slices": {**slices, "world_life": {**lane, "items": presented}}}
+        presented = []
+        for item in items:
+            if not isinstance(item, dict):
+                presented.append(item)
+                continue
+            shown = {key: value for key, value in item.items()
+                     if key not in {"source_bindings", "source_hash", "value_hash"}}
+            if name == "world_life" and isinstance(item.get("value"), dict):
+                shown["value"] = {key: value for key, value in item["value"].items()
+                    if key not in {"source_bindings", "source", "proposal_source", "result_payload_ref", "result_payload_hash"}}
+            presented.append(shown)
+        presented_slices[name] = {**lane, "items": presented}
+    return {**context, "slices": presented_slices}
 
 
 _SYSTEM = """You are the World Author maintaining a PRIVATE, NON-FACTUAL rolling outlook.
@@ -214,6 +221,76 @@ _ROLLING_SYSTEM = _ROLLING_SYSTEM.replace("Use future time windows and select a 
     "Ordinary events use future windows; a due planning publication opens at logical_time. Select a review_at within the offered review bounds.")
 _ROLLING_SYSTEM = _ROLLING_SYSTEM.replace("Copy the exact item.anchor fields; their already visible text is in",
     "Select the exact offered history_anchor_ref; its already visible text is in")
+_ROLLING_SYSTEM += """
+Maintain at least two distinct ongoing external story threads, including ordinary quiet life.
+Each open/paused thread supplies two or three materially different possible developments, not
+reworded scenes or predetermined protagonist choices. Link every annual stage to thread_refs;
+at least two ongoing threads must have annual development. Stage conditions may bind current
+source states/tokens; a failed premise makes that private future replaceable, never rewrites history.
+World changes are exact accepted action/state/result evidence, not requests or speculative history.
+Respond once per world_changes source in change_responses: revise names affected thread_refs and
+any genuinely changed objective planning_keys; retain explains why the future remains compatible.
+If world_changes is empty, omit change_responses or return []; condition_sources and history_offer
+are not a change list. Keep cannot acknowledge a nonempty change list.
+A revise response must change a linked stage/opportunity whose conditions bind that exact change source;
+acknowledgment or wording alone is insufficient. Truncated excerpts are incomplete evidence;
+never infer absent obligations or facts from clipped prose. material_excerpt_json is an exact
+prefix of a source-bound JSON record, not necessarily parseable complete JSON. material_truncated
+means unshown fields remain unknown; it does not grant authority to invent their values.
+For each revised planning_key publish a replacement through its exact current predecessor now.
+Preserve independent lines. Consequences can persist across days and cross threads: resources,
+obligations, institutions, employment and housing may really change. Do not force all choices
+back to a planned ending. Permit novel lawful choices, abandoned threads and irreversible losses
+when grounded in actual World consequences. Never punish refusal, script protagonist feelings,
+require user rescue or promise affection. Private developments are possibilities, not facts.
+"""
+
+
+def _encode_story_request(packet, *, byte_limit=100_000):
+    """Fit change excerpts to actual remaining wire space; retain source tokens.
+
+    This is presentation only. The full accepted descriptors stay in the ledger
+    and sidecar. No subset of a clipped record is represented as complete.
+    """
+    encoded = encode_outlook_request(packet, byte_limit=byte_limit)
+    if len(encoded.encode()) <= byte_limit or not packet.get("world_changes"):
+        return encoded
+    for characters in (1024, 512):
+        shown = []
+        for change in packet["world_changes"]:
+            identity = {k: change[k] for k in ("source_ref", "status", "token", "settlement_event_ref",
+                "content_ref", "content_payload_hash", "execution_event_ref") if k in change}
+            material = {k: change[k] for k in ("objective_transition", "consequence", "activity_kind", "fact") if k in change}
+            material.update({k: v for k, v in change.items() if k not in identity and k not in material})
+            text = json.dumps(material, ensure_ascii=False, separators=(",", ":"))
+            shown.append({**identity, "material_excerpt_json": text[:characters],
+                          "material_truncated": len(text) > characters,
+                          "presented_material_hash": digest(material)})
+        encoded = encode_outlook_request({**packet, "world_changes": shown}, byte_limit=byte_limit)
+        if len(encoded.encode()) <= byte_limit:
+            return encoded
+    # Never offer empty/opaque evidence merely to advance the change cursor.
+    # The existing hard guard keeps the source pending if 512 characters cannot fit.
+    return encoded
+
+
+def _future_structure(obj):
+    """Ignore audit/association/wording when proving a declared future edit."""
+    if "execution" in obj:
+        execution = {k: v for k, v in obj["execution"].items() if k != "text"}
+        if "planning" in execution:
+            planning = execution["planning"]
+            execution = {"kind": "planning", "planning": {key: planning.get(key) for key in
+                ("planning_key", "starts_on", "ends_on", "continues", "timezone_name")},
+                "slots": [{key: slot.get(key) for key in ("weekdays", "start_minute", "duration_minutes")}
+                          for slot in planning.get("slots", ())],
+                "phases": [{key: phase.get(key) for key in ("starts_on", "ends_on", "slot_ids")}
+                           for phase in planning.get("phases", ())],
+                "exceptions": [{key: exception.get(key) for key in
+                    ("slot_id", "original_date", "action", "new_start", "duration_minutes")}
+                    for exception in planning.get("exceptions", ())]}
+        return {"execution": execution, "opens_at": obj.get("opens_at"), "closes_at": obj.get("closes_at")}
+    return {key: obj.get(key) for key in ("starts_on", "ends_on", "planning_key")}
 
 
 def _outlook_request_hash(messages, tools):
@@ -331,17 +408,21 @@ class WorldOutlookRuntime:
 
     def _validate_preparation(self, candidate, pinned, projection, *, kept_current=False):
         contract = pinned.get("draft_schema_contract")
-        if contract not in {"world-outlook-author-schema.6", "world-outlook-author-schema.7"}:
+        if contract != "world-outlook-author-schema.8" and (candidate.change_responses
+                or any(t.developments for t in candidate.threads)
+                or any(s.thread_refs or s.conditions for s in candidate.long_term)):
+            raise ValueError("the pinned request did not offer causal story planning")
+        if contract not in {"world-outlook-author-schema.6", "world-outlook-author-schema.7", "world-outlook-author-schema.8"}:
             if candidate.long_term or any(n.execution.planning and n.execution.planning.contract != "world-planning.1"
                                           for n in candidate.opportunities):
                 raise ValueError("the pinned request did not offer rolling planning")
             return
         now = projection.logical_time
         today = now.astimezone(ZoneInfo("Asia/Shanghai")).date()
-        if kept_current and contract == "world-outlook-author-schema.7" and (pinned["rolling_preparation"]["due"]
+        if kept_current and contract in {"world-outlook-author-schema.7", "world-outlook-author-schema.8"} and (pinned["rolling_preparation"]["due"]
                              or pinned["rolling_preparation"]["outline_due"]):
             raise ValueError("keep cannot complete due rolling coverage")
-        minimum_days = (330 if kept_current else 365) if contract == "world-outlook-author-schema.7" else 90
+        minimum_days = (330 if kept_current else 365) if contract in {"world-outlook-author-schema.7", "world-outlook-author-schema.8"} else 90
         if (not candidate.long_term or max(s.ends_on for s in candidate.long_term) < today + timedelta(days=minimum_days)
                 or any(s.ends_on < today or s.ends_on > today + timedelta(days=730) for s in candidate.long_term)
                 or candidate.review_at > now + timedelta(days=7)):
@@ -351,6 +432,8 @@ class WorldOutlookRuntime:
             if stage.starts_on > covered + timedelta(days=1):
                 raise ValueError(f"long-range outline is missing {covered + timedelta(days=1)} through {stage.starts_on - timedelta(days=1)}; represent uncertain periods explicitly")
             covered = max(covered, stage.ends_on)
+        if contract == "world-outlook-author-schema.8":
+            self._validate_story_revision(candidate, pinned, kept_current=kept_current)
         publications = {n.execution.planning.planning_key: n for n in candidate.opportunities
                         if n.execution.planning is not None and n.closes_at > now}
         required = {item["planning_key"] for item in pinned["rolling_preparation"]["due"]}
@@ -372,7 +455,7 @@ class WorldOutlookRuntime:
             p = node.execution.planning
             if pinned.get("response_tool_contract") in _NATIVE_RESULTS - {"world-outlook-native.1"} and node.execution.duration_minutes != 1:
                 raise ValueError(f"planning {key!r} publication requires duration_minutes=1; this is publication, not the duration of its scheduled events")
-            required_planning = "world-planning.3" if contract == "world-outlook-author-schema.7" else "world-planning.2"
+            required_planning = "world-planning.3" if contract in {"world-outlook-author-schema.7", "world-outlook-author-schema.8"} else "world-planning.2"
             if p.contract != required_planning or not now < p.review_at <= now + timedelta(days=7):
                 raise ValueError(f"planning {key!r} requires {required_planning} and its own review_at after {now.isoformat()} and no later than {(now + timedelta(days=7)).isoformat()}; received {p.review_at}. This is not ends_on or horizon_end.")
             if p.contract == "world-planning.3" and node.execution.privacy_class == "withhold":
@@ -384,6 +467,51 @@ class WorldOutlookRuntime:
                 raise ValueError("continuing planning must extend beyond the imminent renewal boundary")
             if key in required and node.opens_at > now:
                 raise ValueError(f"due planning {key!r} must have a publication window open at {now.isoformat()}, not only from {node.opens_at.isoformat()}")
+
+    def _validate_story_revision(self, candidate, pinned, *, kept_current=False):
+        ongoing = {t.thread_id for t in candidate.threads if t.status != "closed"}
+        if len(ongoing) < 2 or any(len(set(t.developments)) < 2 for t in candidate.threads if t.thread_id in ongoing):
+            raise ValueError("annual story needs at least two ongoing threads with distinct possible developments")
+        if any(not s.thread_refs for s in candidate.long_term) or len(
+                ongoing & {ref for s in candidate.long_term for ref in s.thread_refs}) < 2:
+            raise ValueError("annual stages must develop at least two ongoing threads")
+        changes = {item["source_ref"] for item in pinned.get("world_changes", ())}
+        if changes != {r.source_ref for r in candidate.change_responses} or kept_current and changes:
+            raise ValueError(f"every offered accepted world change requires one explicit change response; "
+                             f"expected world_changes sources {sorted(changes)!r}, received "
+                             f"{sorted(r.source_ref for r in candidate.change_responses)!r}. "
+                             "Do not add condition_sources or history_offer entries to this list.")
+        if changes:
+            affected = {ref for response in candidate.change_responses if response.decision == "revise"
+                        for ref in response.thread_refs}
+            current = {t.thread_id: t.model_dump(mode="json") for t in candidate.threads}
+            for old in pinned["current_outlook"].get("threads", ()):
+                if (old.get("developments") and old.get("status", "open") != "closed"
+                        and old["thread_id"] not in affected and current.get(old["thread_id"]) != old):
+                    raise ValueError(f"thread {old['thread_id']!r} changed without a change response naming it; retain unaffected thread exactly or explain its revision")
+        published = {p["planning"]["planning_key"]: p["occurrence_ref"]
+                     for p in pinned["rolling_preparation"].get("published", ())}
+        published.update({p["planning_key"]: p["occurrence_ref"]
+                          for p in pinned["rolling_preparation"].get("known_publications", ())})
+        for response in candidate.change_responses:
+            if response.decision == "retain" and response.planning_keys:
+                raise ValueError("retaining a change cannot request revised planning")
+            if response.decision == "revise":
+                previous = pinned["current_outlook"]
+                linked = [obj for obj in (*candidate.long_term, *candidate.opportunities)
+                          if set(obj.thread_refs) & set(response.thread_refs)
+                          and any(c.source_ref == response.source_ref for c in obj.conditions)]
+                old_objects = [*previous.get("long_term", ()), *previous.get("opportunities", ())]
+                if not any(_future_structure(obj.model_dump(mode="json")) not in
+                           [_future_structure(old) for old in old_objects] for obj in linked):
+                    raise ValueError("revise requires an actually changed future stage/opportunity linked to its accepted change source")
+            for key in response.planning_keys:
+                replacements = [n for n in candidate.opportunities if n.execution.planning is not None
+                                and n.execution.planning.planning_key == key]
+                if (key not in published or len(replacements) != 1
+                        or replacements[0].execution.planning.supersedes_occurrence_ref != published[key]
+                        or replacements[0].opens_at.isoformat() != pinned["logical_time"]):
+                    raise ValueError(f"changed planning {key!r} requires its exact current publication replacement now")
 
     def record_failure(self, exc):
         self._health = {"status": "technical_failure", "failure_code": type(exc).__name__}
@@ -490,21 +618,89 @@ class WorldOutlookRuntime:
                 if not isinstance(ref, str):
                     raise ValueError("outlook source change has no typed entity identity")
                 if ref not in changed:
+                    entities = self._entities(state, (ref,))
+                    material = {o.occurrence_id for o in entities["world_occurrences"]
+                                if self._material_consequence(o)}
                     source = current.get(ref)
                     if source is None:
-                        entities = self._entities(state, (ref,))
                         source = source_catalog(SimpleNamespace(**entities), actor_ref=self.actor_ref,
                                                 npc_refs=tuple(npc_refs), required_refs=frozenset({ref}), legacy_fact_status=False).get(ref)
                     previous = {ref: evidence["source_tokens"][ref]} if ref in evidence["source_tokens"] else {}
                     offers = self.store.offers_for_effects((ref,), as_of=cursor_of(state))
-                    if source is not None and self._sources_changed(previous, {ref: source}, offers):
+                    if source is not None and self._sources_changed(previous, {ref: source}, offers, material_refs=material):
                         changed.append(ref)
                 after = sequence
                 if not changed:
                     safe_after = after
-                if len(changed) == 32:
+                if len(changed) == (1 if self._rolling_planning else 32):
                     return tuple(changed), safe_after, after
         return tuple(changed), safe_after if changed else after, after
+
+    @staticmethod
+    def _material_consequence(occurrence):
+        if occurrence.status != "settled":
+            return False
+        selected = next((c for c in occurrence.candidate_outcomes
+                         if c.candidate_result_ref == occurrence.settled_outcome_ref), None)
+        return bool(selected and occurrence.visibility != "withhold" and selected.privacy_class != "withhold"
+                    and selected.objective_biographical_transition is not None
+                    and selected.objective_biographical_transition.privacy_class != "withhold")
+
+    def _world_changes(self, state, refs):
+        """Pinned accepted descriptors and bounded exact excerpts, not summaries.
+
+        Rolling scans offer one changed entity at a time. Large prose stays in
+        immutable storage; explicit excerpt flags never assert its absence.
+        """
+        from .life_content import collect_user_channel_limited_content_refs
+        from .life_content_reading import selected_world_consequence, world_consequence_reading, LifeContentReading
+        from .world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS
+
+        limited = collect_user_channel_limited_content_refs(ledger=self.ledger, projection=state)
+        entities = self._entities(state, refs)
+        changes = []
+        by_ref = {p.plan_id: p for p in entities["plans"]}
+        by_ref.update({o.occurrence_id: o for o in entities["world_occurrences"]})
+        by_ref.update({f.fact_id: f for f in entities["facts"] if f.values.subject_ref == self.actor_ref})
+        for ref in refs:
+            item = by_ref.get(ref)
+            if item is None:
+                continue
+            if hasattr(item, "candidate_outcomes"):
+                if item.visibility == "withhold":
+                    continue
+                selected = next((c for c in item.candidate_outcomes if c.candidate_result_ref == item.settled_outcome_ref), None)
+                if selected is not None and selected.privacy_class == "withhold":
+                    continue
+                restricted = selected is not None and (selected.content_ref in limited or item.result_payload_ref in limited)
+                body, transition = None, None
+                if selected is not None and not restricted:
+                    effect = selected.objective_biographical_transition
+                    if effect is not None and effect.privacy_class != "withhold":
+                        transition = effect.model_dump(mode="json")
+                        transition["summary"] = effect.summary[:1500]
+                        transition["summary_truncated"] = len(effect.summary) > 1500
+                    if selected.result_contract in WORLD_CONSEQUENCE_CONTRACTS:
+                        accepted = selected_world_consequence(store=self._content_store, projection=state,
+                            occurrence=item, actor_ref=self.actor_ref, viewer_privacy_ceiling="private",
+                            user_channel_limited_content_refs=limited)
+                        body = LifeContentReading(world_consequence=world_consequence_reading(accepted)).bounded(1500).world_consequence.model_dump(mode="json")
+                changes.append({"source_ref": ref, "status": item.status, "token": digest(item),
+                    "settlement_event_ref": item.settlement_event_ref, "consequence": body,
+                    "content_ref": selected.content_ref if selected and not restricted else None,
+                    "content_payload_hash": selected.content_payload_hash if selected and not restricted else None,
+                    "content_unavailable": bool(restricted), "objective_transition": transition})
+            elif hasattr(item, "plan_id"):
+                if item.privacy_class != "withhold":
+                    changes.append({"source_ref": ref, "status": item.status, "token": digest(item),
+                        "activity_kind": item.activity_kind,
+                        "execution_event_ref": item.authority_origin.accepted_event_ref if item.authority_origin else None})
+            elif item.values.privacy_class != "withhold":
+                # Facts already have their source-bound presentation in Context;
+                # this signal reports its identity/change, not a second full copy.
+                changes.append({"source_ref": ref, "token": digest(item), "status": item.values.status,
+                    "fact": item.values.model_dump(mode="json")})
+        return changes
 
     def _effect_states(self, state, refs):
         entities = self._entities(state, refs)
@@ -639,13 +835,14 @@ class WorldOutlookRuntime:
         ]
         changed_sources, source_change_cursor = self._new_terminal_source(state, revision, evidence, npc_refs, sources)
         preparation = self._preparation(state, draft, states) if self._rolling_planning else None
+        stage_states = {s.stage_id: dependency_state(s.conditions, sources) for s in draft.long_term}
         return {
             "contract": "world-outlook-view.1",
             "authority": "non_factual_private_draft",
             "revision": revision,
             "threads": [t.model_dump(mode="json") for t in draft.threads],
             **({"long_term": [s.model_dump(mode="json") for s in draft.long_term],
-                "rolling_preparation": preparation} if preparation is not None else {}),
+                "stage_states": stage_states, "rolling_preparation": preparation} if preparation is not None else {}),
             "opportunities": nodes,
             "review_at": draft.review_at.isoformat(),
             "horizon_end": draft.horizon_end.isoformat(),
@@ -658,13 +855,14 @@ class WorldOutlookRuntime:
                     or bool(preparation["due"]) or preparation["outline_due"])
                 or state.logical_time >= draft.review_at
                 or any(s in {"invalidated", "expired"} for s in states.values())
+                or "invalidated" in stage_states.values()
                 or self._sources_changed(evidence["source_tokens"], sources, offers)
                 or bool(changed_sources)
             ),
         }
 
     @staticmethod
-    def _sources_changed(previous, sources, offers):
+    def _sources_changed(previous, sources, offers, *, material_refs=frozenset()):
         # Executing a batch is expected progress, not a reason to buy another
         # complete planning pass. Cancellation/expiry and any other source
         # changes remain visible; explicit node conditions are checked above.
@@ -680,7 +878,7 @@ class WorldOutlookRuntime:
                 continue
             source = sources.get(key)
             if (
-                key in own_effects
+                key in own_effects and key not in material_refs
                 and source is not None
                 and (
                     (
@@ -741,7 +939,7 @@ class WorldOutlookRuntime:
             # Expired deadlines are represented by preparation.due. A pending
             # replacement suppresses that work until its publication window;
             # its old deadline must not manufacture a one-second clock loop.
-        if preparation["due"] or preparation["outline_due"]:
+        if view.get("needs_revision") or preparation["due"] or preparation["outline_due"]:
             dates.append(now)
         due = min(dates, default=None)
         if due is None or due > now:
@@ -841,6 +1039,7 @@ class WorldOutlookRuntime:
                 history_material=history, current_outlook=view,
             )
             story = self.story_history(projection=projection, planning=True)
+            world_changes = self._world_changes(projection, view.get("changed_source_refs", ())) if self._rolling_planning else []
             working_sources = self._catalog(projection, npc_refs, required_refs=_planning_source_refs(
                 view, context, history_offer, story,
             ))
@@ -859,6 +1058,8 @@ class WorldOutlookRuntime:
                 "history_material": history,
                 "history_offer": history_offer.model_dump(mode="json"),
                 "realized_story_history": story,
+                **({"world_changes": world_changes}
+                   if self._rolling_planning else {}),
                 "world_context": _outlook_presentation_context(context) if self._rolling_planning else context,
                 **({"authoring_constraints": {
                     "authority": "generation_constraints_only",
@@ -899,12 +1100,14 @@ class WorldOutlookRuntime:
                     for c in getattr(manifest, "location_capabilities", ())
                     if c.availability_kind == "reviewed_schedule"
                 ],
-                "draft_schema_contract": "world-outlook-author-schema.7" if self._rolling_planning else "world-outlook-author-schema.5",
+                "draft_schema_contract": "world-outlook-author-schema.8" if self._rolling_planning else "world-outlook-author-schema.5",
                 "draft_schema": outlook_author_schema(
                     basis_refs=manifest.anchor_refs, npc_privacy_floors=npc_privacy_floors,
                     prior_opportunities=prior_head[1].opportunities if prior_head else (),
                     now=now,
                     rolling_planning=self._rolling_planning,
+                    story_planning=self._rolling_planning,
+                    world_changes=world_changes,
                     prior_threads=prior_head[1].threads if prior_head else (),
                     identity={"world_id": projection.world_id, "actor_ref": self.actor_ref, "parent_revision": view["revision"]} if native_result else None,
                     preparation=view.get("rolling_preparation") if native_result else None,
@@ -914,10 +1117,12 @@ class WorldOutlookRuntime:
             }
             system = _ROLLING_SYSTEM if self._rolling_planning else _SYSTEM
             if native_result:
-                system = system[:system.index("Return a JSON object, exactly")] + "For each response, call world_outlook_v6 once with your complete candidate. If validation rejects a candidate, your next response must be a corrected function call. Do not return an ordinary text/JSON message."
+                before, _, after = system.partition("Return a JSON object, exactly")
+                system = before + "For each response, call world_outlook_v6 once with your complete candidate. If validation rejects a candidate, your next response must be a corrected function call. Do not return an ordinary text/JSON message." + after[after.index("\n"): ]
             messages = [
                 {"role": "system", "content": system + "\n" + PRESENTATION_GUIDE + ("\n" + ROLLING_PRESENTATION_GUIDE if self._rolling_planning else "")},
-                {"role": "user", "content": encode_outlook_request(packet, byte_limit=100_000)},
+                {"role": "user", "content": (_encode_story_request(packet) if self._rolling_planning else
+                                             encode_outlook_request(packet, byte_limit=100_000))},
             ]
             if len(messages[1]["content"].encode()) > 100_000:
                 self.store.finish(
@@ -930,7 +1135,8 @@ class WorldOutlookRuntime:
         if pinned_request.get("response_tool_contract") in _NATIVE_RESULTS:
             response_tools = (cached_attempts[min(cached_attempts)]["response_tools"] if cached_attempts else
                               [outlook_result_tool(pinned_request["draft_schema"], allow_keep=not (
-                                  pinned_request["rolling_preparation"]["due"] or pinned_request["rolling_preparation"]["outline_due"]))])
+                                  pinned_request["rolling_preparation"]["due"] or pinned_request["rolling_preparation"]["outline_due"]
+                                  or pinned_request.get("world_changes")))])
         draft = None
         for ordinal in range(2):
             raw = None
@@ -982,6 +1188,7 @@ class WorldOutlookRuntime:
                             "parent_revision": head[0],
                             "review_at": obj["review_at"],
                             "revise_reason": obj["reason"],
+                            **({"change_responses": []} if pinned_request.get("draft_schema_contract") == "world-outlook-author-schema.8" else {}),
                         },
                     }
                 if (
@@ -1001,11 +1208,13 @@ class WorldOutlookRuntime:
                 # offered, also on correction/restart. Legacy requests retain
                 # their original history-material-only interpretation.
                 pinned_packet = decode_outlook_request(messages[1]["content"])
-                if pinned_packet.get("draft_schema_contract") not in {"world-outlook-author-schema.5", "world-outlook-author-schema.6", "world-outlook-author-schema.7"} and any(n.execution.kind == "planning" or n.execution.prepare_details for n in candidate.opportunities):
+                if pinned_packet.get("draft_schema_contract") not in {"world-outlook-author-schema.5", "world-outlook-author-schema.6", "world-outlook-author-schema.7", "world-outlook-author-schema.8"} and any(n.execution.kind == "planning" or n.execution.prepare_details for n in candidate.opportunities):
                     raise ValueError("the original outlook request did not offer planning or prepared details")
                 if pinned_packet.get("condition_source_scope") == _WORKING_SOURCES:
                     offered_sources = frozenset(s["source_ref"] for s in pinned_packet["condition_sources"])
-                    if any(c.source_ref not in offered_sources for n in candidate.opportunities for c in n.conditions):
+                    if any(c.source_ref not in offered_sources for conditions in
+                           [*(n.conditions for n in candidate.opportunities), *(s.conditions for s in candidate.long_term)]
+                           for c in conditions):
                         raise ValueError("outlook condition source was not offered in the pinned working set")
                     current = self._catalog(projection, npc_refs, required_refs=offered_sources)
                     sources = {key: value for key, value in current.items() if key in offered_sources}
@@ -1013,7 +1222,7 @@ class WorldOutlookRuntime:
                                  if "history_offer" in pinned_packet else None)
                 self._validate_preparation(candidate, pinned_packet, projection,
                                            kept_current=kept_current)
-                precise_privacy = pinned_packet.get("draft_schema_contract") in {"world-outlook-author-schema.4", "world-outlook-author-schema.5", "world-outlook-author-schema.6", "world-outlook-author-schema.7"}
+                precise_privacy = pinned_packet.get("draft_schema_contract") in {"world-outlook-author-schema.4", "world-outlook-author-schema.5", "world-outlook-author-schema.6", "world-outlook-author-schema.7", "world-outlook-author-schema.8"}
                 if history_offer is not None and precise_privacy:
                     history_offer.validate_privacy(candidate, precise_errors=True)
                 validate_draft(
@@ -1031,7 +1240,7 @@ class WorldOutlookRuntime:
                         c.location_ref for c in getattr(manifest, "location_capabilities", ())
                     ),
                     location_capabilities=getattr(manifest, "location_capabilities", ()),
-                    precise_errors=pinned_packet.get("draft_schema_contract") in {"world-outlook-author-schema.3", "world-outlook-author-schema.4", "world-outlook-author-schema.5", "world-outlook-author-schema.6", "world-outlook-author-schema.7"},
+                    precise_errors=pinned_packet.get("draft_schema_contract") in {"world-outlook-author-schema.3", "world-outlook-author-schema.4", "world-outlook-author-schema.5", "world-outlook-author-schema.6", "world-outlook-author-schema.7", "world-outlook-author-schema.8"},
                     precise_privacy_errors=precise_privacy,
                 )
                 if history_offer is not None and not precise_privacy:
@@ -1051,7 +1260,7 @@ class WorldOutlookRuntime:
                 )
                 if ordinal == 0 and raw is not None:
                     error = "Correct the same outlook using only the supplied sources. Exact error: " + str(exc)[:1000]
-                    if pinned_request.get("response_tool_contract") in {"world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.5"}:
+                    if pinned_request.get("response_tool_contract") in {"world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.5", "world-outlook-native.6"}:
                         # These are the real, identity-checked native arguments.
                         # The local call id only pairs the validation feedback;
                         # no World effect or successful submission is invented.

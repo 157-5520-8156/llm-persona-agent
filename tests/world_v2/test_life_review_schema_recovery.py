@@ -46,6 +46,7 @@ def _hash(value):
 
 def _use_baseline_focused_compiler(patch):
     """Emit the old complete schema through the real message/audit producer."""
+    patch.setattr(closure, "_WORLD_CONSEQUENCE_REVIEW_CONTRACT", "life-development-novel-origin-review.6")
     original = closure._review_output_contract
 
     def baseline_output_contract(**kwargs):
@@ -65,6 +66,7 @@ def _use_baseline_focused_compiler(patch):
 @pytest.mark.parametrize("current", [False, True], ids=["legacy", "world-consequence"])
 @pytest.mark.parametrize("focused", [False, True], ids=["general", "focused"])
 def test_only_current_focused_schema_changes_the_real_request_hash(monkeypatch, current, focused):
+    monkeypatch.setattr(closure, "_WORLD_CONSEQUENCE_REVIEW_CONTRACT", "life-development-novel-origin-review.6")
     manifest, draft = _consequence_material() if current else _legacy_material()
     arguments = dict(
         context={},
@@ -139,10 +141,13 @@ def _stored_bytes(path):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("label_upgrade", [False, True], ids=["old-schema-change", "objective-label-upgrade"])
 @pytest.mark.parametrize("committed", [False, True], ids=["pending-new-review", "committed-replay"])
 async def test_old_schema_audits_recover_at_the_final_effect_boundary(
-    tmp_path, monkeypatch, committed
+    tmp_path, monkeypatch, committed, label_upgrade
 ):
+    if not label_upgrade:
+        monkeypatch.setattr(closure, "_WORLD_CONSEQUENCE_REVIEW_CONTRACT", "life-development-novel-origin-review.6")
     path = tmp_path / "schema-recovery.sqlite"
     ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
     store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD_ID)
@@ -202,7 +207,7 @@ async def test_old_schema_audits_recover_at_the_final_effect_boundary(
         ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
         store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD_ID)
         cold_author = _ReceivedAuthor(store, ())
-        cold_general = _SequenceModel(model="fixture:general", outputs=())
+        cold_general = _SequenceModel(model="fixture:general", outputs=(_source_closure_review(decision="supported"),) if label_upgrade and not committed else ())
         cold_focused = _SequenceModel(
             model="fixture:focused",
             outputs=() if committed else (_novel_origin_review(decision="supported"),),
@@ -212,7 +217,7 @@ async def test_old_schema_audits_recover_at_the_final_effect_boundary(
         )
         after = _assert_occurrence(ledger, store, result, draft)
         assert cold_author.received == []
-        assert cold_general.calls == 0
+        assert cold_general.calls == (1 if label_upgrade and not committed else 0)
         assert cold_focused.calls == (0 if committed else 1)
         assert tuple(item.audit_json for item in after.model_result_audits)[:len(old_audits)] == (
             old_audits
@@ -243,8 +248,8 @@ async def test_old_schema_audits_recover_at_the_final_effect_boundary(
             )
             assert review_metadata["request_hashes"] == [new_focused_hash]
             added_audits = after.model_result_audits[len(old_audits):]
-            assert len(added_audits) == 1
-            added = json.loads(added_audits[0].audit_json)
+            assert len(added_audits) == (2 if label_upgrade else 1)
+            added = json.loads(added_audits[-1].audit_json)
             assert added["model_id"] == "fixture:focused"
             assert added["request_hash"] == new_focused_hash
             assert added["decision_context"]["decision_subject_hash"] != (
@@ -253,3 +258,28 @@ async def test_old_schema_audits_recover_at_the_final_effect_boundary(
     finally:
         store.close()
         ledger.close()
+
+
+def test_pre_label_world_consequence_review_wire_is_still_reconstructible(monkeypatch):
+    from test_world_consequence_source_closure import _wire_hash
+    # Captured independently by importing untouched 7fe99bec, not this compiler.
+    hashes = {
+        "general": "b3a662eb3f11a7a07517b4126229dfa6c1fd99251cbe533e356aedb2e73bb7d6",
+        "focused": "81383dbd3712b51f67803e14d894a6ec15553bb0470d26a20d412851dbee62ca",
+    }
+    manifest, draft = _consequence_material()
+    args = dict(context={}, manifest=manifest, draft=draft,
+                execution_authority=_review_authority(manifest))
+    with monkeypatch.context() as patch:
+        patch.setattr(closure, "_WORLD_CONSEQUENCE_REVIEW_CONTRACT", "life-development-novel-origin-review.6")
+        old_general = closure.life_development_source_closure_messages(**args, cited_events=())
+        old_focused = closure.life_development_novel_origin_messages(**args)
+        assert _wire_hash(old_general) == hashes["general"]
+        assert _wire_hash(old_focused) == hashes["focused"]
+    general = closure.life_development_source_closure_messages(**args, cited_events=())
+    focused = closure.life_development_novel_origin_messages(**args)
+    assert json.loads(general[-1]["content"])["review_contract"] == "life-development-source-closure-review.2"
+    assert json.loads(focused[-1]["content"])["review_contract"] == "life-development-novel-origin-review.7"
+    assert _wire_hash(general) != hashes["general"] and _wire_hash(focused) != hashes["focused"]
+    assert "all objective-transition fields including coordinate_ref and tags" in general[0]["content"]
+    assert "exact supplied objective field path" in focused[0]["content"]
