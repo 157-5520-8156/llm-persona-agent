@@ -1172,7 +1172,8 @@ def build_semantic_chat_composition(
             def new_background_model():
                 is_glm = settings.world_v2_background_provider == 'glm'
                 adapter = BackgroundGLMModel if is_glm else SubscriptionAnthropicModel
-                wire_options = ({'reasoning_effort': settings.world_v2_background_reasoning_effort}
+                wire_options = ({'reasoning_effort': settings.world_v2_background_reasoning_effort,
+                                 'tool_result_carrier': settings.world_v2_background_tool_result_carrier}
                                 if is_glm else {'tool_result_carrier': settings.world_v2_background_tool_result_carrier})
                 provider = adapter(
                     settings.world_v2_background_api_key,

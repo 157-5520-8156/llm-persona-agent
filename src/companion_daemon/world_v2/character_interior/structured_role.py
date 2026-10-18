@@ -4027,7 +4027,7 @@ class StructuredCharacterRoleFaculty:
                 "decision": "select|no_op",
                 "selected_token": "select only: one offered activity token",
                 "noticed": "optional turn-local subjective attention; audit only, no World fact or completed Action",
-                "user_channel_completion": "const none, required when noticed is present",
+                "user_channel_completion": "with non-null noticed: const none; otherwise omit or null both fields",
             }
             if contract.payload_contract in {"character-interior-activity-lifecycle-choice.2", "character-interior-activity-lifecycle-choice.3"}:
                 view["payload_schema"] = {

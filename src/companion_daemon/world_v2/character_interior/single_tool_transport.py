@@ -1,7 +1,7 @@
 """Choose a provider-compatible carrier before request identity is compiled.
 
 The schema and its decoder continue to bind one exact named result. Auto does
-not permit text. A separately configured JSON-object text carrier is versioned
+not permit text unless its separate JSON-object carrier is explicitly configured. A separately configured JSON-object text carrier is versioned
 in request identity; it never repairs fields or bypasses host validation.
 Unconfigured providers keep their original wire/identity.
 """
@@ -31,7 +31,7 @@ def resolve_single_tool_transport(
     mode = getattr(provider, "single_tool_selection_mode", "forced")
     carrier = getattr(provider, "single_tool_response_carrier", "native")
     if carrier != "native":
-        if carrier != "native_or_json_object" or mode != "forced" or len(tools) != 1:
+        if carrier != "native_or_json_object" or mode not in {"forced", "auto"} or len(tools) != 1:
             raise ValueError("unsupported single-schema JSON text carrier")
         function = tools[0].get("function", {})
         expected = tool_choice.get("function", {}) if isinstance(tool_choice, dict) else {}
@@ -41,13 +41,13 @@ def resolve_single_tool_transport(
                 or tool_choice.get("type") != "function" or identity.get("tool_name") != name):
             raise ValueError("JSON text carrier cannot change the expected schema")
         material = {
-            "contract_id":"single-schema-json-text-carrier", "version":"1",
+            "contract_id":"single-schema-json-text-carrier", "version":"2" if mode == "auto" else "1",
             "selection_mode":mode, "response_carrier":carrier, "expected_tool_name":name,
             "schema_contract_identity_json":json.dumps(dict(identity),sort_keys=True,separators=(",",":")),
         }
         material["contract_sha256"] = hashlib.sha256(
             json.dumps(material,sort_keys=True,separators=(",",":")).encode()).hexdigest()
-        return SingleToolTransport(tool_choice=tool_choice,identity=material)
+        return SingleToolTransport(tool_choice="auto" if mode == "auto" else tool_choice,identity=material)
     if mode == "forced":
         return SingleToolTransport(tool_choice=tool_choice, identity=identity)
     if mode != "auto":

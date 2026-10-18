@@ -153,3 +153,69 @@ async def test_glm_does_not_guess_a_different_tool_selection(tmp_path, choice, c
         assert model.token_ledger.snapshot()['requests'] == 0
     finally:
         await model.aclose()
+
+
+@pytest.mark.asyncio
+async def test_glm_explicit_json_text_carrier_preserves_raw_object(tmp_path):
+    raw = '{ "status":"decision", "source_refs":["still-invalid-at-root"] }'
+    tools = [{'type':'function','function':{'name':'role_result','parameters':{
+        'type':'object','properties':{'status':{'type':'string'}},
+        'required':['status'],'additionalProperties':False}}}]
+    model = BackgroundGLMModel('fixture','http://localhost:8788','fixture',
+        token_ledger=ledger(tmp_path), tool_result_carrier='native_or_json_object',
+        transport=httpx.MockTransport(lambda _:httpx.Response(200,json={
+            'choices':[{'finish_reason':'stop','message':{'role':'assistant','content':raw}}],
+            'usage':{'prompt_tokens':10,'completion_tokens':5,'total_tokens':15}})))
+    try:
+        with model_call_scope('activity_lifecycle_choice'):
+            result = await model.complete_json([{'role':'user','content':'input'}],
+                tools=tools,tool_choice='auto')
+        assert result == raw  # No field is moved or removed in transport.
+        from jsonschema import Draft202012Validator, ValidationError
+        with pytest.raises(ValidationError):
+            Draft202012Validator(tools[0]['function']['parameters']).validate(json.loads(result))
+        assert model.model_version.endswith(':json-object-carrier.1')
+    finally:
+        await model.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('case', ['native_default','prose','fence','duplicate','nonfinite',
+    'overflow','array','trailing','incomplete','wrong_tool','malformed_tool'])
+async def test_glm_text_carrier_rejects_ambiguous_or_unconfigured_results(tmp_path, case):
+    raw = {'prose':'hello','fence':'```json\n{}\n```','duplicate':'{"a":1,"a":2}',
+        'nonfinite':'{"a":NaN}','overflow':'{"a":1e999}','array':'[]',
+        'trailing':'{} trailing'}.get(case, '{"status":"ok"}')
+    message = {'role':'assistant','content':raw}
+    if case in {'wrong_tool','malformed_tool'}:
+        message['tool_calls']=[{'type':'function','id':'call1','function':{
+            'name':'wrong' if case=='wrong_tool' else 'role_result','arguments':''}}]
+    model = BackgroundGLMModel('fixture','http://localhost:8788','fixture',
+        token_ledger=ledger(tmp_path),
+        tool_result_carrier='native' if case=='native_default' else 'native_or_json_object',
+        transport=httpx.MockTransport(lambda _:httpx.Response(200,json={
+            'choices':[{'finish_reason':'length' if case=='incomplete' else 'stop','message':message}],
+            'usage':{'prompt_tokens':10,'completion_tokens':5,'total_tokens':15}})))
+    tools=[{'type':'function','function':{'name':'role_result','parameters':{'type':'object'}}}]
+    try:
+        with model_call_scope('activity_lifecycle_choice'), pytest.raises(ValueError):
+            await model.complete_json([{'role':'user','content':'input'}],tools=tools,tool_choice='auto')
+    finally:
+        await model.aclose()
+
+
+def test_glm_text_auto_identity_declares_carrier_without_changing_schema(tmp_path):
+    from companion_daemon.world_v2.character_interior.single_tool_transport import resolve_single_tool_transport
+    model=BackgroundGLMModel('fixture','http://localhost:8788','fixture',token_ledger=ledger(tmp_path),
+        tool_result_carrier='native_or_json_object')
+    tools=[{'type':'function','function':{'name':'role_result','parameters':{'type':'object'}}}]
+    choice={'type':'function','function':{'name':'role_result'}}
+    result=resolve_single_tool_transport(provider=model,tools=tools,tool_choice=choice,
+        identity={'tool_name':'role_result','contract_sha256':'fixture'})
+    assert result.tool_choice=='auto'
+    assert result.identity['contract_id']=='single-schema-json-text-carrier'
+    assert result.identity['version']=='2'
+    assert json.loads(result.identity['schema_contract_identity_json'])=={
+        'tool_name':'role_result','contract_sha256':'fixture'}
+    import asyncio
+    asyncio.run(model.aclose())

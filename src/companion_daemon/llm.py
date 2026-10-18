@@ -8,6 +8,7 @@ import hashlib
 import inspect
 import json
 import logging
+import math
 import os
 import re
 from pathlib import Path
@@ -1139,6 +1140,41 @@ class ProviderResultFormatError(ValueError):
         self.raw_result = raw_result
         self.detail = detail
         super().__init__(detail)
+
+
+def exact_json_object_text(text: object) -> str:
+    """Decode an explicitly selected text carrier, preserving authored bytes.
+
+    Schema and source acceptance remain the caller's responsibility.
+    """
+    if not isinstance(text, str):
+        raise ValueError("JSON text carrier requires text")
+    def members(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("JSON text carrier contains duplicate keys")
+            result[key] = value
+        return result
+
+    def constant(value):
+        raise ValueError("JSON text carrier contains nonfinite values")
+
+    def finite_float(value):
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError("JSON text carrier contains a nonfinite number")
+        return number
+
+    try:
+        value = json.loads(text, object_pairs_hook=members, parse_constant=constant,
+                           parse_float=finite_float)
+        if not isinstance(value, dict):
+            raise ValueError("JSON text carrier requires one complete object")
+    except (ValueError, RecursionError) as exc:
+        raise ProviderResultFormatError(raw_result=text,
+            detail=f"invalid JSON object response carrier: {exc}") from exc
+    return text
 
 
 class DeepSeekChatModel:

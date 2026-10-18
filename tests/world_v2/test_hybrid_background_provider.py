@@ -26,11 +26,14 @@ def settings(tmp_path, **kwargs):
     ('anthropic_subscription', SubscriptionAnthropicModel, 'gemini-3.8-flash-medium'),
     ('glm', BackgroundGLMModel, 'GLM-5.3-Flash'),
 ])
-async def test_configured_split_has_one_logical_author_and_actual_provider_lineage(tmp_path, route, adapter, model_name):
+@pytest.mark.parametrize('carrier', ['native','native_or_json_object'])
+async def test_configured_split_has_one_logical_author_and_actual_provider_lineage(tmp_path, route, adapter, model_name, carrier):
     comp = build_semantic_chat_composition(settings=settings(tmp_path,
-        WORLD_V2_BACKGROUND_PROVIDER=route, WORLD_V2_BACKGROUND_MODEL=model_name), model_id_prefix='hybrid')
+        WORLD_V2_BACKGROUND_PROVIDER=route, WORLD_V2_BACKGROUND_MODEL=model_name,
+        WORLD_V2_BACKGROUND_TOOL_RESULT_CARRIER=carrier), model_id_prefix='hybrid')
     try:
         assert isinstance(comp.world_support_model, adapter)
+        assert comp.world_support_model.single_tool_response_carrier == carrier
         registry = comp.character_interior._registry
         interactive = registry.for_purpose('proactive_contact')
         background = registry.for_purpose('memory_consolidation')

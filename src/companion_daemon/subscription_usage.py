@@ -10,7 +10,7 @@ import uuid
 
 import httpx
 
-from .llm import DeepSeekChatModel, ProviderCircuitBreaker, ProviderResultFormatError, admit_turn_provider_call, complete_with_timeout
+from .llm import DeepSeekChatModel, ProviderCircuitBreaker, ProviderResultFormatError, exact_json_object_text, admit_turn_provider_call, complete_with_timeout
 from .llm_anthropic import AnthropicChatModel
 
 
@@ -128,11 +128,26 @@ class BackgroundGLMModel(_BackgroundTokenBudget, DeepSeekChatModel):
     supports_strict_tool_choice = False
     supports_single_tool_result = True
 
-    def __init__(self, *args, reasoning_effort="low", **kwargs):
+    def __init__(self, *args, reasoning_effort="low", tool_result_carrier="native", **kwargs):
         if reasoning_effort not in {"low", "high", "max"}:
             raise ValueError("GLM-5.3 reasoning effort must be low, high or max")
+        if tool_result_carrier not in {"native", "native_or_json_object"}:
+            raise ValueError("unknown GLM tool result carrier")
+        self._tool_result_carrier = tool_result_carrier
         super().__init__(*args, thinking_enabled=True, reasoning_effort=reasoning_effort, **kwargs)
         self.model_version = self.model + ":object-tool-root.2"
+        if tool_result_carrier != "native":
+            self.model_version += ":json-object-carrier.1"
+
+    @property
+    def single_tool_response_carrier(self):
+        return self._tool_result_carrier
+
+    def _response_message(self, payload):
+        message = super()._response_message(payload)
+        if isinstance(message, dict):
+            message = {**message, "native_stop_reason": payload["choices"][0].get("finish_reason")}
+        return message
 
 
     @staticmethod
@@ -174,7 +189,20 @@ class BackgroundGLMModel(_BackgroundTokenBudget, DeepSeekChatModel):
     def _response_tool_content(self, message, *, tools, tool_choice, expected_tool_name):
         raw = super()._response_tool_content(message, tools=tools, tool_choice=tool_choice,
                                             expected_tool_name=expected_tool_name)
-        if raw is None or not any(self._root_union(tool) for tool in tools):
+        if raw is None:
+            if self._tool_result_carrier == "native" or message.get("tool_calls"):
+                return None
+            if (len(tools) != 1 or expected_tool_name is None
+                    or tools[0].get("function", {}).get("name") != expected_tool_name
+                    or not (tool_choice == "auto" or (isinstance(tool_choice, dict)
+                        and tool_choice.get("type") == "function"
+                        and tool_choice.get("function", {}).get("name") == expected_tool_name))
+                    or message.get("native_stop_reason") != "stop"):
+                raise ValueError("GLM JSON text carrier requires one exact auto schema and stop")
+            # This is a declared text response, never a synthesized tool call.
+            # Preserve all fields for the original role/source validators.
+            return exact_json_object_text(message.get("content"))
+        if not any(self._root_union(tool) for tool in tools):
             return raw
         def unique_members(pairs):
             result = {}
