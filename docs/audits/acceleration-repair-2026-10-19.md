@@ -400,3 +400,16 @@ publication/根字段/引用/机会25+的拒绝及积压保留；不能以恢复
 v16在用户要求补全全部入口后正常停止，四库、严格重放/独立重开、重复投递effect-once、
 冻结源及原QQ身份均通过。新版本须完整冻结回归通过后再续同一个保留World和sidecars；
 生产QQ和主候选不控制，失败与原始输出保留，固定逻辑目标不后移。
+
+
+全入口修复e02cbdc9首次完整冻结回归：10994pass/12fail/19skip/2xfail，源1722项不变，
+1331.64秒；失败日志SHA53a687115f1e69861fbb3eed30e2c26c7a1c539e3d7766bec9a724c9c55de6e6保留。
+12fail是一个旧默认字段断言、PTY测试select的FD_SETSIZE限制、以及10项共用内存账本桩缺少
+WorldLedger已声明blocks_event_loop属性。分别改为默认无能力/有能力完整字段双断言（且
+非法ID拒绝）、同5秒预算的DefaultSelector、委托原账本属性。FD1024实证旧路径ValueError，
+新KqueueSelector就绪；92项相关回归通过。没有更改产品运行时、deadline、审核或校验。
+新的完整回归单独保存于all-plan-entries-20261019/full-v2；首轮不算通过。
+新代码在实际63422原事件副本严格重建/独立重开与原head一致，原事件hash不变；原输入重放
+0HTTP/0event/0capture且Action一致。该副本检查是e02运行时的来源兼容证据；测试修正版的
+src/scripts/configs Python与其相同，完整新版本结论仍等full-v2。e02的v17启动门禁因首轮
+失败正确阻止付费运行，未启动角色服务。后续phase以共享status/phase_evidence为准。

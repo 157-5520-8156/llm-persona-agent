@@ -292,7 +292,38 @@ def test_v2_preserves_all_strict_branch_constraints_while_halving_schema_size() 
     Draft202012Validator.check_schema(compact)
     assert compact["properties"]["result"]["anyOf"] == legacy["anyOf"]
     decision = compact["properties"]["result"]["anyOf"][0]["properties"]
-    assert set(AppraisalDraftWire.model_fields) <= set(decision["appraisal_draft"]["properties"])
+    fields = set(AppraisalDraftWire.model_fields)
+    assert fields - {"plan_response"} <= set(decision["appraisal_draft"]["properties"])
+    assert "plan_response" not in decision["appraisal_draft"]["properties"]
+    managed = _contract().with_plan_management(
+        {
+            "contract": "world-plan-management.1",
+            "source_event_refs": ["event:pinned"],
+            "operations": ["continue", "revise", "end"],
+            "plans": [
+                {
+                    "plan_id": "plan:own",
+                    "entity_revision": 1,
+                    "status": "planned",
+                    "intention": "稍后整理。",
+                    "intention_truncated": False,
+                    "scheduled_window": None,
+                }
+            ],
+        }
+    )
+    managed_schema = managed.provider_tools[0]["function"]["parameters"]
+    Draft202012Validator.check_schema(managed_schema)
+    managed_appraisal = managed_schema["properties"]["result"]["anyOf"][0]["properties"][
+        "appraisal_draft"
+    ]
+    assert fields <= set(managed_appraisal["properties"])
+    choice_schema = managed_appraisal["properties"]["plan_response"]
+    validator = Draft202012Validator(choice_schema)
+    choice = {"operation": "continue", "plan_id": "plan:own", "replacement": None}
+    assert validator.is_valid(choice)
+    assert not validator.is_valid(choice | {"plan_id": "plan:foreign"})
+    assert "plan_response" not in decision["appraisal_draft"]["properties"]
     assert set(ExpressionDraft.model_fields) <= set(decision["expression_draft"]["properties"])
     assert len(json.dumps(compact)) < 0.6 * len(json.dumps(legacy))
 

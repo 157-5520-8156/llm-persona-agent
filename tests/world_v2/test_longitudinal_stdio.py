@@ -5,7 +5,7 @@ import json
 import os
 from pathlib import Path
 import pty
-import select
+import selectors
 import subprocess
 import sys
 import textwrap
@@ -62,6 +62,14 @@ def test_pty_reader_does_not_change_inherited_stdin_or_stdout_flags():
     assert inside == after == before
 
 
+def _readable(fd):
+    # DefaultSelector uses the platform's scalable readiness backend; select()
+    # cannot represent descriptors >= FD_SETSIZE during a full-suite run.
+    with selectors.DefaultSelector() as selector:
+        selector.register(fd, selectors.EVENT_READ)
+        return bool(selector.select(timeout=5))
+
+
 def test_large_pty_observation_waits_for_output_capacity_without_blocking_loop():
     with _pty_child(
         """
@@ -78,13 +86,11 @@ def test_large_pty_observation_waits_for_output_capacity_without_blocking_loop()
         asyncio.run(main())
         """
     ) as (process, master):
-        ready, _, _ = select.select([process.stderr], [], [], 5)
-        assert ready, "Output backpressure blocked the child's event loop"
+        assert _readable(process.stderr), "Output backpressure blocked the child's event loop"
         assert os.read(process.stderr.fileno(), 128) == b"ALIVE_PENDING"
         output = bytearray()
         while b"\n" not in output:
-            ready, _, _ = select.select([master], [], [], 5)
-            assert ready, "Observation output did not resume when consumed"
+            assert _readable(master), "Observation output did not resume when consumed"
             output.extend(os.read(master, 65536))
         assert json.loads(output.split(b"\n", 1)[0]) == {
             "operator_observation": {"payload": "x" * 262144}

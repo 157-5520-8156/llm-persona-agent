@@ -360,6 +360,10 @@ class _CompilerLedger:
         self._proof_commits = proof_commits
         self.recorded: tuple[WorldEvent, ...] = ()
 
+    @property
+    def blocks_event_loop(self):
+        return self._delegate.blocks_event_loop
+
     def project(self):
         return self._current
 
