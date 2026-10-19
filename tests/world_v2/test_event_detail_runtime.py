@@ -454,3 +454,81 @@ def test_detail_native_schema_and_correction_keep_world_authority_and_original_f
     assert fixed[-2]["content"] is None
     assert fixed[-1]["role"] == "tool" and fixed[-1]["tool_call_id"] == call["id"]
     assert json.loads(fixed[-1]["content"])["correction"]["validation_failure"] == {"code": "test"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("review_due", [False, True])
+async def test_reviewed_private_program_and_its_clock_releases_do_not_buy_another_outline(tmp_path, monkeypatch, build_app, review_due):
+    from test_world_outlook import Author, draft_value
+    from test_world_outlook_continuity import retime
+    from test_life_development_runtime import _manifest, _projection_cursor
+
+    monkeypatch.setenv('COMPANION_DISABLE_DEBUG_USAGE_LEDGER', '1')
+    path=tmp_path/'detail-retry.sqlite'
+    plan=await _day_activity(path,build_app,monkeypatch,'started')
+    ledger=SQLiteWorldLedger(path=path,world_id=WORLD)
+    content=SQLiteImmutableLifeContentStore(path=path,world_id=WORLD)
+    store=SQLiteWorldOutlookStore(path=path,world_id=WORLD,actor_ref=ACTOR)
+    wake=_wake(ledger)
+    draft=retime(draft_value(wake),ledger.project(),wake)
+    if review_due:
+        draft['review_at']=(wake.logical_time+timedelta(seconds=1)).isoformat()
+    author=Author([{'decision':'revise','draft':draft},RuntimeError('fixture outage')])
+    outlook=WorldOutlookRuntime(ledger=ledger,store=store,author=author,actor_ref=ACTOR,
+        executor=WorldOutlookExecutor(ledger=ledger,occurrence_content=OccurrenceContentCoordinator(ledger=ledger,store=content),actor_ref=ACTOR),content_store=content)
+    try:
+        assert (await outlook.refresh(projection=ledger.project(),context={},manifest=_manifest(wake,pinned_cursor=_projection_cursor(ledger))))['status']=='ready'
+        later=_seed_clock(ledger,event_id='clock:review',logical_time=wake.logical_time+timedelta(seconds=2),logical_time_from=wake.logical_time)
+        if review_due:
+            assert (await outlook.refresh(projection=ledger.project(),context={},manifest=_manifest(later,pinned_cursor=_projection_cursor(ledger))))['status']=='technical_failure'
+        expected_calls = 2 if review_due else 1
+        prior=store.head()
+        key=outlook._refresh_identity(ledger.project(),outlook.view(),(),prior)[2]
+        detail_author=DetailAuthor(content,later,plan.authority_origin.accepted_event_ref)
+        runtime=_author_runtime(ledger,content,detail_author,
+            critic=_SequenceModel(model='fixture:focused',outputs=(_novel_origin_review(decision='supported'),)))
+        runtime._world_outlook=outlook
+        result=await runtime.advance_active_attempt_once(execution_event_ref=plan.authority_origin.accepted_event_ref,
+            wake_event_ref=later.event_id,trace_id='detail-retry',correlation_id='detail-retry')
+        assert result.status=='occurrence_committed',result
+        program=next(o for o in ledger.project().world_occurrences if o.occurrence_id==result.occurrence_id)
+        assert program.event_detail_program is not None
+        from companion_daemon.world_v2.event_detail_runtime import is_prepaid_detail_progress
+        check = dict(ledger=ledger, content_store=content, projection=ledger.project(), actor_ref=ACTOR)
+        assert is_prepaid_detail_progress(occurrence=program, **check)
+        assert not is_prepaid_detail_progress(occurrence=program, **{**check, 'actor_ref': 'actor:unrelated'})
+        corrupt = program.model_copy(update={'event_detail_program': program.event_detail_program.model_copy(
+            update={'program_hash': 'a'*64})})
+        with pytest.raises(ValueError):
+            is_prepaid_detail_progress(occurrence=corrupt, **check)
+        assert outlook._refresh_identity(ledger.project(),outlook.view(),(),prior)[2]==key, 'Private preparation reset the failed outline identity'
+        # An expressly authored dependency is still monitored as such.
+        from copy import deepcopy
+        bound_view = deepcopy(outlook.view())
+        bound_view['opportunities'][0]['conditions'] = [{'source_ref': program.occurrence_id, 'ready_statuses': ['active']}]
+        assert outlook._refresh_identity(ledger.project(), bound_view, (), prior)[2] != key
+        assert outlook.event_details.advance(wake_event_ref=later.event_id)==1
+        assert outlook._refresh_identity(ledger.project(),outlook.view(),(),prior)[2]==key, 'An already-paid detail release reset the failed outline identity'
+        later=_seed_clock(ledger,event_id='clock:detail-later',logical_time=later.logical_time+timedelta(seconds=121),logical_time_from=later.logical_time)
+        assert outlook.event_details.advance(wake_event_ref=later.event_id)==1
+        assert outlook._refresh_identity(ledger.project(),outlook.view(),(),prior)[2]==key
+        assert len(author.calls)==expected_calls
+        assert outlook.view()['needs_revision'] is review_due
+        closing = _seed_clock(ledger, event_id='clock:actual-result',
+            logical_time=program.time_window.closes_at, logical_time_from=later.logical_time)
+        aftermath = _aftermath(ledger, content, _NoCharacterCalls())
+        for _ in range(4):
+            if next(o for o in ledger.project().world_occurrences if o.occurrence_id==program.occurrence_id).status=='settled':
+                break
+            assert (await advance_aftermath(aftermath, closing)).status=='settled'
+        view = outlook.view()
+        assert view['needs_revision']
+        assert program.occurrence_id in view['changed_source_refs']
+        sources, _, changed_key = outlook._refresh_identity(ledger.project(), view, (), prior)
+        assert program.occurrence_id in sources, 'Actual new terminal result was lost outside the live catalog'
+        assert changed_key != key
+        assert len(author.calls)==expected_calls
+    finally:
+        outlook.close()
+        content.close()
+        ledger.close()

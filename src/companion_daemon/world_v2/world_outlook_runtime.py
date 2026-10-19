@@ -704,7 +704,8 @@ class WorldOutlookRuntime:
                                                 npc_refs=tuple(npc_refs), required_refs=frozenset({ref}), legacy_fact_status=False).get(ref)
                     previous = {ref: evidence["source_tokens"][ref]} if ref in evidence["source_tokens"] else {}
                     offers = self.store.offers_for_effects((ref,), as_of=cursor_of(state))
-                    if source is not None and self._sources_changed(previous, {ref: source}, offers, material_refs=material):
+                    if source is not None and self._sources_changed(previous, {ref: source}, offers,
+                            material_refs=material, ordinary_refs=self._prepaid_detail_refs(state, (ref,))):
                         changed.append(ref)
                 after = sequence
                 if not changed:
@@ -722,6 +723,16 @@ class WorldOutlookRuntime:
         return bool(selected and occurrence.visibility != "withhold" and selected.privacy_class != "withhold"
                     and selected.objective_biographical_transition is not None
                     and selected.objective_biographical_transition.privacy_class != "withhold")
+
+    def _prepaid_detail_refs(self, state, refs):
+        refs = frozenset(refs)
+        if self._content_store is None or not refs:
+            return frozenset()
+        from .event_detail_runtime import is_prepaid_detail_progress
+
+        return frozenset(o.occurrence_id for o in self._entities(state, refs)["world_occurrences"]
+            if not self._material_consequence(o) and is_prepaid_detail_progress(ledger=self.ledger,
+                content_store=self._content_store, projection=state, occurrence=o, actor_ref=self.actor_ref))
 
     def _world_changes(self, state, refs):
         """Pinned accepted descriptors and bounded exact excerpts, not summaries.
@@ -913,6 +924,9 @@ class WorldOutlookRuntime:
         changed_sources, source_change_cursor = self._new_terminal_source(state, revision, evidence, npc_refs, sources)
         preparation = self._preparation(state, draft, states) if self._rolling_planning else None
         stage_states = {s.stage_id: dependency_state(s.conditions, sources) for s in draft.long_term}
+        dependencies = {c.source_ref for obj in (*draft.opportunities, *draft.long_term) for c in obj.conditions}
+        prepaid = self._prepaid_detail_refs(state,
+            {k for k, v in sources.items() if evidence["source_tokens"].get(k) != v.token}) - dependencies
         return {
             "contract": "world-outlook-view.1",
             "authority": "non_factual_private_draft",
@@ -933,7 +947,7 @@ class WorldOutlookRuntime:
                 or state.logical_time >= draft.review_at
                 or any(s in {"invalidated", "expired"} for s in states.values())
                 or "invalidated" in stage_states.values()
-                or self._sources_changed(evidence["source_tokens"], sources, offers)
+                or self._sources_changed(evidence["source_tokens"], sources, offers, ordinary_refs=prepaid)
                 or bool(changed_sources)
             ),
         }
@@ -965,21 +979,26 @@ class WorldOutlookRuntime:
         }
 
     @classmethod
-    def _sources_changed(cls, previous, sources, offers, *, material_refs=frozenset()):
-        ordinary = cls._ordinary_effect_refs(sources, offers, material_refs=material_refs)
+    def _sources_changed(cls, previous, sources, offers, *, material_refs=frozenset(), ordinary_refs=frozenset()):
+        ordinary = cls._ordinary_effect_refs(sources, offers, material_refs=material_refs) | (ordinary_refs - material_refs)
         current = {k: v.token for k, v in sources.items()}
         return any(previous.get(key) != current.get(key) and key not in ordinary
                    for key in previous.keys() | current.keys())
 
     def _refresh_identity(self, projection, view, npc_refs, prior_head):
         """One retry identity for authoring and read-only deadline selection."""
-        sources = self._catalog(projection, npc_refs, required_refs=frozenset(prior_head[2]["source_tokens"] if prior_head else ()))
+        previous_tokens = prior_head[2]["source_tokens"] if prior_head else {}
+        sources = self._catalog(projection, npc_refs, required_refs=frozenset(previous_tokens) | frozenset(view.get("changed_source_refs", ())))
         now = projection.logical_time
         native_result = self._rolling_planning and callable(getattr(self.author, "complete_json", None))
         # Bounded retry epochs affect technical work only; a failed author is
         # never recorded as an actor's refusal or a completed opportunity.
         retry_epoch = int(now.timestamp()) // 3600
         running = self.store.running_refresh(cursor=cursor_of(projection))
+        if running:
+            # Already paid work owns its original identity and wire; a fresh
+            # trigger classifier must not reinterpret its captured request.
+            return sources, running, running["payload"]["input_key"]
         offers = self._relevant_offers({n["opportunity_id"] for n in view["opportunities"]}, sources)
         # Already-paid execution is not a fresh revision trigger. Keep the
         # failed author's retry identity through that progress, just as view()
@@ -997,15 +1016,18 @@ class WorldOutlookRuntime:
         from types import SimpleNamespace
         effect_sources = source_catalog(SimpleNamespace(**own_entities), actor_ref=self.actor_ref,
             npc_refs=tuple(npc_refs), required_refs=own, legacy_fact_status=False, only_referenced=True)
-        ordinary = self._ordinary_effect_refs({**sources, **effect_sources}, offers, material_refs=protected)
-        input_key = running["payload"]["input_key"] if running else digest(
+        ordinary = (self._ordinary_effect_refs({**sources, **effect_sources}, offers, material_refs=protected)
+                    | (self._prepaid_detail_refs(projection,
+                        {k for k, v in sources.items() if previous_tokens.get(k) != v.token}) - protected))
+        input_key = digest(
             {
-                "retry_identity": "outlook-ordinary-progress.1",
+                "retry_identity": "outlook-ordinary-progress.2",
                 "source_contract": _WORKING_SOURCES,
                 "world_id": projection.world_id,
                 "actor_ref": self.actor_ref,
                 "parent": view["revision"],
-                "sources": {k: v.token for k, v in sources.items() if k not in ordinary},
+                "sources": {k: previous_tokens[k] if k in ordinary else v.token
+                            for k, v in sources.items() if k not in ordinary or k in previous_tokens},
                 "retry_epoch": retry_epoch,
                 **({"rolling_planning": _ROLLING_PLANNING} if self._rolling_planning else {}),
                 **({"response_tool_contract": _NATIVE_RESULT} if native_result else {}),

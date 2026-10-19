@@ -214,6 +214,7 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
         reopened = SQLiteWorldOutlookStore(path=tmp_path / "outlook.sqlite", world_id=WORLD_ID, actor_ref=OWNER)
         runtime = WorldOutlookRuntime(ledger=ledger, store=reopened, author=model, actor_ref=OWNER, rolling_planning=False)
         monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime.outlook_result_tool", lambda *_: pytest.fail("paid tools must not be regenerated"))
+        monkeypatch.setattr(runtime, "_prepaid_detail_refs", lambda *_: pytest.fail("paid key must not use a fresh trigger classifier"))
         assert (await runtime.refresh(**args))["status"] == "ready"
         assert len(requests) == 2
         assert reopened.head()[2]["request_hash"] == expected_hash

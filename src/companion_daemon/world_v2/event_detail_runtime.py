@@ -54,6 +54,60 @@ def read_accepted_detail_program(*, ledger, content_store, projection, occurrenc
     return draft, index
 
 
+def is_prepaid_detail_progress(*, ledger, content_store, projection, occurrence, actor_ref):
+    """Identify exact reviewed preparation/release, never a new selected result.
+
+    This is a refresh trigger classification, not authority to release a step,
+    use its prose or decide a character response. Existing release checks remain.
+    """
+    from .world_outlook_execution import occurrence_ref
+
+    if actor_ref not in occurrence.participant_refs or occurrence.status not in {"committed", "active", "settled"}:
+        return False
+    if occurrence.event_detail_program is not None:
+        if occurrence.status == "settled":
+            return False
+        read_accepted_detail_program(ledger=ledger, content_store=content_store, projection=projection, occurrence=occurrence)
+        return True
+    located = ledger.lookup_event_commit(occurrence.trigger_ref)
+    if located is None or located[1].ledger_sequence > projection.ledger_sequence:
+        return False
+    event = located[0]
+    raw = event.payload()
+    origin = raw.get("central_authorship", {})
+    detail = origin.get("event_detail_origin") if isinstance(origin, dict) else None
+    if event.event_type != "ProposalRecorded" or raw.get("proposal_kind") != "world_outlook_execution" or not isinstance(detail, dict):
+        return False
+    parent_event = ledger.lookup_event_commit(detail.get("proposal_event_ref", ""))
+    if parent_event is None or parent_event[1].ledger_sequence > projection.ledger_sequence:
+        raise ValueError("detail release lacks its original program proposal")
+    program_ref = parent_event[0].payload().get("effect_ref")
+    program = next((o for o in projection.world_occurrences if o.occurrence_id == program_ref), None)
+    if program is None or actor_ref not in program.participant_refs:
+        raise ValueError("detail release lacks its original actor-bound program")
+    draft, index = read_accepted_detail_program(ledger=ledger, content_store=content_store, projection=projection, occurrence=program)
+    position = detail.get("phase")
+    if type(position) is not int or not 0 <= position < len(draft.event_details):
+        raise ValueError("detail release phase was not authored")
+    step = draft.event_details[position]
+    due = index.capability.starts_at + timedelta(seconds=step.after_seconds)
+    expected_origin = {"world_id": projection.world_id, "actor_ref": actor_ref, "event_detail_origin": {
+        "proposal_event_ref": program.trigger_ref, "program_hash": index.program_hash,
+        "source_event_ref": index.capability.source_event_ref, "phase": position, "due_at": due.isoformat()}}
+    ranks = ("public", "shareable", "personal", "private", "withhold")
+    privacy = [index.capability.privacy_class, draft.privacy_class, program.visibility]
+    if step.outcome_index is not None:
+        if program.status != "settled" or program.settled_outcome_ref != program.candidate_outcome_refs[step.outcome_index]:
+            raise ValueError("conditional detail was not selected")
+        privacy.append(program.candidate_outcomes[step.outcome_index].privacy_class)
+    expected_script = {"kind": "environment", "text": step.text, "privacy_class": max(privacy, key=ranks.index), "duration_minutes": 1}
+    expected_ref = occurrence_ref(projection.world_id, actor_ref, "detail-" + digest([detail_operation(program.occurrence_id), position, index.program_hash]))
+    if (origin != expected_origin or raw.get("script") != expected_script or raw.get("occurrence_id") != occurrence.occurrence_id
+            or occurrence.occurrence_id != expected_ref or not due <= event.logical_time < index.capability.ends_at):
+        raise ValueError("detail release differs from its exact paid field, identity or due time")
+    return True
+
+
 class EventDetailRuntime:
     def __init__(self, *, ledger, store, executor, actor_ref, content_store):
         self.ledger, self.store, self.executor, self.actor_ref = ledger, store, executor, actor_ref
