@@ -1,8 +1,9 @@
-Disruption-context repair after e99 qualification: exact accepted lifecycle trigger is selected
-before the original three-head bound and ranked through resolver/source-proof/Capsule budgets.
-Only selection changes; existing lifecycle reader, old paid pins, ownership/privacy/current-head
-proofs and all limits remain. Offline retained-world reproduction and82 scoped tests pass;
-new full regression/real same-world continuation still required. Follow latest RUN-NOTES/status.
+Source-focus repair after e99 qualification: an exact eligible lifecycle trigger is selected
+before the original three-head bound; original typed WorldLife source bindings then carry the
+query event through resolver/source-proof/Capsule ranking for lifecycle and settled-event records.
+Only selection changes; old paid pins, readers, ownership/privacy/current-head proofs and limits
+remain. 109 scoped tests pass; new full regression/real same-world continuation still required.
+Follow latest RUN-NOTES/status.
 
 Activity-state considerations distinguish available actions from a new reason to ask.
 Fresh activity-opening.10 uses exact observed causes and the installed Life cadence through

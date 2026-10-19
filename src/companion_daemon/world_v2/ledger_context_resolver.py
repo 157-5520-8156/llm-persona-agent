@@ -942,8 +942,9 @@ def _rank(
     # Apply the existing grounding priority before bounded selection and
     # source admission, not only after optional episodes consumed that budget.
     if slice_name == "world_life":
-        if (isinstance(item, ActivityLifecycleStateContextItem)
-                and item.activity_event_ref == trigger_ref):
+        source_bindings = ((item.source,) if isinstance(item, WorldLifeContextItem)
+                           else getattr(item, "source_bindings", ()))
+        if any(binding.authority_event_ref == trigger_ref for binding in source_bindings):
             # The exact event being appraised precedes unrelated context.
             # It retains the same typed source/owner/privacy proof below.
             return 10_000

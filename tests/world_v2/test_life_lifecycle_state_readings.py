@@ -170,7 +170,11 @@ async def test_disruption_source_survives_resolver_preproof_attention_bound(monk
         cursor=cursor, viewer_privacy_ceiling='private')
     # Selection-only decoys: sorting grants no authority; the source-proof
     # seam must still validate every admitted original binding afterwards.
-    decoys = tuple(target.model_copy(update={'activity_event_ref': f'event:a:{i:03}'})
+    decoys = tuple(target.model_copy(update={
+        'activity_event_ref': f'event:a:{i:03}',
+        'source_bindings': tuple(binding.model_copy(update={
+            'authority_event_ref': f'event:a:{i:03}'}) for binding in target.source_bindings),
+    })
                    for i in range(8))
     import companion_daemon.world_v2.ledger_context_resolver as module
     monkeypatch.setattr(module, 'MAX_INPUT_ITEMS_PER_SLICE', 3)

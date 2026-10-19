@@ -564,3 +564,15 @@ repair does not validate those claims. Exact author-view/reader and preserved pa
 pin checks are offline evidence, not a new GLM semantic verdict. Real cross-day,
 story consequences, ordinary-course activation, acceleration and full-day diversity
 remain unqualified until the same retained World actually demonstrates them.
+
+The same root also affects ordinary settled external events: the actual v26
+07:10 event occurred at the exact role time, yet the review packet contained only
+older remembered environment. A separate five-second public accepted-settlement
+control reproduces its preproof eviction under the lifecycle-only patch. Ranking
+now follows each already-typed WorldLife source binding, rather than adding one
+special case per event family. The original reader still determines which exact
+field is authoritative; ranking grants no new permission or persistence. The
+lifecycle-only full-v8 was stopped at 42% to include this sibling counterexample;
+it is partial regression evidence. The final source needs its own full suite.
+109 related context, source-view, source-reading and Plan tests pass, including
+owner/privacy/current-head negatives. No production QQ/main candidate change.
