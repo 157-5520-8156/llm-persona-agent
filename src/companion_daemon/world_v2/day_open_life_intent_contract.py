@@ -20,6 +20,41 @@ AGENDA_CHOICE_CONTRACT = "character-interior-activity-lifecycle-choice.4"
 DAY_OPEN_LIFE_INTENT_POLICY_REF = "policy:day-open-life-intent.1"
 DAY_OPEN_CHOICE_CONTRACT = "character-interior-activity-lifecycle-choice.2"
 RECONSIDER_CHOICE_CONTRACT = "character-interior-activity-lifecycle-choice.3"
+CONTINUITY_CHOICE_CONTRACT = "character-interior-activity-lifecycle-choice.5"
+
+
+class DayOpenContinueChoice(FrozenModel):
+    decision: Literal["continue_existing"]
+    plan_ids: tuple[str, ...] = Field(min_length=1, max_length=8)
+
+    @model_validator(mode="after")
+    def exact_offered_plans(self):
+        if len(set(self.plan_ids)) != len(self.plan_ids):
+            raise ValueError("continue_existing requires distinct offered Plan IDs")
+        return self
+
+
+class ExistingDayOpenPlan(FrozenModel):
+    plan_id: str = Field(min_length=1, max_length=512)
+    entity_revision: int = Field(ge=1)
+    status: Literal["planned", "active", "paused"]
+    intention: str = Field(min_length=1, max_length=480)
+    intention_truncated: bool
+    scheduled_window: dict | None
+
+    @model_validator(mode="after")
+    def original_plan_window_shape(self):
+        if self.scheduled_window is not None:
+            from .schemas import DueWindow
+            DueWindow.model_validate_json(json.dumps(self.scheduled_window))
+        return self
+
+
+def validate_continuation_choice(payload, plans):
+    choice = DayOpenContinueChoice.model_validate_json(canonical_json(payload))
+    if not set(choice.plan_ids) <= {p["plan_id"] for p in plans}:
+        raise ValueError("continue_existing must select exact offered own Plan IDs")
+    return choice
 
 
 class DayOpenReconsiderChoice(FrozenModel):
@@ -98,15 +133,24 @@ class DayOpenLifeIntentCapability(FrozenModel):
 
 
 class DayOpenActivityCapability(FrozenModel):
-    contract: Literal["character-interior-activity-lifecycle-capability.3", "character-interior-activity-lifecycle-capability.4", "character-interior-activity-lifecycle-capability.5", "character-interior-activity-lifecycle-capability.6", "character-interior-activity-lifecycle-capability.7"]
+    contract: Literal["character-interior-activity-lifecycle-capability.3", "character-interior-activity-lifecycle-capability.4", "character-interior-activity-lifecycle-capability.5", "character-interior-activity-lifecycle-capability.6", "character-interior-activity-lifecycle-capability.7", "character-interior-activity-lifecycle-capability.8"]
     catalog_version: str = Field(min_length=1, max_length=128)
     catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     offered_tokens: tuple[str, ...] = Field(max_length=0)
     openings: tuple[dict, ...] = Field(max_length=0)
     self_directed_intent: DayOpenLifeIntentCapability
+    existing_plans: tuple[ExistingDayOpenPlan, ...] = Field(default=(), max_length=8, exclude_if=lambda v: not v)
 
     @model_validator(mode="after")
     def continuation_version_is_explicit(self):
+        if self.contract.endswith(".8"):
+            if self.self_directed_intent.contract != "day-open-life-intent-capability.4" or not self.existing_plans:
+                raise ValueError("continuity requires exact existing plans and the agenda capability")
+            if len({p.plan_id for p in self.existing_plans}) != len(self.existing_plans):
+                raise ValueError("existing Plan IDs must be distinct")
+            return self
+        if self.existing_plans:
+            raise ValueError("legacy capability cannot offer existing Plan continuity")
         if self.contract.endswith((".6", ".7")):
             if self.self_directed_intent.contract != "day-open-life-intent-capability.4":
                 raise ValueError("agenda requires its explicit capability")

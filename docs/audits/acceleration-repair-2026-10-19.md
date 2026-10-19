@@ -325,3 +325,45 @@ v13于04:16:02Z按确认的机制缺陷发正常停止信号，见 W v13/operato
 World投影不变、0HTTP。它证明读取没有秒级新增慢路，不是整轮或网络延迟指标。这里没有按关键词
 去重、主题配额、强制角色选择或删除已有近似计划。真实GLM是否自然使用延续/修改、积压是否消化、
 完整跨日多样性与命运/规划/课表闭环，仍需在同一保留世界继续验证，不能以fixture或HTTP200代替。
+
+## 2026-10-19 07:45Z 后续：完成活动后的滚动安排也须能延续已有计划
+
+上一修复a2d19492冻结全量已独立核实：10971pass/19skip/2xfail/1既有warning，1246.31秒，
+1718Python源不变，日志SHA692ed4c53180ee3d70effb04425f6109cc30d63c890067a82960cf10dcb660ea。
+W等价a1726bae于06:07:18Z以原DB/sidecars/currentclock启动v15。v14四库、严格重放/独立重开/
+effect-once通过；v15当次原56131事件prefix SHA及原QQ79910/主35221身份、全部1718W源亦已核实不变。
+实际GLM于角色06:50:03选择continue，WorldPlanResponseRecorded在62685，目标为day-open来源
+计划5413cb30...；原proposal同时含11项独立life_response，未含world_life_intent，未新建计划。
+这是自主选择的真实局部证据，不是多样性或完整跨日通过；revise/end真实自然分支仍未证实。
+
+然而v15终末有12份新增Plan，全部来自另一入口：DayOpenLifeWorker在一项活动结束后让角色
+重选滚动安排。三个独立角色决定发生于06:48:51/06:49:56/06:50:07，各新增3/5/4项。前两份
+实际请求的current_activities中已有相似的赖床/洗漱/上课意图，但没有可选择的未来计划列表；
+capability.7只给self_directed_agenda/no_op/reconsider，context_note每次要求1..8项rolling agenda。
+所以世界评估的continue已经真的生效，也不能证明所有意图入口的重复问题都已解决。
+不是重复提交同一事务；完整原请求、选择及分组保留在W v15/day-open-request-inventory.json、
+plan-management-readout.json、terminal-new-plan-groups.json和原wire。独立安装链路反例
+`test_day_open_plan_continuity.py`在原源码2fail：先保留一个未来计划，完成另一项，再向同一角色
+明确选择保留已有计划，原接口缺失能力。v15据此正常SIGINT收尾，不是因1-3次失败停机；
+终末195.67秒重放、46.11秒effect-once均通过，shutdown_errors=[]、源码和生产身份未变。
+
+本补丁复用world_plan_management原正文reader/权限过滤/最多8项列表，没有新框架、模型调用或
+调度器。在新鲜机会中，有合法自己非终态计划才发capability.8及choice.5：已有计划含精确ID、
+版本、状态、意图、时间；continue_existing显式选择1..8个不同的已提供ID，只保存原角色选择
+和role_continued journal，不创建Plan、不启动、不改期、不结束；未选的计划也不隐式取消。
+单独新意图、no_op、reconsider原分支保留，独立新增相同措辞仍可通过，不能由本地语义去重。
+旧paid机会/journal不重写；无已有计划仍为原capability.7。原World评估的修改/结束能力保留，
+不宣称本补丁给日开/完成入口也实现了编辑和结束，更不能靠新建来冒充修改。
+
+255项相关组合通过，4项新安装链路用例涵盖明确延续、未知ID拒绝、独立新增仍允许，以及
+付费决定之后/journal回执之前崩溃、冷重开沿用原决定，计划内容/时间/版本不变、不重复询问。
+一次补充窗口类型校验引入循环导入，7个收集错误已留档；改为复用原DueWindow的惰性验证，
+没有删验证；随后的255项通过。私有输入探针最初编译器类名与MappingProxy序列化错误均0HTTP
+并保留日志。最终真实保留62875副本准备capability.8及真实v5工具，提供8项active/planned，
+冷开30.40秒另计，准备/工具编译0.262秒，World投影不变/0HTTP。这不是GLM质量或加速通过。
+最终提示另明确了未选计划不隐式结束，冻结新全量以day-open-continuity-20261019为准。
+
+v15最终168prepared/167headers、67draft（含大量Outlook准备），角色时间仅06:48:50->06:50:08。
+完整跨日、无未来详情泄漏、持续后果推动规划/课表及语义多样性仍未通过。多次pending planning
+publication/根字段/引用/机会25+的拒绝及积压保留；不能以恢复一次continue或所有HTTP200报改善。
+下一阶段仍按原DB、时钟、目标、注册due/300秒heartbeat续跑，禁止跳事件、降频、删失败或放宽校验。

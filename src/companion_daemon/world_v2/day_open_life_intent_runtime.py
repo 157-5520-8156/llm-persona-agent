@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 from .day_open_life_intent_contract import (
     DAY_OPEN_CHOICE_CONTRACT,
     AGENDA_CHOICE_CONTRACT,
+    CONTINUITY_CHOICE_CONTRACT,
     DAY_OPEN_LIFE_AGENDA_REGISTRY_VERSION,
     DayOpenAgendaChoice,
     DayOpenLifeAgendaPayload,
@@ -84,12 +85,18 @@ def _role_material(result, capability_payload, *, world_id):
     payload = decision.get("payload")
     from .day_open_life_intent_contract import RECONSIDER_CHOICE_CONTRACT, DayOpenReconsiderChoice
 
-    agenda = capability.contract.endswith((".6", ".7"))
+    continuity = capability.contract.endswith(".8")
+    agenda = capability.contract.endswith((".6", ".7", ".8"))
     current = agenda or capability.contract.endswith(".5")
     if not isinstance(payload, dict) or payload.get("contract") != (
-        AGENDA_CHOICE_CONTRACT if agenda else RECONSIDER_CHOICE_CONTRACT if current else DAY_OPEN_CHOICE_CONTRACT
+        CONTINUITY_CHOICE_CONTRACT if continuity else AGENDA_CHOICE_CONTRACT if agenda else RECONSIDER_CHOICE_CONTRACT if current else DAY_OPEN_CHOICE_CONTRACT
     ):
         raise DayOpenLifeIntentError("role_contract_invalid")
+    if continuity and payload.get("decision") == "continue_existing":
+        from .day_open_life_intent_contract import validate_continuation_choice
+        validate_continuation_choice({k: v for k, v in payload.items() if k != "contract"},
+                                     [p.model_dump(mode="json") for p in capability.existing_plans])
+        return result, capability, None
     if current and payload.get("decision") == "reconsider":
         DayOpenReconsiderChoice.model_validate({k: v for k, v in payload.items() if k != "contract"})
         return result, capability, None
@@ -138,7 +145,7 @@ def materialize_day_open_proposal(result, capability_payload, *, world_id: str):
         for ref, (revision, hash_) in sorted(source_material.items())
     )
     identity = digest(result.model_dump(mode="json"))
-    agenda = capability.contract.endswith((".6", ".7"))
+    agenda = capability.contract.endswith((".6", ".7", ".8"))
     payload = (DayOpenLifeAgendaPayload if agenda else DayOpenLifeIntentPayload)(
         **({"life_intents": intents} if agenda else intents[0].model_dump(mode="json")),
         actor_ref=result.actor_ref,
@@ -278,7 +285,7 @@ def _derive_day_open_life_plans(*, state, world_id: str, proposal_id: str, owner
     if selected_head is None or selected_head.logical_time != selected.logical_time:
         raise DayOpenLifeIntentError("selection_clock_invalid")
     origin = DayOpenLifeIntentOrigin(
-        contract=("day-open-life-intent-origin.5" if capability.contract.endswith(".7") else
+        contract=("day-open-life-intent-origin.5" if capability.contract.endswith((".7", ".8")) else
                   "day-open-life-intent-origin.4" if agenda else
                   "day-open-life-intent-origin.3" if capability.contract.endswith(".5") else
                   "day-open-life-intent-origin.2" if completion else "day-open-life-intent-origin.1"),

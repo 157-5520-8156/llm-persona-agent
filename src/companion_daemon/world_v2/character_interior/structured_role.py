@@ -812,6 +812,14 @@ def _validate_day_open_agenda_payload(payload, offered_tokens) -> None:
     DayOpenAgendaChoice.model_validate_json(json.dumps(payload))
 
 
+def _validate_day_open_continuity_payload(payload, offered_tokens, plans) -> None:
+    if payload.get("decision") == "continue_existing":
+        from ..day_open_life_intent_contract import validate_continuation_choice
+        validate_continuation_choice(payload, plans)
+    else:
+        _validate_day_open_agenda_payload(payload, offered_tokens)
+
+
 def _validate_outcome_selection_payload(
     payload: Mapping[str, object],
     offered_tokens: frozenset[str],
@@ -3118,13 +3126,17 @@ class StructuredCharacterRoleFaculty:
                 ) from exc
             return replace(
                 contract,
-                payload_contract=("character-interior-activity-lifecycle-choice.4"
+                payload_contract=("character-interior-activity-lifecycle-choice.5"
+                                  if manifest.payload["contract"].endswith(".8") else
+                                  "character-interior-activity-lifecycle-choice.4"
                                   if manifest.payload["contract"].endswith((".6", ".7")) else
                                   "character-interior-activity-lifecycle-choice.3"
                                   if manifest.payload["contract"].endswith(".5") else
                                   "character-interior-activity-lifecycle-choice.2"),
                 offered_token_fields=(),
-                validator=(_validate_day_open_agenda_payload
+                validator=((lambda payload, offered: _validate_day_open_continuity_payload(
+                            payload, offered, manifest.payload["existing_plans"]))
+                           if manifest.payload["contract"].endswith(".8") else _validate_day_open_agenda_payload
                            if manifest.payload["contract"].endswith((".6", ".7")) else _validate_day_open_reconsider_payload
                            if manifest.payload["contract"].endswith(".5") else _validate_day_open_payload),
             )
@@ -4074,7 +4086,7 @@ class StructuredCharacterRoleFaculty:
                         "planning opportunity. No life_intent in this branch. It creates no "
                         "activity or message; you choose again using the then-current context"
                     )
-            if contract.payload_contract == "character-interior-activity-lifecycle-choice.4":
+            if contract.payload_contract in {"character-interior-activity-lifecycle-choice.4", "character-interior-activity-lifecycle-choice.5"}:
                 view["payload_schema"] = {
                     "decision": "self_directed_agenda|no_op|reconsider",
                     "life_intents": "self_directed_agenda only: 1..8 complete LifeIntentDraft objects. "
@@ -4089,6 +4101,16 @@ class StructuredCharacterRoleFaculty:
                     "reconsider_after_seconds": "reconsider only: integer 60..86400; no life_intents",
                     "no_op": "decision only; creates no activity or message",
                 }
+                if contract.payload_contract.endswith(".5"):
+                    view["payload_schema"]["decision"] += "|continue_existing"
+                    view["payload_schema"]["plan_ids"] = (
+                        "continue_existing only: 1..8 distinct exact IDs from existing_plans. "
+                        "Retain their accepted intentions, time windows and lifecycle unchanged; "
+                        "unselected Plans also remain unchanged. Do not add life_intents or imply execution, "
+                        "rescheduling or ending a Plan. A completed activity does not "
+                        "mean your remaining agenda needs to be recreated. A separate new intention "
+                        "is still your choice. no_op also leaves all existing Plans unchanged."
+                    )
         if contract.purpose == "outcome_selection":
             view["payload_schema"] = {
                 "selected_token": "exactly one offered outcome token",

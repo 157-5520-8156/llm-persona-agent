@@ -2022,7 +2022,8 @@ class StructuredRoleToolContracts:
                 {"properties": {"decision": {"enum": ["self_directed_intent"]}}, "required": ["life_intent"],
                  "not": {"properties": {"life_intent": {"type": "null"}}}},
             ]
-            agenda = capability_payload["contract"].endswith((".6", ".7"))
+            continuity = capability_payload["contract"].endswith(".8")
+            agenda = capability_payload["contract"].endswith((".6", ".7", ".8"))
             reconsider = agenda or capability_payload["contract"].endswith(".5")
             if reconsider:
                 from ..day_open_life_intent_contract import DayOpenReconsiderChoice
@@ -2041,9 +2042,15 @@ class StructuredRoleToolContracts:
                 from ..day_open_life_intent_contract import DayOpenAgendaChoice
 
                 schema["anyOf"][1] = _provider_schema(DayOpenAgendaChoice)
+            if continuity:
+                from ..day_open_life_intent_contract import DayOpenContinueChoice
+                existing_schema = _provider_schema(DayOpenContinueChoice)
+                existing_schema["properties"]["plan_ids"]["items"] = {
+                    "type": "string", "enum": [p["plan_id"] for p in capability_payload["existing_plans"]]}
+                schema["anyOf"].append(existing_schema)
             return _compile_generic_decision_contract(
                 purpose="activity_lifecycle_choice",
-                tool_name="character_role_activity_lifecycle_choice_v4" if agenda else "character_role_activity_lifecycle_choice_v3" if reconsider else "character_role_activity_lifecycle_choice_v2",
+                tool_name="character_role_activity_lifecycle_choice_v5" if continuity else "character_role_activity_lifecycle_choice_v4" if agenda else "character_role_activity_lifecycle_choice_v3" if reconsider else "character_role_activity_lifecycle_choice_v2",
                 payload_schema=schema,
                 capability_identity=capability_payload,
                 source_refs=tuple(json.loads(source_refs_json)),
@@ -2055,6 +2062,8 @@ class StructuredRoleToolContracts:
                  "self_directed private future intention or no_op. ") + "Each intention requests a Plan; "
                 "it does not start or complete it, move anyone, control another person, or author "
                 "a World result. No action or intention is required. " +
+                ("continue_existing with plan_ids retains exact offered existing intentions without "
+                 "recreating, rescheduling or executing them. Read existing_plans before adding more. " if continuity else "") +
                 ("You may instead choose reconsider with reconsider_after_seconds (60..86400) "
                  "to ask yourself again later; that schedules thought only. " if reconsider else "") +
                 "Return the same source-bound "

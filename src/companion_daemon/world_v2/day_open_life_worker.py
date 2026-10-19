@@ -140,6 +140,13 @@ class DayOpenLifeWorker:
                 "attempt_ordinal": ordinal,
             },
         }
+        if self.plan_material_reader is not None:
+            from .world_plan_management import capability
+            current = capability(state=projection, actor_ref=self.actor_ref, source_refs=(),
+                                 reader=self.plan_material_reader)
+            if current is not None:
+                payload["contract"] = "character-interior-activity-lifecycle-capability.8"
+                payload["existing_plans"] = current["plans"]
         raw = _canonical(payload)
         digest = "sha256:" + hashlib.sha256(raw.encode()).hexdigest()
         manifest = _InteriorCapabilityManifest(
@@ -169,7 +176,9 @@ class DayOpenLifeWorker:
                 ("You asked to reconsider now. " if reconsideration_ref else
                  "One owned activity has ended. " if completion_source else
                  "This is an opportunity to decide how to spend your own time. ")
-                + "Choose a rolling agenda of 1..8 concrete own intentions, no_op, or reconsider. Make each intention useful to remember later, with the steps you actually intend, without inventing a course, appointment or outcome from generic routine. You need not continue the last activity "
+                + ("Review existing_plans before deciding what comes next. continue_existing acknowledges exact offered Plans; it leaves their intentions, windows and lifecycle unchanged, without starting them again. Unselected Plans also remain unchanged: this is not an edit or ending operation. This completion does not require rewriting your day. You can choose a separate new agenda, no_op or reconsider. "
+                   if payload.get("existing_plans") else "Choose a rolling agenda of 1..8 concrete own intentions, no_op, or reconsider. ")
+                + "Make any new intention useful to remember later, with the steps you actually intend, without inventing a course, appointment or outcome from generic routine. You need not continue the last activity "
                 "or conversation. These are additional private intentions: they do not replace or cancel existing Plans. A Plan is not execution, success, presence or a message. Routine is background. "
                 + ("The previous activity was abandoned, not completed. "
                    if completion_source and completion_source.terminal_kind == "abandoned" else "")
@@ -280,7 +289,7 @@ class DayOpenLifeWorker:
                 return ActivityLifecycleFollowupResult(
                     status="blocked", reason_code=catalog.reason_code
                 )
-            plan_only_scope = attempt.opportunity.capability_manifest.payload["contract"].endswith(".7")
+            plan_only_scope = attempt.opportunity.capability_manifest.payload["contract"].endswith((".7", ".8"))
             if catalog.status != "no_openings" and row.reconsideration_ref is None and not plan_only_scope:
                 # An already paid terminal still belongs to its original empty
                 # catalog. Without one, changed opportunity eligibility cannot
@@ -343,16 +352,17 @@ class DayOpenLifeWorker:
                 result=result, opportunity=opportunity, proposal_hash=None
             )
             reconsider = result.decision["payload"].get("decision") == "reconsider"
+            continued = result.decision["payload"].get("decision") == "continue_existing"
             self.store.save(
                 row.model_copy(update={"terminal": True,
-                                      "terminal_reason": "role_reconsider" if reconsider else "role_no_op",
+                                      "terminal_reason": "role_reconsider" if reconsider else "role_continued" if continued else "role_no_op",
                                       **({"reconsider_at": opportunity.logical_time + timedelta(seconds=result.decision["payload"]["reconsider_after_seconds"]),
                                           "deferred_choice_hash": digest(result.model_dump(mode="json"))} if reconsider else {})}),
                 expected=row,
             )
             return ActivityLifecycleFollowupResult(
                 status="no_op",
-                reason_code="activity_lifecycle.model_reconsider_later" if reconsider else "activity_lifecycle.model_declined",
+                reason_code="activity_lifecycle.model_reconsider_later" if reconsider else "activity_lifecycle.model_continued" if continued else "activity_lifecycle.model_declined",
                 character_interior_model_result=model_result,
                 character_decision_json=_canonical(result.model_dump(mode="json")),
             )
