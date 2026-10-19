@@ -718,7 +718,7 @@ class WorldOutlookRuntime:
                 after = sequence
                 if not changed:
                     safe_after = after
-                if len(changed) == (1 if self._rolling_planning else 32):
+                if len(changed) == (3 if self._rolling_planning else 32):
                     return tuple(changed), safe_after, after
         return tuple(changed), safe_after if changed else after, after
 
@@ -745,7 +745,7 @@ class WorldOutlookRuntime:
     def _world_changes(self, state, refs):
         """Pinned accepted descriptors and bounded exact excerpts, not summaries.
 
-        Rolling scans offer one changed entity at a time. Large prose stays in
+        Rolling scans offer at most three changed entities per call. Large prose stays in
         immutable storage; explicit excerpt flags never assert its absence.
         """
         from .life_content import collect_user_channel_limited_content_refs

@@ -135,52 +135,93 @@ def test_retained_change_can_keep_exact_future_but_not_hide_a_revision(tmp_path)
         runtime.close()
 
 
+@pytest.mark.parametrize('plan_count', [1, 7])
 @pytest.mark.asyncio
-async def test_native_keep_acknowledges_real_abandoned_plan_without_rewriting_year(tmp_path):
+async def test_native_keep_acknowledges_real_abandoned_plans_and_survives_reopen(tmp_path, plan_count):
     from test_world_outlook_continuity import npc_setup, npc_manifest, retime
     from test_life_projection import commit, event, mutation, world_evidence
+    from test_life_development_runtime import _seed_clock
     from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
+    from companion_daemon.world_v2.world_outlook_store import SQLiteWorldOutlookStore
 
     ledger, wake, _, runtime, _, _ = npc_setup(tmp_path, lambda d: None)
+
     class NativeAuthor:
         model = 'fixture:explicit-retain'
         single_tool_response_carrier = 'json_object'
-        calls = []
+
+        def __init__(self):
+            self.calls, self.fail_next = [], False
+
         async def complete_json(self, messages, **kwargs):
             packet = decode_outlook_request(messages[1]['content'])
             self.calls.append(packet)
             if packet['parent_revision'] is None:
                 value = retime(story_draft(wake), ledger.project(), wake)
+                value['horizon_end'] = (wake.logical_time + timedelta(days=30)).isoformat()
                 for index, node in enumerate(value['opportunities']):
                     node['opportunity_id'] = packet['new_opportunity_ids'][index]
                 return json.dumps({'decision': 'revise', 'draft': value}, ensure_ascii=False)
-            return json.dumps({'decision': 'keep', 'review_at': (wake.logical_time + timedelta(days=2)).isoformat(),
-                'reason': '个人放弃了一个短期安排，外部机会仍可继续。',
+            if self.fail_next:
+                self.fail_next = False
+                raise TimeoutError('offline batch retry control')
+            return json.dumps({'decision': 'keep',
+                'review_at': (wake.logical_time + timedelta(days=2)).isoformat(),
+                'reason': '个人放弃短期安排，外部机会仍可继续。',
                 'change_responses': [{'source_ref': x['source_ref'], 'decision': 'retain', 'thread_refs': [],
-                    'planning_keys': [], 'reason': '这次选择没有改变已有外部条件。'} for x in packet['world_changes']]}, ensure_ascii=False)
+                    'planning_keys': [], 'reason': '这次选择没有改变已有外部条件。'}
+                    for x in packet['world_changes']]}, ensure_ascii=False)
+
     author = NativeAuthor()
     runtime.author, runtime._rolling_planning = author, True
     try:
         async def refresh():
             return await runtime.refresh(projection=ledger.project(), context={}, manifest=npc_manifest(ledger, wake))
-        first = await refresh()
-        assert first['status'] == 'ready', (first, [json.loads(r[0]).get('code') for r in runtime.store._db.execute('SELECT payload FROM world_outlook_attempts')])
+
+        assert (await refresh())['status'] == 'ready'
         before = runtime.store.head()[1].model_dump(mode='json')
         template = ledger.project().plans[0].model_dump(mode='json')
         template.pop('authority_origin', None)
-        ref = 'plan:ordinary-abandoned'
-        plan = {**template, 'plan_id': ref, 'activity_id': 'activity:ordinary',
-                'participant_refs': [], 'location_ref': None, 'scheduled_window': None}
-        commit(ledger, [event('planned:' + ref, 'ActivityPlanned', {
-            **mutation('planned:' + ref, expected_revision=0, evidence_refs=plan['evidence_refs']), 'plan': plan}, at=wake.logical_time)])
-        commit(ledger, [event('abandoned:' + ref, 'ActivityAbandoned', {
-            **mutation('abandoned:' + ref, expected_revision=1, evidence_refs=[world_evidence(ledger, wake.event_id, 'life_transition')]),
-            'plan_id': ref, 'transitioned_at': wake.logical_time.isoformat(), 'reason_ref': wake.event_id}, at=wake.logical_time)])
-        assert (await refresh())['status'] == 'ready', runtime.health()
-        after = runtime.store.head()[1].model_dump(mode='json')
-        assert len(author.calls) == 2 and author.calls[-1]['world_changes'][0]['source_ref'] == ref
-        assert all(after[k] == before[k] for k in ('threads', 'opportunities', 'long_term'))
-        assert after['change_responses'][0]['source_ref'] == ref
+        refs = [f'plan:ordinary-abandoned:{i}' for i in range(plan_count)]
+        for ref in refs:
+            plan = {**template, 'plan_id': ref, 'activity_id': 'activity:' + ref,
+                    'participant_refs': [], 'location_ref': None, 'scheduled_window': None}
+            commit(ledger, [event('planned:' + ref, 'ActivityPlanned', {
+                **mutation('planned:' + ref, expected_revision=0, evidence_refs=plan['evidence_refs']),
+                'plan': plan}, at=wake.logical_time)])
+            commit(ledger, [event('abandoned:' + ref, 'ActivityAbandoned', {
+                **mutation('abandoned:' + ref, expected_revision=1,
+                    evidence_refs=[world_evidence(ledger, wake.event_id, 'life_transition')]),
+                'plan_id': ref, 'transitioned_at': wake.logical_time.isoformat(), 'reason_ref': wake.event_id},
+                at=wake.logical_time)])
+        failed_attempts = []
+        if plan_count > 1:
+            pending = runtime.view()['changed_source_refs']
+            author.fail_next = True
+            assert (await refresh())['status'] == 'technical_failure'
+            assert runtime.view()['changed_source_refs'] == pending
+            assert runtime.store.head()[1].model_dump(mode='json') == before
+            failed_attempts = [r for r in runtime.store._db.execute('SELECT payload FROM world_outlook_attempts')
+                               if json.loads(r[0]).get('status') == 'technical_failure']
+            assert failed_attempts
+            calls = len(author.calls)
+            await refresh()
+            assert len(author.calls) == calls  # Original failed receipt still waits for its retry epoch.
+            wake = _seed_clock(ledger, event_id='clock:batch-retry', logical_time_from=wake.logical_time,
+                               logical_time=wake.logical_time + timedelta(hours=1))
+        acknowledged = []
+        for count in [min(3, plan_count-i) for i in range(0, plan_count, 3)]:
+            assert len(runtime.view()['changed_source_refs']) == count
+            assert (await refresh())['status'] == 'ready', runtime.health()
+            after = runtime.store.head()[1].model_dump(mode='json')
+            assert all(after[k] == before[k] for k in ('threads', 'opportunities', 'long_term'))
+            acknowledged.extend(x['source_ref'] for x in after['change_responses'])
+            runtime.store.close()
+            runtime.store = SQLiteWorldOutlookStore(path=tmp_path/'outlook.sqlite',
+                world_id=ledger.world_id, actor_ref=runtime.actor_ref)
+        assert acknowledged == refs and len(author.calls) == 1 + (plan_count+2)//3 + bool(failed_attempts)
+        assert all(r in runtime.store._db.execute('SELECT payload FROM world_outlook_attempts').fetchall()
+                   for r in failed_attempts)
         assert runtime.view()['changed_source_refs'] == []
         assert (await refresh())['status'] == 'unchanged'
     finally:

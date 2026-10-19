@@ -150,12 +150,22 @@ async def test_life_deadline_reaches_subscription_circuit_without_losing_unknown
     entered, never = asyncio.Event(), asyncio.Event()
     observed, requests, budgets = [], [], []
     caller_cancelled = mode == 'caller_cancelled'
+    budget_clock = 0.0
+    if mode == 'repair_timeout':
+        from types import SimpleNamespace
+        import companion_daemon.world_v2.character_interior.life_source_review as review_module
+        # Pin only the reviewer's budget clock. Provider cancellation, circuit
+        # and usage accounting still use the real event loop and real timeout.
+        monkeypatch.setattr(review_module, 'asyncio', SimpleNamespace(
+            get_running_loop=lambda: SimpleNamespace(time=lambda: budget_clock)))
 
     async def stalled(request):
+        nonlocal budget_clock
         requests.append(request)
         entered.set()
         if mode == 'repair_timeout' and len(requests) == 1:
-            await asyncio.sleep(.02)
+            budget_clock += .02
+            await asyncio.sleep(0)
             body = json.loads(request.content)
             return httpx.Response(200, json={
                 'id': 'fixture-incomplete-review', 'model': 'fixture', 'type': 'message',
