@@ -436,8 +436,10 @@ async def test_worker_turns_one_claimed_wake_into_one_accepted_transition() -> N
     ).opportunity_ref
     capability = interior.opportunities[0].capability_manifest.payload
     assert capability["contract"] == (
-        "character-interior-activity-lifecycle-capability.2"
+        "character-interior-activity-lifecycle-capability.3"
     )
+    assert capability["no_op_effect"] == "keep_current_activity_states"
+    assert all({"operation", "resulting_status", "plan_id"} <= set(item) for item in capability["openings"])
     assert "mood_context" not in capability
     proposal_event = next(iter(ledger.events.values()))
     recorded_model = proposal_event.payload()["character_interior_model_result"]
@@ -484,28 +486,7 @@ async def test_worker_reports_character_interior_failure_without_forging_no_op()
     assert ledger.accepted == ()
 
 
-@pytest.mark.asyncio
-async def test_worker_replays_a_real_ledger_from_claimed_clock_to_accepted_activity(monkeypatch) -> None:
-    """Exercise the actual reducers rather than a projection-shaped fake ledger.
-
-    This is deliberately the first vertical's narrowest legal plan: it is
-    companion-owned and abstract, with no unimplemented location or NPC
-    authority.  The resulting timeline must remain replayable after the
-    proposal and the accepted effect have each changed their own revision lane.
-    """
-
-    from companion_daemon.world_v2 import reducers
-    import sys
-
-    original_projection = reducers.make_projection
-
-    def projection_without_recursive_catalog_rebuild(**kwargs):
-        assert sys._getframe(1).f_code.co_name != "_activity_lifecycle_proposal_recorded", (
-            "every historical activity proposal rebuilds and validates the complete archive"
-        )
-        return original_projection(**kwargs)
-
-    monkeypatch.setattr(reducers, "make_projection", projection_without_recursive_catalog_rebuild)
+def _real_activity_ledger():
     world_id = "world:activity-lifecycle-real-ledger"
     issuer = AcceptedLedgerBatchIssuer()
     ledger = WorldLedger.in_memory(world_id=world_id, accepted_batch_issuer=issuer)
@@ -579,6 +560,33 @@ async def test_worker_replays_a_real_ledger_from_claimed_clock_to_accepted_activ
             },
         ),
     )
+    return ledger, issuer, clock
+
+
+@pytest.mark.asyncio
+async def test_worker_replays_a_real_ledger_from_claimed_clock_to_accepted_activity(monkeypatch) -> None:
+    """Exercise the actual reducers rather than a projection-shaped fake ledger.
+
+    This is deliberately the first vertical's narrowest legal plan: it is
+    companion-owned and abstract, with no unimplemented location or NPC
+    authority.  The resulting timeline must remain replayable after the
+    proposal and the accepted effect have each changed their own revision lane.
+    """
+
+    from companion_daemon.world_v2 import reducers
+    import sys
+
+    original_projection = reducers.make_projection
+
+    def projection_without_recursive_catalog_rebuild(**kwargs):
+        assert sys._getframe(1).f_code.co_name != "_activity_lifecycle_proposal_recorded", (
+            "every historical activity proposal rebuilds and validates the complete archive"
+        )
+        return original_projection(**kwargs)
+
+    monkeypatch.setattr(reducers, "make_projection", projection_without_recursive_catalog_rebuild)
+    ledger, issuer, clock = _real_activity_ledger()
+    world_id = ledger.world_id
     catalog_version = "life-ecology.1"
     claim = await LedgerLifeEcologyTriggerStore(
         ledger=ledger, owner_id="worker:life-ecology"
@@ -622,7 +630,7 @@ async def test_worker_replays_a_real_ledger_from_claimed_clock_to_accepted_activ
         state=ledger._state, world_id=world_id, world_revision=replayed.world_revision,
         deliberation_revision=replayed.deliberation_revision, ledger_sequence=replayed.ledger_sequence,
     )
-    for version in range(1, 10):
+    for version in range(1, 11):
         catalog = ActivityOpeningCatalog(owner_actor_ref="actor:companion", catalog_version=f"activity-opening.{version}")
         expected = catalog.openings_for(projection=replayed, wake_event_ref=clock.event_id)
         assert catalog.openings_for(projection=view, wake_event_ref=clock.event_id) == expected
@@ -647,7 +655,7 @@ async def test_second_start_on_the_same_local_day_does_not_call_the_model() -> N
     interior = _Interior()
     worker = ActivityLifecycleWorker(
         ledger=ledger,
-        catalog=_catalog(),
+        catalog=ActivityOpeningCatalog(owner_actor_ref="actor:companion", catalog_version="activity-opening.9"),
         character_interior=interior,
         owner_actor_ref="actor:companion",
         proposal_recorder=ActivityLifecycleProposalRecorder(ledger=ledger),
@@ -677,10 +685,11 @@ def _worker(
     ledger,
     interior,
     daily_occasions=None,
+    catalog_version="activity-opening.9",
 ) -> ActivityLifecycleWorker:
     return ActivityLifecycleWorker(
         ledger=ledger,
-        catalog=_catalog(),
+        catalog=ActivityOpeningCatalog(owner_actor_ref="actor:companion", catalog_version=catalog_version),
         character_interior=interior,
         owner_actor_ref="actor:companion",
         proposal_recorder=ActivityLifecycleProposalRecorder(ledger=ledger),
@@ -845,7 +854,7 @@ async def test_closed_window_abandon_only_does_not_spend_day_open() -> None:
     )
 
     projection, trigger_id = _claimed_custom_projection(_missed_window_plan())
-    openings = _catalog().openings_for(
+    openings = ActivityOpeningCatalog(owner_actor_ref="actor:companion", catalog_version="activity-opening.9").openings_for(
         projection=projection, wake_event_ref=WAKE_REF
     )
     assert [item.operation for item in openings.openings] == ["abandon"]
@@ -1092,9 +1101,7 @@ async def test_completable_active_plan_asks_once_after_day_open_is_spent() -> No
     assert occasion.merge_key.startswith("active-complete:")
 
     second = _Interior()
-    skipped = await _worker(
-        ledger=ledger, interior=second, daily_occasions=store
-    ).advance_once(
+    skipped = await _worker(ledger=ledger, interior=second, daily_occasions=store).advance_once(
         wake_event_ref="event:clock:later",
         trigger_id=trigger_id,
         logical_time=NOW,
@@ -1104,3 +1111,315 @@ async def test_completable_active_plan_asks_once_after_day_open_is_spent() -> No
     )
     assert skipped.status == "no_op"
     assert second.opportunities == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("sqlite_reopen", [False, True])
+async def test_same_real_interrupt_does_not_become_new_work_on_every_clock(tmp_path, sqlite_reopen):
+    from companion_daemon.world_v2.daily_occasion import InMemoryDailyOccasionStore, local_day_key
+
+    plan = _plan("one-current-activity", status="active", entity_revision=2)
+    observation = MessageObservationRef(
+        observation_id="observation:one-real-interruption",
+        source="test",
+        source_event_id="message:one",
+        content_payload_hash="b" * 64,
+        event_payload_hash="c" * 64,
+        world_revision=8,
+        actor="user:geoff",
+        channel="direct",
+        payload_ref="payload:one",
+    )
+    projection, trigger = _claimed_custom_projection(plan)
+    projection = projection.model_copy(update={"message_observations": (observation,)})
+    ledger = _Ledger(projection)
+    ledger.issuer = AcceptedLedgerBatchIssuer()
+    if sqlite_reopen:
+        ledger._database_path = tmp_path / "source-spending.sqlite"
+    daily = InMemoryDailyOccasionStore()
+    daily.mark("day_open", local_day_key(NOW))
+    role = _Interior(choice="no_op")
+    worker = _worker(
+        ledger=ledger, interior=role, daily_occasions=daily, catalog_version="activity-opening.10"
+    )
+    for index, wake in enumerate([WAKE_REF, "event:clock:technical-next"]):
+        current, trigger = _claimed_custom_projection(plan, wake_ref=wake)
+        if sqlite_reopen and index:
+            worker._occasion_spends._connection.close()
+            ledger = _Ledger(current)
+            ledger._database_path = tmp_path / "source-spending.sqlite"
+            ledger.issuer = AcceptedLedgerBatchIssuer()
+            worker = _worker(
+                ledger=ledger,
+                interior=role,
+                daily_occasions=daily,
+                catalog_version="activity-opening.10",
+            )
+        ledger.projection = current.model_copy(update={"message_observations": (observation,)})
+        result = await worker.advance_once(
+            wake_event_ref=wake,
+            trigger_id=trigger,
+            logical_time=NOW,
+            actor="worker:life-ecology",
+            trace_id=wake,
+            correlation_id=wake,
+        )
+        assert result.status == "no_op"
+    assert len(role.opportunities) == 1, "The same causal source was reminted using a new clock ID"
+    # A genuinely different input is allowed immediately at the same logical time.
+    ledger.projection = ledger.projection.model_copy(
+        update={
+            "message_observations": (
+                observation.model_copy(
+                    update={
+                        "observation_id": "observation:new-interruption",
+                        "source_event_id": "message:new",
+                    }
+                ),
+            )
+        }
+    )
+    result = await worker.advance_once(
+        wake_event_ref=wake,
+        trigger_id=trigger,
+        logical_time=NOW,
+        actor="worker:life-ecology",
+        trace_id="fresh-source",
+        correlation_id="fresh-source",
+    )
+    assert result.status == "no_op"
+    assert len(role.opportunities) == 2, "Source deduplication must not be a cooldown"
+    offered = role.opportunities[0].capability_manifest.payload
+    assert {opening["operation"] for opening in offered["openings"]} >= {"pause", "abandon"}
+    assert offered["no_op_effect"] == "keep_current_activity_states"
+
+    if sqlite_reopen:
+        worker._occasion_spends._connection.close()
+
+
+@pytest.mark.asyncio
+async def test_original_life_cadence_can_reconsider_without_a_new_external_source():
+    from companion_daemon.world_v2.daily_occasion import InMemoryDailyOccasionStore, local_day_key
+
+    plan = _plan("ordinary-current-activity", status="active", entity_revision=2)
+    projection, trigger = _claimed_custom_projection(plan)
+    ledger = _Ledger(projection)
+    ledger.issuer = AcceptedLedgerBatchIssuer()
+    daily = InMemoryDailyOccasionStore()
+    daily.mark("day_open", local_day_key(NOW))
+    role = _Interior(choice="no_op")
+    worker = _worker(
+        ledger=ledger, interior=role, daily_occasions=daily, catalog_version="activity-opening.10"
+    )
+    for epoch in ["original-life-due:a", "original-life-due:a", "original-life-due:b"]:
+        result = await worker.advance_once(
+            wake_event_ref=WAKE_REF,
+            trigger_id=trigger,
+            logical_time=NOW,
+            actor="worker:life-ecology",
+            trace_id=epoch,
+            correlation_id=epoch,
+            consideration_epoch=epoch,
+        )
+        assert result.status == "no_op"
+    assert len(role.opportunities) == 2
+    assert all(
+        "pause" in {x["operation"] for x in o.capability_manifest.payload["openings"]}
+        for o in role.opportunities
+    )
+
+
+@pytest.mark.asyncio
+async def test_real_pause_and_resume_remain_free_without_own_receipt_feedback():
+    ledger, issuer, initial_clock = _real_activity_ledger()
+    role = _Interior()
+    worker = ActivityLifecycleWorker(
+        ledger=ledger,
+        catalog=ActivityOpeningCatalog(owner_actor_ref="actor:companion"),
+        character_interior=role,
+        owner_actor_ref="actor:companion",
+        proposal_recorder=ActivityLifecycleProposalRecorder(ledger=ledger),
+        acceptance_runtime=ActivityLifecycleAcceptanceRuntime(ledger=ledger, batch_issuer=issuer),
+        ecology_catalog_version=ECOLOGY_CATALOG_VERSION,
+    )
+
+    async def run(step, epoch=None):
+        at = NOW + timedelta(seconds=step)
+        if step == 0:
+            clock = initial_clock
+        else:
+            current = ledger.project().logical_time
+            clock = _real_event(
+                event_id=f"event:clock:state-feedback:{step}",
+                event_type="ClockAdvanced",
+                world_id=ledger.world_id,
+                payload={
+                    "logical_time_from": current.isoformat(),
+                    "logical_time_to": at.isoformat(),
+                },
+            ).model_copy(update={"logical_time": at, "created_at": at})
+            _commit_real(ledger, clock)
+        claim = await LedgerLifeEcologyTriggerStore(
+            ledger=ledger, owner_id="worker:life-ecology"
+        ).claim_or_join(
+            key=LifeEcologyRunKey(
+                world_id=ledger.world_id,
+                wake_event_ref=clock.event_id,
+                catalog_version=ECOLOGY_CATALOG_VERSION,
+            ),
+            trace_id=f"state:{step}",
+            correlation_id=f"state:{step}",
+        )
+        return await worker.advance_once(
+            wake_event_ref=clock.event_id,
+            trigger_id=claim.trigger_id,
+            logical_time=at,
+            actor="worker:life-ecology",
+            trace_id=f"state:{step}",
+            correlation_id=f"state:{step}",
+            consideration_epoch=epoch,
+        )
+
+    assert (await run(0)).status == "transitioned"
+    assert ledger.project().plans[0].status == "active"
+    assert (await run(1, "original-life-cadence:pause")).status == "transitioned"
+    assert ledger.project().plans[0].status == "paused"
+    assert len(role.opportunities) == 2
+    assert (await run(2)).status == "no_op"
+    assert len(role.opportunities) == 2 and ledger.project().plans[0].status == "paused"
+    # A legitimate opportunity one second later still permits immediate resume.
+    assert (await run(3, "original-life-cadence:resume")).status == "transitioned"
+    assert ledger.project().plans[0].status == "active"
+    assert len(role.opportunities) == 3
+    assert (await run(4)).status == "no_op"
+    assert len(role.opportunities) == 3 and ledger.project().plans[0].status == "active"
+    assert ledger.rebuild() == ledger.project()
+
+
+@pytest.mark.asyncio
+async def test_source_retry_keeps_failure_backoff_but_new_evidence_is_immediate():
+    from companion_daemon.world_v2.schemas import LifeEcologyScheduleProjection
+
+    projection, trigger = _claimed_custom_projection(
+        _plan("still-active", status="active", entity_revision=2)
+    )
+    observation = MessageObservationRef(
+        observation_id="observation:pending-source",
+        source="test",
+        source_event_id="message:pending",
+        content_payload_hash="b" * 64,
+        event_payload_hash="c" * 64,
+        world_revision=8,
+        actor="user:geoff",
+        channel="direct",
+        payload_ref="payload:pending",
+    )
+    schedule = LifeEcologyScheduleProjection(
+        last_trigger_id="previous-failed-trigger",
+        last_wake_event_ref=WAKE_REF,
+        last_outcome_ref="life-ecology:technical_failure.activity_lifecycle.provider_timeout",
+        last_completed_at=NOW,
+        next_consideration_at=NOW + timedelta(minutes=2),
+        consecutive_failures=1,
+        last_failure_code="activity_lifecycle.provider_timeout",
+    )
+    projection = projection.model_copy(
+        update={"message_observations": (observation,), "life_ecology_schedule": schedule}
+    )
+    ledger = _Ledger(projection)
+    ledger.issuer = AcceptedLedgerBatchIssuer()
+    role = _Interior(choice="no_op")
+    worker = _worker(ledger=ledger, interior=role, catalog_version="activity-opening.10")
+
+    async def run(epoch=None):
+        return await worker.advance_once(
+            wake_event_ref=WAKE_REF,
+            trigger_id=trigger,
+            logical_time=NOW,
+            actor="worker:life-ecology",
+            trace_id="retry-bound",
+            correlation_id="retry-bound",
+            consideration_epoch=epoch,
+        )
+
+    assert (await run()).status == "no_op"
+    assert not role.opportunities
+    assert ledger.project().life_ecology_schedule == schedule
+    ledger.projection = projection.model_copy(
+        update={
+            "message_observations": (
+                observation.model_copy(
+                    update={"observation_id": "observation:new-during-retry", "world_revision": 10}
+                ),
+            )
+        }
+    )
+    assert (await run()).status == "no_op"
+    assert len(role.opportunities) == 1
+    assert ledger.project().life_ecology_schedule == schedule
+    # The original failure source has not been consumed by its retry wait.
+    ledger.projection = projection
+    assert (await run("original-retry-due")).status == "no_op"
+    assert len(role.opportunities) == 2
+
+
+@pytest.mark.asyncio
+async def test_completion_eligibility_and_window_close_are_distinct_clock_sources():
+    from companion_daemon.world_v2.daily_occasion import InMemoryDailyOccasionStore, local_day_key
+
+    plan = _plan(
+        "two-real-boundaries",
+        status="active",
+        entity_revision=2,
+        scheduled_window=DueWindow(
+            opens_at=NOW - timedelta(minutes=50), closes_at=NOW + timedelta(minutes=10)
+        ),
+    ).model_copy(update={"last_transitioned_at": NOW - timedelta(minutes=50)})
+    projection, _ = _claimed_custom_projection(plan)
+    ledger = _Ledger(projection)
+    ledger.issuer = AcceptedLedgerBatchIssuer()
+    daily = InMemoryDailyOccasionStore()
+    daily.mark("day_open", local_day_key(NOW))
+    role = _Interior(choice="no_op")
+    worker = _worker(
+        ledger=ledger, interior=role, daily_occasions=daily, catalog_version="activity-opening.10"
+    )
+    for number, minutes, expected in [(1, 0, 1), (2, 1, 1), (3, 10, 2), (4, 11, 2)]:
+        at = NOW + timedelta(minutes=minutes)
+        wake = f"event:clock:boundary:{number}"
+        current, trigger = _claimed_custom_projection(plan, wake_ref=wake)
+        process = current.trigger_processes[0]
+        current = current.model_copy(
+            update={
+                "logical_time": at,
+                "committed_world_event_refs": tuple(
+                    x.model_copy(update={"logical_time": at})
+                    for x in current.committed_world_event_refs
+                ),
+                "clock_transition_history": tuple(
+                    x.model_copy(update={"logical_time_to": at})
+                    for x in current.clock_transition_history
+                ),
+                "trigger_processes": (
+                    process.model_copy(
+                        update={
+                            "claim_lease": process.claim_lease.model_copy(
+                                update={"acquired_at": at, "expires_at": at + timedelta(minutes=1)}
+                            )
+                        }
+                    ),
+                ),
+            }
+        )
+        ledger.projection = current
+        assert (
+            await worker.advance_once(
+                wake_event_ref=wake,
+                trigger_id=trigger,
+                logical_time=at,
+                actor="worker:life-ecology",
+                trace_id=wake,
+                correlation_id=wake,
+            )
+        ).status == "no_op"
+        assert len(role.opportunities) == expected

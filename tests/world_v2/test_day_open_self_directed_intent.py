@@ -908,6 +908,15 @@ async def test_expired_pause_leads_to_owned_choice_then_fresh_intention(tmp_path
         for minute, choice in ((1, "start"), (2, "start"), (6, "pause"), (16, "abandon"), (17, "start")):
             provider.lifecycle_choice = choice
             at = NOW + timedelta(minutes=minute)
+            if minute == 16:
+                # Use the installed Life cadence, not an arbitrary technical
+                # clock tick, to offer a new owner-authored end decision.
+                due = app._life_ecology._trigger_store.next_consideration_at()
+                schedule = app.export_replay_evidence().projection.life_ecology_schedule
+                due = due if due is not None else schedule.next_consideration_at if schedule else at
+                at = max(at, due)
+            elif minute == 17:
+                at = max(at, previous + timedelta(minutes=1))
             await app.tick(tick_id=f"expired-{minute}", logical_time_from=previous, logical_time_to=at,
                            observed_at=at, trace_id=f"trace:expired-{minute}", causation_id=f"clock:expired-{minute}",
                            correlation_id="expired-paused", reason="test_clock")

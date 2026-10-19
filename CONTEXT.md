@@ -1,10 +1,13 @@
-2026-10-19 all-Plan-entry repair in progress: protagonist inbound/world/day-open+completion+reconsider/
-Life opportunity choices now share original world_plan_management continue/revise/end, original role
-choice audit, CAS/effect-once receipts and linked versions; independent new intents remain legal.
-Legacy paid contracts recover unchanged. NPC/objective-plan authorities stay distinct. AST writer
-inventory and actual-interface recovery tests in all-plan-entries-20261019; final frozen full pending.
-Retained v16 stopped normally; strict replay/effect-once/source/prod gates pass. Same World/sidecars,
-fixed target2026-10-20T05:48:48+08, no QQ/main control. No real new-version diversity claim yet.
+Activity-state considerations distinguish available actions from a new reason to ask.
+Fresh activity-opening.10 uses exact observed causes and the installed Life cadence through
+existing Occasion spending; own transition receipts and permanent supersedes ancestry do not
+mint new opportunities. Legal pause/resume/abandon remain immediately available without dwell.
+Legacy catalogues1..9 and paid wire contracts retain their original semantics. State-only
+capability3 reports the exact operation, target status and unchanged intention/window; other
+intent authors still share original continue/revise/end and linked Plan versions.
+Current ownership/qualification: read continuation/service-status.json and
+output/private-audits/activity-feedback-20261019/RUN-NOTES.md; historical statuses below are
+not current process or release evidence. QQ/main are protected; only isolated8793 is authorized.
 
 2026-10-18 retained candidate repair/qualification result: manual_only / qualification_incomplete.
 Runtime83e2c0db; test-only65d0f0ae; full-v4=10866pass/19skip/2xfail/1existingwarning,

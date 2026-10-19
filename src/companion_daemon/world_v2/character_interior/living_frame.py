@@ -22,6 +22,14 @@ LIVING_CHOICE_SCOPE = (
 )
 
 
+ACTIVITY_STATE_CHOICE_SCOPE = (
+    "这次能力选择现有活动的执行状态，operation 和 resulting_status 给出所选动作的准确效果。"
+    "no_op 是完整选择：保留当前全部活动状态。意图和时间安排由这些状态动作原样保留。"
+    "是否选择动作、是否维持现状、此刻有什么新念头，都由你决定；noticed 可选且只记录本次念头。"
+    "新的打算仍可自由形成，实际修改或合并安排须使用本次明确提供的相应能力。"
+)
+
+
 def configured_living_frame(frame) -> dict:
     """Keep characterization once; dialogue samples and factual claims stay in their lanes."""
     return {

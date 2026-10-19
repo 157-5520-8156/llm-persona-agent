@@ -423,3 +423,46 @@ src/scripts/configs Python与其相同，完整新版本结论仍等full-v2。e0
 新请求。历史World wire恢复原四字段顺序，语义验证仍委托公共PlanResponseDraft；无新框架
 或行为策略。4种黄金hash及四入口/冷恢复64项通过。最终独立full-v3/新原历史重放另存，
 未结束前不声称最终全量通过；原失败/字节/两个未启动阶段均保留。
+
+
+## 15轮暂停／恢复：来源和首轮输入的确定反例
+
+v19同一Plan在06:52:10–06:54:57出现15对pause/resume，30个不同Clock、30个不同请求。
+完整输入、选择、原因和落账已逐项保存activity-feedback-20261019/exact-30-transitions.json，
+15对原文表在PAIR-REVIEW.md。30次author_attempt_ordinal均0，不是纠错重试或重复提交。
+pretty捕获JSON按HTTP紧凑形式重新编码后30/30与观察到的wire SHA一致。
+
+公开Catalog最小反例1.15秒红：已经active的版本仍因永久supersedes字段被标成新change_plan；
+暂停后又被标repair。只去掉该链接，其余不变，错误来源标签消失。第二个worker红例显示同一
+真实消息仅换Clock又请求一次。模型有文字的理由都在延续躺到7:30，不能当作15次有意义改主意。
+同时，旧卡片只有抽象文案，私有“合并重叠打算”的想法没有对应实际合并效果，给下一次继续
+提供了错误暗示。不是用关键词判断或改写角色的想法。
+
+修复复用原Catalog/OccasionSpendStore/生活schedule：新10把旧版本关联与已暂停状态保留为
+事实和权限，不作为源源不断的新原因；考虑身份来自真实新消息、已接受Plan、时间边界或原
+生活调度epoch，不来自每次Clock或Plan状态revision。原生活间隔不改，新证据同一时刻仍能
+立即进入；合法动作全保留，新10明确不使用旧dwell。到期、隐私、来源、CAS和effect-once不放宽。
+技术失败原有退避继续等待，原失败及来源不消费；真正的新来源可立即处理。
+
+首轮状态能力3显式给operation/plan_id/resulting_status和no_op的保持状态含义；意图/窗口
+不会被状态动作悄悄重写。当前意图独立有界，过期历史仍只摘录96字符。任务scope换成现有
+状态选择，保留新念头自由和可选noticed，去掉不适用的duration/importance生成说明。旧cap2
+和日开/World提示原样保留；没有新增语义审核或critic，纠错仍只是原兜底，不当成正常生成路径。
+
+1174项相关回归通过。真实账本测试覆盖pause后下一技术Clock无新增作者调用、新正常机会
+下一秒仍可resume、再一Clock不自动pause，重建一致；同消息跨Clock只考虑一次、SQLite重开
+保持消费记录、新消息相同时间立即处理、原due可再考虑、技术退避不丢原来源、可完成窗口与
+到期边界分别考虑均通过。两项组合失败原样保存：旧材料fixture默认自暂停立即resume现改为
+提供真实新消息；到期放下意图fixture改按原实际due触发，完整结束/新意图断言均保留。
+
+30个实际历史pin的旧9 CatalogHash精确复现；新10在全部pin仍提供原选中的合法动作，且
+没有新替代/修复的错误标签。该控制0HTTP、不执行新角色选择，不代表真实语义效果。最终
+完整冻结回归与新阶段仍以activity-feedback-20261019/source-freeze和full-verification为准，
+不能借ee086171的11010pass。v19因确定本地反例正常收尾，四库/严格重放/独立重开/effect-once/
+保护源和两原进程身份全部通过，原库停在06:55:37+08，全部失败保留。后续同库同sidecars原时钟
+原目标续跑，不制造分支，不将HTTP200或调用数当多样性。
+
+参考成熟实现的事件/状态区分：[XState无事件循环说明](https://stately.ai/docs/eventless-transitions)
+指出持续成立的转移条件可形成循环；[Temporal重放说明](https://docs.temporal.io/workflow-execution#replays)
+将命令与已存历史核对以恢复。本项目复用现有一次性机会和回执，不引入这些框架，也不让本地
+条件替模型决定暂停或恢复。

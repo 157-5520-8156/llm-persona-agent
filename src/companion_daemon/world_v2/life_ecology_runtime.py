@@ -16,8 +16,10 @@ lock: implementations must persist the key
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 import inspect
+import hashlib
+import json
 import logging
 import re
 from typing import Callable, Literal, Protocol
@@ -384,6 +386,21 @@ class LifeEcologyRuntime:
         if due_at is None and schedule is not None:
             due_at = schedule.next_consideration_at
         development_due = due_at is None or logical_time >= due_at
+        consideration_epoch = (
+            hashlib.sha256(
+                json.dumps(
+                    [
+                        "life-cadence-activity.1",
+                        self._ledger.world_id,
+                        schedule.last_wake_event_ref if schedule is not None else "initial",
+                        due_at.astimezone(UTC).isoformat() if due_at is not None else "initial",
+                    ],
+                    separators=(",", ":"),
+                ).encode()
+            ).hexdigest()
+            if development_due
+            else None
+        )
         preparation_attempted, preparation_failure = False, None
         key = LifeEcologyRunKey(
             world_id=self._ledger.world_id,
@@ -645,6 +662,7 @@ class LifeEcologyRuntime:
                 logical_time=logical_time,
                 trace_id=trace_id,
                 correlation_id=correlation_id,
+                consideration_epoch=consideration_epoch,
             )
             if isinstance(activity_pass, LifeEcologyRunResult):
                 return activity_pass
@@ -958,6 +976,7 @@ class LifeEcologyRuntime:
                     trace_id=trace_id,
                     correlation_id=correlation_id,
                     renewed_plan_catalog=True,
+                    consideration_epoch=consideration_epoch,
                 )
                 if isinstance(extra_pass, LifeEcologyRunResult):
                     return extra_pass.model_copy(
@@ -1476,6 +1495,7 @@ class LifeEcologyRuntime:
         trace_id: str,
         correlation_id: str,
         renewed_plan_catalog: bool = False,
+        consideration_epoch: str | None = None,
     ) -> LifeEcologyRunResult | tuple[str, object | None]:
         """Run activity lifecycle once; return an early-exit result or (status, quiet)."""
 
@@ -1487,6 +1507,7 @@ class LifeEcologyRuntime:
                 trace_id=trace_id,
                 correlation_id=correlation_id,
                 renewed_plan_catalog=renewed_plan_catalog,
+                consideration_epoch=consideration_epoch,
             )
             activity_status = getattr(activity_result, "status", None)
             if not isinstance(activity_status, str) or not activity_status:
@@ -1546,6 +1567,7 @@ class LifeEcologyRuntime:
         trace_id: str,
         correlation_id: str,
         renewed_plan_catalog: bool = False,
+        consideration_epoch: str | None = None,
     ) -> object:
         assert self._activity_followup is not None
         kwargs: dict[str, object] = {
@@ -1564,6 +1586,10 @@ class LifeEcologyRuntime:
             item.kind is inspect.Parameter.VAR_KEYWORD for item in parameters.values()
         ):
             kwargs["renewed_plan_catalog"] = renewed_plan_catalog
+        if "consideration_epoch" in parameters or any(
+            item.kind is inspect.Parameter.VAR_KEYWORD for item in parameters.values()
+        ):
+            kwargs["consideration_epoch"] = consideration_epoch
         return await self._activity_followup.advance_once(**kwargs)
 
     async def _advance_visual_evidence_once(

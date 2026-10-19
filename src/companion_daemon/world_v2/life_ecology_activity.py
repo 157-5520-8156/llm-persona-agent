@@ -32,7 +32,7 @@ from .projection_lookup import lookup_last
 from .schemas import LedgerProjection, PlanStateProjection, plan_authority_projection_hash
 
 
-ACTIVITY_OPENING_CATALOG_VERSION = "activity-opening.9"
+ACTIVITY_OPENING_CATALOG_VERSION = "activity-opening.10"
 """Current frozen semantics of the abstract-plan opening catalog."""
 
 # ``activity-opening.1`` and ``.2`` were already persisted by long-lived
@@ -284,7 +284,7 @@ class ActivityOpeningCatalog:
                 capability for capability in _CAPABILITY_ORDER if capability in blocked_capabilities
             ],
         }
-        if self._catalog_version in {"activity-opening.8", "activity-opening.9"}:
+        if self._catalog_version in {"activity-opening.8", "activity-opening.9", "activity-opening.10"}:
             # Audit-only writes must not revoke an already offered activity.
             # Bind the exact world, clock and eligible plans instead of every
             # unrelated deliberation in the projection. Older catalogues keep
@@ -532,40 +532,64 @@ class ActivityOpeningCatalog:
         )
 
     def _opening_authority_shape(
-        self, *, plan: PlanStateProjection, operation: ActivityOpeningOperation,
+        self,
+        *,
+        plan: PlanStateProjection,
+        operation: ActivityOpeningOperation,
         projection: LedgerProjection,
     ) -> tuple[ActivityOpeningKind, ActivityOpeningCauseKind | None, str | None]:
-        source_observation = self._observed_message_for_plan(
-            plan, projection=projection
-        )
-        if operation == "pause":
+        source_observation = self._observed_message_for_plan(plan, projection=projection)
+        if operation == "pause" or self._catalog_version == "activity-opening.10":
             origin_revision = getattr(
                 getattr(plan, "authority_origin", None),
-                "accepted_world_revision", 0,
+                "accepted_world_revision",
+                0,
             )
             newer = tuple(
-                item for item in projection.message_observations
+                item
+                for item in projection.message_observations
                 if item.world_revision > origin_revision
                 and item.actor not in {None, self._owner_actor_ref}
             )
             if newer:
                 selected = max(newer, key=lambda item: item.world_revision)
-                return "interruption", "message_observation", selected.observation_id
+                kind = (
+                    "interruption"
+                    if operation == "pause"
+                    else (
+                        "shared_private"
+                        if plan.privacy_class in {"private", "withhold"}
+                        and selected.actor in plan.participant_refs
+                        else "user_influence"
+                    )
+                )
+                return kind, "message_observation", selected.observation_id
             if (
-                plan.scheduled_window is not None
+                operation == "pause"
+                and plan.scheduled_window is not None
                 and projection.logical_time >= plan.scheduled_window.closes_at
             ):
                 return "interruption", "clock_activity_conflict", None
-        if operation == "resume":
+        if operation == "resume" and self._catalog_version != "activity-opening.10":
             return "repair", "plan_authority", None
-        if plan.supersedes_plan_id is not None:
-            return "change_plan", (
-                "message_observation" if source_observation is not None
-                else "plan_authority"
-            ), (
-                source_observation.observation_id
-                if source_observation is not None else None
+        if plan.supersedes_plan_id is not None and (
+            self._catalog_version != "activity-opening.10" or plan.status == "planned"
+        ):
+            return (
+                "change_plan",
+                ("message_observation" if source_observation is not None else "plan_authority"),
+                (source_observation.observation_id if source_observation is not None else None),
             )
+        if self._catalog_version == "activity-opening.10" and plan.status != "planned":
+            # The accepted intent's old provenance remains valid authority,
+            # but is not a new reason to revise an already adopted activity.
+            if (
+                source_observation is not None
+                and plan.privacy_class in {"private", "withhold"}
+                and source_observation.actor in plan.participant_refs
+            ):
+                return "shared_private", "message_observation", source_observation.observation_id
+            return "ordinary", None, None
         if source_observation is not None:
             scoped_participant = (
                 source_observation.actor is not None
@@ -573,11 +597,13 @@ class ActivityOpeningCatalog:
             )
             if plan.privacy_class in {"private", "withhold"} and scoped_participant:
                 return (
-                    "shared_private", "message_observation",
+                    "shared_private",
+                    "message_observation",
                     source_observation.observation_id,
                 )
             return (
-                "user_influence", "message_observation",
+                "user_influence",
+                "message_observation",
                 source_observation.observation_id,
             )
         return "ordinary", None, None
@@ -604,6 +630,10 @@ class ActivityOpeningCatalog:
         ``.5`` proposals replay exactly.
         """
 
+        if self._catalog_version == "activity-opening.10":
+            # Fresh consideration is source-bound by the original Occasion
+            # seam. Every legal pause/abandon remains available immediately.
+            return False
         if self._catalog_version in _LEGACY_ACTIVITY_OPENING_CATALOG_VERSIONS or (
             self._catalog_version in _ELAPSED_ONLY_COMPLETION_CATALOG_VERSIONS
             or self._catalog_version in _NO_FUTURE_SHIELD_CATALOG_VERSIONS
@@ -650,7 +680,7 @@ class ActivityOpeningCatalog:
         # A new intention can establish a new window after the owner lets go;
         # this boundary neither abandons the plan nor chooses its replacement.
         if (
-            catalog_version == "activity-opening.9"
+            catalog_version in {"activity-opening.9", "activity-opening.10"}
             and plan.status == "paused"
             and plan.scheduled_window is not None
             and not plan.scheduled_window.opens_at <= logical_time < plan.scheduled_window.closes_at

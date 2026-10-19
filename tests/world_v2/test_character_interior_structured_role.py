@@ -5270,3 +5270,40 @@ def test_activity_notice_schema_matches_existing_pair_validator(notice, completi
     else:
         with pytest.raises(ValueError):
             _ActivityLifecyclePayload.model_validate_json(json.dumps(value))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("version", ["2", "3"])
+async def test_state_choice_first_prompt_matches_its_actual_capability_and_preserves_old_scope(
+    version,
+):
+    from companion_daemon.world_v2.character_interior.living_frame import (
+        ACTIVITY_STATE_CHOICE_SCOPE,
+        LIVING_CHOICE_SCOPE,
+    )
+
+    old = _manifest("opening:first", kind="activity_lifecycle_choice")
+    payload = dict(old.payload)
+    payload["contract"] = "character-interior-activity-lifecycle-capability." + version
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    manifest = old.model_copy(
+        update={
+            "payload_json": raw,
+            "payload_hash": "sha256:" + hashlib.sha256(raw.encode()).hexdigest(),
+        }
+    )
+    role = StructuredCharacterRoleFaculty(
+        model=_RequiredToolQueueModel(),
+        model_id="offline",
+        character_disposition={"name": "fixture", "authority": "characterization_only"},
+    )
+    request = await _request(purpose="activity_lifecycle_choice", capability_manifest=manifest)
+    messages = role._base_messages(request, contract=role._resolve_contract(request))
+    material = json.loads(messages[1]["content"])
+    assert material["living_choice_scope"] == (
+        ACTIVITY_STATE_CHOICE_SCOPE if version == "3" else LIVING_CHOICE_SCOPE
+    )
+    if version == "3":
+        assert len(ACTIVITY_STATE_CHOICE_SCOPE) < len(LIVING_CHOICE_SCOPE)
+        assert "duration_seconds" not in material["living_choice_scope"]
+        assert "noticed" in material["living_choice_scope"]

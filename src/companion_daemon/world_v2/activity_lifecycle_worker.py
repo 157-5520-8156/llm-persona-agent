@@ -153,6 +153,7 @@ class ActivityLifecycleWorker:
         trace_id,
         correlation_id,
         renewed_plan_catalog=False,
+        consideration_epoch=None,
     ):
         if self._day_open_life is not None:
             from .day_open_opportunity import pending_activity_continuation_source
@@ -214,6 +215,7 @@ class ActivityLifecycleWorker:
                 correlation_id=correlation_id,
                 renewed_plan_catalog=renewed_plan_catalog or selected is not None,
                 new_plan_opportunity=selected,
+                consideration_epoch=consideration_epoch,
             )
         except (ValueError, RuntimeError) as exc:
             if selected is None:
@@ -309,6 +311,7 @@ class ActivityLifecycleWorker:
         correlation_id: str,
         renewed_plan_catalog: bool = False,
         new_plan_opportunity=None,
+        consideration_epoch=None,
     ) -> ActivityLifecycleFollowupResult:
         projection = self._ledger.project()
         if projection.logical_time != logical_time:
@@ -337,6 +340,7 @@ class ActivityLifecycleWorker:
             trigger_id=trigger_id,
             renewed_plan_catalog=renewed_plan_catalog,
             new_plan_opportunity=new_plan_opportunity,
+            consideration_epoch=consideration_epoch,
         )
         if draft is None:
             return ActivityLifecycleFollowupResult(
@@ -351,7 +355,8 @@ class ActivityLifecycleWorker:
         )
         if proposal is None:
             reason = (
-                "activity_lifecycle.day_open_already_spent"
+                ("activity_lifecycle.no_new_consideration_source" if catalog.catalog_version == "activity-opening.10"
+                 else "activity_lifecycle.day_open_already_spent")
                 if draft.model is None
                 else "activity_lifecycle.model_declined"
             )
@@ -430,6 +435,7 @@ class ActivityLifecycleWorker:
         trigger_id: str,
         renewed_plan_catalog: bool = False,
         new_plan_opportunity=None,
+        consideration_epoch=None,
     ) -> tuple[ActivityLifecycleModelDraft | None, str | None]:
         """Ask the sole protagonist author to choose one already-legal token.
 
@@ -439,6 +445,48 @@ class ActivityLifecycleWorker:
         """
 
         openings = catalog.openings
+        source_bound_consideration = catalog.catalog_version == "activity-opening.10"
+        bound_openings = (
+            {
+                item.opening_token: self._catalog.resolve_opening(
+                    projection=projection,
+                    wake_event_ref=wake_event_ref,
+                    opening_token=item.opening_token,
+                )
+                for item in openings
+            }
+            if source_bound_consideration
+            else None
+        )
+        retry_cutoff = None
+        schedule = projection.life_ecology_schedule
+        if (
+            source_bound_consideration
+            and consideration_epoch is None
+            and schedule is not None
+            and (schedule.last_failure_code or "").startswith("activity_lifecycle.")
+            and projection.logical_time < schedule.next_consideration_at
+        ):
+            from .projection_lookup import lookup_first
+
+            failed_wake = lookup_first(
+                projection.committed_world_event_refs, "event_id", schedule.last_wake_event_ref
+            )
+            if failed_wake is not None:
+                retry_cutoff = (failed_wake.world_revision, schedule.last_completed_at)
+        cause_spends = (
+            self._fresh_activity_causes(projection, catalog, bound_openings, retry_cutoff)
+            if source_bound_consideration
+            else ()
+        )
+        if retry_cutoff is not None and not cause_spends and new_plan_opportunity is None:
+            # Retain the original failed work and its retry due. A new exact
+            # source can still enter immediately; this is not a role cooldown.
+            return ActivityLifecycleModelDraft(decision="no_op"), None
+        if source_bound_consideration and consideration_epoch is not None:
+            cadence_source = "occasion:life_beat:activity-cadence:" + consideration_epoch
+            if not self._occasion_spends.spent(cadence_source):
+                cause_spends = tuple(sorted((*cause_spends, cadence_source)))
         day_key = local_day_key(projection.logical_time, self._local_timezone)
         first_occasion_id = f"occasion:day_open:{day_key}"
         first_chance_spent = self._daily_occasions.spent(
@@ -455,7 +503,14 @@ class ActivityLifecycleWorker:
         # not also be the last chance: a plan committed later the same wake,
         # or an activity that has become legally completable, is new catalog
         # material.  She still picks or no_ops; this only asks again.
-        if first_chance_spent and not cause_bound and not renewed_plan_catalog and not completes and not closed_window_abandon_only:
+        if (
+            not source_bound_consideration
+            and first_chance_spent
+            and not cause_bound
+            and not renewed_plan_catalog
+            and not completes
+            and not closed_window_abandon_only
+        ):
             self._daily_occasions.mark("day_open", day_key)
             return ActivityLifecycleModelDraft(decision="no_op"), None
         # Cause-bound openings (an observed user interruption, a clock
@@ -470,6 +525,14 @@ class ActivityLifecycleWorker:
         )
         if new_plan_opportunity is not None:
             occasion_merge_key = f"accepted-chat-plan:{new_plan_opportunity.plan_payload_hash}:{new_plan_opportunity.attempt_ordinal}"
+        elif source_bound_consideration and not use_day_open:
+            if cause_spends:
+                occasion_merge_key = (
+                    "activity-causes:"
+                    + hashlib.sha256(json.dumps(cause_spends).encode()).hexdigest()
+                )
+            else:
+                return ActivityLifecycleModelDraft(decision="no_op"), None
         elif closed_window_abandon_only:
             occasion_merge_key = self._closed_window_abandon_merge_key(
                 projection=projection,
@@ -508,35 +571,95 @@ class ActivityLifecycleWorker:
         opening_summaries = []
         for item in openings:
             summary = item.safe_summary
-            resolved = self._catalog.resolve_opening(
-                projection=projection,
-                wake_event_ref=wake_event_ref,
-                opening_token=item.opening_token,
+            intention_view = None
+            resolved = (
+                bound_openings.get(item.opening_token)
+                if bound_openings is not None
+                else self._catalog.resolve_opening(
+                    projection=projection,
+                    wake_event_ref=wake_event_ref,
+                    opening_token=item.opening_token,
+                )
             )
             if resolved is not None and self._plan_material_reader is not None:
                 try:
                     material = self._plan_material_reader.read_for_plan(plan_id=resolved.plan_id)
                     intention = getattr(material, "character_intention", None)
                     if isinstance(intention, str) and intention.strip():
-                        clipped = " ".join(intention.strip().split())[:96]
-                        summary = f"{item.safe_summary}; she planned: {clipped}"
+                        clean_intention = " ".join(intention.strip().split())
+                        if source_bound_consideration:
+                            bound_plan = next(
+                                p for p in projection.plans if p.plan_id == resolved.plan_id
+                            )
+                            excerpt_limit = (
+                                96
+                                if bound_plan.scheduled_window
+                                and projection.logical_time >= bound_plan.scheduled_window.closes_at
+                                else 480
+                            )
+                            intention_view = {
+                                "text": clean_intention[:excerpt_limit],
+                                "truncated": len(clean_intention) > excerpt_limit,
+                                "scope": "accepted_intention_only",
+                            }
+                        else:
+                            summary = f"{item.safe_summary}; she planned: {clean_intention[:96]}"
                 except Exception:
                     # Plan-material reading is optional foreground texture.
                     # A missing sidecar must not hide an otherwise legal
                     # activity opening from the character.
                     pass
-            plan = next((plan for plan in projection.plans if resolved is not None and plan.plan_id == resolved.plan_id), None)
+            plan = next(
+                (
+                    plan
+                    for plan in projection.plans
+                    if resolved is not None and plan.plan_id == resolved.plan_id
+                ),
+                None,
+            )
             opening_summaries.append(
                 {
                     "opening_token": item.opening_token,
                     "safe_summary": summary,
-                    **({"activity_state": {
-                        "status": plan.status,
-                        "scheduled_window": plan.scheduled_window.model_dump(mode="json") if plan.scheduled_window else None,
-                        "window_elapsed": bool(plan.scheduled_window and projection.logical_time >= plan.scheduled_window.closes_at),
-                    }} if plan is not None else {}),
+                    **(
+                        {
+                            "operation": item.operation,
+                            "plan_id": resolved.plan_id,
+                            "resulting_status": {
+                                "start": "active",
+                                "pause": "paused",
+                                "resume": "active",
+                                "complete": "completed",
+                                "abandon": "abandoned",
+                            }[item.operation],
+                            **(
+                                {"accepted_intention": intention_view}
+                                if intention_view is not None
+                                else {}
+                            ),
+                        }
+                        if source_bound_consideration and resolved is not None
+                        else {}
+                    ),
+                    **(
+                        {
+                            "activity_state": {
+                                "status": plan.status,
+                                "scheduled_window": plan.scheduled_window.model_dump(mode="json")
+                                if plan.scheduled_window
+                                else None,
+                                "window_elapsed": bool(
+                                    plan.scheduled_window
+                                    and projection.logical_time >= plan.scheduled_window.closes_at
+                                ),
+                            }
+                        }
+                        if plan is not None
+                        else {}
+                    ),
                 }
             )
+
         # Present current material before missed historical windows. Keep
         # every legal token; this ordering never selects or abandons a plan.
         def currentness(item):
@@ -547,9 +670,21 @@ class ActivityLifecycleWorker:
             elapsed = state["window_elapsed"]
             boundary = window["closes_at" if elapsed else "opens_at"]
             return (int(elapsed), -datetime.fromisoformat(boundary).timestamp())
+
         opening_summaries.sort(key=currentness)
         capability = {
-            "contract": "character-interior-activity-lifecycle-capability.2",
+            "contract": "character-interior-activity-lifecycle-capability.3"
+            if source_bound_consideration
+            else "character-interior-activity-lifecycle-capability.2",
+            **(
+                {
+                    "no_op_effect": "keep_current_activity_states",
+                    "selection_effect": "only_the_selected_activity_status",
+                    "intention_and_window": "unchanged",
+                }
+                if source_bound_consideration
+                else {}
+            ),
             "catalog_version": catalog.catalog_version,
             "catalog_hash": catalog.catalog_hash,
             "offered_tokens": [item["opening_token"] for item in opening_summaries],
@@ -599,7 +734,10 @@ class ActivityLifecycleWorker:
                 source_refs=source_refs,
                 capability_manifest=manifest,
                 context_note=(
-                    "One exact clock wake offers already-authorized activity transitions. "
+                    "One verified causal source or the registered Life consideration offers "
+                    "already-authorized state transitions. The character owns select or no-op."
+                    if source_bound_consideration
+                    else "One exact clock wake offers already-authorized activity transitions. "
                     "The table decides whether an opportunity exists; she decides what "
                     "the day is like. The character owns select or no-op; the system owns "
                     "only token authority."
@@ -618,10 +756,11 @@ class ActivityLifecycleWorker:
             return None, failure_code
         if result.status != "decided" or not isinstance(result.decision, dict):
             return None, "character_interior_decision_missing"
-        if use_day_open:
-            self._daily_occasions.mark("day_open", day_key)
-        else:
-            self._occasion_spends.mark(occasion.occasion_id)
+        if not source_bound_consideration:
+            if use_day_open:
+                self._daily_occasions.mark("day_open", day_key)
+            else:
+                self._occasion_spends.mark(occasion.occasion_id)
         decision = result.decision
         if (
             decision.get("contract") != "character-interior-purpose-decision.1"
@@ -682,6 +821,13 @@ class ActivityLifecycleWorker:
             router_version="character-interior-activity-lifecycle-capability.2",
             causal_opportunity=opportunity_identity,
         )
+        if source_bound_consideration:
+            if use_day_open:
+                self._daily_occasions.mark("day_open", day_key)
+            else:
+                self._occasion_spends.mark(occasion.occasion_id)
+            for source_id in cause_spends:
+                self._occasion_spends.mark(source_id)
         return (
             ActivityLifecycleModelDraft(
                 decision=draft_decision,
@@ -703,6 +849,62 @@ class ActivityLifecycleWorker:
             ),
             None,
         )
+
+    def _fresh_activity_causes(self, projection, catalog, bound_openings, retry_cutoff=None):
+        """Exact source identity, not a new wake, Plan revision or elapsed delay.
+
+        This bounds asking, not the available actions. A different cause or an
+        original Life cadence epoch can ask immediately with every legal token.
+        """
+        causes = set()
+        plans = {p.plan_id: p for p in projection.plans}
+        observations = {o.observation_id: o for o in projection.message_observations}
+        closed_windows = _openings_are_closed_window_abandons(catalog.openings)
+        for opening in catalog.openings:
+            bound = bound_openings.get(opening.opening_token)
+            if bound is None:
+                continue
+            plan = plans[bound.plan_id]
+            opening_causes = []
+            if bound.cause_kind == "message_observation" and bound.cause_observation_id:
+                observed = observations.get(bound.cause_observation_id)
+                adopted_revision = getattr(plan.authority_origin, "accepted_world_revision", 0)
+                if (
+                    observed is not None
+                    and observed.world_revision > adopted_revision
+                    and (retry_cutoff is None or observed.world_revision > retry_cutoff[0])
+                ):
+                    opening_causes.append(["message", bound.cause_observation_id])
+            if opening.operation == "start" and (
+                retry_cutoff is None
+                or (
+                    plan.authority_origin is not None
+                    and plan.authority_origin.accepted_world_revision > retry_cutoff[0]
+                )
+            ):
+                opening_causes.append(["accepted-plan", plan.plan_id])
+            window = plan.scheduled_window
+            if window is not None and (opening.operation == "complete"
+                    or bound.cause_kind == "clock_activity_conflict" or closed_windows):
+                if projection.logical_time >= window.closes_at:
+                    if retry_cutoff is None or window.closes_at > retry_cutoff[1]:
+                        opening_causes.append(["window-closed", plan.plan_id, window.closes_at.isoformat()])
+                elif opening.operation == "complete":
+                    from .activity_timing import activity_window_completion_allowed
+                    if retry_cutoff is None or not activity_window_completion_allowed(plan, logical_time=retry_cutoff[1]):
+                        opening_causes.append(["completion-eligible", plan.plan_id,
+                            plan.last_transitioned_at.isoformat() if plan.last_transitioned_at else None,
+                            window.closes_at.isoformat()])
+            for cause in opening_causes:
+                key = (
+                    "occasion:life_beat:activity-source:"
+                    + hashlib.sha256(
+                        json.dumps([self._owner_actor_ref, cause], separators=(",", ":")).encode()
+                    ).hexdigest()
+                )
+                if not self._occasion_spends.spent(key):
+                    causes.add(key)
+        return tuple(sorted(causes))
 
     def _closed_window_abandon_merge_key(
         self,

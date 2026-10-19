@@ -438,3 +438,50 @@ def test_expired_paused_plan_cannot_resume_but_old_catalog_replays_unchanged():
     for at in (NOW - timedelta(hours=2), NOW - timedelta(hours=1, seconds=1)):
         assert "resume" in ActivityOpeningCatalog._operations_for(plan, logical_time=at)
     assert "resume" not in ActivityOpeningCatalog._operations_for(plan, logical_time=NOW - timedelta(hours=1))
+
+
+def test_active_replacement_ancestry_is_not_a_new_replacement_cause():
+    """An adopted version remains freely pausable; its ancestry is not a new cause."""
+    plan = _plan(
+        "replacement-already-underway",
+        status="active",
+        entity_revision=6,
+        activity_kind="self_directed.rest",
+        scheduled_window=DueWindow(
+            opens_at=NOW - timedelta(minutes=30), closes_at=NOW + timedelta(minutes=30)
+        ),
+    ).model_copy(
+        update={
+            "supersedes_plan_id": "predecessor-already-retired",
+            "last_transitioned_at": NOW - timedelta(minutes=20),
+        }
+    )
+    catalog = ActivityOpeningCatalog(owner_actor_ref=OWNER)
+    projection = _projection(plan)
+    result = catalog.openings_for(projection=projection, wake_event_ref=WAKE_REF)
+    pauses = [opening for opening in result.openings if opening.operation == "pause"]
+    assert pauses, "The repair must not prohibit an owner from pausing"
+    assert all(opening.opening_kind == "ordinary" for opening in pauses), (
+        "An immutable supersedes link is being presented as a fresh accepted replacement "
+        "even after the owner has already adopted and run that same version"
+    )
+    assert all(opening.cause_kind is None for opening in pauses)
+
+
+@pytest.mark.parametrize(
+    "status,expected", [("active", {"pause", "abandon"}), ("paused", {"resume", "abandon"})]
+)
+def test_current_catalog_does_not_cool_down_an_owners_legal_state_choices(status, expected):
+    plan = _plan(
+        "freely-chosen-state",
+        status=status,
+        entity_revision=3,
+        scheduled_window=DueWindow(
+            opens_at=NOW - timedelta(minutes=1), closes_at=NOW + timedelta(minutes=10)
+        ),
+    ).model_copy(update={"last_transitioned_at": NOW})
+    result = ActivityOpeningCatalog(owner_actor_ref=OWNER).openings_for(
+        projection=_projection(plan), wake_event_ref=WAKE_REF
+    )
+    assert expected <= {x.operation for x in result.openings}
+    assert all(x.opening_kind == "ordinary" for x in result.openings)

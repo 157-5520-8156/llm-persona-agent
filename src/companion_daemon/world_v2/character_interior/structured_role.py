@@ -2238,7 +2238,18 @@ class StructuredCharacterRoleFaculty:
             user_payload["configured_character_disposition"] = json.loads(self._living_frame_json)
             user_payload["lived_evidence_scope"] = LIVED_EVIDENCE_SCOPE
             if request.purpose in LIVING_PURPOSES:
-                user_payload["living_choice_scope"] = LIVING_CHOICE_SCOPE
+                if (
+                    request.purpose == "activity_lifecycle_choice"
+                    and request.capability_manifest is not None
+                    and request.capability_manifest.payload.get("contract")
+                    == "character-interior-activity-lifecycle-capability.3"
+                    and request.capability_manifest.payload.get("self_directed_intent") is None
+                ):
+                    from .living_frame import ACTIVITY_STATE_CHOICE_SCOPE
+
+                    user_payload["living_choice_scope"] = ACTIVITY_STATE_CHOICE_SCOPE
+                else:
+                    user_payload["living_choice_scope"] = LIVING_CHOICE_SCOPE
         if request.correction_ordinal == 1:
             code = request.correction_failure_code or "role_result_schema_invalid"
             failure_detail = request.correction_failure_detail or _FAILURE_DETAILS.get(code, code)

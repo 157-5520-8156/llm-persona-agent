@@ -101,6 +101,13 @@ async def _day_activity(path, build_app, monkeypatch, phase):
             await _tick(app, "pause", NOW + timedelta(minutes=1, seconds=2))
         if phase == "resumed":
             provider.lifecycle_choice = "resume"
+            # A real new source, rather than the pause's own receipt, gives
+            # the character an immediate opportunity to resume.
+            await app.respond(InboundTurn(
+                platform="test", platform_user_id="user.1", platform_message_id="resume-source",
+                text="你先忙自己的就好。", observed_at=NOW + timedelta(minutes=1, seconds=2),
+                trace_id="trace:resume-source",
+            ))
             await _tick(app, "resume", NOW + timedelta(minutes=1, seconds=3))
         if phase == "completed":
             provider.lifecycle_choice = "complete"
