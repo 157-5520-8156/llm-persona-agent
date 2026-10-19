@@ -176,11 +176,10 @@ class DayOpenLifeWorker:
             context_note=(
                 ("You asked to reconsider now. " if reconsideration_ref else
                  "One owned activity has ended. " if completion_source else
-                 "This is an opportunity to decide how to spend your own time. ")
-                + ("Review plan_management before deciding what comes next. You can continue, revise or end an exact offered own Plan using manage_plan/plan_response. Continue preserves it; revise links a replacement and ends the predecessor; end abandons the intention, not a completion claim. Other Plans remain unchanged. This completion does not require recreating your agenda. Separate new intentions, no_op and reconsider remain your choices. "
-                   if payload.get("plan_management") else "Choose a rolling agenda of 1..8 concrete own intentions, no_op, or reconsider. ")
-                + "Make any new intention useful to remember later, with the steps you actually intend, without inventing a course, appointment or outcome from generic routine. You need not continue the last activity "
-                "or conversation. These are additional private intentions: they do not replace or cancel existing Plans. A Plan is not execution, success, presence or a message. Routine is background. "
+                 "Decide how to spend your own time. ")
+                + ("Use plan_management to continue, revise or end an exact offered Plan, or choose new intentions, no_op or reconsider. An ending does not require recreating your agenda. "
+                   if payload.get("plan_management") else "Choose an agenda of 1..8 own intentions, no_op or reconsider. ")
+                + "New intentions leave other Plans unchanged. Plans do not establish execution, presence, success or a message. Routine does not establish an appointment or outcome. "
                 + ("The previous activity was abandoned, not completed. "
                    if completion_source and completion_source.terminal_kind == "abandoned" else "")
                 + self._prior_intention_note(completion_source)

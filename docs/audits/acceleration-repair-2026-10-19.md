@@ -606,3 +606,19 @@ seed/document-ID mechanism. The original strict scenario tests pass15 with the
 explicit versioned .115 baseline; corpus and guard remain intact. Details in
 scenario-baseline-115-2026-10-20.json. New final full and real same-world
 qualification are still required; the failed full run is retained.
+
+
+### Day-open note construction boundary
+
+Real v29 hit the same pre-model `context_note` overflow41 times, with one
+logical second advancing per roughly10wall seconds. The short carrier combined
+repeated operation prose with one previous accepted intention; it was not the
+whole plan archive. Public installed completion/continuation controls reproduce
+failure for legal90/480-character intentions. The repair shortens duplicate
+instruction prose while preserving the prior-intention formatter, offered
+capabilities, choice set, original1024character validation and all source gates.
+The conservative bound across all static branches (including incompatible
+combinations) plus the original480-character display budget is1001. No new
+truncation, raised limit, deleted Plan, source workaround or retry cooldown.
+The original failing World, local failures and raw model records are retained;
+new full regression and actual automatic continuation still required.

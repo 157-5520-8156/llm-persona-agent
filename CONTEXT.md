@@ -1,3 +1,11 @@
+Day-open completion note repair: repeated instructions plus one accepted prior intention could
+exceed InteriorOpportunity.context_note1024 before any model call, causing per-clock failed-safe
+requeues. Fresh notes reuse capability/purpose rules, preserve prior-text display and every other
+opportunity field, and have conservative all-branch bound1001 under the unchanged1024 limit.
+Public90/480-character reproduction is red before fix; new full regression and actual recovery
+are required. Original ab7883 full-v10 is verified11068pass/19skip/2xfail; real story qualification
+remains incomplete. Follow latest RUN-NOTES/currentphase, not old status paragraphs below.
+
 Fresh Life .24/profile lifecycle.4 preserves each original(source_ref,scope) in the compact
 inventory under the same96-row cap. Earlier <=.23 author/reviewer wires remain frozen; original
 source/field/hash/privacy/time/coverage gates are unchanged. Staged149 tests+24 profile tests,

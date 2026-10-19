@@ -207,3 +207,28 @@ async def test_completion_can_retain_exact_existing_future_plan_without_new_agen
     finally:
         app.close()
         await model.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('characters', [90, 480])
+async def test_completion_with_existing_plans_keeps_prior_intention_in_bounded_note(
+    tmp_path, monkeypatch, build_app, characters
+):
+    original = RetainingRole.__init__
+    roles = []
+    text = '想' * characters
+
+    def with_prior(self, **kwargs):
+        original(self, **kwargs)
+        self.agenda[0] = {**self.agenda[0], 'intention': text}
+        roles.append(self)
+
+    monkeypatch.setattr(RetainingRole, '__init__', with_prior)
+    await test_completion_can_retain_exact_existing_future_plan_without_new_agenda(
+        tmp_path, monkeypatch, build_app, foreign=False, independent=False,
+        crash=False, operation='continue',
+    )
+    completed = json.loads(roles[0].day_requests[1]['messages'][1]['content'])
+    note = completed['inner_turn']['context_note']
+    assert text in note and len(note) <= 1024
+    assert completed['capability_manifest']['payload']['plan_management']['plans']
