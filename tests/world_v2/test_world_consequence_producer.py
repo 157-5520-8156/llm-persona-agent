@@ -122,13 +122,13 @@ def _assert_review_input(messages, original_request, expected, *, focused, focus
         )
 
 
-def _assert_general_audit(ledger, result, original_request, expected):
+def _assert_general_audit(ledger, result, original_request, expected, *, context=None):
     """Rebuild the public packet and match its actual model request audit hash."""
     proposal, _ = ledger.lookup_event_commit(result.proposal_event_ref)
     manifest = LifeDevelopmentCapabilityManifest.model_validate_json(
         _json(proposal.payload()["world_author_deliberation"]["capability_manifest"])
     )
-    context = json.loads(
+    context = context if context is not None else json.loads(
         _PinnedCapsuleCompiler(ledger=ledger)
         .compile_for_deliberation(None)
         .capsule.model_content_json
@@ -242,8 +242,9 @@ async def test_current_environment_passes_original_request_review_and_sqlite_acc
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("temporal", [False, True])
 async def test_exact_character_authorship_rejection_returns_to_same_author_and_is_rereviewed(
-    tmp_path,
+    tmp_path, temporal,
 ):
     """The reviewer supplies this exact verdict; the test does not detect prose semantics."""
     path = tmp_path / "corrected-producer.sqlite"
@@ -253,11 +254,12 @@ async def test_exact_character_authorship_rejection_returns_to_same_author_and_i
         wake = _seed_clock(ledger)
         corrected = _draft(wake)
         rejected = json.loads(_json(corrected))
-        fragment = "她及时收回了手账。"
+        fragment = "一小时后的检修已经结束，供水已经恢复。" if temporal else "她及时收回了手账。"
         rejected["outcomes"][0]["world_consequence"]["environment_text"] += fragment
         finding = {
             "prose_path": "outcomes.0.world_consequence.environment_text",
-            "violation_kinds": ["character_interior_authorship"],
+            "violation_kinds": ["imported_current_or_prior_prerequisite" if temporal
+                                else "character_interior_authorship"],
             "exact_fragments": [fragment],
         }
         author = _ReceivedAuthor(store, (_json(rejected), _json(corrected)))
@@ -275,7 +277,16 @@ async def test_exact_character_authorship_rejection_returns_to_same_author_and_i
                 _novel_origin_review(decision="supported"),
             ),
         )
-        result = await _advance(_runtime(ledger, store, wake, author, general, focused), wake)
+        runtime = _runtime(ledger, store, wake, author, general, focused)
+        if temporal:
+            class TemporalManifest(_CurrentManifest):
+                def compile(self, **kwargs):
+                    return super().compile(**kwargs).model_copy(
+                        update={"semantic_source_review_version": "2"})
+            runtime._manifest_compiler = TemporalManifest(wake=wake)
+            runtime._capsule_compiler = _PinnedCapsuleCompiler(
+                ledger=ledger, context={"logical_time": NOW.isoformat()})
+        result = await _advance(runtime, wake)
         _assert_occurrence(ledger, store, result, corrected)
         assert len(author.received) == focused.calls == 2
         assert general.calls == 2
@@ -283,6 +294,12 @@ async def test_exact_character_authorship_rejection_returns_to_same_author_and_i
         original_messages = json.loads(author.received[0])
         correction_messages = json.loads(author.received[1])
         original_user = json.loads(original_messages[1]["content"])
+        if temporal:
+            from datetime import timedelta
+            assert original_user["temporal_publication"]["outcomes_available_at"] == "resolved_timing.closes_at"
+            reviewed = json.loads(focused.messages[0][-1]["content"])
+            assert reviewed["pinned_authority"]["temporal_publication"]["outcomes_available_at"] == (
+                NOW + timedelta(minutes=20)).isoformat()
         assert correction_messages[:-2] == original_messages
         assert correction_messages[-2] == {"role": "assistant", "content": _json(rejected)}
         correction = json.loads(correction_messages[-1]["content"])
@@ -291,7 +308,8 @@ async def test_exact_character_authorship_rejection_returns_to_same_author_and_i
         ]
         assert original_user["execution_authority"]["execution_bindings"] == []
         for index, draft in enumerate((rejected, corrected)):
-            _assert_general_audit(ledger, result, original_user, draft)
+            _assert_general_audit(ledger, result, original_user, draft,
+                                  context={"logical_time": NOW.isoformat()} if temporal else None)
             _assert_review_input(focused.messages[index], original_user, draft, focused=True)
         proposal, _ = ledger.lookup_event_commit(result.proposal_event_ref)
         payload = proposal.payload()
@@ -308,6 +326,23 @@ async def test_exact_character_authorship_rejection_returns_to_same_author_and_i
         }
         assert hashlib.sha256(_json(rejected).encode()).hexdigest() in response_hashes
         assert hashlib.sha256(_json(corrected).encode()).hexdigest() in response_hashes
+        assert ledger.rebuild().semantic_hash == ledger.project().semantic_hash
+        if temporal:
+            store.close()
+            ledger.close()
+            ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
+            store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD_ID)
+            cold_author = _ReceivedAuthor(store, ())
+            cold_general = _SequenceModel(model="fixture:general", outputs=())
+            cold_focused = _SequenceModel(model="fixture:focused", outputs=())
+            cold = _runtime(ledger, store, wake, cold_author, cold_general, cold_focused)
+            cold._manifest_compiler = TemporalManifest(wake=wake)
+            cold._capsule_compiler = _PinnedCapsuleCompiler(
+                ledger=ledger, context={"logical_time": NOW.isoformat()})
+            replayed = await _advance(cold, wake)
+            assert replayed.proposal_event_ref == result.proposal_event_ref
+            assert replayed.occurrence_id == result.occurrence_id
+            assert not cold_author.received and cold_general.calls == cold_focused.calls == 0
     finally:
         store.close()
         ledger.close()

@@ -115,7 +115,7 @@ async def test_clock_cannot_authorize_existing_history_even_with_configured_focu
         assert json.loads(correction[-1]["content"])["source_closure_failure"]["unsupported_claim_ids"] == ["local:claim:walk"]
         assert original[1]["content"] == correction[1]["content"]
         manifest = json.loads(original[1]["content"])["capability_manifest"]
-        assert manifest["semantic_source_review_version"] == "1"
+        assert manifest["semantic_source_review_version"] == "2"
         for _lane, request in reviewer.calls:
             assert ("Independence from the author authority is not established" in request[0]["content"]) == self_review
             assert ("You are an independent" in request[0]["content"]) != self_review
@@ -387,6 +387,6 @@ async def test_production_nonledger_policy_material_reaches_real_general_reviewe
                           if author.ref in item["authority_refs"]],
         }]
         assert author.manifest["pinned_source_materials_version"] == "3"
-        assert author.manifest["semantic_source_review_version"] == "1"
+        assert author.manifest["semantic_source_review_version"] == "2"
     finally:
         await host.aclose()

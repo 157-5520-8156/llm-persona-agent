@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime, timedelta
 from typing import Annotated, Literal, TYPE_CHECKING
 
 from pydantic import Field, model_validator
@@ -20,8 +21,59 @@ from .world_planning import WorldPlanningDraft
 from .lived_story import LivedStoryNavigation
 
 if TYPE_CHECKING:
+    from .life_development_draft import LifeDevelopmentCapabilityManifest, LifeDevelopmentPossibilityDraft
     from .proposal_audit_schemas import RecordedModelResultAudit
     from .schemas import LedgerProjection, WorldEvent
+
+
+def publication_timing(
+    *, manifest: LifeDevelopmentCapabilityManifest, logical_time: datetime,
+    draft: LifeDevelopmentPossibilityDraft | None = None,
+) -> dict[str, object] | None:
+    """Expose existing release instants; never classify or rewrite authored prose.
+
+    Missing/old markers preserve paid requests. Both author and critic receive
+    this same boundary; only the critic has the already chosen draft window.
+    """
+    if manifest.semantic_source_review_version != "2":
+        return None
+    if logical_time.tzinfo is None or logical_time.utcoffset() is None:
+        raise ValueError("publication timing requires the pinned aware World clock")
+    value = {
+        "contract": "world-consequence-publication-time.1",
+        "pinned_logical_time": logical_time.isoformat(),
+        "premise_available_at": "resolved_timing.opens_at",
+        "outcomes_available_at": "resolved_timing.closes_at",
+        "outcome_rule": "no_completed_fact_after_its_availability_time",
+        "explicit_future_plan": "may_remain_a_plan_not_a_completed_fact",
+        "private_programme": "later_completed_scenes_belong_only_in_their_timed_detail_steps",
+    }
+    window = draft.timing.resolve(logical_time=logical_time, manifest=manifest) if draft else None
+    if window is not None:
+        value.update(premise_available_at=window.opens_at.isoformat(),
+                     outcomes_available_at=window.closes_at.isoformat())
+    cap = manifest.event_detail_capability
+    if cap is not None:
+        value["detail_source_window"] = {
+            "starts_at": cap.starts_at.isoformat(), "ends_at": cap.ends_at.isoformat(),
+        }
+    if draft is not None and draft.event_details:
+        if cap is None:
+            raise ValueError("timed prose has no original detail capability")
+        value["detail_steps"] = []
+        for position, step in enumerate(draft.event_details):
+            due = cap.starts_at + timedelta(seconds=step.after_seconds)
+            if step.outcome_index is not None:
+                due = max(due, window.closes_at)
+            value["detail_steps"].append({"prose_path": f"event_details.{position}.text",
+                                          "available_at": due.isoformat(),
+                                          "outcome_index": step.outcome_index})
+    completion = manifest.completed_activity_consequence
+    if completion is not None and completion.lifecycle_reading is not None:
+        value["attempt_result_interval_ends_at"] = completion.lifecycle_reading.completion.logical_time.isoformat()
+    elif manifest.active_attempt_consequence is not None:
+        value["attempt_result_interval_ends_at"] = manifest.active_attempt_consequence.current_logical_time.isoformat()
+    return value
 
 WORLD_CONSEQUENCE_CONTRACT = "world-consequence.2"
 WORLD_CONSEQUENCE_CONTRACTS = frozenset({"world-consequence.2", "world-consequence.3"})

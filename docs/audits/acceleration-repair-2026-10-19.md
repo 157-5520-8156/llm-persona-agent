@@ -622,3 +622,47 @@ combinations) plus the original480-character display budget is1001. No new
 truncation, raised limit, deleted Plan, source workaround or retry cooldown.
 The original failing World, local failures and raw model records are retained;
 new full regression and actual automatic continuation still required.
+
+## Prepared prose can leak before a correctly timed receipt
+
+Actual retained occurrence `a3d1dd32...` was authored at06:53:01 with an outcome
+window ending07:23:01. It settled07:24:58. Its selected environment already said
+that near08:00 the repair worker left, the water notice was removed and supply
+resumed. The same scene appeared in a conditional detail whose earliest release
+was07:23:01. The actor's real memory-retention input at07:27:41 and Fate at07:27:42
+both received the early factual assertion. This is a semantic time failure,
+even though the197 existing durable detail releases passed their exact
+origin/index/time joins. Those receipt checks did not prove prose privacy.
+
+The original v19 writer and critic bytes, v29/v30 request paths and hashes are
+retained. v30 was stopped for this exact new counterexample, rather than an
+ordinary timeout or several model failures. Its four-DB snapshot, strict replay,
+independent reopen216.326s and effect-once47.551s passed. Production and main
+candidate process identities and protected source remained unchanged. The old
+early exposure remains a failed case; it is not rewritten into a successful run.
+
+Fresh `semantic_source_review_version=2` uses the existing author and focused
+critic. They share a small publication-time contract: premise at activation,
+outcomes at the original window end, each private step at its due time, and
+conditional steps no earlier than their parent settlement. Bound attempt results
+also retain their original elapsed interval. The critic uses existing exact
+prose coordinates to reject a later completed fact in an earlier field. A future
+plan or announcement is still legal as a plan. No new reviewer round, runtime
+module, topic policy, character decision or prose classifier was added.
+
+The request compiler controls first failed for missing publication times, then
+passed. The SQLite producer test reuses the existing rejected-output/reselection,
+audited model responses and canonical acceptance path. Compatibility119 tests
+and the unchanged strict15 scenario tests passed; final full regression is still
+required. Historical marker1/None requests retain their original interpretation.
+Reconstructing the actual paid critic request gives the exact original hash
+`b7c67875146d49f3ec5ebfcaa98c32eb29df1142f7c7417b66937d4f0cad366f`.
+Only the new request gains the time boundary; its reviewed candidate is unchanged.
+
+One real GLM probe on that exact bad candidate returned an exact temporal
+rejection for the outcome environment and its conditional step in20.385s,
+reporting40,764 tokens. CNY cost remains unknown. A private result-reporting
+method-name error occurred after the paid response was durably saved; the report
+was recovered from those original bytes and token ledger with zero extra HTTP.
+This proves the named counterexample can be detected with the new contract,
+not that future first drafts, all legacy history or cross-day quality are qualified.

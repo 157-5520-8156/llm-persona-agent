@@ -344,8 +344,9 @@ class LifeDevelopmentCapabilityManifest(FrozenModel):
         default=None, exclude_if=lambda value: value is None
     )
     # Absence retains historical identity; new proposals require model semantics,
-    # never the old deterministic reference-existence verdict.
-    semantic_source_review_version: Literal["1"] | None = Field(
+    # never the old deterministic reference-existence verdict. Version 2 also
+    # binds prose to its premise/settlement/detail-step publication time.
+    semantic_source_review_version: Literal["1", "2"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
     # A separate request for the aftermath of one accepted attempt. Absence

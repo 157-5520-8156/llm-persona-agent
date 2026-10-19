@@ -195,6 +195,7 @@ def compile_world_consequence_messages(
     *, user_context: dict[str, object], authority: WorldConsequenceAuthority,
     execution_materials: tuple[WorldConsequenceExecutionMaterial, ...],
     cache_stable_prefix: bool = False,
+    temporal_publication: dict[str, object] | None = None,
 ) -> list[dict[str, str]]:
     """Present the existing task and sources; parsing/admission stay authoritative."""
     value = deepcopy(user_context)
@@ -210,6 +211,10 @@ def compile_world_consequence_messages(
     boundary = value.get("cross_field_authority")
     if not isinstance(boundary, dict):
         raise ValueError("world consequence prompt lacks hard boundaries")
+    if manifest.get("semantic_source_review_version") == "2":
+        if temporal_publication is None:
+            raise ValueError("World author requires its exact publication-time boundary")
+        value["temporal_publication"] = temporal_publication
     value.pop("disturbance_consequence_usage_specimen", None)
     boundary.pop("outcome_text", None)
     scope = next((key for key in ("completed_activity_consequence", "active_attempt_consequence", "event_detail_capability")
@@ -221,7 +226,10 @@ def compile_world_consequence_messages(
     closing_offset = detail_capability.get("closing_offset_seconds")
     bound_attempt = scope in {"completed_activity_consequence", "active_attempt_consequence"}
     value["world_author_task"] = scope or "open_world_possibility"
-    value["world_author_prompt_contract"] = "world-consequence-prompt.4" if ordinary_course_detail else "world-consequence-prompt.7"
+    value["world_author_prompt_contract"] = (
+        "world-consequence-prompt.8" if temporal_publication is not None
+        else "world-consequence-prompt.4" if ordinary_course_detail else "world-consequence-prompt.7"
+    )
     boundary["world_consequence"] = {
         "contract": "world-consequence.2", "environment_text": "external_world_consequences_only",
         "authorized_attempt_result": {
@@ -399,6 +407,14 @@ def compile_world_consequence_messages(
             "For this independent ordinary opening, environment_attention selects an offered external "
             "setting, not protagonist presence, participation or observation. A quiet, unremarkable scene "
             "is valid; it need not advance the last story, solve her agenda or create a problem.\n"
+        )
+    if temporal_publication is not None:
+        guidance += (
+            "temporal_publication separates premise activation, outcome settlement and each private "
+            "detail step. A completed fact must not occur after the time its field becomes available. "
+            "Keep a later future scene only in its timed event_details step, not in an earlier outcome "
+            "or premise. A known future plan may be stated as a plan, never as already completed. "
+            "An attempt result also stays inside its original elapsed execution interval.\n"
         )
     if cache_stable_prefix:
         stable_manifest_fields = (

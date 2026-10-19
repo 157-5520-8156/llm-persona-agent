@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS
+from .world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS, publication_timing
 
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
@@ -6893,6 +6893,7 @@ class LifeDevelopmentRuntime:
                 user_context=json.loads(messages[1]["content"]), authority=execution.authority,
                 execution_materials=execution.execution_materials,
                 cache_stable_prefix=self._world_author_cache_stable_prefix,
+                temporal_publication=publication_timing(manifest=manifest, logical_time=logical_time),
             )
         if manifest.outcome_contract == "world-consequence.2":
             messages[0]["content"] += (

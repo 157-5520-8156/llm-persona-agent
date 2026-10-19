@@ -1,3 +1,16 @@
+Temporal publication repair in progress: actual v19 prepared prose was settled07:24:58 while
+its environment asserted near08:00 water restoration; v30 actor memory input and Fate received
+it before08:00. Time-gated step receipts alone did not catch this semantic early exposure.
+v30 stopped normally at07:27:42; four-DB save/strict replay/reopen/effect-once passed. Preserve
+the original invalid content and failures, not a clean-history claim. Fresh semantic review2
+shares premise/settlement/conditional-step publication instants with the World Author and the
+existing focused critic; explicit future plans remain legal and all character choices remain.
+Old1/None paid wires remain exact. Original critic request hash b7c67875... was reconstructed
+byte-exact; one realGLM probe rejected the unchanged bad outcome and step with correct temporal
+coordinates. 119 compatibility tests pass; current patch still needs final full regression and
+same-World qualification. f06770 full-v11 passed11070 only before this patch. No new runtime
+module/review call/keyword classifier. QQ79910/8787 and main35221/8792 remain protected.
+
 Day-open completion note repair: repeated instructions plus one accepted prior intention could
 exceed InteriorOpportunity.context_note1024 before any model call, causing per-clock failed-safe
 requeues. Fresh notes reuse capability/purpose rules, preserve prior-text display and every other

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime
 from collections.abc import Iterator
 from typing import Literal
 
@@ -37,12 +38,33 @@ from .life_review_identity import (
 from .life_context import LIFE_REVIEW_PROJECTION_CONTRACT
 from .schema_core import FrozenModel
 from .schemas import ProjectionCursor, WorldEvent
+from .world_consequence_contract import publication_timing
 from .world_life_context import (
     BiographicalWorldContextItem, WorldLifeContextItem, WorldLifeModelContextItem,
 )
 
 
 _REVIEW_CONTRACT = "life-development-source-closure-review.1"
+_TEMPORAL_PUBLICATION_GUIDANCE = (
+    "\ntemporal_publication gives the exact availability time of each prose field. "
+    "A completed fact later than that field's time is unauthorized even when declared novel. "
+    "A future scene belongs only to its private timed detail step; do not let an earlier "
+    "outcome or premise assert it has already occurred. Explicit future plans or announcements "
+    "may remain plans, not completed events. An attempt result also cannot extend its original "
+    "elapsed interval. Report an outcome/detail violation at its exact prose_path with a "
+    "verbatim fragment and imported_current_or_prior_prerequisite: it imports a fact from "
+    "outside that field's authorized time. Premise violations use the existing premise "
+    "coordinates. Do not reject an invented event that stays inside its own publication time."
+)
+
+
+def _review_publication_timing(*, context, manifest, draft):
+    if manifest.semantic_source_review_version != "2":
+        return None
+    return publication_timing(manifest=manifest, draft=draft,
+                              logical_time=datetime.fromisoformat(context["logical_time"]))
+
+
 _WORLD_LIFE_ITEM_ADAPTER = TypeAdapter(WorldLifeModelContextItem)
 _PRIVACY_RANK = {"shareable": 0, "personal": 1, "private": 2, "withhold": 3}
 _NOVEL_ORIGIN_CONTRACT = "life-development-novel-origin-review.5"
@@ -2391,6 +2413,12 @@ def life_development_novel_origin_messages(
         )
     if packet_contract == SOURCE_BOUND_NOVEL_EVIDENCE_PACKET_CONTRACT:
         pinned_authority["review_projection"] = review_projection
+    temporal_publication = _review_publication_timing(
+        context=context, manifest=manifest, draft=draft,
+    )
+    if temporal_publication is not None:
+        pinned_authority["temporal_publication"] = temporal_publication
+        system += _TEMPORAL_PUBLICATION_GUIDANCE
     request = {
         "review_contract": _novel_review_contract(draft),
         "reviewed_surface": reviewed_surface,
@@ -2401,6 +2429,8 @@ def life_development_novel_origin_messages(
             pinned_authority=pinned_authority,
         ),
         "review_dimensions": {
+            **({"temporal_publication": "no_completed_fact_after_its_field_availability_time"}
+               if temporal_publication is not None else {}),
             "novel_claim_origin": ("no_prior_relationship_shared_history_or_completed_experience"),
             "provisional_npc_origin": "new_person_or_new_relationship_start_only",
             "provisional_place_origin": "new_place_without_invented_prior_history_only",

@@ -6,6 +6,7 @@ they do not establish a real critic's semantic accuracy.
 
 import hashlib
 import json
+from datetime import timedelta
 
 import pytest
 import httpx
@@ -122,6 +123,46 @@ def _review_authority(manifest, bindings=()):
         )
     ).model_dump(mode="json")
     return {"authority": authority, "execution_materials": []}
+
+
+@pytest.mark.parametrize("after_seconds,outcome_index", [(None, None), (2400, None), (600, 0)])
+def test_focused_review_distinguishes_settlement_time_from_later_detail_release(after_seconds, outcome_index):
+    """A private whole programme cannot make its later scenes settled truth early."""
+    from companion_daemon.world_v2.event_detail_contract import EventDetailCapability, EventDetailStep
+
+    manifest, draft = _consequence_material()
+    manifest = manifest.model_copy(update={"semantic_source_review_version": "2"})
+    if after_seconds is not None:
+        cap = EventDetailCapability(
+            source_kind="world_occurrence", source_event_ref="event:active:class",
+            source_payload_hash="a" * 64, source_world_revision=1,
+            entity_ref="occurrence:class", entity_revision=2,
+            starts_at=NOW, ends_at=NOW + timedelta(hours=1), privacy_class="shareable",
+        )
+        manifest = manifest.model_copy(update={"event_detail_capability": cap})
+        draft = draft.model_copy(update={"event_details": (
+            EventDetailStep(after_seconds=after_seconds, text="稍后检修结束，供水恢复。",
+                            claim_refs=(draft.claim_declarations[0].claim_id,), outcome_index=outcome_index),
+        )})
+    messages = life_development_novel_origin_messages(
+        context={"logical_time": NOW.isoformat()}, manifest=manifest, draft=draft,
+        execution_authority=_review_authority(manifest),
+    )
+    packet = json.loads(messages[-1]["content"])
+    timing = packet["pinned_authority"]["temporal_publication"]
+    assert timing["premise_available_at"] == NOW.isoformat()
+    assert timing["outcomes_available_at"] == (NOW + timedelta(minutes=30)).isoformat()
+    assert timing["outcome_rule"] == "no_completed_fact_after_its_availability_time"
+    assert timing["explicit_future_plan"] == "may_remain_a_plan_not_a_completed_fact"
+    if after_seconds is not None:
+        assert timing["detail_steps"] == [{
+            "prose_path": "event_details.0.text",
+            "available_at": (NOW + timedelta(seconds=max(after_seconds, 1800) if outcome_index is not None
+                                               else after_seconds)).isoformat(),
+            "outcome_index": outcome_index,
+        }]
+    assert "temporal_publication" in packet["review_dimensions"]
+    assert "future scene" in messages[0]["content"]
 
 
 def _reject(path, fragment):
