@@ -539,6 +539,9 @@ class ActivityOpeningCatalog:
         projection: LedgerProjection,
     ) -> tuple[ActivityOpeningKind, ActivityOpeningCauseKind | None, str | None]:
         source_observation = self._observed_message_for_plan(plan, projection=projection)
+        if operation == "resume":
+            # Repair authorizes resuming; it is not itself a fresh occasion.
+            return "repair", "plan_authority", None
         if operation == "pause" or self._catalog_version == "activity-opening.10":
             origin_revision = getattr(
                 getattr(plan, "authority_origin", None),
@@ -570,8 +573,6 @@ class ActivityOpeningCatalog:
                 and projection.logical_time >= plan.scheduled_window.closes_at
             ):
                 return "interruption", "clock_activity_conflict", None
-        if operation == "resume" and self._catalog_version != "activity-opening.10":
-            return "repair", "plan_authority", None
         if plan.supersedes_plan_id is not None and (
             self._catalog_version != "activity-opening.10" or plan.status == "planned"
         ):

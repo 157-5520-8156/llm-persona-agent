@@ -433,7 +433,7 @@ v19同一Plan在06:52:10–06:54:57出现15对pause/resume，30个不同Clock、
 pretty捕获JSON按HTTP紧凑形式重新编码后30/30与观察到的wire SHA一致。
 
 公开Catalog最小反例1.15秒红：已经active的版本仍因永久supersedes字段被标成新change_plan；
-暂停后又被标repair。只去掉该链接，其余不变，错误来源标签消失。第二个worker红例显示同一
+暂停后原repair权限又被调度当成新理由。只去掉该链接，其余不变，错误change_plan标签消失。第二个worker红例显示同一
 真实消息仅换Clock又请求一次。模型有文字的理由都在延续躺到7:30，不能当作15次有意义改主意。
 同时，旧卡片只有抽象文案，私有“合并重叠打算”的想法没有对应实际合并效果，给下一次继续
 提供了错误暗示。不是用关键词判断或改写角色的想法。
@@ -456,8 +456,8 @@ pretty捕获JSON按HTTP紧凑形式重新编码后30/30与观察到的wire SHA�
 提供真实新消息；到期放下意图fixture改按原实际due触发，完整结束/新意图断言均保留。
 
 30个实际历史pin的旧9 CatalogHash精确复现；新10在全部pin仍提供原选中的合法动作，且
-没有新替代/修复的错误标签。该控制0HTTP、不执行新角色选择，不代表真实语义效果。最终
-完整冻结回归与新阶段仍以activity-feedback-20261019/source-freeze和full-verification为准，
+不会将active版本持续当作新替代；repair权限本身不创建新考虑。该控制0HTTP、不执行新角色选择，不代表真实语义效果。最终
+完整冻结回归与新阶段以activity-feedback-20261019/full-v2/source-freeze和full-verification为准，
 不能借ee086171的11010pass。v19因确定本地反例正常收尾，四库/严格重放/独立重开/effect-once/
 保护源和两原进程身份全部通过，原库停在06:55:37+08，全部失败保留。后续同库同sidecars原时钟
 原目标续跑，不制造分支，不将HTTP200或调用数当多样性。
@@ -466,3 +466,5 @@ pretty捕获JSON按HTTP紧凑形式重新编码后30/30与观察到的wire SHA�
 指出持续成立的转移条件可形成循环；[Temporal重放说明](https://docs.temporal.io/workflow-execution#replays)
 将命令与已存历史核对以恢复。本项目复用现有一次性机会和回执，不引入这些框架，也不让本地
 条件替模型决定暂停或恢复。
+
+第一轮722冻结全量11008pass/13fail（19skip/2xfail）和全部日志保留。失败覆盖了旧fixture靠renewed标记重问、旧safe_summary读取，以及resume权限与新来源混用。新来源现在由worker独立绑定真实消息；resume仍严格保留repair/plan_authority，未修改Proposal权限矩阵。离线fixture显式声明其造数机会，生产路径不安装fixture机会。303项完整相关回归38.03s通过，47项权限/目录/worker组合2.15s通过；最终全量及实际续跑另记，不借局部通过。

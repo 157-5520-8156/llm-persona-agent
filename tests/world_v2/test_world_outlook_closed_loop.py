@@ -313,8 +313,8 @@ class _Role(_ResponseHTTP):
                     o
                     for o in cap["payload"].get("openings", ())
                     if self.abandon
-                    and o["safe_summary"].startswith("let go of an abstract activity")
-                    and INTENTION in o["safe_summary"]
+                    and (o.get("operation") == "abandon" or o["safe_summary"].startswith("let go of an abstract activity"))
+                    and INTENTION in o.get("accepted_intention", {}).get("text", o["safe_summary"])
                 ),
                 None,
             )

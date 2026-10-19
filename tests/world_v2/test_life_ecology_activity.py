@@ -484,4 +484,5 @@ def test_current_catalog_does_not_cool_down_an_owners_legal_state_choices(status
         projection=_projection(plan), wake_event_ref=WAKE_REF
     )
     assert expected <= {x.operation for x in result.openings}
-    assert all(x.opening_kind == "ordinary" for x in result.openings)
+    for opening in result.openings:
+        assert opening.opening_kind == ("repair" if opening.operation == "resume" else "ordinary")

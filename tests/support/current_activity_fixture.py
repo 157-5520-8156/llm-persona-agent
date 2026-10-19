@@ -18,7 +18,6 @@ from companion_daemon.world_v2.activity_lifecycle_runtime import (
     ActivityLifecycleProposalRecorder,
 )
 from companion_daemon.world_v2.activity_lifecycle_worker import ActivityLifecycleWorker
-from companion_daemon.world_v2.activity_timing import MIN_ACTIVITY_TRANSITION_DWELL_SECONDS
 from companion_daemon.world_v2.ledger import WorldLedger
 from companion_daemon.world_v2.life_content_store import (
     InMemoryImmutableLifeContentStore,
@@ -114,7 +113,7 @@ async def _accept_transition(
         actor="worker:current-activity-fixture",
         trace_id="trace:current-activity:" + operation,
         correlation_id="correlation:current-activity",
-        renewed_plan_catalog=True,
+        consideration_epoch="fixture-state:" + wake.event_id,
     )
     assert result.status == "transitioned", result
 
@@ -133,8 +132,8 @@ async def accepted_current_activity(
     """Return ``ledger, store, plan_id, latest_activity_event_ref``.
 
     ``planned`` remains an unstarted intention. ``active`` has an accepted
-    start; ``paused`` additionally has an accepted pause after the real dwell
-    boundary. ``resumed`` has another dwell and an accepted resume: its returned
+    start; ``paused`` additionally has an accepted pause at an explicit fixture
+    opportunity. ``resumed`` has a later fixture opportunity and an accepted resume: its returned
     Plan is active and its latest event is ActivityResumed, not a claim that
     activity continued throughout the pause. The intention's unfinished essay
     is subjective sidecar material, never a committed past experience.
@@ -216,7 +215,7 @@ async def accepted_current_activity(
         pause_wake = _seed_clock(
             ledger,
             event_id="event:clock:current-activity:pause",
-            logical_time=NOW + timedelta(seconds=MIN_ACTIVITY_TRANSITION_DWELL_SECONDS),
+            logical_time=NOW + timedelta(minutes=5),
             logical_time_from=NOW,
         )
         await _accept_transition(ledger=ledger, issuer=issuer, wake=pause_wake, operation="pause")
@@ -224,8 +223,8 @@ async def accepted_current_activity(
         resume_wake = _seed_clock(
             ledger,
             event_id="event:clock:current-activity:resume",
-            logical_time=NOW + timedelta(seconds=2 * MIN_ACTIVITY_TRANSITION_DWELL_SECONDS),
-            logical_time_from=NOW + timedelta(seconds=MIN_ACTIVITY_TRANSITION_DWELL_SECONDS),
+            logical_time=NOW + timedelta(minutes=10),
+            logical_time_from=NOW + timedelta(minutes=5),
         )
         await _accept_transition(ledger=ledger, issuer=issuer, wake=resume_wake, operation="resume")
     projection = ledger.project()

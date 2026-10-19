@@ -1580,6 +1580,13 @@ async def test_production_authority_shaped_life_openings_cover_shared_interrupti
         )
         assert app._ledger.project().plans[0].status == "paused"  # noqa: SLF001
 
+        # Finishing the interruption supplies a real new source; the pause's
+        # own receipt must not buy another reconsideration on the next Clock.
+        await app.respond(InboundTurn(
+            platform="test", platform_user_id="user.1", platform_message_id="message:resume-source",
+            text="先聊到这里，你继续原来的安排吧。", observed_at=NOW+timedelta(minutes=2),
+            trace_id="trace:authority-shaped:resume-source",
+        ))
         await app.tick(
             tick_id="authority-shaped:resume",
             logical_time_from=NOW + timedelta(minutes=2),

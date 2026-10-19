@@ -858,7 +858,15 @@ class ActivityLifecycleWorker:
         """
         causes = set()
         plans = {p.plan_id: p for p in projection.plans}
-        observations = {o.observation_id: o for o in projection.message_observations}
+        latest_observation = max(
+            (
+                o
+                for o in projection.message_observations
+                if o.actor not in {None, self._owner_actor_ref}
+            ),
+            key=lambda o: o.world_revision,
+            default=None,
+        )
         closed_windows = _openings_are_closed_window_abandons(catalog.openings)
         for opening in catalog.openings:
             bound = bound_openings.get(opening.opening_token)
@@ -866,15 +874,13 @@ class ActivityLifecycleWorker:
                 continue
             plan = plans[bound.plan_id]
             opening_causes = []
-            if bound.cause_kind == "message_observation" and bound.cause_observation_id:
-                observed = observations.get(bound.cause_observation_id)
-                adopted_revision = getattr(plan.authority_origin, "accepted_world_revision", 0)
-                if (
-                    observed is not None
-                    and observed.world_revision > adopted_revision
-                    and (retry_cutoff is None or observed.world_revision > retry_cutoff[0])
-                ):
-                    opening_causes.append(["message", bound.cause_observation_id])
+            adopted_revision = getattr(plan.authority_origin, "accepted_world_revision", 0)
+            if (
+                latest_observation is not None
+                and latest_observation.world_revision > adopted_revision
+                and (retry_cutoff is None or latest_observation.world_revision > retry_cutoff[0])
+            ):
+                opening_causes.append(["message", latest_observation.observation_id])
             if opening.operation == "start" and (
                 retry_cutoff is None
                 or (
@@ -884,17 +890,32 @@ class ActivityLifecycleWorker:
             ):
                 opening_causes.append(["accepted-plan", plan.plan_id])
             window = plan.scheduled_window
-            if window is not None and (opening.operation == "complete"
-                    or bound.cause_kind == "clock_activity_conflict" or closed_windows):
+            if window is not None and (
+                opening.operation == "complete"
+                or bound.cause_kind == "clock_activity_conflict"
+                or closed_windows
+            ):
                 if projection.logical_time >= window.closes_at:
                     if retry_cutoff is None or window.closes_at > retry_cutoff[1]:
-                        opening_causes.append(["window-closed", plan.plan_id, window.closes_at.isoformat()])
+                        opening_causes.append(
+                            ["window-closed", plan.plan_id, window.closes_at.isoformat()]
+                        )
                 elif opening.operation == "complete":
                     from .activity_timing import activity_window_completion_allowed
-                    if retry_cutoff is None or not activity_window_completion_allowed(plan, logical_time=retry_cutoff[1]):
-                        opening_causes.append(["completion-eligible", plan.plan_id,
-                            plan.last_transitioned_at.isoformat() if plan.last_transitioned_at else None,
-                            window.closes_at.isoformat()])
+
+                    if retry_cutoff is None or not activity_window_completion_allowed(
+                        plan, logical_time=retry_cutoff[1]
+                    ):
+                        opening_causes.append(
+                            [
+                                "completion-eligible",
+                                plan.plan_id,
+                                plan.last_transitioned_at.isoformat()
+                                if plan.last_transitioned_at
+                                else None,
+                                window.closes_at.isoformat(),
+                            ]
+                        )
             for cause in opening_causes:
                 key = (
                     "occasion:life_beat:activity-source:"
