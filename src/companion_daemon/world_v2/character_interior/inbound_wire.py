@@ -7285,6 +7285,8 @@ def _reply_only_fallback_appraisal(
         # Preserve the explicit action proposal even if another appraisal field
         # needs transport repair; it must still pass its own strict validator.
         fallback["life_intent"] = authored["life_intent"]
+    if isinstance(authored,dict) and authored.get("plan_response") is not None:
+        fallback["plan_response"]=authored["plan_response"]
     salvaged = _salvaged_authored_affect(authored)
     if salvaged is not None:
         fallback.update(salvaged)

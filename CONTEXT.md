@@ -1,3 +1,11 @@
+2026-10-19 all-Plan-entry repair in progress: protagonist inbound/world/day-open+completion+reconsider/
+Life opportunity choices now share original world_plan_management continue/revise/end, original role
+choice audit, CAS/effect-once receipts and linked versions; independent new intents remain legal.
+Legacy paid contracts recover unchanged. NPC/objective-plan authorities stay distinct. AST writer
+inventory and actual-interface recovery tests in all-plan-entries-20261019; final frozen full pending.
+Retained v16 stopped normally; strict replay/effect-once/source/prod gates pass. Same World/sidecars,
+fixed target2026-10-20T05:48:48+08, no QQ/main control. No real new-version diversity claim yet.
+
 2026-10-18 retained candidate repair/qualification result: manual_only / qualification_incomplete.
 Runtime83e2c0db; test-only65d0f0ae; full-v4=10866pass/19skip/2xfail/1existingwarning,
 1437.95s,1716Python hashes unchanged. Earlier v3 stale assertion failure remains recorded.

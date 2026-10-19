@@ -255,7 +255,7 @@ PAYLOAD_CONTRACTS: dict[str, _PayloadContract] = {
     "world_plan_response": _PayloadContract({
         "operation": str, "plan_id": str, "source_event_ref": str, "actor_ref": str,
         "expected_plan_json": str, "head_event_json": str,
-    }, {"replacement": dict}),
+    }, {"replacement": dict, "author_purpose": str, "author_context_json": str}),
     "activity_transition": _PayloadContract(
         {"activity_id": str, "plan_ref": str, "phase": str, "participants": list, "location": str}
     ),
@@ -1587,7 +1587,7 @@ class ProposalEnvelope(FrozenModel):
     # .2 belongs to the separate FactCommitProposalEnvelopeV2 grammar.
     schema_registry_version: Literal[
         "world-v2-proposals.1", "world-v2-proposals.3", "world-v2-proposals.4",
-        "world-v2-proposals.5", "world-v2-proposals.6", "world-v2-proposals.7", "world-v2-proposals.8",
+        "world-v2-proposals.5", "world-v2-proposals.6", "world-v2-proposals.7", "world-v2-proposals.8", "world-v2-proposals.9",
     ] = "world-v2-proposals.1"
     evidence_refs: tuple[ProposalEvidenceRef, ...] = Field(default=(), max_length=128)
     proposed_changes: tuple[TypedChange, ...] = Field(default=(), max_length=64)
@@ -1601,13 +1601,19 @@ class ProposalEnvelope(FrozenModel):
 
     @model_validator(mode="after")
     def identifiers_evidence_and_expression_beats_are_bound(self) -> Self:
-        if any(change.kind == 'world_plan_response' for change in self.proposed_changes) and self.schema_registry_version != 'world-v2-proposals.8':
+        if any(change.kind == 'world_plan_response' for change in self.proposed_changes) and self.schema_registry_version not in {'world-v2-proposals.8', 'world-v2-proposals.9'}:
             raise ValueError('world_plan_response requires explicit proposal registry .8')
-        if self.schema_registry_version == 'world-v2-proposals.8' and (
+        if self.schema_registry_version in {'world-v2-proposals.8', 'world-v2-proposals.9'} and (
             sum(change.kind == 'world_plan_response' for change in self.proposed_changes) != 1
             or any(change.kind == 'world_life_intent' for change in self.proposed_changes)
         ):
             raise ValueError('registry .8 requires one existing-Plan response and no unrelated new Plan')
+        for change in self.proposed_changes:
+            if change.kind == "world_plan_response" and (
+                (self.schema_registry_version == "world-v2-proposals.9")
+                != (change.payload.value().get("author_purpose") is not None)
+            ):
+                raise ValueError("Plan response author scope must match its explicit registry")
         if self.schema_registry_version not in {"world-v2-proposals.6", "world-v2-proposals.7"} and any(
             change.kind == "day_open_life_intent" for change in self.proposed_changes
         ):
@@ -1870,7 +1876,7 @@ class DecisionProposal(ProposalEnvelope):
             change.kind == "world_life_intent" for change in self.proposed_changes
         ):
             raise ValueError("world_life_intent requires proposal registry .4")
-        if self.schema_registry_version not in {"world-v2-proposals.5", "world-v2-proposals.8"} and any(
+        if self.schema_registry_version not in {"world-v2-proposals.5", "world-v2-proposals.8", "world-v2-proposals.9"} and any(
             change.kind == "world_life_response" for change in self.proposed_changes
         ):
             raise ValueError("world_life_response requires proposal registry .5")

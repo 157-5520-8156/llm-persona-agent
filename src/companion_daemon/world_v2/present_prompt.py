@@ -2656,8 +2656,9 @@ def compile_slim_consider_payload(
         ),
         "expression_draft": expression,
     }
-    if value.get("life_intent") is not None:
-        compiled["appraisal_draft"]["life_intent"] = value["life_intent"]
+    for field in ("life_intent", "plan_response"):
+        if value.get(field) is not None:
+            compiled["appraisal_draft"][field] = value[field]
     return compiled
 
 

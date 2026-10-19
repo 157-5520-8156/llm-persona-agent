@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import Field, model_validator
 
-from .chat_life_intent_contract import LifeIntentDraft
+from .chat_life_intent_contract import LifeIntentDraft, PlanResponseDraft
 from .schema_core import FrozenModel
 from .activity_continuation_source import ActivityCompletionSource
 
@@ -21,6 +21,12 @@ DAY_OPEN_LIFE_INTENT_POLICY_REF = "policy:day-open-life-intent.1"
 DAY_OPEN_CHOICE_CONTRACT = "character-interior-activity-lifecycle-choice.2"
 RECONSIDER_CHOICE_CONTRACT = "character-interior-activity-lifecycle-choice.3"
 CONTINUITY_CHOICE_CONTRACT = "character-interior-activity-lifecycle-choice.5"
+PLAN_CHOICE_CONTRACT = "character-interior-activity-lifecycle-choice.6"
+
+
+class DayOpenPlanChoice(FrozenModel):
+    decision: Literal["manage_plan"]
+    plan_response: PlanResponseDraft
 
 
 class DayOpenContinueChoice(FrozenModel):
@@ -133,16 +139,25 @@ class DayOpenLifeIntentCapability(FrozenModel):
 
 
 class DayOpenActivityCapability(FrozenModel):
-    contract: Literal["character-interior-activity-lifecycle-capability.3", "character-interior-activity-lifecycle-capability.4", "character-interior-activity-lifecycle-capability.5", "character-interior-activity-lifecycle-capability.6", "character-interior-activity-lifecycle-capability.7", "character-interior-activity-lifecycle-capability.8"]
+    contract: Literal["character-interior-activity-lifecycle-capability.3", "character-interior-activity-lifecycle-capability.4", "character-interior-activity-lifecycle-capability.5", "character-interior-activity-lifecycle-capability.6", "character-interior-activity-lifecycle-capability.7", "character-interior-activity-lifecycle-capability.8", "character-interior-activity-lifecycle-capability.9"]
     catalog_version: str = Field(min_length=1, max_length=128)
     catalog_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     offered_tokens: tuple[str, ...] = Field(max_length=0)
     openings: tuple[dict, ...] = Field(max_length=0)
     self_directed_intent: DayOpenLifeIntentCapability
     existing_plans: tuple[ExistingDayOpenPlan, ...] = Field(default=(), max_length=8, exclude_if=lambda v: not v)
+    plan_management: dict | None = Field(default=None, exclude_if=lambda v: v is None)
 
     @model_validator(mode="after")
     def continuation_version_is_explicit(self):
+        if self.contract.endswith(".9"):
+            if self.existing_plans or not self.plan_management or self.self_directed_intent.contract != "day-open-life-intent-capability.4":
+                raise ValueError("shared Plan operations require their exact capability")
+            from .world_plan_management import validate_capability
+            validate_capability(self.plan_management)
+            return self
+        if self.plan_management is not None:
+            raise ValueError("legacy capability cannot acquire shared Plan operations")
         if self.contract.endswith(".8"):
             if self.self_directed_intent.contract != "day-open-life-intent-capability.4" or not self.existing_plans:
                 raise ValueError("continuity requires exact existing plans and the agenda capability")

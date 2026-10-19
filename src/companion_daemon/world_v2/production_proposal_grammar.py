@@ -53,6 +53,8 @@ from .proposal_envelope import (
     MinimalProposal,
     ProposalInput,
 )
+from .world_plan_management import prepare_role_change, validate_receipt
+from .world_life_intent_contract import WorldPlanResponsePayload
 from .unified_inbound_decision import (
     UnifiedInboundDecisionError,
     inspect_unified_inbound_decision,
@@ -357,9 +359,18 @@ _WORLD_LIFE_INTENT = SpecializedProposalCapability(
     reverse_verifier_ref="world-life-intent-reverse-verifier.1",
 )
 
+_PLAN_RESPONSES = tuple(SpecializedProposalCapability(
+    change_kind="world_plan_response",transition=operation,
+    compiler_ref="role-plan-response-compiler.1",manifest_ref="role-plan-response.1",
+    reverse_verifier_ref="role-plan-response-reverse-verifier.1")
+    for operation in ("continue","revise","end"))
+
 _SPECIALIZED_AUTHORITY_SEAMS: Mapping[tuple[str, str, str], SpecializedAuthoritySeam] = (
     MappingProxyType(
         {
+            ("role-plan-response-compiler.1","role-plan-response.1","role-plan-response-reverse-verifier.1"):
+                SpecializedAuthoritySeam(compiler=prepare_role_change,manifest=WorldPlanResponsePayload,
+                                         reverse_verifier=validate_receipt),
             (_WORLD_LIFE_INTENT.compiler_ref, _WORLD_LIFE_INTENT.manifest_ref,
              _WORLD_LIFE_INTENT.reverse_verifier_ref): SpecializedAuthoritySeam(
                 compiler=derive_world_life_plan, manifest=WorldLifeIntentOrigin,
@@ -444,7 +455,7 @@ _EXPECTED_PRODUCTION_PROPOSAL_GRAMMARS: Mapping[
     {
         "chat_reply": ProductionProposalGrammar(
             lane_id="chat_reply",
-            capabilities=(_EXPRESSION, _APPRAISAL, _AFFECT, _RELATIONSHIP_SIGNAL, _LIFE_INTENT),
+            capabilities=(_EXPRESSION, _APPRAISAL, _AFFECT, _RELATIONSHIP_SIGNAL, _LIFE_INTENT, *_PLAN_RESPONSES),
             allows_no_change_decision=False,
             allows_minimal_reply=True,
         ),

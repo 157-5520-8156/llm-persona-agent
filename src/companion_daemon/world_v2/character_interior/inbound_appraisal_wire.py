@@ -25,7 +25,7 @@ from ..affect_target_bounds import (
     validate_model_authored_targets,
 )
 from ..deliberation import ModelInput
-from ..chat_life_intent_contract import LifeIntentDraft
+from ..chat_life_intent_contract import LifeIntentDraft, PlanResponseDraft
 from ..interaction_act_identity import interaction_act_overlapping_occurrence_count
 from ..model_facing_context import compact_model_facing_context
 from ..proposal_envelope import (
@@ -228,9 +228,12 @@ class AppraisalDraftWire(FrozenModel):
     relationship_commitment: RelationshipCommitmentWire | None = None
     interaction_act: InteractionActWire | None = None
     life_intent: LifeIntentDraft | None = Field(default=None, exclude_if=lambda value: value is None)
+    plan_response: PlanResponseDraft | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def appraisal_fields_match_selected_lifecycle(self) -> "AppraisalDraftWire":
+        if self.plan_response is not None and self.life_intent is not None:
+            raise ValueError("choose an existing Plan response or a separate new intention")
         if self.affect != "no_change" and not self.appraise:
             raise ValueError("Affect lifecycle change requires appraise=true")
         if self.appraise and (
@@ -655,6 +658,32 @@ def _decision_proposal_from_draft(*, raw: str, request: ModelInput) -> DecisionP
     draft = _parse_object(raw)
     if isinstance(draft.get("AppraisalDraft"), dict) and len(draft) == 1:
         draft = draft["AppraisalDraft"]
+    if draft.get("plan_response") is not None:
+        from ..world_plan_management import prepare_role_change
+        from ..proposal_envelope import ProposalEvidenceRef
+        bounds=request.plan_response_input
+        if bounds is None:
+            raise ValueError("Plan operations were not offered in this exact inbound turn")
+        if bounds.actor_ref != _companion_actor_ref(request) or request.trigger_message is None:
+            raise ValueError("Plan operation actor or observed message differs from its pinned input")
+        choice=PlanResponseDraft.model_validate_json(json.dumps(draft["plan_response"]))
+        change=prepare_role_change(bounds=bounds,choice=choice,source_ref=request.trigger_ref,purpose="inbound_turn")
+        target_ref=change.evidence_refs[1]
+        target=next(json.loads(x) for x in bounds.target_jsons if json.loads(x)["plan_id"]==choice.plan_id)
+        origin=target["authority_origin"]
+        refs=list(proposal.evidence_refs)
+        source_revision=request.trigger_message.source_world_revision
+        source_hash=request.trigger_message.event_payload_hash.removeprefix("sha256:")
+        for ref,revision,digest in ((request.trigger_ref,source_revision,source_hash),
+                (target_ref,origin["accepted_world_revision"],origin["accepted_payload_hash"])):
+            if ref not in {x.ref_id for x in refs}:
+                refs.append(ProposalEvidenceRef(ref_id=ref,evidence_kind="committed_world_event",
+                    source_world_revision=revision,immutable_hash="sha256:"+digest))
+        return DecisionProposal.model_validate_json(json.dumps(proposal.model_copy(update={
+            "schema_registry_version":"world-v2-proposals.9", "evidence_refs":tuple(refs),
+            "proposed_changes":(*proposal.proposed_changes,change),
+            "proposal_id":proposal.proposal_id+":plan:"+hashlib.sha256(change.payload.canonical_json.encode()).hexdigest()[:20],
+        }).model_dump(mode="json")))
     if draft.get("life_intent") is None:
         return proposal
     intent = LifeIntentDraft.model_validate_json(json.dumps(draft["life_intent"]))

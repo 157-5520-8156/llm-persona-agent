@@ -279,6 +279,7 @@ _APPRAISAL_COMMON_FIELDS = frozenset(
         "relationship_commitment",
         "interaction_act",
         "life_intent",
+        "plan_response",
     }
 )
 _APPRAISAL_EVENT_FIELDS = frozenset({"meanings", "attribution", "severity"})
@@ -1943,6 +1944,7 @@ def _cognition_state_changes(appraisal_proposal: DecisionProposal) -> tuple[Any,
         in {
             "appraisal_transition",
             "life_intent",
+        "world_plan_response",
             "affect_transition",
             "relationship_signal",
             "relationship_commitment",
@@ -3295,6 +3297,8 @@ class _InboundCharacterAuthor:
                 else "standard"
             ),
         )
+        if request.plan_response_input is not None:
+            contract=contract.with_plan_management(json.loads(request.plan_response_input.capability_json))
         transport = resolve_single_tool_transport(
             provider=provider,
             tools=contract.provider_tools,
@@ -3523,6 +3527,14 @@ class _InboundCharacterAuthor:
         expression_user_material = json.loads(expression_messages[1]["content"])
         if not isinstance(expression_user_material, dict):
             raise ValueError("paired expression provider material must be an object")
+        if request.plan_response_input is not None:
+            expression_user_material["plan_management"]=json.loads(request.plan_response_input.capability_json)
+            expression_user_material["plan_response_usage"]=(
+                "Optional appraisal_draft.plan_response (or slim top-level plan_response): "
+                "{operation:continue|revise|end,plan_id:<exact offered own ID>,replacement:<LifeIntentDraft, revise only>}. "
+                "Continue preserves intent/window/lifecycle; revise abandons the predecessor and links a replacement; "
+                "end abandons the intent, never claims completion. Other Plans remain unchanged. "
+                "life_intent is a separate new Plan; do not combine it with plan_response.")
         expression_user_material["appraisal_affect_hard_boundaries"] = {
             "active_affect_heads": _active_affect_heads(request),
         }
@@ -3732,6 +3744,8 @@ class _InboundCharacterAuthor:
                 ),
             )
         )
+        if request.plan_response_input is not None:
+            cognition_contract=cognition_contract.with_plan_management(json.loads(request.plan_response_input.capability_json))
         cognition_tools = list(cognition_contract.provider_tools)
         cognition_transport = resolve_single_tool_transport(
             provider=provider,

@@ -145,8 +145,9 @@ class DayOpenLifeWorker:
             current = capability(state=projection, actor_ref=self.actor_ref, source_refs=(),
                                  reader=self.plan_material_reader)
             if current is not None:
-                payload["contract"] = "character-interior-activity-lifecycle-capability.8"
-                payload["existing_plans"] = current["plans"]
+                current["source_event_refs"] = [wake.event_id]
+                payload["contract"] = "character-interior-activity-lifecycle-capability.9"
+                payload["plan_management"] = current
         raw = _canonical(payload)
         digest = "sha256:" + hashlib.sha256(raw.encode()).hexdigest()
         manifest = _InteriorCapabilityManifest(
@@ -176,8 +177,8 @@ class DayOpenLifeWorker:
                 ("You asked to reconsider now. " if reconsideration_ref else
                  "One owned activity has ended. " if completion_source else
                  "This is an opportunity to decide how to spend your own time. ")
-                + ("Review existing_plans before deciding what comes next. continue_existing acknowledges exact offered Plans; it leaves their intentions, windows and lifecycle unchanged, without starting them again. Unselected Plans also remain unchanged: this is not an edit or ending operation. This completion does not require rewriting your day. You can choose a separate new agenda, no_op or reconsider. "
-                   if payload.get("existing_plans") else "Choose a rolling agenda of 1..8 concrete own intentions, no_op, or reconsider. ")
+                + ("Review plan_management before deciding what comes next. You can continue, revise or end an exact offered own Plan using manage_plan/plan_response. Continue preserves it; revise links a replacement and ends the predecessor; end abandons the intention, not a completion claim. Other Plans remain unchanged. This completion does not require recreating your agenda. Separate new intentions, no_op and reconsider remain your choices. "
+                   if payload.get("plan_management") else "Choose a rolling agenda of 1..8 concrete own intentions, no_op, or reconsider. ")
                 + "Make any new intention useful to remember later, with the steps you actually intend, without inventing a course, appointment or outcome from generic routine. You need not continue the last activity "
                 "or conversation. These are additional private intentions: they do not replace or cancel existing Plans. A Plan is not execution, success, presence or a message. Routine is background. "
                 + ("The previous activity was abandoned, not completed. "
@@ -289,7 +290,7 @@ class DayOpenLifeWorker:
                 return ActivityLifecycleFollowupResult(
                     status="blocked", reason_code=catalog.reason_code
                 )
-            plan_only_scope = attempt.opportunity.capability_manifest.payload["contract"].endswith((".7", ".8"))
+            plan_only_scope = attempt.opportunity.capability_manifest.payload["contract"].endswith((".7", ".8", ".9"))
             if catalog.status != "no_openings" and row.reconsideration_ref is None and not plan_only_scope:
                 # An already paid terminal still belongs to its original empty
                 # catalog. Without one, changed opportunity eligibility cannot
@@ -338,6 +339,15 @@ class DayOpenLifeWorker:
                 )
         # The durable author result, not a spent bit, decides which path exists.
         opportunity = attempt.opportunity
+        if result.decision["payload"].get("decision") == "manage_plan":
+            from .chat_life_intent_contract import PlanResponseDraft
+            from .world_plan_management import submit_role_choice
+            choice=PlanResponseDraft.model_validate_json(_canonical(result.decision["payload"]["plan_response"]))
+            submit_role_choice(ledger=self.ledger,result=result,choice=choice,
+                reader=self.plan_material_reader,offered=json.loads(opportunity.capability_manifest.payload_json)["plan_management"],
+                source_ref=opportunity.trigger_ref)
+            self.store.save(row.model_copy(update={"terminal":True,"terminal_reason":"role_plan_response"}),expected=row)
+            return ActivityLifecycleFollowupResult(status="transitioned",reason_code="activity_lifecycle.plan_response_accepted")
         proposal = materialize_day_open_proposal(
             result,
             json.loads(opportunity.capability_manifest.payload_json),

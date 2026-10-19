@@ -165,6 +165,7 @@ ledger advances do not replace the caller's original pinned Plan head.
     from .life_events import ActivityTransitionPayload
     from .world_consequence_execution_context import _PinnedReadLedger
     from .world_life_intent_runtime import WorldLifeIntentCompletedReader
+    from .world_plan_management import RolePlanResponseReader
 
     cursor = _cursor(pinned_state)
     if ledger.world_id != pinned_state.world_id or ledger.project_at(cursor) != pinned_state:
@@ -200,7 +201,7 @@ ledger advances do not replace the caller's original pinned Plan head.
     reader = _PinnedReadLedger(ledger, pinned_state)
     for reader_type in (
         DayOpenLifeIntentCompletedReader, ChatLifeIntentCompletedReader,
-        WorldLifeIntentCompletedReader,
+        WorldLifeIntentCompletedReader, RolePlanResponseReader,
     ):
         material = reader_type(ledger=reader).read_completed_plan(
             plan_id=plan.plan_id, expected_cursor=cursor, actor_ref=actor_ref,

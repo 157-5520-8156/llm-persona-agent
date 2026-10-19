@@ -1569,7 +1569,18 @@ def test_schema_parity_and_deletion_guard_cover_authoritative_wires() -> None:
     appraisal = _object_schema(root_properties["appraisal_draft"])
 
     assert set(ExpressionDraft.model_fields) <= set(expression["properties"])
-    assert set(AppraisalDraftWire.model_fields) <= set(appraisal["properties"])
+    # A missing own-Plan capability must not advertise mutations. The copied
+    # capability-specific contract must expose the entire canonical wire.
+    assert set(AppraisalDraftWire.model_fields) - {"plan_response"} <= set(appraisal["properties"])
+    assert "plan_response" not in appraisal["properties"]
+    managed=contract.with_plan_management({"contract":"world-plan-management.1",
+        "source_event_refs":["event:pinned"],"operations":["continue","revise","end"],
+        "plans":[{"plan_id":"plan:own","entity_revision":1,"status":"planned",
+            "intention":"稍后整理。","intention_truncated":False,"scheduled_window":None}]})
+    managed_root=_object_schema(managed.provider_tools[0]["function"]["parameters"])["properties"]
+    managed_appraisal=_object_schema(managed_root["appraisal_draft"])
+    assert set(AppraisalDraftWire.model_fields) <= set(managed_appraisal["properties"])
+    assert "plan_response" not in appraisal["properties"], "specialization mutated the old cached contract"
     assert "affect" in appraisal["required"]
     lifecycle_required = {
         branch["properties"]["affect"]["enum"][0]: set(branch["required"])

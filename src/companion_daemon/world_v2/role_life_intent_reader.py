@@ -137,7 +137,8 @@ class RoleLifeIntentActivityReader:
             )
         ):
             return None
-        origin = getattr(planned, self._origin_field)
+        origin = (self._origin_field(planned, projection, actor_ref)
+                  if callable(self._origin_field) else getattr(planned, self._origin_field))
         proposal = self._ledger.lookup_event_commit(origin.proposal_event_ref)
         if proposal is not None:
             proposal = (

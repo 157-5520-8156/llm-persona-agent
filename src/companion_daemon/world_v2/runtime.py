@@ -721,6 +721,11 @@ class WorldRuntime:
         # holding ``_lock`` across its provider call would make a slow
         # low-priority thought block the next user message.
         async with self._background_lock:
+            from .world_plan_management import recover_pending
+            if self._ledger.blocks_event_loop:
+                await asyncio.to_thread(recover_pending,ledger=self._ledger)
+            else:
+                recover_pending(ledger=self._ledger)
             isolated_exc: BaseException | None = None
             technical_result = None
 
@@ -1838,7 +1843,22 @@ class WorldRuntime:
                             self._chat_life_intent.record_failure(proposal_id=proposal_id, failure_code=code)
                     except ConcurrencyConflict:
                         deferred.append("chat_life_intent.failure_journal_cursor_conflict")
+        if shape.plan_response is not None:
+            from .world_plan_management import recover_response
+            try:
+                if self._ledger.blocks_event_loop:
+                    await asyncio.to_thread(recover_response,ledger=self._ledger,audit=audit)
+                else:
+                    recover_response(ledger=self._ledger,audit=audit)
+            except (ConcurrencyConflict,ValueError):
+                deferred.append("chat_plan_response.acceptance_failure")
         return tuple(dict.fromkeys(deferred))
+
+    @staticmethod
+    def _plan_response_complete(projection, proposal_id, shape):
+        from .world_plan_management import receipt_id
+        return shape.plan_response is None or any(r.event_id==receipt_id(proposal_id)
+            for r in projection.committed_world_event_refs)
 
     async def _renew_inline_appraisal_claim_for_retry(
         self,
@@ -2341,7 +2361,7 @@ class WorldRuntime:
                 if not isinstance(proposal, DecisionProposal):
                     continue
                 shape = inspect_unified_inbound_decision(proposal)
-                if selected.proposal_id in terminal_proposal_ids and shape.life_intent is None:
+                if selected.proposal_id in terminal_proposal_ids and shape.life_intent is None and self._plan_response_complete(projection, selected.proposal_id, shape):
                     continue
             except (TypeError, ValueError):
                 continue
@@ -2410,11 +2430,12 @@ class WorldRuntime:
                     and signal.rationale_code == relationship_payload["rationale_code"]
                     for signal in projection.relationship_signals
                 )
+            plan_response_accepted = self._plan_response_complete(projection,selected.proposal_id,shape)
             life_accepted = shape.life_intent is None or not acceptance_is_due(projection, selected.proposal_id) or any(
                 item.plan_id == chat_life_plan_id(self._world_id, proposal)
                 for item in projection.plans
             )
-            if appraisal_accepted and affect_accepted and relationship_accepted and life_accepted:
+            if appraisal_accepted and affect_accepted and relationship_accepted and life_accepted and plan_response_accepted:
                 continue
             located = await self._lookup_event_commit(selected.event_ref)
             if located is None or located[0].event_type != "ProposalRecorded":
@@ -2451,7 +2472,7 @@ class WorldRuntime:
                 else f"character-interior-settlement:{selected.proposal_id}"
             )
             terminal = current_process is not None and current_process.state == "terminal"
-            outcome_type = _InboundSettlementTechnicalFailure if any(ref.startswith("chat_life_intent.") for ref in deferred) else RuntimeOutcome
+            outcome_type = _InboundSettlementTechnicalFailure if any(ref.startswith(("chat_life_intent.","chat_plan_response.")) for ref in deferred) else RuntimeOutcome
             return outcome_type(
                 outcome_id=f"outcome:character-interior-settlement:{selected.proposal_id}",
                 trigger_id=trigger_id,

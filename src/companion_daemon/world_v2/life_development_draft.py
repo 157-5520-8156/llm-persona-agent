@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import Field, ValidationError, computed_field, field_validator, model_validator
 
+from .chat_life_intent_contract import PlanResponseDraft
 from .schema_core import FrozenModel, PrivacyClass
 from .world_consequence_contract import WorldConsequenceV2
 from .completed_activity_consequence import CompletedActivityConsequence
@@ -1003,6 +1004,7 @@ LifeDevelopmentWorldDraft = LifeDevelopmentNoOpDraft | LifeDevelopmentPossibilit
 
 class CharacterChoiceNoOpDraft(FrozenModel):
     decision: Literal["no_op"]
+    plan_response: PlanResponseDraft | None = Field(default=None,exclude_if=lambda v:v is None)
 
 
 CHARACTER_CHOICE_CONTRACT = "character-interior-life-development-choice.2"
@@ -1755,6 +1757,8 @@ def parse_legacy_character_choice(
     active_aspiration_source_refs: tuple[str, ...] = (),
 ) -> LegacyCharacterChoiceAcceptDraft | CharacterChoiceNoOpDraft:
     """Decode v1 after its durable ModelResult/Proposal lineage was verified."""
+    if json.loads(raw).get("plan_response") is not None:
+        raise LifeDevelopmentDraftError("invalid_character_output","Legacy life choice cannot acquire Plan operations")
     return _parse_character_choice(
         raw=raw,
         offered=offered,

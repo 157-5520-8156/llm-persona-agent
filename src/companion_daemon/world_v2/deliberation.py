@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 from companion_daemon.llm import model_request_emission_scope
 
 from .affect_target_bounds import AffectTargetLowerBounds
+from .chat_life_intent_contract import PlanResponseInput
 from .visible_rejection_context import RejectedVisibleExpression
 from .context_capsule import ContextCapsule, TrustedContextCapsuleHandle
 from .interactive_turn_budget import (
@@ -1119,6 +1120,15 @@ class ModelInput(_FrozenModel):
         default=None,
         exclude_if=lambda value: value is None,
     )
+    plan_response_input: PlanResponseInput | None = Field(default=None, exclude_if=lambda v: v is None)
+
+    @model_validator(mode="after")
+    def plan_targets_bind_cursor(self):
+        bounds=self.plan_response_input
+        if bounds is not None and (bounds.world_revision,bounds.deliberation_revision,bounds.ledger_sequence)!=(
+            self.evaluated_world_revision,self.evaluated_deliberation_revision,self.evaluated_ledger_sequence):
+            raise ValueError("Plan targets must bind the exact model input cursor")
+        return self
     catalog_versions: tuple[str, ...] = ()
     recorded_draw_refs: tuple[str, ...] = ()
     # Values are reconstructable from RandomDrawRecorded; refs remain in the
@@ -2207,6 +2217,7 @@ class Deliberation:
         trigger_evidence: tuple[ProposalEvidenceRef, ...] = (),
         trigger_message: TriggerMessage | None = None,
         affect_target_bounds: AffectTargetLowerBounds | None = None,
+        plan_response_input: PlanResponseInput | None = None,
         visible_review_participants: VisibleReviewParticipantBinding | None = None,
         budget: InteractiveTurnBudget | None = None,
         first_role_provider_marker: Callable[[str], None] | None = None,
@@ -2300,6 +2311,7 @@ class Deliberation:
             trigger_evidence=trigger_evidence,
             trigger_message=trigger_message,
             affect_target_bounds=affect_target_bounds,
+            plan_response_input=plan_response_input,
             visible_review_participants=visible_review_participants,
             catalog_versions=catalog_versions,
             recorded_draw_refs=recorded_draw_refs,

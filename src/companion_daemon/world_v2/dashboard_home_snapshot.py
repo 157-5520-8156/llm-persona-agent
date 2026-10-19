@@ -1927,7 +1927,7 @@ def _overview_life_summaries(
                 _value("intention", "原意图", intention.intention),
                 _value("intent_source", "意图来源", intention.source_kind, {
                     "day_open": "当日自主安排", "chat": "同次对话中的自主选择",
-                    "world": "对已结算事件的自主回应",
+                    "world": "对已结算事件的自主回应", "role_revision": "自主修订的计划",
                 }[intention.source_kind]),
                 _value("execution_scope", "活动范围", "self_directed", "自己进行的活动"),
                 _value("selected_at", "选择时间", intention.selected_at.isoformat()),

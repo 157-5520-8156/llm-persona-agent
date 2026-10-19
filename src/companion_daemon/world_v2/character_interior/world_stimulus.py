@@ -863,22 +863,40 @@ class _WorldStimulusInteriorAuthorityHandler:
                 not in expected_life_capability["source_event_refs"]
             ):
                 raise ValueError("world stimulus life intent is outside exact source authority")
+        plan_response_contract = manifest.payload.get("plan_response_contract")
+        if plan_response_contract not in {None, "role-plan-response.1"}:
+            raise ValueError("Unsupported World Plan response contract")
         if result.plan_response is not None:
             from ..world_plan_management import capability, reader_for, validate_choice
-            management_arguments = dict(state=pinned, actor_ref=request.actor_ref,
-                source_refs=manifest.payload.get('world_life_intent', {}).get('source_event_refs', ()),
-                reader=reader_for(self._ledger, request.actor_ref, self._life_content_store))
-            expected_management = (await asyncio.to_thread(capability, **management_arguments)
-                if self._ledger.blocks_event_loop else capability(**management_arguments))
-            if manifest.payload.get('world_plan_management') != expected_management:
-                raise ValueError('world Plan management differs from its exact actor and accepted heads')
+
+            management_arguments = dict(
+                state=pinned,
+                actor_ref=request.actor_ref,
+                source_refs=manifest.payload.get("world_life_intent", {}).get(
+                    "source_event_refs", ()
+                ),
+                reader=reader_for(self._ledger, request.actor_ref, self._life_content_store),
+            )
+            expected_management = (
+                await asyncio.to_thread(capability, **management_arguments)
+                if self._ledger.blocks_event_loop
+                else capability(**management_arguments)
+            )
+            if manifest.payload.get("world_plan_management") != expected_management:
+                raise ValueError(
+                    "world Plan management differs from its exact actor and accepted heads"
+                )
             validate_choice(result.plan_response, expected_management)
         expected_response_capability = world_life_response_capability(
             state=pinned, source_events=tuple(source_events), owner_actor_ref=request.actor_ref
         )
         if manifest.payload.get("world_life_response") != expected_response_capability:
-            raise ValueError("world stimulus life response capability is not exact source authority")
-        validate_character_life_response_coverage(result.life_responses, expected_response_capability)
+            raise ValueError(
+                "world stimulus life response capability is not exact source authority"
+            )
+        validate_character_life_response_coverage(
+            result.life_responses, expected_response_capability
+        )
         identity = _digest(
             {
                 "contract": PAYLOAD_CONTRACT,
@@ -910,7 +928,8 @@ class _WorldStimulusInteriorAuthorityHandler:
                         if (
                             result.life_intent is not None
                             and ref == result.life_intent.source_event_ref
-                        ) or any(item.source_event_ref == ref for item in result.life_responses or ())
+                        )
+                        or any(item.source_event_ref == ref for item in result.life_responses or ())
                         else (
                             _EVIDENCE_KIND[process_kind]
                             if ref == source_ref
@@ -923,17 +942,59 @@ class _WorldStimulusInteriorAuthorityHandler:
             )
         changes: list[TypedChange] = []
         if result.plan_response is not None:
-            from ..world_life_intent_contract import WorldPlanResponsePayload
-            from ..world_plan_management import POLICY
-            head, _ = await self._lookup(plan.authority_origin.accepted_event_ref)
-            changes.append(TypedChange(
-                change_id='change:world-plan-response:' + identity, kind='world_plan_response',
-                target_id=plan.plan_id, transition=result.plan_response.operation,
-                expected_entity_revision=plan.entity_revision,
-                evidence_refs=(result.plan_response.source_event_ref, head.event_id), policy_refs=(POLICY,),
-                payload=CanonicalTypedPayload.from_value(payload_schema='world_plan_response.v1',value=
-                    WorldPlanResponsePayload(**result.plan_response.model_dump(mode='json'),actor_ref=request.actor_ref,
-                        expected_plan_json=plan.model_dump_json(),head_event_json=head.model_dump_json()).model_dump(mode='json'))))
+            if plan_response_contract == "role-plan-response.1":
+                from ..world_plan_management import prepare_role_change, response_input, reader_for
+                from ..chat_life_intent_contract import PlanResponseDraft
+
+                bounds = response_input(
+                    ledger=self._ledger,
+                    projection=pinned,
+                    actor_ref=request.actor_ref,
+                    reader=reader_for(self._ledger, request.actor_ref, self._life_content_store),
+                    source_refs=manifest.payload["world_plan_management"]["source_event_refs"],
+                )
+                choice = PlanResponseDraft.model_validate_json(
+                    json.dumps(
+                        {
+                            k: v
+                            for k, v in result.plan_response.model_dump(mode="json").items()
+                            if k in PlanResponseDraft.model_fields
+                        }
+                    )
+                )
+                changes.append(
+                    prepare_role_change(
+                        bounds=bounds,
+                        choice=choice,
+                        source_ref=result.plan_response.source_event_ref,
+                        purpose="world_stimulus_appraisal",
+                    )
+                )
+            else:
+                from ..world_life_intent_contract import WorldPlanResponsePayload
+                from ..world_plan_management import POLICY
+
+                head, _ = await self._lookup(plan.authority_origin.accepted_event_ref)
+                changes.append(
+                    TypedChange(
+                        change_id="change:world-plan-response:" + identity,
+                        kind="world_plan_response",
+                        target_id=plan.plan_id,
+                        transition=result.plan_response.operation,
+                        expected_entity_revision=plan.entity_revision,
+                        evidence_refs=(result.plan_response.source_event_ref, head.event_id),
+                        policy_refs=(POLICY,),
+                        payload=CanonicalTypedPayload.from_value(
+                            payload_schema="world_plan_response.v1",
+                            value=WorldPlanResponsePayload(
+                                **result.plan_response.model_dump(mode="json"),
+                                actor_ref=request.actor_ref,
+                                expected_plan_json=plan.model_dump_json(),
+                                head_event_json=head.model_dump_json(),
+                            ).model_dump(mode="json"),
+                        ),
+                    )
+                )
         if result.decision == "activate":
             appraisal_change_id = f"change:character-interior-world-stimulus:appraisal:{identity}"
             appraisal_id = f"appraisal:character-interior-world-stimulus:{identity}"
@@ -1105,30 +1166,47 @@ class _WorldStimulusInteriorAuthorityHandler:
             )
         for response in result.life_responses or ():
             response_identity = character_life_response_id(
-                world_id=request.world_id, actor_ref=request.actor_ref,
+                world_id=request.world_id,
+                actor_ref=request.actor_ref,
                 source_event_ref=response.source_event_ref,
             )
-            changes.append(TypedChange(
-                change_id="change:character-interior-world-stimulus:life-response:"
-                + _digest([identity, response.source_event_ref]),
-                kind="world_life_response", target_id=response_identity,
-                transition="record", expected_entity_revision=0,
-                evidence_refs=(response.source_event_ref,),
-                policy_refs=(CHARACTER_LIFE_RESPONSE_POLICY_REF,),
-                payload=CanonicalTypedPayload.from_value(
-                    payload_schema="world_life_response.v1",
-                    value={**response.model_dump(mode="json"), "actor_ref": request.actor_ref},
-                ),
-            ))
-        decision_type = InteriorDecisionProposal if result.reflection_depth is not None else DecisionProposal
+            changes.append(
+                TypedChange(
+                    change_id="change:character-interior-world-stimulus:life-response:"
+                    + _digest([identity, response.source_event_ref]),
+                    kind="world_life_response",
+                    target_id=response_identity,
+                    transition="record",
+                    expected_entity_revision=0,
+                    evidence_refs=(response.source_event_ref,),
+                    policy_refs=(CHARACTER_LIFE_RESPONSE_POLICY_REF,),
+                    payload=CanonicalTypedPayload.from_value(
+                        payload_schema="world_life_response.v1",
+                        value={**response.model_dump(mode="json"), "actor_ref": request.actor_ref},
+                    ),
+                )
+            )
+        decision_type = (
+            InteriorDecisionProposal if result.reflection_depth is not None else DecisionProposal
+        )
         decision = decision_type(
-            **({"interior_reflection_depth": result.reflection_depth} if result.reflection_depth is not None else {}),
             **(
-                {"schema_registry_version": 'world-v2-proposals.8'} if result.plan_response is not None else
-                {"schema_registry_version": CHARACTER_LIFE_RESPONSE_REGISTRY_VERSION}
-                if expected_response_capability is not None else
-                {"schema_registry_version": WORLD_LIFE_INTENT_REGISTRY_VERSION}
-                if result.life_intent is not None else {}
+                {"interior_reflection_depth": result.reflection_depth}
+                if result.reflection_depth is not None
+                else {}
+            ),
+            **(
+                {
+                    "schema_registry_version": "world-v2-proposals.9"
+                    if plan_response_contract == "role-plan-response.1"
+                    else "world-v2-proposals.8"
+                }
+                if result.plan_response is not None
+                else {"schema_registry_version": CHARACTER_LIFE_RESPONSE_REGISTRY_VERSION}
+                if expected_response_capability is not None
+                else {"schema_registry_version": WORLD_LIFE_INTENT_REGISTRY_VERSION}
+                if result.life_intent is not None
+                else {}
             ),
             proposal_id=f"proposal:character-interior-world-stimulus:{identity}",
             trigger_ref=source_ref,
@@ -3383,8 +3461,11 @@ class CharacterInteriorWorldStimulusRuntime:
         }
         if process.process_kind == "silence_appraisal":
             from ..silence_observation import silence_observation
+
             payload["silence_observation"] = silence_observation(
-                projection, anchor_event_ref=source_event.event_id, actor_ref=self._companion_actor_ref,
+                projection,
+                anchor_event_ref=source_event.event_id,
+                actor_ref=self._companion_actor_ref,
             )
         if process.process_kind == "perception_result_deliberation":
             payload["perception_result"] = await self._read_perception_result(source_event)
@@ -3407,6 +3488,7 @@ class CharacterInteriorWorldStimulusRuntime:
                           if self._ledger.blocks_event_loop else capability(**arguments))
             if management is not None:
                 payload['world_plan_management'] = management
+                payload["plan_response_contract"] = "role-plan-response.1"
         response_capability = world_life_response_capability(
             state=projection, source_events=ordered_source_events,
             owner_actor_ref=self._companion_actor_ref,

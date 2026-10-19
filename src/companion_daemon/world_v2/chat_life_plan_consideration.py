@@ -29,6 +29,9 @@ SOURCE = "world-v2:chat-life-plan-consideration"
 
 
 def _plan_source(plan_id):
+    from .world_plan_management import ROLE_PLAN_PREFIX, ROLE_EVENT_PREFIX, _reader_origin, derive_replacement, validate_role_replacement
+    if plan_id.startswith(ROLE_PLAN_PREFIX):
+        return ROLE_PLAN_PREFIX, ROLE_EVENT_PREFIX, _reader_origin, derive_replacement, validate_role_replacement
     from .day_open_life_intent_runtime import (
         PLAN_PREFIX as DAY_PREFIX, EVENT_PREFIX as DAY_EVENT_PREFIX,
         derive_day_open_life_plan, validate_day_open_life_plan_event,
@@ -119,7 +122,7 @@ def opportunity_from_state(
         plan_event_ref=source.event_id,
         plan_payload_hash=source.payload_hash,
         owner_actor_ref=plan.owner_actor_ref,
-        origin=getattr(payload, origin_field),
+        origin=(origin_field(payload,state,plan.owner_actor_ref,world_id=world_id) if callable(origin_field) else getattr(payload, origin_field)),
         due_at=due_at,
         attempt_ordinal=ordinal,
     )
@@ -166,7 +169,7 @@ def pending_opportunities(
                 plan_event_ref=located[0].event_id,
                 plan_payload_hash=located[0].payload_hash,
                 owner_actor_ref=owner_actor_ref,
-                origin=getattr(payload, origin_field),
+                origin=(origin_field(payload,projection,owner_actor_ref,world_id=projection.world_id) if callable(origin_field) else getattr(payload, origin_field)),
                 due_at=due_at,
                 attempt_ordinal=ordinal,
             )

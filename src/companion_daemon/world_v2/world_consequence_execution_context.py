@@ -122,11 +122,13 @@ def _read_intention(reader, content_store, binding, *, intention_reader_version)
     from .life_development_runtime import LifeDevelopmentProposalReader
     from .life_events import ActivityPlannedPayload
     from .world_life_intent_runtime import WorldLifeIntentActiveReader
+    from .world_plan_management import RolePlanResponseReader
 
     read = None
     source_readers = (
         ChatLifeIntentActiveReader(ledger=reader),
         WorldLifeIntentActiveReader(ledger=reader),
+        RolePlanResponseReader(ledger=reader),
         LifeDevelopmentProposalReader(ledger=reader, content_store=content_store),
     )
     if intention_reader_version == "2":

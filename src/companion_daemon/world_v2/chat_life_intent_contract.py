@@ -33,6 +33,29 @@ class LifeIntentPayload(LifeIntentDraft):
     source_observation_ref: str = Field(min_length=1, max_length=512)
 
 
+class PlanResponseDraft(FrozenModel):
+    """One explicit operation on an offered own Plan; never semantic matching."""
+    operation: Literal["continue", "revise", "end"]
+    plan_id: str = Field(min_length=1, max_length=512)
+    replacement: LifeIntentDraft | None = Field(default=None, exclude_if=lambda value: value is None)
+
+    @model_validator(mode="after")
+    def replacement_only_for_revision(self):
+        if (self.operation == "revise") != (self.replacement is not None):
+            raise ValueError("revise requires a replacement; continue/end cannot create one")
+        return self
+
+
+class PlanResponseInput(FrozenModel):
+    """Trusted pin-bound target images, distinct from the model's public options."""
+    actor_ref: str
+    world_revision: int
+    deliberation_revision: int
+    ledger_sequence: int
+    capability_json: str
+    target_jsons: tuple[str, ...] = Field(max_length=8)
+
+
 class ChatLifeIntentOrigin(FrozenModel):
     contract: Literal["chat-life-intent-origin.1"] = "chat-life-intent-origin.1"
     proposal_id: str = Field(min_length=1)
@@ -48,6 +71,10 @@ class ChatLifeIntentOrigin(FrozenModel):
     inner_turn_id: str = Field(min_length=1)
     snapshot_id: str = Field(min_length=1)
     snapshot_hash: str = Field(min_length=1)
+
+
+class RolePlanResponseOrigin(ChatLifeIntentOrigin):
+    contract: Literal["role-plan-response-origin.1"] = "role-plan-response-origin.1"
 
 
 class ChatLifeIntentFailure(FrozenModel):

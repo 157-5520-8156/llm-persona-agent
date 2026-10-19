@@ -29,14 +29,21 @@ def build_app(monkeypatch):
     original = shared.compose_production_character_interior
     stores = []
 
-    def build(path, model, *, ecology, background_budget_paused=None):
+    def build(path, model, *, ecology, background_budget_paused=None, atomic_version=None, native_slim_core=False, reviewer=None):
         store = open_sqlite_character_interior_turn_store(path=path, world_id=shared.WORLD)
         stores.append(store)
         with monkeypatch.context() as patch:
+            if reviewer is not None and atomic_version is not None:
+                config_type=shared.WorldV2TurnApplicationConfig
+                patch.setattr(shared,"WorldV2TurnApplicationConfig",lambda **kwargs:config_type(
+                    **{**kwargs,"visible_source_review_required":True}))
             patch.setattr(
                 shared,
                 "compose_production_character_interior",
-                lambda **kwargs: original(**kwargs, turn_store=store),
+                lambda **kwargs: original(**{**kwargs,"turn_store":store,
+                    **({"atomic_tool_envelope_version":atomic_version,"whole_candidate_mode":True,
+                        "native_slim_core":native_slim_core,"visible_source_review_model":reviewer}
+                       if atomic_version is not None else {})}),
             )
             return shared._build(path, model, ecology=ecology, background_budget_paused=background_budget_paused)
 

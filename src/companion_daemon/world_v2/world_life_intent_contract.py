@@ -7,9 +7,9 @@ or grant participation by another actor. It is distinct from inbound intent.
 from datetime import datetime
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field
 
-from .chat_life_intent_contract import LifeIntentDraft
+from .chat_life_intent_contract import LifeIntentDraft, PlanResponseDraft
 from .schema_core import FrozenModel
 
 WORLD_LIFE_INTENT_REGISTRY_VERSION = "world-v2-proposals.4"
@@ -68,23 +68,16 @@ class WorldLifeIntentPayload(LifeIntentDraft):
     source_event_ref: str = Field(min_length=1, max_length=512)
 
 
-class WorldPlanResponseDraft(FrozenModel):
-    operation: Literal['continue', 'revise', 'end']
-    plan_id: str = Field(min_length=1, max_length=512)
+class WorldPlanResponseDraft(PlanResponseDraft):
     source_event_ref: str = Field(min_length=1, max_length=512)
-    replacement: LifeIntentDraft | None = Field(default=None, exclude_if=lambda value: value is None)
-
-    @model_validator(mode='after')
-    def replacement_only_for_revision(self):
-        if (self.operation == 'revise') != (self.replacement is not None):
-            raise ValueError('revise requires one replacement intention; continue/end cannot create one')
-        return self
 
 
 class WorldPlanResponsePayload(WorldPlanResponseDraft):
     actor_ref: str = Field(min_length=1, max_length=512)
     expected_plan_json: str = Field(min_length=2, max_length=8192)
     head_event_json: str = Field(min_length=2, max_length=16384)
+    author_purpose: Literal["inbound_turn", "activity_lifecycle_choice", "life_development_choice", "world_stimulus_appraisal"] | None = Field(default=None, exclude_if=lambda v: v is None)
+    author_context_json: str | None = Field(default=None, exclude_if=lambda v: v is None)
 
 
 class WorldPlanResponseRecordedPayload(FrozenModel):

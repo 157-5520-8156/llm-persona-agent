@@ -3668,7 +3668,11 @@ def _validate_life_development_character_interior_binding(
         or audit.request_hash != lineage.request_hash.removeprefix("sha256:")
         or audit.response_hash != lineage.response_hash.removeprefix("sha256:")
         or context is None
-        or context.decision_subject_hash != binding.get("decision_subject_hash")
+        or context.decision_subject_hash != (
+            binding.get("inner_decision_hash") if audit.character_interior_lineage is not None and any(
+                item.event_ref==binding.get("audit_proposal_event_ref") and
+                json.loads(item.proposal_json).get("schema_registry_version")=="world-v2-proposals.9"
+                for item in state.proposal_audits) else binding.get("decision_subject_hash"))
         or decision.cursor
         != ProjectionCursor(
             world_revision=context.world_revision,
@@ -3693,7 +3697,8 @@ def _validate_life_development_character_interior_binding(
         raise ValueError("life-development CharacterInterior audit Proposal is not exact")
     try:
         envelope = json.loads(audit_proposal.proposal_json)
-        metadata = json.loads(envelope["response_text"])
+        from .world_plan_management import audit_context_metadata
+        metadata = audit_context_metadata(envelope)
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise ValueError("life-development CharacterInterior audit metadata is invalid") from exc
     if (
@@ -3985,7 +3990,7 @@ def _proposal_recorded(
                 "proposal_audits": (*state.proposal_audits, projection),
             }
         )
-        if 'world-v2-proposals.8' in payload.proposal_json:
+        if any(version in payload.proposal_json for version in ('world-v2-proposals.8', 'world-v2-proposals.9')):
             from .world_plan_management import reserve_response
             updated = reserve_response(state=updated, world_id=event.world_id, proposal_id=payload.proposal_id)
         return updated
@@ -12734,6 +12739,8 @@ def _activity_planned(
     validate_chat_life_plan_event(state=state, event=event, payload=payload)
     validate_world_life_plan_event(state=state, event=event, payload=payload)
     validate_day_open_life_plan_event(state=state, event=event, payload=payload)
+    from .world_plan_management import validate_role_replacement
+    validate_role_replacement(state=state,event=event,payload=payload)
     return state.model_copy(
         update={
             "plans": plan_activity(

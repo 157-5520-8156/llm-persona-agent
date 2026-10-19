@@ -3861,10 +3861,11 @@ def _validate_world_plan_response_transaction(events):
     if events[0].event_type != "WorldPlanResponseRecorded":
         raise ValueError("Plan response effects require one closed domain batch")
     body = events[0].payload()
+    replacement_source = SOURCE if events[-1].payload().get("role_response_proposal_id") else INTENT_SOURCE
     successors = {
         "continue": (),
         "end": (("ActivityAbandoned", SOURCE),),
-        "revise": (("ActivityAbandoned", SOURCE), ("ActivityPlanned", INTENT_SOURCE)),
+        "revise": (("ActivityAbandoned", SOURCE), ("ActivityPlanned", replacement_source)),
     }
     expected = (("WorldPlanResponseRecorded", SOURCE), *successors[body["operation"]])
     if (tuple((e.event_type, e.source) for e in events) != expected

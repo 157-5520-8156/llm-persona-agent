@@ -291,9 +291,31 @@ async def test_identical_new_intentions_remain_two_explicit_choices(tmp_path, mo
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("operation", ["continue", "revise", "end"])
+@pytest.mark.parametrize("legacy", [False, True])
 async def test_paid_plan_choice_recovers_after_audit_without_reauthoring(
-    tmp_path, monkeypatch, operation
+    tmp_path, monkeypatch, operation, legacy
 ):
+    from companion_daemon.world_v2.character_interior.world_stimulus import (
+        CharacterInteriorWorldStimulusRuntime,
+    )
+    import hashlib
+
+    original_manifest = CharacterInteriorWorldStimulusRuntime._manifest
+
+    async def old_paid_manifest(self, **kwargs):
+        value = await original_manifest(self, **kwargs)
+        payload = json.loads(value.payload_json)
+        payload.pop("plan_response_contract", None)
+        raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        return value.model_copy(
+            update={
+                "payload_json": raw,
+                "payload_hash": "sha256:" + hashlib.sha256(raw.encode()).hexdigest(),
+            }
+        )
+
+    if legacy:
+        monkeypatch.setattr(CharacterInteriorWorldStimulusRuntime, "_manifest", old_paid_manifest)
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
     provider = PlanRole()
     model = _model(provider)
@@ -318,7 +340,9 @@ async def test_paid_plan_choice_recovers_after_audit_without_reauthoring(
     await app.drain_background_once()
     before = app.export_replay_evidence()
     assert failed and before.projection.plans == (original,)
-    assert len(before.projection.pending_plan_responses) == (0 if operation == "continue" else 1)
+    assert len(before.projection.pending_plan_responses) == (
+        0 if legacy and operation == "continue" else 1
+    )
     if operation != "continue":
         from companion_daemon.world_v2.life_ecology_activity import ActivityOpeningCatalog
 
@@ -336,6 +360,7 @@ async def test_paid_plan_choice_recovers_after_audit_without_reauthoring(
         x.event.event_id for x in before.events if x.event.event_type == "ModelResultRecorded"
     }
     app.close()
+    monkeypatch.setattr(CharacterInteriorWorldStimulusRuntime, "_manifest", original_manifest)
     reopened = _build(path, model)
     try:
         for _ in range(8):

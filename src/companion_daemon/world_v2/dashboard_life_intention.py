@@ -16,7 +16,7 @@ from .schemas import LedgerProjection, PlanStateProjection, WorldEvent, validate
 @dataclass(frozen=True)
 class DashboardLifeIntention:
     intention: str
-    source_kind: Literal["chat", "world", "day_open"]
+    source_kind: Literal["chat", "world", "day_open", "role_revision"]
     selected_at: datetime
 
 
@@ -38,6 +38,15 @@ def read_dashboard_life_intention(
         derive_day_open_life_plan, validate_day_open_life_plan_event,
     )
     from .world_life_intent_runtime import derive_world_life_plan, validate_world_life_plan_event
+    from .world_plan_management import ROLE_PLAN_PREFIX, RolePlanResponseReader
+    if plan.plan_id.startswith(ROLE_PLAN_PREFIX):
+        try:
+            material=RolePlanResponseReader(ledger=ledger).read_for_plan(plan_id=plan.plan_id)
+            if material is not None:
+                return DashboardLifeIntention(material.character_intention,"role_revision",material.origin.selected_at)
+        except (ValueError,TypeError,KeyError):
+            return None
+        return None
 
     families = (
         ("chat", "chat_intent_origin", derive_chat_life_plan, validate_chat_life_plan_event),

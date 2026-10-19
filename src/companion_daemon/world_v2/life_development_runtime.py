@@ -2261,6 +2261,12 @@ class LifeDevelopmentRuntime:
                     )
             return self._recovered_result(existing[0])
 
+        from .world_plan_management import accepted_life_response,recover_response
+        accepted=accepted_life_response(self._ledger.project(),wake_event_ref,proposal_id)
+        if accepted is not None:
+            recover_response(ledger=self._ledger,audit=accepted)
+            return LifeDevelopmentResult(status="no_op",reason_code="life_development.plan_response_recovered",
+                proposal_event_ref=accepted.event_ref)
         projection = self._ledger.project()
         wake = self._exact_wake(projection=projection, wake_event_ref=wake_event_ref)
         if wake is None:
@@ -2686,6 +2692,8 @@ class LifeDevelopmentRuntime:
                     status="stale_prefix",
                     reason_code="life_development.acceptance_prefix_stale",
                 )
+            if getattr(character_choice,"plan_response",None) is not None:
+                return self._recovered_result(proposal)
             return LifeDevelopmentResult(
                 status="no_op",
                 reason_code="life_development.character_declined",
@@ -3834,6 +3842,33 @@ class LifeDevelopmentRuntime:
             "inner_decision_content_ref": inner_content_ref,
             "inner_decision_content_hash": inner_content_hash,
         }
+        plan_response=(decision.decision.get("payload") or {}).get("completion",{}).get("plan_response")
+        if plan_response is not None:
+            from .chat_life_intent_contract import PlanResponseDraft
+            from .world_plan_management import response_input,reader_for,role_proposal,role_audit_events
+            pinned=self._ledger.project()
+            bounds=response_input(ledger=self._ledger,projection=pinned,actor_ref=self._owner,
+                reader=reader_for(self._ledger,self._owner,self._store),source_refs=(wake.event_id,))
+            if bounds is None or _cursor(pinned)!=expected_cursor:
+                raise ConcurrencyConflict("Plan target authority changed during life choice")
+            metadata={**metadata,"life_proposal_id":proposal_id}
+            operation=role_proposal(ledger=self._ledger,bounds=bounds,
+                choice=PlanResponseDraft.model_validate_json(canonical_json(plan_response)),
+                source_ref=wake.event_id,purpose="life_development_choice",
+                proposal_id="proposal:life-development:character-interior-output:"+_digest({
+                    "proposal_id":proposal_id,"inner_turn_id":decision.inner_turn_id}),
+                context_json=canonical_json(metadata))
+            events=role_audit_events(result=decision,proposal=operation,source=wake,
+                logical_time=pinned.logical_time,route_reason_code="life_development.character_interior",
+                router_version="character-interior-router.1")
+            self._ledger.commit_at_cursor(events,expected_cursor=expected_cursor,
+                commit_id="commit:life-development:character-interior-plan:"+_digest(operation.proposal_id))
+            model=ModelResultRecordedPayload.model_validate_json(events[0].payload_json)
+            return _RecordedCharacterInteriorDecision(inner_decision=decision,decision_subject_hash=decision_subject_hash,
+                model_result_event_ref=events[0].event_id,model_result_event_hash=events[0].payload_hash,
+                audit_proposal_event_ref=events[1].event_id,audit_proposal_event_hash=events[1].payload_hash,
+                deliberation_result_id=model.deliberation_result_id,final_model_result_ref=model.model_result_ref,
+                inner_decision_content_ref=inner_content_ref,inner_decision_content_hash=inner_content_hash)
         audit_proposal = MinimalProposal(
             proposal_id=(
                 "proposal:life-development:character-interior-output:"
@@ -3988,7 +4023,7 @@ class LifeDevelopmentRuntime:
                 audit.route.reason_code != "life_development.character_interior"
                 or audit.route.router_version != "character-interior-router.1"
                 or context is None
-                or context.decision_subject_hash != decision_subject_hash
+                or (context.decision_subject_hash != decision_subject_hash and audit.character_interior_lineage is None)
                 or terminal.attempt_count != 1
                 or terminal.attempt_index != 0
             ):
@@ -4004,7 +4039,8 @@ class LifeDevelopmentRuntime:
             proposal_audit = proposal_audits[0]
             try:
                 envelope = json.loads(proposal_audit.proposal_json)
-                metadata = json.loads(envelope["response_text"])
+                from .world_plan_management import audit_context_metadata
+                metadata = audit_context_metadata(envelope)
                 inner_content_ref = metadata["inner_decision_content_ref"]
                 inner_content_hash = metadata["inner_decision_content_hash"]
                 if not isinstance(inner_content_ref, str) or not isinstance(
@@ -4047,6 +4083,9 @@ class LifeDevelopmentRuntime:
                 or lineage.request_hash.removeprefix("sha256:") != audit.request_hash
                 or lineage.response_hash.removeprefix("sha256:") != audit.response_hash
                 or proposal_audit.proposal_hash != terminal.proposal_hash
+                or context.decision_subject_hash != (
+                    _digest(inner_value) if envelope.get("schema_registry_version")=="world-v2-proposals.9"
+                    and audit.character_interior_lineage is not None else decision_subject_hash)
             ):
                 raise ValueError("recoverable CharacterInterior decision changed lineage")
             return _RecordedCharacterInteriorDecision(
@@ -6460,6 +6499,12 @@ class LifeDevelopmentRuntime:
             active_aspiration_source_refs=active_aspiration_source_refs,
             npc_privacy_floors=npc_privacy_floors,
         )
+        from .world_plan_management import capability as plan_capability,reader_for
+        pinned=self._ledger.project_at(purpose_context.cursor)
+        management=plan_capability(state=pinned,actor_ref=self._owner,source_refs=(purpose_context.trigger_ref,),
+            reader=reader_for(self._ledger,self._owner,self._store))
+        if management is not None:
+            capability["plan_management"]=management
         return await self._consider_character_choice(
             capability=capability,
             context=purpose_context,
@@ -6501,7 +6546,10 @@ class LifeDevelopmentRuntime:
             capability_manifest=manifest,
             context_note=(
                 "A source-bound external Life possibility is available. The character "
-                "owns accept/no-op; the system owns only execution authority."
+                "owns accept/no-op; the system owns only execution authority. "
+                + ("Declining this offered opportunity may independently carry plan_response: continue/revise/end "
+                   "an exact own Plan in plan_management. These are intention operations, not claims about "
+                   "the offered World's outcome. New independent intentions remain your choice." if capability.get("plan_management") else "")
             ),
         )
         result = await self._character_interior.consider(opportunity)
@@ -7289,10 +7337,16 @@ class LifeDevelopmentRuntime:
             return None
         return located[0]
 
-    @staticmethod
-    def _recovered_result(event: WorldEvent) -> LifeDevelopmentResult:
+    def _recovered_result(self, event: WorldEvent) -> LifeDevelopmentResult:
         payload = event.payload()
         if payload.get("decision") == "no_op":
+            binding=payload.get("character_interior_decision")
+            if binding is not None:
+                audit=next((a for a in self._ledger.project().proposal_audits
+                            if a.event_ref==binding["audit_proposal_event_ref"]),None)
+                if audit is not None and json.loads(audit.proposal_json).get("schema_registry_version")=="world-v2-proposals.9":
+                    from .world_plan_management import recover_response
+                    recover_response(ledger=self._ledger,audit=audit)
             return LifeDevelopmentResult(
                 status="no_op",
                 reason_code="life_development.world_author_no_op_recovered",

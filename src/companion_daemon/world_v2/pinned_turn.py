@@ -104,6 +104,7 @@ class PinnedTurnCompiler:
         shared_private_invitation_advisory: bool = False,
         recorded_cadence_mode: str = "off",
         affect_target_bounds_enabled: bool = False,
+        plan_material_reader=None,
     ) -> None:
         if not companion_actor_ref:
             raise ValueError("Pinned turn companion actor is required")
@@ -133,6 +134,7 @@ class PinnedTurnCompiler:
         # voice (or is waiting on); read-only texture, never an obligation.
         self._shared_private_invitation_advisory = shared_private_invitation_advisory
         self._affect_target_bounds_enabled = affect_target_bounds_enabled
+        self._plan_material_reader=plan_material_reader
         if recorded_cadence_mode not in {"off", "shadow", "on"}:
             raise ValueError("recorded cadence mode must be off, shadow, or on")
         self._recorded_cadence_mode = recorded_cadence_mode
@@ -633,6 +635,12 @@ class PinnedTurnCompiler:
             deliberate_kwargs["affect_target_bounds"] = lower_bounds_from_projection(
                 projection
             )
+        if self._plan_material_reader is not None:
+            from .world_plan_management import response_input
+            bounds=response_input(ledger=self._ledger,projection=projection,
+                actor_ref=self._companion_actor_ref,reader=self._plan_material_reader,source_refs=(context.trigger_ref,))
+            if bounds is not None:
+                deliberate_kwargs["plan_response_input"]=bounds
         model_started = time.perf_counter()
         result = await self._deliberation.deliberate(capsule, **deliberate_kwargs)
         _LOG.warning(

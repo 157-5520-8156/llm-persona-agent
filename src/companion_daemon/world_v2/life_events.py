@@ -125,11 +125,12 @@ class ActivityPlannedPayload(DomainMutationPayload):
     day_open_intent_origin: DayOpenLifeIntentOrigin | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    role_response_proposal_id: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def creates_planned_activity(self) -> ActivityPlannedPayload:
         if sum(origin is not None for origin in (
-            self.chat_intent_origin, self.world_intent_origin, self.day_open_intent_origin
+            self.chat_intent_origin, self.world_intent_origin, self.day_open_intent_origin, self.role_response_proposal_id
         )) > 1:
             raise ValueError("ActivityPlanned cannot combine different role intent origins")
         if self.expected_entity_revision != 0 or self.plan.entity_revision != 1:

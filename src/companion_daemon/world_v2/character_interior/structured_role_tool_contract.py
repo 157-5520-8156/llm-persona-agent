@@ -2022,8 +2022,9 @@ class StructuredRoleToolContracts:
                 {"properties": {"decision": {"enum": ["self_directed_intent"]}}, "required": ["life_intent"],
                  "not": {"properties": {"life_intent": {"type": "null"}}}},
             ]
+            management = capability_payload["contract"].endswith(".9")
             continuity = capability_payload["contract"].endswith(".8")
-            agenda = capability_payload["contract"].endswith((".6", ".7", ".8"))
+            agenda = capability_payload["contract"].endswith((".6", ".7", ".8", ".9"))
             reconsider = agenda or capability_payload["contract"].endswith(".5")
             if reconsider:
                 from ..day_open_life_intent_contract import DayOpenReconsiderChoice
@@ -2042,15 +2043,20 @@ class StructuredRoleToolContracts:
                 from ..day_open_life_intent_contract import DayOpenAgendaChoice
 
                 schema["anyOf"][1] = _provider_schema(DayOpenAgendaChoice)
-            if continuity:
+            if management:
+                from ..day_open_life_intent_contract import DayOpenPlanChoice
+                schema["anyOf"].append(_provider_schema(DayOpenPlanChoice))
+                schema["anyOf"][-1]["properties"]["plan_response"]["properties"]["plan_id"]={
+                    "type":"string","enum":[p["plan_id"]for p in capability_payload["plan_management"]["plans"]]}
+            if continuity or management:
                 from ..day_open_life_intent_contract import DayOpenContinueChoice
                 existing_schema = _provider_schema(DayOpenContinueChoice)
                 existing_schema["properties"]["plan_ids"]["items"] = {
-                    "type": "string", "enum": [p["plan_id"] for p in capability_payload["existing_plans"]]}
+                    "type": "string", "enum": [p["plan_id"] for p in (capability_payload["plan_management"]["plans"] if management else capability_payload["existing_plans"]) ]}
                 schema["anyOf"].append(existing_schema)
             return _compile_generic_decision_contract(
                 purpose="activity_lifecycle_choice",
-                tool_name="character_role_activity_lifecycle_choice_v5" if continuity else "character_role_activity_lifecycle_choice_v4" if agenda else "character_role_activity_lifecycle_choice_v3" if reconsider else "character_role_activity_lifecycle_choice_v2",
+                tool_name="character_role_activity_lifecycle_choice_v6" if management else "character_role_activity_lifecycle_choice_v5" if continuity else "character_role_activity_lifecycle_choice_v4" if agenda else "character_role_activity_lifecycle_choice_v3" if reconsider else "character_role_activity_lifecycle_choice_v2",
                 payload_schema=schema,
                 capability_identity=capability_payload,
                 source_refs=tuple(json.loads(source_refs_json)),
@@ -2322,6 +2328,25 @@ class StructuredRoleToolContracts:
             raise ValueError("life development choice source refs are malformed")
 
         no_op_schema = _provider_schema(CharacterChoiceNoOpDraft)
+        management=capability_payload.get("plan_management")
+        if management is None:
+            no_op_schema["properties"].pop("plan_response",None)
+            if "required" in no_op_schema:
+                no_op_schema["required"] = [
+                    k for k in no_op_schema["required"] if k != "plan_response"
+                ]
+        else:
+            from ..world_plan_management import validate_capability
+
+            validate_capability(management)
+            operation = _non_null_schema(
+                no_op_schema["properties"]["plan_response"], field_name="plan_response"
+            )
+            operation["properties"]["plan_id"] = {
+                "type": "string",
+                "enum": [p["plan_id"] for p in management["plans"]],
+            }
+            no_op_schema["properties"]["plan_response"] = _nullable_provider_schema(operation)
         accept_schema = _provider_schema(CharacterChoiceAcceptDraft)
         accept_properties = _required_object_properties(accept_schema)
 

@@ -664,8 +664,22 @@ def _provider_schema(model_type: object) -> dict[str, object]:
     converted = _inline_refs(generated, definitions)
     if not isinstance(converted, dict):
         raise TypeError("provider wire schema must be an object")
-    return converted
+    # Fresh capabilities are added to copied contracts; old paid schemas stay exact.
+    def strip_new_field(node):
+        if isinstance(node,dict):
+            props=node.get("properties",{})
+            if "life_intent" in props:
+                props.pop("plan_response",None)
+                if "required" in node:
+                    node["required"] = [k for k in node["required"] if k != "plan_response"]
+            for item in node.values():
+                strip_new_field(item)
+        elif isinstance(node, list):
+            for item in node:
+                strip_new_field(item)
 
+    strip_new_field(converted)
+    return converted
 
 
 def _legacy_recall_provider_schema() -> dict[str, object]:
@@ -1080,6 +1094,56 @@ class InboundToolContract:
     wrapped_result_fields: tuple[str, ...] | None = None
     native_slim_core: bool = False
 
+    def with_plan_management(self, management):
+        from dataclasses import replace
+        from ..chat_life_intent_contract import PlanResponseDraft
+        from ..world_plan_management import validate_capability
+
+        validate_capability(management)
+        choice = _provider_schema(PlanResponseDraft)
+        choice["properties"]["plan_id"] = {
+            "type": "string",
+            "enum": [p["plan_id"] for p in management["plans"]],
+        }
+        if self.identity.schema_dialect == "deepseek-strict":
+            choice = deepseek_strict_tool_schema(choice)
+        tools = deepcopy(self.provider_tools)
+
+        def inject(node):
+            if isinstance(node, dict):
+                props = node.get("properties", {})
+                if "life_intent" in props:
+                    props["plan_response"] = {"anyOf": [deepcopy(choice), {"type": "null"}]}
+                    if "life_intent" in node.get("required", []):
+                        node["required"].append("plan_response")
+                    return
+                for item in node.values():
+                    inject(item)
+            elif isinstance(node, (list, tuple)):
+                for item in node:
+                    inject(item)
+
+        inject(tools)
+        schema_hash = (
+            "sha256:"
+            + sha256(_canonical_json(tools[0]["function"]["parameters"]).encode()).hexdigest()
+        )
+        identity = replace(
+            self.identity,
+            schema_sha256=schema_hash,
+            contract_sha256="sha256:"
+            + sha256(
+                _canonical_json(
+                    {
+                        "original": self.identity.contract_sha256,
+                        "plan_management": management,
+                        "schema": schema_hash,
+                    }
+                ).encode()
+            ).hexdigest(),
+        )
+        return replace(self, provider_tools=tools, identity=identity)
+
     def required_null_padding_paths(self) -> dict[str, tuple[str, ...]]:
         """Read available v2 branch padding from the tool, without changing it."""
 
@@ -1241,6 +1305,7 @@ class InboundGateToolContract:
     provider_tools: tuple[dict[str, object], ...]
     provider_tool_choice: dict[str, object]
     identity: InboundToolContractIdentity
+    with_plan_management = InboundToolContract.with_plan_management
 
     def decode(self, raw_arguments: str) -> dict[str, object]:
         """Validate and normalize one exact compact-gate tool result."""

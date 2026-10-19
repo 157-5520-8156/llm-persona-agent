@@ -46,10 +46,18 @@ def validate_completion_source(state, source, *, actor_ref, cursor_revision):
 def latest_completion_source(state, *, actor_ref, include_abandoned=False, allow_existing_plans=False):
     """Offer the latest terminal activity; legacy callers keep completion-only semantics."""
     terminal_statuses = {"completed", "abandoned"} if include_abandoned else {"completed"}
+    intention_receipts = {r.event_id for r in state.committed_world_event_refs
+                          if r.event_type == "WorldPlanResponseRecorded"}
+    replaced_predecessors = {p.supersedes_plan_id for p in state.plans if p.supersedes_plan_id is not None}
     candidates = [
         plan for plan in state.plans
         if plan.owner_actor_ref == actor_ref and plan.status in terminal_statuses
         and plan.authority_origin is not None
+        # A revision already supplies its successor; do not ask for another
+        # agenda because its old version was retired. End-only choices still
+        # retain the ordinary completion follow-up opportunity.
+        and not (plan.status == "abandoned" and plan.plan_id in replaced_predecessors
+                 and plan.terminal_reason_ref in intention_receipts)
     ]
     if not candidates:
         return None

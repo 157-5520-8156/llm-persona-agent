@@ -29,9 +29,8 @@ from .action_pump import (
     ActionPumpResult,
     ProviderAcceptedReconciliationGate,
 )
-from .chat_life_intent_runtime import ChatLifeIntentRuntime, CompositeActivityPlanMaterialReader
-from .world_life_intent_runtime import WorldLifeIntentRuntime
-from .day_open_life_intent_runtime import DayOpenLifeIntentRuntime
+from .chat_life_intent_runtime import ChatLifeIntentRuntime
+from .world_plan_management import reader_for as plan_response_reader_for
 from .activity_plan_runtime import (
     ActivityPlanCommand,
     ActivityPlanRuntime,
@@ -4028,6 +4027,7 @@ def build_sqlite_world_v2_turn_application(
             shared_private_invitation_advisory=True,
             pending_expectation_advisory=True,
             recorded_cadence_mode=config.recorded_cadence_mode,
+            plan_material_reader=plan_response_reader_for(ledger,config.companion_actor_ref,life_content_store),
         )
         social_action_worker = SocialActionWorker(
             ledger=ledger,
@@ -4494,12 +4494,7 @@ def build_sqlite_world_v2_turn_application(
                 ),
                 ecology_catalog_version=config.life_ecology.catalog_version,
                 day_open_life_enabled=True,
-                plan_material_reader=CompositeActivityPlanMaterialReader(
-                    ChatLifeIntentRuntime(ledger=ledger, owner_actor_ref=config.companion_actor_ref),
-                    WorldLifeIntentRuntime(ledger=ledger, owner_actor_ref=config.companion_actor_ref),
-                    DayOpenLifeIntentRuntime(ledger=ledger, owner_actor_ref=config.companion_actor_ref),
-                    LifeDevelopmentProposalReader(ledger=ledger, content_store=life_content_store),
-                ),
+                plan_material_reader=plan_response_reader_for(ledger,config.companion_actor_ref,life_content_store),
             )
             if config.life_ecology is not None
             else None
