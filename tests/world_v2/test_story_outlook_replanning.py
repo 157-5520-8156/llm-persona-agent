@@ -437,3 +437,28 @@ def test_objective_tag_cannot_escape_exact_negative_source_review():
     with pytest.raises(ValueError, match="fragment"):
         parse_life_development_novel_origin_review(raw=_novel_origin_review(decision="unsupported",
             unsupported_objective_transitions=(bad,)), draft=draft)
+
+
+def test_revise_rejection_identifies_the_exact_source_and_linked_unchanged_future(tmp_path):
+    ledger, wake, _, _, runtime = setup(tmp_path, lambda w: [])
+    value = story_draft(wake)
+    value['change_responses'] = [{'source_ref': 'occurrence:one', 'decision': 'revise',
+        'thread_refs': ['books'], 'planning_keys': [], 'reason': 'Only new wording.'}]
+    previous = WorldOutlookDraft.model_validate_json(json.dumps(value))
+    packet = {'current_outlook': previous.model_dump(mode='json'),
+              'rolling_preparation': {'published': []},
+              'world_changes': [{'source_ref': 'occurrence:one'}]}
+    value['opportunities'][0]['conditions'] = [{'source_ref': 'occurrence:one', 'ready_statuses': ['settled']}]
+    value['opportunities'][0]['execution']['text'] = 'Changed prose with the same external structure.'
+    candidate = WorldOutlookDraft.model_validate_json(json.dumps(value))
+    try:
+        with pytest.raises(ValueError) as failure:
+            runtime._validate_story_revision(candidate, packet)
+        assert 'occurrence:one' in str(failure.value)
+        assert candidate.opportunities[0].opportunity_id in str(failure.value)
+        assert 'conditions' in str(failure.value)
+        # Rejection must not choose retain, rewrite a node or accept anything.
+        assert candidate.change_responses[0].decision == 'revise'
+        assert runtime.store.head() is None
+    finally:
+        runtime.close()

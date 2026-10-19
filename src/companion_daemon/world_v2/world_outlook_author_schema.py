@@ -11,6 +11,11 @@ def outlook_author_schema(*, basis_refs=None, npc_privacy_floors=(), prior_oppor
                           new_opportunity_ids=None, story_planning=False, world_changes=()):
     schema = WorldOutlookDraft.model_json_schema()
     if story_planning:
+        schema["$defs"]["OutlookChangeResponse"]["properties"]["decision"]["description"] = (
+            "retain if the future remains compatible. revise requires a source-linked change of "
+            "dates, execution fields other than text, or planning timing/structure; new IDs, prose, "
+            "thread links and conditions alone do not prove that change."
+        )
         schema["properties"]["threads"]["minItems"] = 2
         thread = schema["$defs"]["OutlookThread"]
         thread["required"].append("developments")
@@ -38,6 +43,14 @@ def outlook_author_schema(*, basis_refs=None, npc_privacy_floors=(), prior_oppor
         for field in ("thread_refs", "conditions"):
             schema["$defs"]["OutlookStage"]["properties"].pop(field)
     if rolling_planning:
+        schema["properties"]["opportunities"]["description"] = (
+            "At most 24 total, counting retained selectors and new opportunities together. "
+            "A new ID does not add capacity; choose what to retain or omit without rewriting history."
+        )
+        schema["$defs"]["OutlookDependency"]["properties"]["unchanged_token"]["description"] = (
+            "Copy condition_sources.token for this exact source_ref, or omit when a state predicate suffices. "
+            "Never copy a history anchor authority_hash."
+        )
         schema["required"].append("long_term")
         schema["properties"]["long_term"]["minItems"] = 1
         planning = schema["$defs"]["WorldPlanningDraft"]

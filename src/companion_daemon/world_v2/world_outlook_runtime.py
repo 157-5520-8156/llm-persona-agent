@@ -328,7 +328,11 @@ any genuinely changed objective planning_keys; retain explains why the future re
 If world_changes is empty, omit change_responses or return []; condition_sources and history_offer
 are not a change list. Keep cannot acknowledge a nonempty change list.
 A revise response must change a linked stage/opportunity whose conditions bind that exact change source;
-acknowledgment or wording alone is insufficient. Truncated excerpts are incomplete evidence;
+new IDs, prose, thread links or conditions alone do not prove a changed future. The structural
+comparison uses stage dates/planning_key, or opportunity windows and non-text execution fields;
+planning uses its period, recurrence, phases and exceptions. Do not alter dates just to pass:
+retain is valid when actual consequences leave the future compatible.
+Truncated excerpts are incomplete evidence;
 never infer absent obligations or facts from clipped prose. material_excerpt_json is an exact
 prefix of a source-bound JSON record, not necessarily parseable complete JSON. material_truncated
 means unshown fields remain unknown; it does not grant authority to invent their values.
@@ -610,7 +614,11 @@ class WorldOutlookRuntime:
                 old_objects = [*previous.get("long_term", ()), *previous.get("opportunities", ())]
                 if not any(_future_structure(obj.model_dump(mode="json")) not in
                            [_future_structure(old) for old in old_objects] for obj in linked):
-                    raise ValueError("revise requires an actually changed future stage/opportunity linked to its accepted change source")
+                    identities = [obj.stage_id if hasattr(obj, "stage_id") else obj.opportunity_id for obj in linked]
+                    raise ValueError("revise requires an actually changed future stage/opportunity linked to its accepted change source; "
+                        f"source_ref={response.source_ref!r}, linked_candidates={identities!r}. "
+                        "New IDs, prose, thread links and conditions alone do not change its structure. "
+                        "Retain is legal if the future remains compatible; do not invent changes to satisfy validation.")
             for key in response.planning_keys:
                 replacements = [n for n in candidate.opportunities if n.execution.planning is not None
                                 and n.execution.planning.planning_key == key]

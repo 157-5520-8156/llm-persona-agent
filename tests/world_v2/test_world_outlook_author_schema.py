@@ -278,3 +278,14 @@ def test_keep_with_changes_requires_exact_model_authored_retain_responses(json_o
                       [{**response, 'planning_keys': ['school']} ]):
         assert not validator.is_valid({**value, 'change_responses': responses})
     assert not Draft202012Validator(outlook_result_tool(schema, json_object=json_object)['function']['parameters']).is_valid(value)
+
+
+def test_first_pass_schema_explains_total_capacity_and_separate_hash_namespaces():
+    schema = outlook_author_schema(rolling_planning=True, story_planning=True)
+    opportunities = schema['properties']['opportunities']
+    assert opportunities['maxItems'] == 24
+    assert 'retained' in opportunities['description'] and 'total' in opportunities['description']
+    token = schema['$defs']['OutlookDependency']['properties']['unchanged_token']
+    assert 'condition_sources' in token['description'] and 'authority_hash' in token['description']
+    decision = schema['$defs']['OutlookChangeResponse']['properties']['decision']
+    assert 'conditions' in decision['description'] and 'retain' in decision['description']
