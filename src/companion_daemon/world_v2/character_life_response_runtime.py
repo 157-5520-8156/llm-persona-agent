@@ -58,7 +58,10 @@ def derive_character_life_responses(
         world_id=world_id,
         proposal_id=proposal_id,
         owner_actor_ref=owner_actor_ref,
-        registry_versions=(CHARACTER_LIFE_RESPONSE_REGISTRY_VERSION, 'world-v2-proposals.8'),
+        # The same World role may pair its response with a shared Plan
+        # operation. Registry .9 retains this exact response/source contract.
+        registry_versions=(CHARACTER_LIFE_RESPONSE_REGISTRY_VERSION, 'world-v2-proposals.8',
+                           'world-v2-proposals.9'),
         error_type=CharacterLifeResponseError,
     )
     changes = tuple(

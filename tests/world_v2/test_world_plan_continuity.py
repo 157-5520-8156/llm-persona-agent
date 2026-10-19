@@ -582,3 +582,137 @@ async def test_existing_lifecycle_heads_are_valid_plan_response_targets(
     finally:
         app.close()
         await model.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("crash", [False, True])
+@pytest.mark.parametrize("operation", ["continue", "revise", "end"])
+@pytest.mark.parametrize("text", [None, "我想先自己考虑一下。"])
+async def test_existing_plan_registry_does_not_drop_world_life_response(
+    tmp_path, monkeypatch, operation, text, crash
+):
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    import test_world_stimulus_life_response as response_fixture
+
+    provider = response_fixture._ResponseHTTP(intent="choose", text=text)
+    model = _model(provider)
+    app = _build(tmp_path / "world.sqlite", model)
+    selected = []
+    original = response_fixture._http_result
+
+    def submit(body, authored):
+        packet = json.loads(body["messages"][-1]["content"])
+        cap = packet.get("capability_manifest", {}).get("payload", {})
+        if selected and cap.get("world_life_response") and cap.get("world_plan_management"):
+            authored["proposals"][0]["plan_response"] = {
+                "operation": operation,
+                "plan_id": selected[0],
+                "source_event_ref": cap["world_life_response"]["source_event_refs"][0],
+            }
+            if operation == "revise":
+                authored["proposals"][0]["plan_response"]["replacement"] = {
+                    "execution_scope": "self_directed",
+                    "intention": "稍后再处理我自己的另一项安排。",
+                    "start_after_seconds": 300,
+                    "duration_seconds": 180,
+                    "importance_bp": 5000,
+                }
+        return original(body, authored)
+
+    monkeypatch.setattr(response_fixture, "_http_result", submit)
+    try:
+        await response_fixture._settled(app, name="first")
+        await app.drain_background_once()
+        before = app.export_replay_evidence()
+        selected.append(before.projection.plans[0].plan_id)
+        provider.intent = "null"
+        settled = await response_fixture._settled(app, name="second")
+        failed = []
+        if crash:
+            commit = app._ledger.commit_at_cursor
+
+            def crash_response(events, **kwargs):
+                if events[0].event_type == "CharacterLifeResponseRecorded" and not failed:
+                    failed.append(True)
+                    raise ValueError(
+                        "offline crash between original paid audit and response receipt"
+                    )
+                return commit(events, **kwargs)
+
+            monkeypatch.setattr(app._ledger, "commit_at_cursor", crash_response)
+        result = await app.drain_background_once()
+        if crash:
+            assert failed and result.work_status == "technical_failure"
+            await app.aclose()
+            app = _build(tmp_path / "world.sqlite", model)
+            for _ in range(8):
+                result = await app.drain_background_once()
+                if any(
+                    x.event.event_type == "CharacterLifeResponseRecorded"
+                    and x.event.payload()["origin"]["source_event_ref"] == settled.event_id
+                    for x in app.export_replay_evidence().events
+                ):
+                    break
+            target_calls = [
+                call
+                for call in provider.stimulus_requests
+                if settled.event_id
+                in json.loads(call["messages"][-1]["content"])
+                .get("capability_manifest", {})
+                .get("payload", {})
+                .get("world_life_response", {})
+                .get("source_event_refs", [])
+            ]
+            assert len(target_calls) == 1
+        assert result.work_status != "technical_failure", result
+        after = app.export_replay_evidence()
+        assert any(
+            x.event.event_type == "CharacterLifeResponseRecorded"
+            and x.event.payload()["origin"]["source_event_ref"] == settled.event_id
+            for x in after.events
+        )
+        old = before.projection.plans[0]
+        plans = after.projection.plans
+        if operation == "continue":
+            assert plans == (old,)
+        elif operation == "end":
+            assert len(plans) == 1 and plans[0].status == "abandoned"
+        else:
+            assert (
+                len(plans) == 2
+                and next(x for x in plans if x.plan_id != old.plan_id).supersedes_plan_id
+                == old.plan_id
+            )
+        target_receipts = [
+            x.event
+            for x in after.events
+            if x.event.event_type == "CharacterLifeResponseRecorded"
+            and x.event.payload()["origin"]["source_event_ref"] == settled.event_id
+        ]
+        assert len(target_receipts) == 1
+        from companion_daemon.world_v2.character_life_response_runtime import (
+            CharacterLifeResponseRuntime,
+        )
+        from companion_daemon.world_v2.schemas import ProjectionCursor
+
+        head = app._ledger.project()
+        runtime = CharacterLifeResponseRuntime(
+            ledger=app._ledger, owner_actor_ref=target_receipts[0].actor
+        )
+        original_pin = app._ledger.lookup_event_commit(
+            target_receipts[0].payload()["origin"]["proposal_event_ref"]
+        )[1]
+        runtime.accept(
+            world_id=app._ledger.world_id,
+            audit_cursor=ProjectionCursor(
+                world_revision=original_pin.world_revision,
+                deliberation_revision=original_pin.deliberation_revision,
+                ledger_sequence=original_pin.ledger_sequence,
+            ),
+            proposal_id=target_receipts[0].payload()["origin"]["proposal_id"],
+        )
+        assert app._ledger.project() == head
+        assert app._ledger.rebuild() == head
+    finally:
+        await app.aclose()
+        await model.aclose()

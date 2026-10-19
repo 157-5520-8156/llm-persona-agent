@@ -509,3 +509,15 @@ pretty捕获JSON按HTTP紧凑形式重新编码后30/30与观察到的wire SHA�
 本轮修复限定为原契约的首次生成说明与精确错误：rolling schema说明24是保留与新建的总数、token仅来自同source的condition_sources而非历史哈希；首次故事提示列明原结构比较范围，兼容时可retain，不为校验编造改期；拒绝包含精确source_ref及关联候选ID。没有改变_future_structure、接受条件、24/100000上限、审核、角色选择或重试次数，也未加新生产模块。旧非rolling schema保持不变；专项初稿因给旧schema增加注释挤过旧压缩夹具上限的失败日志保留，随后将新注释限定到rolling路径。
 
 2个新定向用例先红，修复后连同原故事闭环/schema/压缩/付费恢复专项105项通过；Ruff/diff通过。全量和最终新冻结源实测在后续独立记录，不能借用f194的11033通过数。本轮改动尚未热写v23 frozen-source；QQ79910/主候选35221未动。
+
+## 2026-10-20 Goal推进：现有Plan操作与Life回应的协议交接
+
+用户授权持续修复完整生活/命运机制并建立active goal。debfc冻结full-v5已独立核实：11035pass/19skip/2xfail/1既有warning，1710.0479s，1722Python不变，logSHA22dafe99d00462972a74d51760694ffccf16d681cee1763cc03f3ffb76baf5a5。这只属于debfc，不能借给本节新修复。
+
+实际v23中五份paid WorldStimulus提案同时包含现有Plan操作和8/19/1/3/4个Life回应（35个回应义务）。生产端使用规范registry .9，Plan接受器认识.9，CharacterLifeResponseRuntime只认识.5/.8，故已经审核且落账的角色Plan回应后续固定报proposal_binding_invalid，阻断生活回应和配对经历。这不是GLM输出违约或CAS竞态。第六份.5/9回应是正对照，不能算成另一个.9错误。原五份精确提案在完整保留副本中只改变已知registry识别这一变量后，原actor/purpose/model lineage/source/coverage均通过，.5保持有效，0HTTP/World不变；原失败与全部原始bytes保留。
+
+正式修复只让原严格WorldStimulus回应读取器认识已存在的规范.9；不添加其他purpose、未知版本、字段、来源或写能力。新增公开安装组合回归覆盖continue/revise/end、null/文字回应、回应提交前失败/cold reopen复用原paid选择、精确原audit cursor effect-once及完整重建。12项先红，修复后与原回应/配对经历/隐私/Plan路径共101项通过；Ruff/diff检查独立记录。最初夹具误用当前cursor重读历史proposal被stale正确拒绝，日志保留；改为真实原audit commit cursor，不是放宽stale。
+
+v24从未launch，等待协调器在任何World动作前因这个确定反例停止。v23正常SIGINT到逻辑07:04:40+08，shutdown_errors=[]；Python应用和SQLite清理完后仅原生faulthandler watchdog卡在解释器Finalize，保留native sample并核实DB/WAL/SHM全关后只对该隔离PID发SIGTERM解除原生finalizer。原watcher仍完整保存四库并严格重放/独立重开239.249s、effect-once55.631s均过，64904原事件SHA beb3aacc1b90820aa64775607533ed8c6e83f4fc531d14208898a9d5cfb4fb3e不变，冻结源/受保护源码/QQ和main进程不变。下个私有观测脚本依照[Python faulthandler文档](https://docs.python.org/3.13/library/faulthandler.html#faulthandler.cancel_dump_traceback_later)显式取消watchdog；不修改产品冻结源。
+
+新修复仍须新冻结全量和同保留世界恢复验证。部分paid批次源重叠及旧.5已落回应的恢复冲突需要继续核实；当前时间和配对经历记忆在Life来源审核中的读取漏接也待独立对照，不能借此把环境、私有解释、意图和实际行动混成同一事实权限。跨日闭环、加速与多样性仍未通过，goal继续active。
