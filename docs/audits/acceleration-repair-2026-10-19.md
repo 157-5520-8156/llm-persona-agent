@@ -413,3 +413,13 @@ WorldLedger已声明blocks_event_loop属性。分别改为默认无能力/有能
 0HTTP/0event/0capture且Action一致。该副本检查是e02运行时的来源兼容证据；测试修正版的
 src/scripts/configs Python与其相同，完整新版本结论仍等full-v2。e02的v17启动门禁因首轮
 失败正确阻止付费运行，未启动角色服务。后续phase以共享status/phase_evidence为准。
+
+
+测试修正版584591dc完整回归11006pass/19skip/2xfail/1既有warning，1305.33秒，1722源不变，
+日志SHA314abd02177a2ecac53c130bd23e2cf6f02ca3946f924afaea9f4f728583876f，不能借给后续修改。
+追加旧World付费工具精确对照发现共同Draft继承改变了strict required数组顺序：标准相同，
+两个严格黄金对照失败（2fail/2pass），会改变工具身份，不能仅以schema语义等价忽略。
+黄金字节来自未动的45598fa0/87e2，非新类型自算。v18协调器在launch前被正常停止，0真实
+新请求。历史World wire恢复原四字段顺序，语义验证仍委托公共PlanResponseDraft；无新框架
+或行为策略。4种黄金hash及四入口/冷恢复64项通过。最终独立full-v3/新原历史重放另存，
+未结束前不声称最终全量通过；原失败/字节/两个未启动阶段均保留。

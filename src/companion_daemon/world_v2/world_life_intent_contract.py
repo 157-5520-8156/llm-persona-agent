@@ -7,7 +7,7 @@ or grant participation by another actor. It is distinct from inbound intent.
 from datetime import datetime
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from .chat_life_intent_contract import LifeIntentDraft, PlanResponseDraft
 from .schema_core import FrozenModel
@@ -68,8 +68,17 @@ class WorldLifeIntentPayload(LifeIntentDraft):
     source_event_ref: str = Field(min_length=1, max_length=512)
 
 
-class WorldPlanResponseDraft(PlanResponseDraft):
+class WorldPlanResponseDraft(FrozenModel):
+    # The historical World wire has its own field order (strict required arrays
+    # participate in paid request identity); semantics use the common validator.
+    operation: Literal["continue", "revise", "end"]
+    plan_id: str = Field(min_length=1, max_length=512)
     source_event_ref: str = Field(min_length=1, max_length=512)
+    replacement: LifeIntentDraft | None = Field(default=None, exclude_if=lambda value: value is None)
+
+    @model_validator(mode="after")
+    def replacement_only_for_revision(self):
+        return PlanResponseDraft.replacement_only_for_revision(self)
 
 
 class WorldPlanResponsePayload(WorldPlanResponseDraft):

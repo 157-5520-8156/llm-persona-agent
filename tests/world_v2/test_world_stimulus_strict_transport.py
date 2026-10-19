@@ -1,6 +1,7 @@
 """Appraisal strict transport preserves choices, rejected bytes and old replay."""
 
 import json
+import hashlib
 
 import httpx
 from jsonschema import Draft202012Validator, ValidationError
@@ -250,9 +251,70 @@ async def test_saved_v1_v2_preparation_restores_without_recompiling_tool(tmp_pat
         raise AssertionError("saved role preparation must use its saved provider controls")
 
     monkeypatch.setattr(StructuredRoleToolContracts, "world_stimulus_appraisal", no_compile)
-    result, snapshot, _, _ = _restore_prepared_turn(canonical(payload), purpose="world_stimulus_appraisal")
+    result, snapshot, _, _ = _restore_prepared_turn(
+        canonical(payload), purpose="world_stimulus_appraisal"
+    )
     view = result.life_source_view
     assert view.verify_request(request) == view
     assert view.verify_snapshot(snapshot) == view
     assert json.loads(view.provider_controls_json)["tools"] == old_wire["tools"]
     assert json.loads(view.messages_json) == old_wire["messages"]
+
+
+@pytest.mark.parametrize(
+    "dialect,tool_hash,contract_hash",
+    [
+        (
+            "standard",
+            "c492f6845a7a8c7684f3cee57e16659e046f887288f827651a8edcac7658c520",
+            "sha256:8da2aeae41086d4fe3c26abac50204447b5cd01654938ae954d5a026fb068ec5",
+        ),
+        (
+            "deepseek-strict",
+            "cb6fe71c2d19f86208fbbd5cf608560bc76cd145414ce244d0a82a9d0d9ba9cd",
+            "sha256:272117a340c33c8d5d12b9b245adab75cc6fe3dd645f3688a9be769988af83e8",
+        ),
+        (
+            "deepseek-strict-v7",
+            "a028b793c9db9db9ebcfff1ef1baf52eafab378073a8d01311cb67be2ac486fc",
+            "sha256:bd157c31ad8babc187a168c4eeea28cc849e6d6eca71e93372cd4465d13b6d8c",
+        ),
+        (
+            "standard-v8",
+            "6ba82383f95b822eb273f07342bcac416d50b784271fcf560d9a08f0c46eadb9",
+            "sha256:37cb5006e730a04e6546371052d38499c888d5804b2b5bc15366c655f641ea5b",
+        ),
+    ],
+)
+def test_legacy_world_plan_tool_bytes_and_identity_survive_shared_semantics(
+    dialect, tool_hash, contract_hash
+):
+    # Captured from the frozen 45598fa0/87e25f0d implementation, not computed
+    # from the replacement type. Field order is significant in strict required arrays.
+    cap = dict(_manifest().payload)
+    cap["world_plan_management"] = {
+        "contract": "world-plan-management.1",
+        "source_event_refs": [SOURCE],
+        "operations": ["continue", "revise", "end"],
+        "plans": [
+            {
+                "plan_id": "plan:own",
+                "entity_revision": 1,
+                "status": "planned",
+                "intention": "稍后整理。",
+                "intention_truncated": False,
+                "scheduled_window": None,
+            }
+        ],
+    }
+    contract = StructuredRoleToolContracts().world_stimulus_appraisal(
+        capability_payload=cap,
+        recall_allowed=True,
+        source_tokens=(("s0", SOURCE),),
+        schema_dialect=dialect,
+    )
+    raw = json.dumps(
+        contract.provider_tools, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode()
+    assert hashlib.sha256(raw).hexdigest() == tool_hash
+    assert contract.identity.contract_sha256 == contract_hash
