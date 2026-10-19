@@ -62,6 +62,8 @@ class BackgroundContextProfile:
     # changes no other path.  None of the three is referenced in
     # structured_role, so the model's own output contract cannot use them.
     compact_source_inventory: bool = False
+    # Fresh explicit protocols may retain each presented family for one source.
+    preserve_inventory_scopes: bool = False
     # Unlike the historical compact view, this preserves every row, scope,
     # revision, privacy and expiry. Only hashes and duplicate host proof edges
     # stay in the canonical snapshot instead of being sent to the role.
@@ -425,11 +427,12 @@ _PRESENTED_INVENTORY_COLUMNS = ("source_ref", "scope", "privacy_class", "expires
 _PRESENTED_INVENTORY_LIMIT = 96
 
 
-def collapse_presented_source_inventory(items, *, limit=_PRESENTED_INVENTORY_LIMIT):
-    """Deduplicate by source, keep only the read columns, and bound the count.
+def collapse_presented_source_inventory(items, *, limit=_PRESENTED_INVENTORY_LIMIT, preserve_scopes=False):
+    """Bound read columns; old views deduplicate sources, fresh views scopes.
 
-    Every entry keeps the first occurrence's order, so the mapping from a source
-    to its position is stable and replayable for one snapshot.
+    Each mode keeps first-occurrence order and the same row-count limit.
+    Preserving a scope only advertises its coordinate; exact field/source
+    proof and permission checks remain with the consumer.
     """
 
     collapsed: list[dict[str, object]] = []
@@ -438,9 +441,10 @@ def collapse_presented_source_inventory(items, *, limit=_PRESENTED_INVENTORY_LIM
         if not isinstance(item, dict):
             continue
         ref = item.get("source_ref")
-        if ref is None or ref in seen:
+        key = (ref, item.get("scope")) if preserve_scopes else ref
+        if ref is None or key in seen:
             continue
-        seen.add(ref)
+        seen.add(key)
         collapsed.append(
             {key: item[key] for key in _PRESENTED_INVENTORY_COLUMNS if key in item}
         )
@@ -523,7 +527,8 @@ def slice_background_inner_life_snapshot(
             if isinstance(item, dict) and item.get("source_ref") in visible_refs
         ]
         if profile.compact_source_inventory:
-            result["source_inventory"] = collapse_presented_source_inventory(kept)
+            result["source_inventory"] = collapse_presented_source_inventory(kept,
+                preserve_scopes=profile.preserve_inventory_scopes)
         elif profile.omit_inventory_proofs:
             result["source_inventory"] = [
                 {key: value for key, value in item.items()
@@ -649,7 +654,9 @@ def profile_audit_record(profile: BackgroundContextProfile) -> dict[str, object]
             key: sorted(kinds) for key, kinds in dict(profile.capsule_item_exclusions).items()
         },
         **({"capsule_fact_scope": "actor_only"} if profile.capsule_actor_facts_only else {}),
-        **({"inventory_presentation": "source-inventory-without-host-proofs.1"}
+        **({"inventory_presentation": "source-inventory-by-scope.1"}
+           if profile.preserve_inventory_scopes else
+           {"inventory_presentation": "source-inventory-without-host-proofs.1"}
            if profile.omit_inventory_proofs else {}),
     }
 

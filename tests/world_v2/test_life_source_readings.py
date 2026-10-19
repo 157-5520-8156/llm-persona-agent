@@ -167,6 +167,19 @@ def test_identical_text_in_metadata_or_another_source_field_is_not_presentation_
     assert not _shown_exact_field(environment, '/item/value/content/world_consequence/authorized_attempt_result/text', 'same bytes', 'settled_life')
 
 
+def _same_materials_across_inventory_profiles(previous, current):
+    old_messages = json.loads(previous.messages_json)
+    new_messages = json.loads(current.messages_json)
+    assert old_messages[0] == new_messages[0]
+    bodies = [json.loads(messages[1]['content']) for messages in (old_messages, new_messages)]
+    for body in bodies:
+        body.pop('background_context_profile')
+        body['inner_life_snapshot'].pop('background_context_profile')
+        body['inner_life_snapshot'].pop('source_inventory')
+    assert bodies[0] == bodies[1]
+    assert previous.source_table_json == current.source_table_json
+
+
 @pytest.mark.asyncio
 async def test_current_clock_has_an_exact_pinned_reading_without_activity_authority(tmp_path):
     from test_life_fact_readings import _fact_view
@@ -182,7 +195,9 @@ async def test_current_clock_has_an_exact_pinned_reading_without_activity_author
         assert clock['value']['logical_time'] == snapshot.logical_time.isoformat()
         assert clock['permissions'] == [['external_fact', 'general']]
         legacy, _ = await _fact_view(case.capsule, review_contract='life-source-review.22')
-        assert legacy.messages_json == view.messages_json
+        previous, _ = await _fact_view(case.capsule, review_contract='life-source-review.23')
+        assert legacy.messages_json == previous.messages_json
+        _same_materials_across_inventory_profiles(previous, view)
         assert not any(r['source_family'] == 'current_world_clock' for r in
             prepare_life_source_readings(view=legacy, snapshot=snapshot).as_dict()['readings'])
         assert prepared.require_reading(reading_id=clock['reading_id'], claim_scope='external_fact',
@@ -219,7 +234,9 @@ async def test_paired_memory_fields_reach_review_with_their_two_authors_separate
         prepared.require_reading(reading_id=private[0]['reading_id'], claim_scope='environment',
             subject_role='general', view=view, snapshot=snapshot)
     legacy, _ = await _fact_view(capsule, review_contract='life-source-review.22')
-    assert legacy.messages_json == view.messages_json
+    previous, _ = await _fact_view(capsule, review_contract='life-source-review.23')
+    assert legacy.messages_json == previous.messages_json
+    _same_materials_across_inventory_profiles(previous, view)
     assert legacy.source_table_json == view.source_table_json
     assert not any(r['source_family'].startswith('remembered_') for r in
         prepare_life_source_readings(view=legacy, snapshot=snapshot).as_dict()['readings'])

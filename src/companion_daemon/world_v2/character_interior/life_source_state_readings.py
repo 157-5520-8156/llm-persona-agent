@@ -10,12 +10,12 @@ from .life_source_origin import canonical, digest
 
 CONTRACT = 'life-source-review.13'
 STATE_REVIEW_CONTRACTS = frozenset({'life-source-review.13', 'life-source-review.14',
-    'life-source-review.15', 'life-source-review.16', 'life-source-review.17', 'life-source-review.18', 'life-source-review.19', 'life-source-review.20', 'life-source-review.21', 'life-source-review.22', 'life-source-review.23'})
+    'life-source-review.15', 'life-source-review.16', 'life-source-review.17', 'life-source-review.18', 'life-source-review.19', 'life-source-review.20', 'life-source-review.21', 'life-source-review.22', 'life-source-review.23', 'life-source-review.24'})
 SCOPE = 'activity_lifecycle_states'
 FIELDS = ('plan_id', 'plan_entity_revision', 'owner_actor_ref', 'status', 'transitioned_at', 'lifecycle_scope')
 
 
-COMPACT_INVENTORY_CONTRACTS = frozenset({'life-source-review.16', 'life-source-review.17', 'life-source-review.18', 'life-source-review.19', 'life-source-review.20', 'life-source-review.21', 'life-source-review.22', 'life-source-review.23'})
+COMPACT_INVENTORY_CONTRACTS = frozenset({'life-source-review.16', 'life-source-review.17', 'life-source-review.18', 'life-source-review.19', 'life-source-review.20', 'life-source-review.21', 'life-source-review.22', 'life-source-review.23', 'life-source-review.24'})
 
 
 def life_source_profile(review_contract):
@@ -25,7 +25,7 @@ def life_source_profile(review_contract):
     # silently change that catalogue's author identity. A future Life contract
     # can opt in explicitly; current role/chat profiles still keep the field.
     excluded = {'historical_activity_intentions'}
-    if review_contract not in {'life-source-review.22', 'life-source-review.23'}:
+    if review_contract not in {'life-source-review.22', 'life-source-review.23', 'life-source-review.24'}:
         excluded.add('world_planning')
     profile = replace(
         profile,
@@ -49,7 +49,8 @@ def life_source_profile(review_contract):
         profile = replace(
             profile,
             profile_id=(
-                'stimulus_appraisal.lifecycle.3' if review_contract in {'life-source-review.22', 'life-source-review.23'} else
+                'stimulus_appraisal.lifecycle.4' if review_contract == 'life-source-review.24' else
+                'stimulus_appraisal.lifecycle.3' if review_contract in {'life-source-review.22', 'life-source-review.23', 'life-source-review.24'} else
                 'stimulus_appraisal.lifecycle.2'
                 if review_contract in COMPACT_INVENTORY_CONTRACTS
                 else 'stimulus_appraisal.lifecycle.1'
@@ -61,6 +62,8 @@ def life_source_profile(review_contract):
         # with.  ``None`` is the unreviewed production lane, which is never
         # pinned, so it follows the registered profile.
         profile = replace(profile, compact_source_inventory=False)
+    if review_contract == 'life-source-review.24':
+        profile = replace(profile, preserve_inventory_scopes=True)
     return profile
 
 

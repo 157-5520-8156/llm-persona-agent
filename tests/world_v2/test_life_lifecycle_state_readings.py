@@ -85,7 +85,7 @@ async def test_accepted_lifecycle_reaches_actual_author_review_and_cold_receipt(
     from companion_daemon.world_v2.character_interior.life_source_review import MINTED_CONTRACT
     assert view.review_contract == result.life_source_review.contract == MINTED_CONTRACT
     author = json.loads(provider.calls[0]['messages'][1]['content'])
-    assert author['background_context_profile']['profile_id'] == 'stimulus_appraisal.lifecycle.3'
+    assert author['background_context_profile']['profile_id'] == 'stimulus_appraisal.lifecycle.4'
     assert author['inner_life_snapshot']['materials'][SCOPE][0]['status'] == status
     readings = prepare_life_source_readings(view=view, snapshot=request.snapshot)
     source = next(r for r in readings.as_dict()['readings'] if r['source_family'] == 'activity_lifecycle_state')

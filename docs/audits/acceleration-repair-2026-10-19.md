@@ -576,3 +576,33 @@ lifecycle-only full-v8 was stopped at 42% to include this sibling counterexample
 it is partial regression evidence. The final source needs its own full suite.
 109 related context, source-view, source-reading and Plan tests pass, including
 owner/privacy/current-head negatives. No production QQ/main candidate change.
+
+
+### Scope-preserving Life inventory
+
+The original same-time settlement source became selected, but the compact
+inventory retained only its first `moments_i_can_share` scope. Both environment
+and bound attempt-result fields were shown and typed-source eligible, yet the
+reader correctly rejected their missing family coordinates. A one-variable
+read-only compaction control restores the two existing field permissions by
+keeping `(source_ref, scope)` under the original96-row cap. Fresh Life .24 and
+profile4 opt in; <=.23 paid presentation and receipts retain their original
+bytes. No new fact scope, environment persistence, actor action or semantic
+choice is granted. No new production module is introduced.
+
+The offline candidate passed149 related tests,24 profile tests and byte-exact
+restoration of six real .22 plus one real .23 paid checkpoints. Same-cursor
+source controls use recompiled canonical Capsules with default collaborators;
+they are not identical copies of the complete configured service Context. Their
+78409-byte reviewer preparation is a bounded compiler control, not a new real
+reviewer verdict or service-packet claim. See private CONTROL-SCOPE-DISCLOSURE.
+
+a49 full-v9 completed11066pass/1failure. The strict frozen suite guard detected
+a changed replay identity. Complete old/current/.24-candidate process controls
+keep every120-case business manifest field and predicate/replay check; only
+npc_world_impact.01's replay hash changes. Expanded projection comparison has
+no semantic text changes; four audit Recall scores change through the unchanged
+seed/document-ID mechanism. The original strict scenario tests pass15 with the
+explicit versioned .115 baseline; corpus and guard remain intact. Details in
+scenario-baseline-115-2026-10-20.json. New final full and real same-world
+qualification are still required; the failed full run is retained.

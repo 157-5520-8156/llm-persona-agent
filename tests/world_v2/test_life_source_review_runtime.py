@@ -147,7 +147,7 @@ async def test_pinned_clock_passes_installed_review_and_cold_receipt_without_rea
     assert responses == [text]
     assert len(author.stimulus_requests) == len(reviews.requests) == 1
     result, snapshot, _, _ = _restore_prepared_turn(canonical(checkpoints[0]), purpose='world_stimulus_appraisal')
-    assert result.life_source_review.contract == 'life-source-review.23'
+    assert result.life_source_review.contract == 'life-source-review.24'
     assert result.life_source_review.verify(result=result, snapshot=snapshot)
 
 

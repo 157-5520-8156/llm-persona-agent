@@ -1,0 +1,68 @@
+{
+  "contract": "world-v2-offline-mechanism-rebaseline.1",
+  "status": "verified_offline_only",
+  "old_source_commit": "e99d733651cc8d978f10b8837e2bae224a0014ef",
+  "focus_source_commit": "a49f3866734a35d3053d2ccf081db1827302c9c5",
+  "old_version": "world-v2-offline-mechanism-baseline.114",
+  "old_manifest_hash": "74747be5cb9cd26fe1bf795ad4522a2b6a2e9dce55d8aebbd25c80d872a1089e",
+  "new_version": "world-v2-offline-mechanism-baseline.115",
+  "new_manifest_hash": "e3abeb12ae78878a3d72ee560fe2ce4b57c9121e5bf6ee0b88396f155ffc2b05",
+  "new_rows_with_old_version_hash": "8772874f846cd60641035e9e1166f5aac0e527d41e36c67bc762aac0a59690e0",
+  "case_count": 120,
+  "all_case_predicates_and_replays_passed": true,
+  "all_visible_output_room_states_calls_and_other_manifest_fields_equal": true,
+  "changed_manifest_fields": [
+    {
+      "case": "npc_world_impact.01",
+      "diff": {
+        "replay_hash": {
+          "before": "985692bb7b02e1ca72c5b7c7fd3609eff5432a993252d2b0309d442ff184a203",
+          "after": "ea4af2ca21f1e6549cbad68fb0a9d16a7d16f2782172a61bda812c68436d5cdc"
+        }
+      }
+    }
+  ],
+  "expanded_projection": {
+    "changed_leaves": 422,
+    "semantic_content_changes": [],
+    "numeric_changes": [
+      {
+        "path": "/model_result_audits/2/audit_json/presented_prefetch_traces/0/trace/hits/0/accessibility_offset_bp",
+        "before": 94,
+        "after": -56
+      },
+      {
+        "path": "/model_result_audits/2/audit_json/presented_prefetch_traces/0/trace/hits/0/score_bp",
+        "before": 3094,
+        "after": 2944
+      },
+      {
+        "path": "/model_result_audits/3/audit_json/presented_prefetch_traces/0/trace/hits/0/accessibility_offset_bp",
+        "before": -143,
+        "after": -19
+      },
+      {
+        "path": "/model_result_audits/3/audit_json/presented_prefetch_traces/0/trace/hits/0/score_bp",
+        "before": 2857,
+        "after": 2981
+      }
+    ],
+    "other_changes": "Derived IDs, references and hashes; original domain values, message texts, intentions and actions retain the same semantics. Recall offsets use the original seed/document-ID hash algorithm; record identity changed, algorithm did not."
+  },
+  "independent_controls": {
+    "old_e99_reproduces_exact114": true,
+    "current_a49_equals_fresh24_candidate_all120_rows": true,
+    "original_scenario_test_file_changed": false,
+    "strict_versioned_scenario_test": "15 passed in39.38s",
+    "source_control_paths": [
+      "output/private-audits/activity-feedback-20261019/scenario-source-focus/old-e99/manifest.json",
+      "output/private-audits/activity-feedback-20261019/scenario-source-focus/current-a49/manifest.json",
+      "output/private-audits/activity-feedback-20261019/scenario-source-focus/candidate-24/manifest.json",
+      "output/private-audits/activity-feedback-20261019/scenario-source-focus/row-comparison.json",
+      "output/private-audits/activity-feedback-20261019/scenario-source-focus/npc-expanded-projection-comparison.json"
+    ],
+    "strict_guard_test_log": "output/private-audits/activity-feedback-20261019/inventory-scope-candidate/versioned-scenario-tests.log"
+  },
+  "rationale": "Preserve the exact already-eligible triggering WorldLife source through original bounded lifecycle/resolver/Capsule admission. A complete source archive reproduces the old manifest, while two independent current/candidate processes agree on the single changed replay hash. The new .24 scope-preserving inventory presentation does not change these fixed scenario rows. Update measured technical identity only; corpus, predicates, source/privacy/CAS/effect-once validators and the strict aggregate guard remain.",
+  "limitations": "Fixed fake model/provider mechanism evidence only. No real GLM story/diversity, acceleration, future-detail leakage, QQ or release qualification claim. The failed a49 full-v9 remains recorded and a new complete final full suite is required."
+}

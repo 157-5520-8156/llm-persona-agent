@@ -470,3 +470,24 @@ def test_world_author_facts_are_actor_scoped_before_the_item_cap(purpose, nested
     assert context == before
     character = slice_background_capsule_context(context, background_context_profile_for_purpose('world_stimulus_appraisal'))
     assert character['slices']['relevant_facts']['items'] == items
+
+
+def test_new_life_compaction_preserves_each_source_scope_with_original_count_bound():
+    from companion_daemon.world_v2.character_interior.life_source_state_readings import life_source_profile
+
+    snapshot = _sample_snapshot()
+    snapshot['source_inventory'] = [
+        {'source_ref': 'exp:0', 'scope': scope, 'privacy_class': 'private'}
+        for scope in ('moments_i_can_share', 'recent_self_experiences', 'recent_self_experiences')
+    ]
+    legacy = slice_background_inner_life_snapshot(snapshot, life_source_profile('life-source-review.23'))
+    assert [x['scope'] for x in legacy['source_inventory']] == ['moments_i_can_share']
+    current = slice_background_inner_life_snapshot(snapshot, life_source_profile('life-source-review.24'))
+    assert [x['scope'] for x in current['source_inventory']] == ['moments_i_can_share', 'recent_self_experiences']
+    assert current['background_context_profile'] == 'stimulus_appraisal.lifecycle.4'
+    assert profile_audit_record(life_source_profile('life-source-review.24'))['inventory_presentation'] == 'source-inventory-by-scope.1'
+    assert 'inventory_presentation' not in profile_audit_record(life_source_profile('life-source-review.23'))
+    snapshot['source_inventory'] = [
+        {'source_ref': 'exp:0', 'scope': f'scope:{i}', 'privacy_class': 'private'} for i in range(1000)
+    ]
+    assert len(slice_background_inner_life_snapshot(snapshot, life_source_profile('life-source-review.24'))['source_inventory']) == 96

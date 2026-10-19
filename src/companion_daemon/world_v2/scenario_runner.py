@@ -373,7 +373,7 @@ class ScenarioVerificationError(AssertionError):
 # control reproduces .112; only npc_world_impact.01's replay identity changes,
 # with every behavioral manifest field unchanged.
 # The withdrawn .113 audit remains intact. See the dated .114 audit.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.114"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.115"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -702,7 +702,14 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.114
 # frozen; changing their historical maximum changes only derived replay
 # identities in all 120 offline cases, not outputs or predicates. See
 # docs/audits/scenario-baseline-108-2026-09-30.json.
-FROZEN_OFFLINE_SUITE_MANIFEST_HASH = "74747be5cb9cd26fe1bf795ad4522a2b6a2e9dce55d8aebbd25c80d872a1089e"
+# 2026-10-20: .115 records exact triggering WorldLife source priority before
+# resolver/Capsule admission. Independent old/current/.24-candidate runs keep
+# all120 business manifest fields and predicates; only npc_world_impact.01's
+# replay identity changes. Expanded projection differences include derived
+# IDs/hashes and four deterministic document-ID-seeded Recall score values,
+# with no semantic content change. The corpus and manifest guard stay intact.
+# See docs/audits/scenario-baseline-115-2026-10-20.json.
+FROZEN_OFFLINE_SUITE_MANIFEST_HASH = "e3abeb12ae78878a3d72ee560fe2ce4b57c9121e5bf6ee0b88396f155ffc2b05"
 
 
 class _FixedScenarioRouter:

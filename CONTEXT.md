@@ -1,3 +1,11 @@
+Fresh Life .24/profile lifecycle.4 preserves each original(source_ref,scope) in the compact
+inventory under the same96-row cap. Earlier <=.23 author/reviewer wires remain frozen; original
+source/field/hash/privacy/time/coverage gates are unchanged. Staged149 tests+24 profile tests,
+7actual paid .22/.23 exact receipts and15 unchanged strict scenario tests pass. Formal adoption
+requires a new complete full run. a49 full-v9:11066pass/1measured manifest drift, not all green;
+independent120-case comparison justifies versioned .115 technical identity audit (no behavior or
+corpus/predicate change). Real same-world/cross-day/diversity/acceleration remain unqualified.
+
 Source-focus repair after e99 qualification: an exact eligible lifecycle trigger is selected
 before the original three-head bound; original typed WorldLife source bindings then carry the
 query event through resolver/source-proof/Capsule ranking for lifecycle and settled-event records.
