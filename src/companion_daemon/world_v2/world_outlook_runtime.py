@@ -939,7 +939,7 @@ class WorldOutlookRuntime:
         }
 
     @staticmethod
-    def _sources_changed(previous, sources, offers, *, material_refs=frozenset()):
+    def _ordinary_effect_refs(sources, offers, *, material_refs=frozenset()):
         # Executing a batch is expected progress, not a reason to buy another
         # complete planning pass. Cancellation/expiry and any other source
         # changes remain visible; explicit node conditions are checked above.
@@ -949,14 +949,9 @@ class WorldOutlookRuntime:
             if o["state"] == "considered"
             for ref in o["payload"].get("effect_refs", ())
         }
-        current = {k: v.token for k, v in sources.items()}
-        for key in previous.keys() | current.keys():
-            if previous.get(key) == current.get(key):
-                continue
-            source = sources.get(key)
-            if (
-                key in own_effects and key not in material_refs
-                and source is not None
+        return {
+            key for key in own_effects - material_refs
+            if (source := sources.get(key)) is not None
                 and (
                     (
                         source.source_kind == "occurrence"
@@ -967,10 +962,14 @@ class WorldOutlookRuntime:
                         and source.status in {"planned", "active", "completed"}
                     )
                 )
-            ):
-                continue
-            return True
-        return False
+        }
+
+    @classmethod
+    def _sources_changed(cls, previous, sources, offers, *, material_refs=frozenset()):
+        ordinary = cls._ordinary_effect_refs(sources, offers, material_refs=material_refs)
+        current = {k: v.token for k, v in sources.items()}
+        return any(previous.get(key) != current.get(key) and key not in ordinary
+                   for key in previous.keys() | current.keys())
 
     def _refresh_identity(self, projection, view, npc_refs, prior_head):
         """One retry identity for authoring and read-only deadline selection."""
@@ -981,19 +980,33 @@ class WorldOutlookRuntime:
         # never recorded as an actor's refusal or a completed opportunity.
         retry_epoch = int(now.timestamp()) // 3600
         running = self.store.running_refresh(cursor=cursor_of(projection))
+        offers = self._relevant_offers({n["opportunity_id"] for n in view["opportunities"]}, sources)
+        # Already-paid execution is not a fresh revision trigger. Keep the
+        # failed author's retry identity through that progress, just as view()
+        # does. Explicit dependencies and material consequences still wake it.
+        protected = {c["source_ref"] for obj in (*view["opportunities"], *view.get("long_term", ()))
+                     for c in obj.get("conditions", ())}
+        own = {ref for offer in offers if offer["state"] == "considered"
+               for ref in offer["payload"].get("effect_refs", ())}
+        protected.update(o.occurrence_id for o in self._entities(projection, own)["world_occurrences"]
+                         if self._material_consequence(o))
+        ordinary = self._ordinary_effect_refs(sources, offers, material_refs=protected)
         input_key = running["payload"]["input_key"] if running else digest(
             {
+                "retry_identity": "outlook-ordinary-progress.1",
                 "source_contract": _WORKING_SOURCES,
                 "world_id": projection.world_id,
                 "actor_ref": self.actor_ref,
                 "parent": view["revision"],
-                "sources": {k: v.token for k, v in sources.items()},
+                "sources": {k: v.token for k, v in sources.items() if k not in ordinary},
                 "retry_epoch": retry_epoch,
                 **({"rolling_planning": _ROLLING_PLANNING} if self._rolling_planning else {}),
                 **({"response_tool_contract": _NATIVE_RESULT} if native_result else {}),
                 **({"response_carrier": getattr(getattr(self.author, "authority_origin", self.author),
                     "single_tool_response_carrier", "native")} if native_result and _NATIVE_RESULT in {"world-outlook-native.8", "world-outlook-native.9"} else {}),
-                "offers": digest(self._relevant_offers({n["opportunity_id"] for n in view["opportunities"]}, sources)),
+                "offers": digest([o for o in offers if not (
+                    o["state"] == "considered" and o["payload"].get("effect_refs")
+                    and set(o["payload"]["effect_refs"]) <= ordinary)]),
                 **({"authoring_constraints_hash": self._authoring_constraints_hash}
                    if self._authoring_constraints_hash is not None else {}),
             }

@@ -741,13 +741,15 @@ def _typed_authority_claims(
     return tuple(sorted(claims))
 
 
-def _bounded_situation_context_view(situation):
+def _bounded_situation_context_view(situation, *, source_limit=MAX_SOURCE_REFS_PER_ITEM):
     """Bound one Context item, never the durable life state or action catalog.
 
     The full Situation remains in its compiler cache. Every displayed value
     retains its exact event authority; omitted collections are explicitly partial.
+    The default captures the typed proof limit independently of collection
+    admission budgets; narrowing world_life admission must not break Situation.
     """
-    if len(situation.source_revisions) <= MAX_SOURCE_REFS_PER_ITEM:
+    if len(situation.source_revisions) <= source_limit:
         return situation
     collections = {
         "plan": ("activity_slices", "plan_id"),
@@ -761,7 +763,7 @@ def _bounded_situation_context_view(situation):
     if primary is not None:
         selected.update(source.identity for source in situation.source_revisions
                         if source.domain == "plan" and source.entity_ref == primary)
-    if len(selected) > MAX_SOURCE_REFS_PER_ITEM:
+    if len(selected) > source_limit:
         raise ValueError("Situation base authority cannot fit its existing Context source budget")
 
     def rank(source):
@@ -774,7 +776,7 @@ def _bounded_situation_context_view(situation):
 
     optional = sorted((s for s in situation.source_revisions if s.domain in collections
                        and s.identity not in selected), key=rank)
-    selected.update(s.identity for s in optional[:MAX_SOURCE_REFS_PER_ITEM - len(selected)])
+    selected.update(s.identity for s in optional[:source_limit - len(selected)])
     revisions = tuple(s for s in situation.source_revisions if s.identity in selected)
     updates = {"source_revisions": revisions}
     omissions = []

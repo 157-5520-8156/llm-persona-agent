@@ -225,6 +225,46 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
 
 
 @pytest.mark.asyncio
+async def test_new_role_plan_change_bypasses_only_the_old_failed_refresh_receipt(tmp_path):
+    from test_world_outlook_continuity import npc_setup, npc_manifest
+    from test_life_development_runtime import _seed_clock
+    from test_life_projection import commit, event, mutation, world_evidence
+
+    def review_soon(draft):
+        from datetime import datetime
+        draft['review_at'] = (datetime.fromisoformat(draft['opportunities'][0]['opens_at'])
+                              + timedelta(seconds=1)).isoformat()
+
+    ledger, wake, author, runtime, _, _ = npc_setup(tmp_path, review_soon)
+    try:
+        assert (await runtime.refresh(projection=ledger.project(), context={},
+                                       manifest=npc_manifest(ledger, wake)))['status'] == 'ready'
+        later = _seed_clock(ledger, event_id='clock:role-plan-review',
+                            logical_time=wake.logical_time + timedelta(seconds=2),
+                            logical_time_from=wake.logical_time)
+        author.outputs.extend([RuntimeError('first failure'), RuntimeError('new-source failure')])
+        args = {'context': {}, 'manifest': npc_manifest(ledger, later)}
+        assert (await runtime.refresh(projection=ledger.project(), **args))['status'] == 'technical_failure'
+        key = runtime._refresh_identity(ledger.project(), runtime.view(), ('npc:lin',), runtime.store.head())[2]
+        commit(ledger, [event('role-abandoned-plan', 'ActivityAbandoned', {
+            **mutation('role-abandoned-plan', expected_revision=1,
+                       evidence_refs=[world_evidence(ledger, later.event_id, 'life_transition')]),
+            'plan_id': 'plan-tea', 'transitioned_at': later.logical_time.isoformat(),
+            'reason_ref': later.event_id,
+        }, at=later.logical_time)])
+        assert runtime.view()['changed_source_refs'] == ['plan-tea']
+        new_key = runtime._refresh_identity(ledger.project(), runtime.view(), ('npc:lin',), runtime.store.head())[2]
+        assert new_key != key
+        args['manifest'] = npc_manifest(ledger, later)
+        assert (await runtime.refresh(projection=ledger.project(), **args))['status'] == 'technical_failure'
+        assert len(author.calls) == 3
+        assert len(runtime.store.attempts('refresh:' + key)) == 1
+        assert len(runtime.store.attempts('refresh:' + new_key)) == 1
+    finally:
+        runtime.close()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("live_history", [False, True])
 async def test_refresh_input_stays_bounded_as_unreferenced_terminal_history_grows(tmp_path, live_history):
     from companion_daemon.world_v2.schemas import EvidenceRef, PlanStateProjection
@@ -1014,3 +1054,43 @@ def test_new_reference_contract_uses_lossless_aliases_below_the_size_limit():
         decode_outlook_response(json.dumps({'authority_hash':packed['prefix']+'missing'}),request_raw=wire)
     legacy = {k:v for k,v in packet.items() if k!='response_reference_contract'}
     assert json.loads(encode_outlook_request(legacy,byte_limit=100_000)) == legacy
+
+
+@pytest.mark.asyncio
+async def test_failed_refresh_survives_ordinary_execution_of_its_paid_batch(tmp_path):
+    from test_world_outlook import install_executor
+    from test_life_development_runtime import _seed_clock
+
+    def outputs(wake):
+        value = draft_value(wake)
+        value['review_at'] = (wake.logical_time + timedelta(seconds=1)).isoformat()
+        return [{'decision': 'revise', 'draft': value}, RuntimeError('provider unavailable'), RuntimeError('unexpected paid retry')]
+
+    ledger, wake, store, author, runtime = setup(tmp_path, outputs)
+    install_executor(ledger, runtime)
+    try:
+        args = {'context': {}, 'manifest': _manifest(wake, pinned_cursor=_projection_cursor(ledger))}
+        assert (await runtime.refresh(projection=ledger.project(), **args))['status'] == 'ready'
+        later = _seed_clock(ledger, event_id='clock:review', logical_time=wake.logical_time + timedelta(seconds=2), logical_time_from=wake.logical_time)
+        args['manifest'] = _manifest(later, pinned_cursor=_projection_cursor(ledger))
+        failed = await runtime.refresh(projection=ledger.project(), **args)
+        assert failed['status'] == 'technical_failure'
+        assert len(author.calls) == 2
+        key_before = runtime._refresh_identity(ledger.project(), runtime.view(), (), store.head())[2]
+        node = runtime.ready()[0]
+        assert runtime.execute_offer(node, wake_event_ref=later.event_id).status == 'occurrence_committed'
+        key_after = runtime._refresh_identity(ledger.project(), runtime.view(), (), store.head())[2]
+        assert key_after == key_before, 'Ordinary paid batch execution reset failed refresh identity'
+        args['manifest'] = _manifest(later, pinned_cursor=_projection_cursor(ledger))
+        assert (await runtime.refresh(projection=ledger.project(), **args))['status'] == 'technical_failure'
+        assert len(author.calls) == 2, 'Unchanged revision work bought a fresh provider call before retry epoch'
+        # The original hourly retry remains live, with every old failure saved.
+        later = _seed_clock(ledger, event_id='clock:retry-hour',
+                            logical_time=wake.logical_time + timedelta(hours=1),
+                            logical_time_from=later.logical_time)
+        args['manifest'] = _manifest(later, pinned_cursor=_projection_cursor(ledger))
+        assert (await runtime.refresh(projection=ledger.project(), **args))['status'] == 'technical_failure'
+        assert len(author.calls) == 3
+        assert len(store.attempts('refresh:' + key_before)) == 1
+    finally:
+        runtime.close()
