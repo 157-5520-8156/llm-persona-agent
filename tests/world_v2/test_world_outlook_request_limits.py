@@ -90,8 +90,13 @@ def test_schema_once_history_selector_requires_exact_separately_pinned_schema(co
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("original_contract", ["world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9", "world-outlook-native.10"])
-async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contract(tmp_path, monkeypatch, original_contract):
+@pytest.mark.parametrize(("original_contract", "original_working_scope"), [
+    *((contract, "outlook-working-sources.3") for contract in [
+        "world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4",
+        "world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9", "world-outlook-native.10"]),
+    ("world-outlook-native.10", "outlook-working-sources.2"),
+])
+async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contract(tmp_path, monkeypatch, original_contract, original_working_scope):
     from companion_daemon.subscription_usage import BackgroundGLMModel, SubscriptionTokenLedger
     from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
     from companion_daemon.world_v2.world_outlook_runtime import WorldOutlookRuntime, _outlook_request_hash
@@ -102,6 +107,7 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
     ledger, wake, store, _, runtime = setup(tmp_path, lambda w: [])
     runtime._rolling_planning = True
     monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime._NATIVE_RESULT", original_contract)
+    monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime._WORKING_SOURCES", original_working_scope)
     monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime._ROLLING_PLANNING", "rolling-world-planning.4")
     if original_contract == "world-outlook-native.3":
         monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime._ROLLING_PLANNING", "rolling-world-planning.3")
@@ -210,6 +216,7 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
         paid = attempts[1]
         expected_hash = _outlook_request_hash(paid["messages"], paid["response_tools"])
         runtime.close()
+        monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime._WORKING_SOURCES", "outlook-working-sources.3")
         monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime._NATIVE_RESULT", "world-outlook-native.4")
         monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime._ROLLING_PLANNING", "rolling-world-planning.4")
         reopened = SQLiteWorldOutlookStore(path=tmp_path / "outlook.sqlite", world_id=WORLD_ID, actor_ref=OWNER)
@@ -219,6 +226,7 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
         assert (await runtime.refresh(**args))["status"] == "ready"
         assert len(requests) == 2
         assert reopened.head()[2]["request_hash"] == expected_hash
+        assert reopened.head()[2]["condition_source_scope"] == original_working_scope
         assert reopened.head()[2]["rolling_planning"] == (
             "rolling-world-planning.3" if original_contract == "world-outlook-native.3" else "rolling-world-planning.4")
     finally:
@@ -268,8 +276,8 @@ async def test_new_role_plan_change_bypasses_only_the_old_failed_refresh_receipt
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("live_history", [False, True])
-async def test_refresh_input_stays_bounded_as_unreferenced_terminal_history_grows(tmp_path, live_history):
-    from companion_daemon.world_v2.schemas import EvidenceRef, PlanStateProjection
+async def test_refresh_input_stays_bounded_as_unreferenced_plan_history_grows(tmp_path, live_history):
+    from companion_daemon.world_v2.schemas import EvidenceRef, PlanStateProjection, PlanAuthorityOrigin
     from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
 
     class Captured(BaseException):
@@ -300,9 +308,16 @@ async def test_refresh_input_stays_bounded_as_unreferenced_terminal_history_grow
         archived = tuple(live.model_copy(update={
             "plan_id": f"plan:old-{i}", "activity_id": f"activity:old-{i}",
             "status": "planned" if live_history else "completed" if i % 2 else "abandoned",
+            # Input-compiler fixture: realistic proof shape, no model result or
+            # accepted World effect is synthesized by this constructor test.
+            "authority_origin": PlanAuthorityOrigin(
+                transition_id=f"fixture:{i}", accepted_event_type="ActivityPlanned",
+                accepted_event_ref=f"event:archive:{i}", accepted_world_revision=1,
+                accepted_payload_hash="a" * 64, accepted_at=wake.logical_time,
+                authority_projection_hash="b" * 64, binding_hash="c" * 64),
         }) for i in range(count))
         # The constructor receives the same current work and increasingly long
-        # terminal history. No selected evidence, authored condition or World
+        # unfinished as well as terminal history with broad manifest proofs. No selected evidence, authored condition or World
         # record is removed; stop before authoring/acceptance.
         projection = ledger.project().model_copy(update={"plans": (live, *archived)})
         try:
@@ -311,7 +326,8 @@ async def test_refresh_input_stays_bounded_as_unreferenced_terminal_history_grow
                     projection=projection, context={"slices": {"world_life": {
                         "availability": "available", "items": [{"item_ref": live.plan_id,
                             "value": {"context_kind": "planned_activity", "plan_id": live.plan_id}}]}}},
-                    manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
+                    manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)).model_copy(update={
+                        "anchor_refs": tuple(sorted((wake.event_id, *(p.authority_origin.accepted_event_ref for p in archived))))}),
                 )
             assert len(projection.plans) == count + 1
             assert [s["source_ref"] for s in packets[-1]["condition_sources"]] == [live.plan_id]
@@ -708,16 +724,20 @@ async def test_script_retry_on_later_clock_reuses_its_execution_proposal(
 
 
 @pytest.mark.asyncio
-async def test_previous_live_plan_terminal_state_is_presented_before_consuming_change(tmp_path):
+@pytest.mark.parametrize("source_scope", ["outlook-working-sources.2", "outlook-working-sources.3"])
+async def test_previous_live_plan_terminal_state_is_presented_before_consuming_change(tmp_path, monkeypatch, source_scope):
     from test_world_outlook_continuity import npc_setup, npc_manifest, retime
     from test_life_projection import commit, event, mutation, world_evidence
     from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
 
+    monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime._WORKING_SOURCES", source_scope)
     ledger, wake, author, runtime, _, _ = npc_setup(tmp_path, lambda d: None)
     try:
         args = dict(context={}, manifest=npc_manifest(ledger, wake))
         assert (await runtime.refresh(projection=ledger.project(), **args))["status"] == "ready"
-        assert "plan-tea" in runtime.store.head()[2]["source_tokens"]
+        # A read set and notification acknowledgment are separate in .3.
+        # The older paid contract retains its original broad tracking.
+        assert ("plan-tea" in runtime.store.head()[2]["source_tokens"]) == (source_scope == "outlook-working-sources.2")
         assert runtime.view(projection=ledger.project())["needs_revision"] is False
         commit(ledger, [event("abandon-existing", "ActivityAbandoned", {
             **mutation("abandon-existing", expected_revision=1,
@@ -1140,3 +1160,47 @@ def test_repeated_short_schedule_values_fit_without_changing_accepted_wire(byte_
         assert hashlib.sha256(raw.encode()).hexdigest() == (
             "cae68f13a6fdbf8416811ea164d5cbaa2f7dd4c6b75cfee6a594c131cc25193f"
         )
+
+
+@pytest.mark.parametrize('archive_count', [0, 100, 10000])
+def test_unpresented_plan_proofs_do_not_accumulate_in_fate_input(archive_count):
+    from types import SimpleNamespace
+    from companion_daemon.world_v2.world_outlook_runtime import _planning_source_refs
+
+    plans = tuple(SimpleNamespace(plan_id=f'plan:archive:{n}', owner_actor_ref='agent:companion',
+        status='paused', authority_origin=SimpleNamespace(accepted_event_ref=f'event:archive:{n}'))
+        for n in range(archive_count))
+    context = {'slices': {'world_life': {'availability': 'available', 'items': [
+        {'item_ref': 'event:shown', 'value': {'context_kind': 'historical_activity_intention', 'plan_id': 'plan:shown'}}]}}}
+    view = {'opportunities': [{'conditions': [{'source_ref': 'plan:past-required'}], 'execution': {}}],
+        'changed_source_refs': ['plan:changed']}
+    history = SimpleNamespace(items=(SimpleNamespace(anchor=SimpleNamespace(source_ref='occurrence:history')),))
+    story = [{'realized_sources': [{'source_ref': 'plan:realized'}]}]
+    manifest = SimpleNamespace(anchor_refs=tuple(f'event:archive:{n}'for n in range(archive_count)), npc_capabilities=())
+    actual = _planning_source_refs(view, context, history, story,
+        projection=SimpleNamespace(plans=plans), manifest=manifest)
+    assert actual == {'plan:past-required', 'plan:changed', 'event:shown', 'plan:shown', 'occurrence:history', 'plan:realized'}
+
+
+@pytest.mark.parametrize("archive_count", [0, 100, 10000])
+def test_planning_basis_is_task_scoped_and_keeps_exact_old_required_heads(archive_count):
+    from types import SimpleNamespace as S
+    from test_life_development_runtime import NOW
+    from companion_daemon.world_v2.world_outlook_runtime import _planning_basis_refs
+
+    plans = tuple(S(plan_id=f"plan:archive:{i}",
+        authority_origin=S(accepted_event_ref=f"event:archive:{i}"))
+        for i in range(archive_count))
+    plans += (S(plan_id="plan:required-old", authority_origin=S(accepted_event_ref="event:required-head")),)
+    projection = S(plans=plans, logical_time=NOW, committed_world_event_refs=(
+        S(event_id="clock:now", event_type="ClockAdvanced", logical_time=NOW),))
+    original = ("clock:now", "event:visible", "event:required-head", "event:history", "event:story")
+    manifest = S(anchor_refs=(*original, *(f"event:archive:{i}" for i in range(archive_count))))
+    context = {"slices": {"facts": {"availability": "available",
+        "source_refs": ["event:visible", "event:not-authorized"], "items": []}}}
+    history = S(items=(S(anchor=S(authority_ref="event:history")),))
+    story = ({"thread": {"history_anchors": [{"authority_ref": "event:story"}]}},)
+    args = (projection, context, manifest, {"plan:required-old"}, history, story)
+    assert _planning_basis_refs(*args, trigger_ref="clock:now") == original
+    assert _planning_basis_refs(*args) == original
+    assert len(projection.plans) == archive_count + 1

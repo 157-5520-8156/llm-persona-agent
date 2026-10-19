@@ -136,8 +136,9 @@ def test_retained_change_can_keep_exact_future_but_not_hide_a_revision(tmp_path)
 
 
 @pytest.mark.parametrize('plan_count', [1, 7])
+@pytest.mark.parametrize('terminal', [True, False])
 @pytest.mark.asyncio
-async def test_native_keep_acknowledges_real_abandoned_plans_and_survives_reopen(tmp_path, plan_count):
+async def test_native_keep_acknowledges_real_plan_choices_and_survives_reopen(tmp_path, plan_count, terminal):
     from test_world_outlook_continuity import npc_setup, npc_manifest, retime
     from test_life_projection import commit, event, mutation, world_evidence
     from test_life_development_runtime import _seed_clock
@@ -167,7 +168,7 @@ async def test_native_keep_acknowledges_real_abandoned_plans_and_survives_reopen
                 raise TimeoutError('offline batch retry control')
             return json.dumps({'decision': 'keep',
                 'review_at': (wake.logical_time + timedelta(days=2)).isoformat(),
-                'reason': '个人放弃短期安排，外部机会仍可继续。',
+                'reason': '自主安排有变化，外部机会仍可继续。',
                 'change_responses': [{'source_ref': x['source_ref'], 'decision': 'retain', 'thread_refs': [],
                     'planning_keys': [], 'reason': '这次选择没有改变已有外部条件。'}
                     for x in packet['world_changes']]}, ensure_ascii=False)
@@ -189,11 +190,12 @@ async def test_native_keep_acknowledges_real_abandoned_plans_and_survives_reopen
             commit(ledger, [event('planned:' + ref, 'ActivityPlanned', {
                 **mutation('planned:' + ref, expected_revision=0, evidence_refs=plan['evidence_refs']),
                 'plan': plan}, at=wake.logical_time)])
-            commit(ledger, [event('abandoned:' + ref, 'ActivityAbandoned', {
-                **mutation('abandoned:' + ref, expected_revision=1,
-                    evidence_refs=[world_evidence(ledger, wake.event_id, 'life_transition')]),
-                'plan_id': ref, 'transitioned_at': wake.logical_time.isoformat(), 'reason_ref': wake.event_id},
-                at=wake.logical_time)])
+            if terminal:
+                commit(ledger, [event('abandoned:' + ref, 'ActivityAbandoned', {
+                    **mutation('abandoned:' + ref, expected_revision=1,
+                        evidence_refs=[world_evidence(ledger, wake.event_id, 'life_transition')]),
+                    'plan_id': ref, 'transitioned_at': wake.logical_time.isoformat(), 'reason_ref': wake.event_id},
+                    at=wake.logical_time)])
         failed_attempts = []
         if plan_count > 1:
             pending = runtime.view()['changed_source_refs']
@@ -224,6 +226,9 @@ async def test_native_keep_acknowledges_real_abandoned_plans_and_survives_reopen
                    for r in failed_attempts)
         assert runtime.view()['changed_source_refs'] == []
         assert (await refresh())['status'] == 'unchanged'
+        assert all(p.status == ('abandoned' if terminal else 'planned')
+                   for p in ledger.project().plans if p.plan_id in refs)
+        assert ledger.rebuild() == ledger.project()
     finally:
         runtime.close()
 
