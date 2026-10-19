@@ -621,7 +621,9 @@ The conservative bound across all static branches (including incompatible
 combinations) plus the original480-character display budget is1001. No new
 truncation, raised limit, deleted Plan, source workaround or retry cooldown.
 The original failing World, local failures and raw model records are retained;
-new full regression and actual automatic continuation still required.
+f06770 full-v11 passed11070 tests and the real v30 lifecycle continuation then
+accepted its552-character note on the first GLM attempt, choosing existing plans.
+That actual recovery is separate from the temporal failure discovered below.
 
 ## Prepared prose can leak before a correctly timed receipt
 
@@ -653,8 +655,18 @@ module, topic policy, character decision or prose classifier was added.
 The request compiler controls first failed for missing publication times, then
 passed. The SQLite producer test reuses the existing rejected-output/reselection,
 audited model responses and canonical acceptance path. Compatibility119 tests
-and the unchanged strict15 scenario tests passed; final full regression is still
-required. Historical marker1/None requests retain their original interpretation.
+and the unchanged strict15 scenario tests passed. Complete b956 full-v12 recorded
+11073pass/1failure/19skip/2xfail, with source hashes unchanged; its failure remains
+preserved. Same-clock source comparison exposed a static host fixture expecting
+old day-opening tool1 while both versions offered tool4. A changed manifest hash
+also legitimately selected a disturbance, which its ordinary-event fake author
+could not satisfy. The fixture now explicitly declares its ordinary scripted
+scope and valid day-opening no-op, without changing production chance, frequency
+or checks. The host test now actually advances the owned activity to a settled
+model-selected outcome and verifies cold replay without a second selection;
+previously it stopped after plan creation. Both public cases pass; final full-v13
+is still required. This fixture evidence is not real character autonomy or
+unattended diversity qualification. Historical marker1/None requests retain their original interpretation.
 Reconstructing the actual paid critic request gives the exact original hash
 `b7c67875146d49f3ec5ebfcaa98c32eb29df1142f7c7417b66937d4f0cad366f`.
 Only the new request gains the time boundary; its reviewed candidate is unchanged.

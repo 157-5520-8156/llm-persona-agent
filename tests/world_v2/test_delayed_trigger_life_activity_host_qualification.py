@@ -19,6 +19,20 @@ _SCENARIO_ID = "life.activity-lifecycle-public-host.1"
 _AFTERMATH_SCENARIO_ID = "life.aftermath-outcome-public-host.1"
 
 
+@pytest.fixture
+def scripted_life_start(monkeypatch) -> datetime:
+    """These static providers exercise an ordinary opportunity, not its lottery.
+
+    A different authority-manifest hash can legitimately draw a disturbance,
+    whose durable consequences these providers do not author. Chance/diversity
+    qualification remains separate; no production policy is changed here.
+    """
+    import companion_daemon.world_v2.life_development_runtime as runtime
+    monkeypatch.setattr(runtime.LifeDevelopmentRuntime, "_resolve_occasion_draw",
+                        lambda self, **kwargs: runtime.LIFE_DEVELOPMENT_OPPORTUNITY_REF)
+    return datetime(2026, 10, 19, 23, 36, 20, tzinfo=UTC)
+
+
 class _PlanWorldAuthor:
     model = "fixture:life-activity-public-world-author"
     semantic_authority_id = "semantic-authority:fixture:life-activity-public-world-author"
@@ -168,8 +182,15 @@ class _CharacterModel(FakeCompanionModel):
             "life_development_choice": "character_role_life_development_choice_v2",
             "activity_lifecycle_choice": "character_role_activity_lifecycle_choice_v1",
             "outcome_selection": "character_role_outcome_selection_v1",
+            "world_stimulus_appraisal": "character_role_world_stimulus_appraisal_v8",
         }
         expected_name = expected_tools.get(purpose)
+        capability = json.loads(messages[-1]["content"])["capability_manifest"]["payload"]
+        if purpose == "activity_lifecycle_choice" and capability.get("self_directed_intent"):
+            expected_name = {
+                "character-interior-activity-lifecycle-capability.7": "character_role_activity_lifecycle_choice_v4",
+                "character-interior-activity-lifecycle-capability.9": "character_role_activity_lifecycle_choice_v6",
+            }[capability["contract"]]
         if expected_name is not None:
             assert tools and len(tools) == 1
             assert tools[0]["function"]["name"] == expected_name
@@ -196,6 +217,12 @@ class _CharacterModel(FakeCompanionModel):
             source_refs = request["capability_manifest"]["source_refs"]
         except (IndexError, KeyError, TypeError, json.JSONDecodeError):
             return await super().complete(messages, temperature=temperature)
+        if purpose == "world_stimulus_appraisal":
+            return json.dumps({
+                "status": "no_change", "summary": "本次不作新的回应。",
+                "attended_source_refs": source_refs, "decision": None,
+                "recall_query": None, "proposals": [],
+            }, ensure_ascii=False)
         if purpose == "life_development_choice":
             chosen_start = datetime.fromisoformat(
                 request["capability_manifest"]["payload"]["executable_envelope"]["opens_at"]
@@ -211,11 +238,14 @@ class _CharacterModel(FakeCompanionModel):
                 }
             }
         elif purpose == "activity_lifecycle_choice":
-            openings = request["capability_manifest"]["payload"]["openings"]
-            payload = {
-                "decision": "select",
-                "selected_token": openings[0]["opening_token"],
-            }
+            capability = request["capability_manifest"]["payload"]
+            if capability.get("self_directed_intent"):
+                # This scripted case owns one invitation Plan, not a separate
+                # daily agenda. Return a valid current day-opening decision.
+                payload = {"decision": "no_op"}
+            else:
+                payload = {"decision": "select",
+                           "selected_token": capability["openings"][0]["opening_token"]}
         elif purpose == "outcome_selection":
             offered_tokens = request["capability_manifest"]["payload"]["offered_tokens"]
             self.outcome_offered_tokens = tuple(offered_tokens)
@@ -299,9 +329,10 @@ def _host_scenario(nodeid: str, *, scenario_id: str = _SCENARIO_ID) -> None:
 async def test_public_host_activity_lifecycle_is_role_owned_and_effect_once(
     tmp_path: Path,
     request: pytest.FixtureRequest,
+    scripted_life_start: datetime,
 ) -> None:
     _host_scenario(request.node.nodeid)
-    started_at = datetime.now(UTC).replace(microsecond=0)
+    started_at = scripted_life_start
     scheduler_clock = {"now": started_at}
     database = tmp_path / "life-activity-host-qualification.sqlite"
     settings = Settings(
@@ -349,7 +380,8 @@ async def test_public_host_activity_lifecycle_is_role_owned_and_effect_once(
         host.export_replay_evidence()
         # The plan, if any, is the author's; the effect-once claim below is what
         # this test protects, not the absence of a consultation.
-        assert world_author.calls <= 1
+        assert world_author.calls == 1
+        assert len(host.export_replay_evidence().projection.plans) == 1
         await host.drain(max_action_units=8, max_background_units=16)
         repeated = host.export_replay_evidence()
         await host.aclose()
@@ -366,9 +398,10 @@ async def test_public_host_activity_lifecycle_is_role_owned_and_effect_once(
 async def test_public_host_aftermath_outcome_is_role_owned_and_effect_once(
     tmp_path: Path,
     request: pytest.FixtureRequest,
+    scripted_life_start: datetime,
 ) -> None:
     _host_scenario(request.node.nodeid, scenario_id=_AFTERMATH_SCENARIO_ID)
-    started_at = datetime.now(UTC).replace(microsecond=0)
+    started_at = scripted_life_start
     scheduler_clock = {"now": started_at}
     settings = Settings(
         _env_file=None,
@@ -412,7 +445,29 @@ async def test_public_host_aftermath_outcome_is_role_owned_and_effect_once(
             reason="life_aftermath_public_plan",
             run_life_ecology=True,
         )
-        assert world_author.calls <= 1
+        assert world_author.calls == 1
+        plans = host.export_replay_evidence().projection.plans
+        assert len(plans) == 1
+        # Open and settle the actual owned activity through public clock ticks.
+        # Stopping after plan creation would never exercise outcome selection.
+        opened_at = plan_due + timedelta(seconds=1)
+        scheduler_clock["now"] = opened_at
+        await host.tick(tick_id="life-aftermath-public-open", logical_time_from=plan_due,
+                        logical_time_to=opened_at, observed_at=opened_at,
+                        reason="life_aftermath_public_open", run_life_ecology=True)
+        occurrence = next(o for o in host.export_replay_evidence().projection.world_occurrences
+                          if o.trigger_ref == plans[0].plan_id)
+        end = occurrence.time_window.closes_at
+        scheduler_clock["now"] = end
+        await host.tick(tick_id="life-aftermath-public-settle", logical_time_from=opened_at,
+                        logical_time_to=end, observed_at=end,
+                        reason="life_aftermath_public_settle", run_life_ecology=True)
+        settled = next(o for o in host.export_replay_evidence().projection.world_occurrences
+                       if o.occurrence_id == occurrence.occurrence_id)
+        expected_token = character_model.outcome_offered_tokens[-1]
+        assert settled.status == "settled"
+        assert settled.settled_outcome_ref == expected_token
+        assert character_model.outcome_selected_tokens == [expected_token]
         await host.drain(max_action_units=8, max_background_units=16)
         repeated = host.export_replay_evidence()
         await host.aclose()
@@ -422,5 +477,6 @@ async def test_public_host_aftermath_outcome_is_role_owned_and_effect_once(
         assert cold.cursor == repeated.cursor
         assert cold.projection.semantic_hash == repeated.projection.semantic_hash
         assert cold.projection.semantic_hash == cold.replay.semantic_hash
+        assert character_model.outcome_selected_tokens == [expected_token]
     finally:
         await host.aclose()

@@ -1,14 +1,18 @@
 Temporal publication repair in progress: actual v19 prepared prose was settled07:24:58 while
 its environment asserted near08:00 water restoration; v30 actor memory input and Fate received
 it before08:00. Time-gated step receipts alone did not catch this semantic early exposure.
-v30 stopped normally at07:27:42; four-DB save/strict replay/reopen/effect-once passed. Preserve
+v30 stopped normally at07:27:48; four-DB save/strict replay/reopen/effect-once passed. Preserve
 the original invalid content and failures, not a clean-history claim. Fresh semantic review2
 shares premise/settlement/conditional-step publication instants with the World Author and the
 existing focused critic; explicit future plans remain legal and all character choices remain.
 Old1/None paid wires remain exact. Original critic request hash b7c67875... was reconstructed
 byte-exact; one realGLM probe rejected the unchanged bad outcome and step with correct temporal
-coordinates. 119 compatibility tests pass; current patch still needs final full regression and
-same-World qualification. f06770 full-v11 passed11070 only before this patch. No new runtime
+coordinates. b956 full-v12 completed11073pass/1static-host-fixture failure; same-clock old/new
+comparison traced it to an old day-opening tool assertion and an unscoped ordinary-event fixture
+receiving a legitimate disturbance draw. The test-only repair explicitly scopes its scripted
+ordinary case, returns valid current day-opening decisions and actually drives owned outcome
+settlement before cold effect-once checks. Two public host cases pass; final full-v13 and
+same-World qualification remain required. f06770 full-v11 passed11070 only before this patch. No new runtime
 module/review call/keyword classifier. QQ79910/8787 and main35221/8792 remain protected.
 
 Day-open completion note repair: repeated instructions plus one accepted prior intention could
