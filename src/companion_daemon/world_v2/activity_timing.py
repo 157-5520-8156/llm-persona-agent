@@ -102,9 +102,9 @@ def activity_window_completion_allowed(
     return elapsed * 5 >= duration * 4
 
 
-# A pause or resume is a lived decision, not a scheduler flag.  Requiring a
-# bounded dwell time between opposite transitions keeps a 30-second wake
-# cadence from turning one ambivalent mood into a pause/resume oscillation.
+# Frozen .5-.9 timing policy, retained for immutable replay. Current .10
+# separates real consideration sources from clock bookkeeping and does not
+# use a dwell time to restrict the character's legal choices.
 MIN_ACTIVITY_TRANSITION_DWELL_SECONDS = 300
 
 

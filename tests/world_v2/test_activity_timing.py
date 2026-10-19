@@ -144,14 +144,14 @@ def test_future_commitments_are_not_offered_to_ordinary_wakes() -> None:
     )
 
 
-def test_fresh_transitions_cannot_be_reversed_until_the_dwell_elapses() -> None:
-    """Ordinary pause and plan-authority resume wait out the dwell gate.
+def test_recorded_v9_dwell_contract_replays_unchanged() -> None:
+    """Frozen old proposals keep the exact timing policy they were accepted under.
 
-    Cause-bound pauses (interruption/user influence) stay immediate, so the
-    gate is checked at the catalog level where the authority shape is known.
+    The current source-bound catalog has separate no-dwell capability tests;
+    replaying an old paid proposal must not reinterpret its historical matrix.
     """
 
-    catalog = ActivityOpeningCatalog(owner_actor_ref="actor:companion")
+    catalog = ActivityOpeningCatalog(owner_actor_ref="actor:companion", catalog_version="activity-opening.9")
     just_started = _active_plan(started_at=NOW - timedelta(seconds=60))
     settled_in = _active_plan(started_at=NOW - timedelta(minutes=6))
     just_paused = just_started.model_copy(update={"status": "paused"})

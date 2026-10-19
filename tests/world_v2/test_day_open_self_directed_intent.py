@@ -85,7 +85,7 @@ async def test_completed_activity_offers_one_new_self_directed_choice(
     paused = [False]
     app = build_app(path, model, ecology=True, background_budget_paused=lambda: paused[0])
     previous = NOW
-    # Ordinary abandonment is offered after the existing lifecycle dwell window.
+    # Exercise letting go on a later clock with a genuinely elapsed plan window.
     shift = 10 if terminal_kind == "abandoned" else 0
     try:
         for minute in (1, 2, 6, 7, 8, 9):

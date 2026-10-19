@@ -616,18 +616,12 @@ class ActivityOpeningCatalog:
         opening_kind: ActivityOpeningKind,
         logical_time: datetime,
     ) -> bool:
-        """Withhold thrash-prone reversals until real time passed in a state.
+        """Replay the frozen dwell rule only for catalogues that used it.
 
-        Reversing a fresh transition on every thirty-second wake is a
-        scheduler artifact, not a lived choice.  Ordinary pause *and*
-        ordinary abandon are dwell-gated: a just-started activity simply is
-        not up for revision for a few minutes, so an idle wake offers no
-        operation at all instead of "abandon or nothing".  Cause-bound
-        transitions (a user message, a closed window, repair-resume) stay
-        immediate — pausing because the user interrupted and picking the book
-        back up a minute later is exactly the human sequence.  Runs only for
-        the current catalog version so committed ``activity-opening.4``/
-        ``.5`` proposals replay exactly.
+        Current .10 keeps choices immediately available. Its worker separates
+        real consideration sources from technical wakes instead of deciding
+        that the owner may not reverse a recent choice. Old proposals retain
+        the exact timing rule under which they were accepted.
         """
 
         if self._catalog_version == "activity-opening.10":
