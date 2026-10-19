@@ -325,6 +325,7 @@ class _PreparedWorldStimulusAudit:
     decision: DecisionProposal
     lineage: _InteriorAuthorLineage
     opportunity_identity: CausalOpportunityIdentity
+    plan_response: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -579,6 +580,7 @@ class _WorldStimulusInteriorAuthorityHandler:
         ledger: object,
         owner_id: str,
         perception_result_reader: PerceptionResultReader | None = None,
+        life_content_store=None,
         source: str = "world-v2:character-interior-world-stimulus-authority",
     ) -> None:
         if not owner_id:
@@ -587,6 +589,7 @@ class _WorldStimulusInteriorAuthorityHandler:
         self._owner_id = owner_id
         self._perception_result_reader = perception_result_reader
         self._source = source
+        self._life_content_store = life_content_store
 
     async def prepare(
         self,
@@ -860,6 +863,16 @@ class _WorldStimulusInteriorAuthorityHandler:
                 not in expected_life_capability["source_event_refs"]
             ):
                 raise ValueError("world stimulus life intent is outside exact source authority")
+        if result.plan_response is not None:
+            from ..world_plan_management import capability, reader_for, validate_choice
+            management_arguments = dict(state=pinned, actor_ref=request.actor_ref,
+                source_refs=manifest.payload.get('world_life_intent', {}).get('source_event_refs', ()),
+                reader=reader_for(self._ledger, request.actor_ref, self._life_content_store))
+            expected_management = (await asyncio.to_thread(capability, **management_arguments)
+                if self._ledger.blocks_event_loop else capability(**management_arguments))
+            if manifest.payload.get('world_plan_management') != expected_management:
+                raise ValueError('world Plan management differs from its exact actor and accepted heads')
+            validate_choice(result.plan_response, expected_management)
         expected_response_capability = world_life_response_capability(
             state=pinned, source_events=tuple(source_events), owner_actor_ref=request.actor_ref
         )
@@ -875,6 +888,9 @@ class _WorldStimulusInteriorAuthorityHandler:
             }
         )
         evidence_refs = list(source_refs)
+        if result.plan_response is not None:
+            plan = next(p for p in pinned.plans if p.plan_id == result.plan_response.plan_id)
+            evidence_refs.append(plan.authority_origin.accepted_event_ref)
         if result.aspiration_transition is not None:
             evidence_refs.extend(result.aspiration_transition.source_refs)
         if result.experience_transition is not None:
@@ -906,6 +922,18 @@ class _WorldStimulusInteriorAuthorityHandler:
                 )
             )
         changes: list[TypedChange] = []
+        if result.plan_response is not None:
+            from ..world_life_intent_contract import WorldPlanResponsePayload
+            from ..world_plan_management import POLICY
+            head, _ = await self._lookup(plan.authority_origin.accepted_event_ref)
+            changes.append(TypedChange(
+                change_id='change:world-plan-response:' + identity, kind='world_plan_response',
+                target_id=plan.plan_id, transition=result.plan_response.operation,
+                expected_entity_revision=plan.entity_revision,
+                evidence_refs=(result.plan_response.source_event_ref, head.event_id), policy_refs=(POLICY,),
+                payload=CanonicalTypedPayload.from_value(payload_schema='world_plan_response.v1',value=
+                    WorldPlanResponsePayload(**result.plan_response.model_dump(mode='json'),actor_ref=request.actor_ref,
+                        expected_plan_json=plan.model_dump_json(),head_event_json=head.model_dump_json()).model_dump(mode='json'))))
         if result.decision == "activate":
             appraisal_change_id = f"change:character-interior-world-stimulus:appraisal:{identity}"
             appraisal_id = f"appraisal:character-interior-world-stimulus:{identity}"
@@ -1096,6 +1124,7 @@ class _WorldStimulusInteriorAuthorityHandler:
         decision = decision_type(
             **({"interior_reflection_depth": result.reflection_depth} if result.reflection_depth is not None else {}),
             **(
+                {"schema_registry_version": 'world-v2-proposals.8'} if result.plan_response is not None else
                 {"schema_registry_version": CHARACTER_LIFE_RESPONSE_REGISTRY_VERSION}
                 if expected_response_capability is not None else
                 {"schema_registry_version": WORLD_LIFE_INTENT_REGISTRY_VERSION}
@@ -1121,6 +1150,7 @@ class _WorldStimulusInteriorAuthorityHandler:
             decision=decision,
             lineage=lineage,
             opportunity_identity=opportunity_identity,
+            plan_response=result.plan_response is not None,
         )
 
     async def submit(
@@ -1152,7 +1182,8 @@ class _WorldStimulusInteriorAuthorityHandler:
         if existing_model is not None or existing_proposal is not None:
             if existing_model is None or existing_proposal is None:
                 raise ValueError("world stimulus author audit is only partly durable")
-            return (decision.proposal_id,)
+            if not item.plan_response:
+                return (decision.proposal_id,)
         audit = RecordedModelResultAudit(
             model_call_id=lineage.model_call_id,
             parent_model_call_id=lineage.parent_model_call_id,
@@ -1250,6 +1281,15 @@ class _WorldStimulusInteriorAuthorityHandler:
                 payload=proposal_payload.model_dump(mode="json"),
             ),
         )
+        if item.plan_response:
+            from ..world_plan_management import commit_response
+            arguments = dict(ledger=self._ledger,decision=decision,
+                             audit_events=events,cursor=request.cursor)
+            if self._ledger.blocks_event_loop:
+                await asyncio.to_thread(commit_response, **arguments)
+            else:
+                commit_response(**arguments)
+            return (decision.proposal_id,)
         await self._commit_at_cursor(
             events,
             cursor=request.cursor,
@@ -1967,6 +2007,17 @@ class CharacterInteriorWorldStimulusRuntime:
             deliberation_revision=located_audit[1].deliberation_revision,
             ledger_sequence=located_audit[1].ledger_sequence,
         )
+        if any(change.kind == 'world_plan_response' for change in authored_proposal.proposed_changes):
+            from ..world_plan_management import recover_response
+            try:
+                if self._ledger.blocks_event_loop:
+                    await asyncio.to_thread(recover_response, ledger=self._ledger, audit=audit)
+                else:
+                    recover_response(ledger=self._ledger, audit=audit)
+            except (ConcurrencyConflict, ValueError):
+                await self._record_technical_failure(process=active, source_event=source_event,
+                    opportunity_identity=identity, failure_code='world_plan_response_settlement_failure')
+                return result(work_status='technical_failure')
         # Persist the same paid role's explicit response (including null)
         # before any optional sibling can terminalize its source process.
         if any(change.kind == "world_life_response" for change in authored_proposal.proposed_changes):
@@ -2144,6 +2195,7 @@ class CharacterInteriorWorldStimulusRuntime:
             and aspiration.status == "no_change"
             and experience.status in {"no_change", "expired"}
             and not has_life_intent
+            and not any(change.kind == 'world_plan_response' for change in authored_proposal.proposed_changes)
             else "accepted"
         )
         experience_outcome = (
@@ -2701,6 +2753,9 @@ class CharacterInteriorWorldStimulusRuntime:
         accepted_ids = {plan.plan_id for plan in projection.plans}
         return any(
             change.kind == "world_life_intent" and change.target_id not in accepted_ids
+            or change.kind == 'world_plan_response' and not any(
+                ref.event_id == 'event:world-plan-response:' + _digest(audit.proposal_id)
+                for ref in projection.committed_world_event_refs)
             for change in proposal.proposed_changes
         )
 
@@ -3344,6 +3399,14 @@ class CharacterInteriorWorldStimulusRuntime:
         )
         if life_capability is not None:
             payload["world_life_intent"] = life_capability
+            from ..world_plan_management import capability, reader_for
+            arguments = dict(state=projection, actor_ref=self._companion_actor_ref,
+                source_refs=life_capability['source_event_refs'],
+                reader=reader_for(self._ledger, self._companion_actor_ref, self._life_content_store))
+            management = (await asyncio.to_thread(capability, **arguments)
+                          if self._ledger.blocks_event_loop else capability(**arguments))
+            if management is not None:
+                payload['world_plan_management'] = management
         response_capability = world_life_response_capability(
             state=projection, source_events=ordered_source_events,
             owner_actor_ref=self._companion_actor_ref,

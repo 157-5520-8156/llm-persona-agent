@@ -737,6 +737,7 @@ _IDEMPOTENCY_IDENTITIES: Mapping[str, str] = MappingProxyType(
         "OutcomeObservationRecorded": "world_id+outcome_observation_id",
         "OutcomeProposalRecorded": "world_id+outcome_proposal_id",
         "ActivityLifecycleProposalRecorded": "world_id+proposal_id",
+        "WorldPlanResponseRecorded": "world_id+proposal_id+change_id",
         "WorldOccurrenceSettled": "occurrence_id+result_id+expected_entity_revision",
         "ExperienceCommitted": "world_id+experience_id",
         "LifeContentRecorded": "world_id+content_id+source_event_ref+content_payload_hash",
@@ -2111,6 +2112,9 @@ _CONTRACTS: Mapping[str, EventContract] = MappingProxyType(
                 ),
                 successors=("ActivityStarted", "ActivityAbandoned", "WorldOccurrenceCommitted"),
             ),
+            _contract("WorldPlanResponseRecorded", "proposal_acceptance", "world",
+                      "WorldPlanResponseRecordedPayload", allowed_predecessors=("ProposalRecorded",),
+                      successors=("ActivityAbandoned", "ActivityPlanned")),
             _contract(
                 "ActivityLifecycleProposalRecorded",
                 "life_ecology_deliberation",

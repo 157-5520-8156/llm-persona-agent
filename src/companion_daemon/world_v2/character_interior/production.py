@@ -1032,6 +1032,7 @@ def _bind_production_character_interior(
                 ledger=ledger,
                 owner_id=inner_state_settlement_owner,
                 perception_result_reader=perception_result_reader,
+                life_content_store=life_content_store,
             )
         )
         world_stimulus_runtime = CharacterInteriorWorldStimulusRuntime(

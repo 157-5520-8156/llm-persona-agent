@@ -37,6 +37,7 @@ from companion_daemon.llm import (
 from ..model_completion import ChatCompletionModel
 from ..character_outcome_contract import CharacterLifeDirectionDraft
 from ..chat_life_intent_contract import LifeIntentDraft
+from ..world_life_intent_contract import WorldPlanResponseDraft
 from ..character_life_response_contract import validate_character_life_response_coverage
 from .rejected_role_result import RejectedRoleResult, original_role_request, role_request_binding
 from .life_source_origin import canonical
@@ -1152,6 +1153,7 @@ class _WorldStimulusAppraisalResult(BaseModel):
     life_intent: _WorldStimulusLifeIntentDraft | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    plan_response: WorldPlanResponseDraft | None = Field(default=None, exclude_if=lambda value: value is None)
 
     life_responses: tuple[_WorldStimulusLifeResponseDraft, ...] | None = Field(
         default=None, exclude_if=lambda value: value is None
@@ -1164,6 +1166,8 @@ class _WorldStimulusAppraisalResult(BaseModel):
 
     @model_validator(mode="after")
     def decision_closes_appraisal_shape(self) -> "_WorldStimulusAppraisalResult":
+        if self.plan_response is not None and self.life_intent is not None:
+            raise ValueError('choose one existing-Plan response or a new life_intent, not both')
         appraisal_fields = (
             self.meaning_candidates,
             self.attribution,
@@ -2602,7 +2606,7 @@ class StructuredCharacterRoleFaculty:
                             }}
                         # These exact catalog aliases are advertised alongside
                         # attended refs. Decode identity slots only, never prose.
-                        for field in ("life_responses", "life_intent"):
+                        for field in ("life_responses", "life_intent", "plan_response"):
                             original = proposal.get(field)
                             items = original if isinstance(original, list) else [original]
                             bound = [{**item, "source_event_ref": catalog.token_to_ref.get(
@@ -2822,6 +2826,7 @@ class StructuredCharacterRoleFaculty:
                 or proposal.aspiration_transition is not None
                 or proposal.experience_transition is not None
                 or proposal.life_intent is not None
+                or proposal.plan_response is not None
                 or proposal.life_responses is not None
                 else "no_change"
             )
@@ -2981,6 +2986,13 @@ class StructuredCharacterRoleFaculty:
                         detail=str(exc),
                         response_hash=response_hash,
                     ) from exc
+            if proposal.plan_response is not None:
+                from ..world_plan_management import validate_choice
+                try:
+                    validate_choice(proposal.plan_response, manifest.payload.get('world_plan_management'))
+                except ValueError as exc:
+                    raise StructuredRoleResultError('world_plan_response_outside_capability',
+                        detail=str(exc), response_hash=response_hash) from exc
             if proposal.life_intent is not None:
                 capability = manifest.payload.get("world_life_intent")
                 if (
@@ -3996,6 +4008,20 @@ class StructuredCharacterRoleFaculty:
                     "a place or another person, or send anything. No appraisal is required"
                 ),
             }
+            if capability_manifest is not None and capability_manifest.payload.get('world_plan_management') is not None:
+                view['proposal_schema']['plan_response'] = (
+                    'null or {operation:continue|revise|end, plan_id:<exact offered own Plan>, '
+                    'source_event_ref:<offered settlement>}. Continue keeps its existing intention and '
+                    'lifecycle unchanged; it does not execute it again. End puts down the intention '
+                    '(abandon), not a claim of successful completion. Revise additionally supplies '
+                    'replacement:<LifeIntentDraft>: one linked replacement version ends its predecessor. '
+                    'If you are continuing, changing or putting down an offered intention, refer to '
+                    'that Plan here rather than recreating the same intention as a new Plan. '
+                    'Choose these yourself. life_intent creates a separate new Plan, never an update; '
+                    'do not provide it alongside plan_response. Leaving both null is valid.'
+                )
+                view['status_schema']['no_change'] += ' and plan_response is null'
+                view['status_schema']['transition'] += ' or plan_response is present'
             response_capability = (
                 capability_manifest.payload.get("world_life_response")
                 if capability_manifest is not None else None

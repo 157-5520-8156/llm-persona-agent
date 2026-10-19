@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, TypeAdapter, field_validator, model_valid
 
 from .private_turn_state import PrivateTurnState
 from .chat_life_intent_contract import LifeIntentPayload
-from .world_life_intent_contract import WorldLifeIntentPayload
+from .world_life_intent_contract import WorldLifeIntentPayload, WorldPlanResponsePayload
 from .day_open_life_intent_contract import DayOpenLifeIntentPayload
 from .character_life_response_contract import CharacterLifeResponsePayload
 from .schema_core import FrozenModel, PrivacyClass
@@ -88,6 +88,7 @@ CHANGE_TRANSITION_REGISTRY: dict[str, frozenset[str]] = {
     "world_life_intent": frozenset({"plan"}),
     "day_open_life_intent": frozenset({"plan"}),
     "world_life_response": frozenset({"record"}),
+    "world_plan_response": frozenset({"continue", "revise", "end"}),
     "activity_transition": frozenset({"plan", "start", "pause", "resume", "complete", "abandon"}),
     "location_transition": frozenset({"change", "compensate"}),
     "world_occurrence_transition": frozenset({"commit", "cancel", "expire"}),
@@ -251,6 +252,10 @@ PAYLOAD_CONTRACTS: dict[str, _PayloadContract] = {
     "world_life_response": _PayloadContract({
         "actor_ref": str, "source_event_ref": str, "response_text": (str, type(None)),
     }),
+    "world_plan_response": _PayloadContract({
+        "operation": str, "plan_id": str, "source_event_ref": str, "actor_ref": str,
+        "expected_plan_json": str, "head_event_json": str,
+    }, {"replacement": dict}),
     "activity_transition": _PayloadContract(
         {"activity_id": str, "plan_ref": str, "phase": str, "participants": list, "location": str}
     ),
@@ -1405,6 +1410,7 @@ PAYLOAD_MODEL_REGISTRY: dict[str, type[FrozenModel]] = {
     "world_life_intent": WorldLifeIntentPayload,
     "day_open_life_intent": DayOpenLifeIntentPayload,
     "world_life_response": CharacterLifeResponsePayload,
+    "world_plan_response": WorldPlanResponsePayload,
     "activity_transition": ActivityPayload,
     "location_transition": LocationPayload,
     "world_occurrence_transition": WorldOccurrencePayload,
@@ -1581,7 +1587,7 @@ class ProposalEnvelope(FrozenModel):
     # .2 belongs to the separate FactCommitProposalEnvelopeV2 grammar.
     schema_registry_version: Literal[
         "world-v2-proposals.1", "world-v2-proposals.3", "world-v2-proposals.4",
-        "world-v2-proposals.5", "world-v2-proposals.6", "world-v2-proposals.7",
+        "world-v2-proposals.5", "world-v2-proposals.6", "world-v2-proposals.7", "world-v2-proposals.8",
     ] = "world-v2-proposals.1"
     evidence_refs: tuple[ProposalEvidenceRef, ...] = Field(default=(), max_length=128)
     proposed_changes: tuple[TypedChange, ...] = Field(default=(), max_length=64)
@@ -1595,6 +1601,13 @@ class ProposalEnvelope(FrozenModel):
 
     @model_validator(mode="after")
     def identifiers_evidence_and_expression_beats_are_bound(self) -> Self:
+        if any(change.kind == 'world_plan_response' for change in self.proposed_changes) and self.schema_registry_version != 'world-v2-proposals.8':
+            raise ValueError('world_plan_response requires explicit proposal registry .8')
+        if self.schema_registry_version == 'world-v2-proposals.8' and (
+            sum(change.kind == 'world_plan_response' for change in self.proposed_changes) != 1
+            or any(change.kind == 'world_life_intent' for change in self.proposed_changes)
+        ):
+            raise ValueError('registry .8 requires one existing-Plan response and no unrelated new Plan')
         if self.schema_registry_version not in {"world-v2-proposals.6", "world-v2-proposals.7"} and any(
             change.kind == "day_open_life_intent" for change in self.proposed_changes
         ):
@@ -1853,11 +1866,11 @@ class DecisionProposal(ProposalEnvelope):
 
     @model_validator(mode="after")
     def summary_views_reference_their_typed_changes(self) -> Self:
-        if self.schema_registry_version not in {"world-v2-proposals.4", "world-v2-proposals.5"} and any(
+        if self.schema_registry_version not in {"world-v2-proposals.4", "world-v2-proposals.5", "world-v2-proposals.8"} and any(
             change.kind == "world_life_intent" for change in self.proposed_changes
         ):
             raise ValueError("world_life_intent requires proposal registry .4")
-        if self.schema_registry_version != "world-v2-proposals.5" and any(
+        if self.schema_registry_version not in {"world-v2-proposals.5", "world-v2-proposals.8"} and any(
             change.kind == "world_life_response" for change in self.proposed_changes
         ):
             raise ValueError("world_life_response requires proposal registry .5")

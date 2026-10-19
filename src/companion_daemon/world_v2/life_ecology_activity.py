@@ -238,6 +238,8 @@ class ActivityOpeningCatalog:
         blocked_capabilities: set[MissingActivityCapability] = set()
         blocked_plan_count = 0
         for plan in sorted(projection.plans, key=lambda item: item.plan_id):
+            if any(key == plan.plan_id for key, _ in getattr(projection, 'pending_plan_responses', ())):
+                continue
             if not self._is_companion_live_plan(plan):
                 continue
             missing = self._missing_capabilities(plan, projection=projection)
@@ -364,6 +366,8 @@ class ActivityOpeningCatalog:
         }:
             return None
         for plan in sorted(projection.plans, key=lambda item: item.plan_id):
+            if any(key == plan.plan_id for key, _ in getattr(projection, 'pending_plan_responses', ())):
+                continue
             if not self._is_companion_live_plan(plan) or self._missing_capabilities(
                 plan, projection=projection
             ):

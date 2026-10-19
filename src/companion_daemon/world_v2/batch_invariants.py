@@ -302,6 +302,7 @@ def validate_commit_batch(
         reject_social_deferred_manifest_without_recorder(events)
         reject_external_perception_manifest_without_recorder(events)
     _reject_new_private_impression_without_role_reflection(events)
+    _validate_world_plan_response_transaction(events)
     atomic_paid_retention = _validate_deliberation_audit_transaction(events) == "paid_retention"
     _validate_life_development_location_authority_batch(events)
     _validate_npc_state_content_batch(events)
@@ -3844,3 +3845,28 @@ def plan_disruption_appraisal_trigger_identity(world_id: str, source_evidence_re
         separators=(",", ":"),
     ).encode("utf-8")
     return f"trigger:plan-disruption-appraisal:{hashlib.sha256(encoded).hexdigest()}"
+
+
+def _validate_world_plan_response_transaction(events):
+    """A selected Plan response cannot commit only half of its domain effects."""
+    from .world_plan_management import SOURCE, receipt_id
+    from .world_life_intent_runtime import SOURCE as INTENT_SOURCE
+
+    if not any(
+        e.source == SOURCE or e.event_type == "WorldPlanResponseRecorded"
+        or e.payload().get("world_plan_response_proposal_id") is not None
+        for e in events
+    ):
+        return
+    if events[0].event_type != "WorldPlanResponseRecorded":
+        raise ValueError("Plan response effects require one closed domain batch")
+    body = events[0].payload()
+    successors = {
+        "continue": (),
+        "end": (("ActivityAbandoned", SOURCE),),
+        "revise": (("ActivityAbandoned", SOURCE), ("ActivityPlanned", INTENT_SOURCE)),
+    }
+    expected = (("WorldPlanResponseRecorded", SOURCE), *successors[body["operation"]])
+    if (tuple((e.event_type, e.source) for e in events) != expected
+            or events[0].event_id != receipt_id(body["proposal_id"])):
+        raise ValueError("Plan response batch differs from its selected operation")

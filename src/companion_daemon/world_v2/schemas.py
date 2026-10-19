@@ -6074,6 +6074,7 @@ class LedgerProjection(FrozenModel):
     life_arcs: tuple[LifeArcProjection, ...] = ()
     aspirations: tuple[AspirationProjection, ...] = ()
     plans: tuple[PlanStateProjection, ...] = ()
+    pending_plan_responses: tuple[tuple[str, str], ...] = Field(default=(), exclude_if=lambda value: not value)
     world_occurrences: tuple[WorldOccurrenceProjection, ...] = ()
     outcome_observations: tuple[OutcomeObservationProjection, ...] = ()
     experiences: tuple[ExperienceAuthorityProjection, ...] = ()

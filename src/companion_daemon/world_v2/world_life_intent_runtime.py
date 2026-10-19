@@ -59,7 +59,7 @@ def derive_world_life_plan(*, state, world_id: str, proposal_id: str, owner_acto
     authority = read_world_stimulus_choice_authority(
         state=state, world_id=world_id, proposal_id=proposal_id,
         owner_actor_ref=owner_actor_ref,
-        registry_versions=(WORLD_LIFE_INTENT_REGISTRY_VERSION, "world-v2-proposals.5"),
+        registry_versions=(WORLD_LIFE_INTENT_REGISTRY_VERSION, "world-v2-proposals.5", "world-v2-proposals.8"),
         error_type=WorldLifeIntentError,
     )
     if world_life_response_source_refs(
@@ -76,6 +76,10 @@ def derive_world_life_plan(*, state, world_id: str, proposal_id: str, owner_acto
         )
     proposal = authority.proposal
     changes = tuple(x for x in proposal.proposed_changes if x.kind == "world_life_intent")
+    if not changes and any(x.kind == 'world_plan_response' for x in proposal.proposed_changes):
+        from .world_plan_management import derive_replacement
+        return derive_replacement(state=state, world_id=world_id, proposal_id=proposal_id,
+                                  owner_actor_ref=owner_actor_ref)
     if len(changes) != 1:
         raise WorldLifeIntentError("explicit_intent_count_invalid")
     change = changes[0]
@@ -98,13 +102,21 @@ def derive_world_life_plan(*, state, world_id: str, proposal_id: str, owner_acto
         change_id=change.change_id, error_type=WorldLifeIntentError,
     )
     origin = WorldLifeIntentOrigin(**origin_value)
+    occurrence = next(x for x in state.world_occurrences if x.settlement_event_ref == source.event_id)
+    return make_world_life_plan(intent=intent, origin=origin, source=source, world_id=world_id,
+                                owner_actor_ref=owner_actor_ref, visibility=occurrence.visibility)
+
+
+def make_world_life_plan(*, intent, origin, source, world_id, owner_actor_ref, visibility,
+                         supersedes_plan_id=None, plan_id=None):
+    plan_id = plan_id or world_life_plan_id(world_id=world_id, actor_ref=owner_actor_ref,
+                                           source_event_ref=intent.source_event_ref)
     evidence = EvidenceRef(
         ref_id=source.event_id, evidence_type="settled_world_event", claim_purpose="future_plan",
         source_world_revision=source.world_revision, immutable_hash=source.payload_hash,
     )
     identity = plan_id.removeprefix(PLAN_PREFIX)
     starts = origin.selected_at + timedelta(seconds=intent.start_after_seconds)
-    occurrence = next(x for x in state.world_occurrences if x.settlement_event_ref == source.event_id)
     plan = PlanStateProjection(
         plan_id=plan_id, activity_id="activity:world-life-intent:" + identity,
         entity_revision=1, activity_kind="self_directed." + _digest(intent.intention)[:24],
@@ -112,11 +124,12 @@ def derive_world_life_plan(*, state, world_id: str, proposal_id: str, owner_acto
         scheduled_window=DueWindow(
             opens_at=starts, closes_at=starts + timedelta(seconds=intent.duration_seconds)
         ), participant_refs=(), location_ref=None,
-        privacy_class="withhold" if occurrence.visibility == "withhold" else "private",
+        privacy_class="withhold" if visibility == "withhold" else "private",
+        supersedes_plan_id=supersedes_plan_id,
         owner_actor_ref=owner_actor_ref,
     )
     return ActivityPlannedPayload(
-        change_id=change.change_id, transition_id="transition:world-life-intent:" + identity,
+        change_id=origin.change_id, transition_id="transition:world-life-intent:" + identity,
         expected_entity_revision=0, evidence_refs=(evidence,),
         policy_refs=(WORLD_LIFE_INTENT_POLICY_REF,), plan=plan, world_intent_origin=origin,
     ), intent

@@ -7,7 +7,7 @@ or grant participation by another actor. It is distinct from inbound intent.
 from datetime import datetime
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from .chat_life_intent_contract import LifeIntentDraft
 from .schema_core import FrozenModel
@@ -66,6 +66,34 @@ def world_life_intent_capability(*, state, source_events, owner_actor_ref: str) 
 class WorldLifeIntentPayload(LifeIntentDraft):
     actor_ref: str = Field(min_length=1, max_length=512)
     source_event_ref: str = Field(min_length=1, max_length=512)
+
+
+class WorldPlanResponseDraft(FrozenModel):
+    operation: Literal['continue', 'revise', 'end']
+    plan_id: str = Field(min_length=1, max_length=512)
+    source_event_ref: str = Field(min_length=1, max_length=512)
+    replacement: LifeIntentDraft | None = Field(default=None, exclude_if=lambda value: value is None)
+
+    @model_validator(mode='after')
+    def replacement_only_for_revision(self):
+        if (self.operation == 'revise') != (self.replacement is not None):
+            raise ValueError('revise requires one replacement intention; continue/end cannot create one')
+        return self
+
+
+class WorldPlanResponsePayload(WorldPlanResponseDraft):
+    actor_ref: str = Field(min_length=1, max_length=512)
+    expected_plan_json: str = Field(min_length=2, max_length=8192)
+    head_event_json: str = Field(min_length=2, max_length=16384)
+
+
+class WorldPlanResponseRecordedPayload(FrozenModel):
+    proposal_id: str
+    change_id: str
+    actor_ref: str
+    plan_id: str
+    operation: Literal['continue', 'revise', 'end']
+    response_hash: str = Field(pattern=r'^[a-f0-9]{64}$')
 
 
 class WorldLifeIntentOrigin(FrozenModel):

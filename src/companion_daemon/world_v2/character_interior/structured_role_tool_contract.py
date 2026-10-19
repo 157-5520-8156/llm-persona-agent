@@ -1442,6 +1442,18 @@ class StructuredRoleToolContracts:
         }
         proposal_schema = _provider_schema(_WorldStimulusAppraisalResult)
         proposal_properties = _required_object_properties(proposal_schema)
+        plan_management = capability_payload.get('world_plan_management')
+        if plan_management is None:
+            proposal_properties.pop('plan_response', None)
+            proposal_schema['required'] = [k for k in proposal_schema.get('required', ()) if k != 'plan_response']
+        else:
+            if plan_management.get('contract') != 'world-plan-management.1' or not plan_management.get('plans'):
+                raise ValueError('world Plan management capability is invalid')
+            response_schema = _non_null_schema(proposal_properties['plan_response'], field_name='plan_response')
+            response_properties = _required_object_properties(response_schema)
+            response_properties['plan_id'] = {'type':'string','enum':[p['plan_id'] for p in plan_management['plans']]}
+            response_properties['source_event_ref'] = {'type':'string','enum':plan_management['source_event_refs']}
+            proposal_properties['plan_response'] = _nullable_provider_schema(response_schema)
         if schema_dialect not in {"deepseek-strict-v6", "deepseek-strict-v7", "standard-v8"}:
             # Historical tools still require their original explanation fields.
             proposal_properties.pop("reflection_depth", None)

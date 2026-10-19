@@ -1109,6 +1109,7 @@ class ReducerState(FrozenModel):
     life_arcs: tuple[LifeArcProjection, ...] = ()
     aspirations: tuple[AspirationProjection, ...] = ()
     plans: tuple[PlanStateProjection, ...] = ()
+    pending_plan_responses: tuple[tuple[str, str], ...] = Field(default=(), exclude_if=lambda value: not value)
     world_occurrences: tuple[WorldOccurrenceProjection, ...] = ()
     outcome_observations: tuple[OutcomeObservationProjection, ...] = ()
     experiences: tuple[ExperienceAuthorityProjection, ...] = ()
@@ -3971,7 +3972,7 @@ def _proposal_recorded(
             event_ref=event.event_id,
             event_payload_hash=event.payload_hash,
         )
-        return state.model_copy(
+        updated = state.model_copy(
             update={
                 "proposal_ids": (*state.proposal_ids, payload.proposal_id),
                 "proposal_revisions": (
@@ -3984,6 +3985,10 @@ def _proposal_recorded(
                 "proposal_audits": (*state.proposal_audits, projection),
             }
         )
+        if 'world-v2-proposals.8' in payload.proposal_json:
+            from .world_plan_management import reserve_response
+            updated = reserve_response(state=updated, world_id=event.world_id, proposal_id=payload.proposal_id)
+        return updated
     proposal_id = raw.get("proposal_id")
     if not isinstance(proposal_id, str) or not proposal_id:
         raise ValueError("ProposalRecorded requires proposal_id")
@@ -12745,6 +12750,16 @@ def _activity_planned(
     )
 
 
+def _world_plan_response_recorded(state: ReducerState, event: WorldEvent) -> ReducerState:
+    from .world_life_intent_contract import WorldPlanResponseRecordedPayload
+    from .world_plan_management import validate_receipt
+    _require_life_time(state, event)
+    payload = WorldPlanResponseRecordedPayload.model_validate_json(event.payload_json)
+    validate_receipt(state=state, event=event, payload=payload)
+    return state.model_copy(update={'pending_plan_responses':tuple(
+        item for item in state.pending_plan_responses if item != (payload.plan_id, payload.proposal_id))})
+
+
 def _activity_transitioned(
     state: ReducerState,
     event: WorldEvent,
@@ -12754,6 +12769,12 @@ def _activity_transitioned(
     allow_legacy_unowned_transition: bool = False,
 ) -> ReducerState:
     payload = _validated_life_payload(state, event, ActivityTransitionPayload)
+    if payload.world_plan_response_proposal_id is None and any(
+        plan_id == payload.plan_id for plan_id, _ in state.pending_plan_responses
+    ):
+        raise ValueError('Plan has an accepted response awaiting recovery; it cannot be changed out of order')
+    from .world_plan_management import validate_end
+    validate_end(state=state, event=event, payload=payload)
     _validate_activity_lifecycle_effect(state, event, payload)
     return state.model_copy(
         update={
@@ -15633,6 +15654,7 @@ _EVENTS = {
         EventDefinition("AspirationFaded", RevisionClass.WORLD, _aspiration_faded),
         EventDefinition("AspirationCrystallized", RevisionClass.WORLD, _aspiration_crystallized),
         EventDefinition("ActivityPlanned", RevisionClass.WORLD, _activity_planned),
+        EventDefinition("WorldPlanResponseRecorded", RevisionClass.WORLD, _world_plan_response_recorded),
         EventDefinition(
             "ActivityStarted",
             RevisionClass.WORLD,
@@ -16466,6 +16488,7 @@ def make_projection(
         life_arcs=state.life_arcs,
         aspirations=state.aspirations,
         plans=state.plans,
+        pending_plan_responses=state.pending_plan_responses,
         world_occurrences=state.world_occurrences,
         outcome_observations=state.outcome_observations,
         experiences=state.experiences,

@@ -117,7 +117,7 @@ def read_world_stimulus_choice_authority(
     if any(
         json.loads(change.payload.canonical_json).get("actor_ref") != owner_actor_ref
         for change in proposal.proposed_changes
-        if change.kind in {"world_life_intent", "world_life_response"}
+        if change.kind in {"world_life_intent", "world_life_response", "world_plan_response"}
     ):
         raise error_type("actor_mismatch")
     model = lookup_first(state.model_result_audits, "model_result_ref", audit.model_result_ref)

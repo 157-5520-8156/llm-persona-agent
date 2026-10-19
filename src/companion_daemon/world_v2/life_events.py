@@ -10,6 +10,7 @@ from typing import Literal
 from pydantic import Field, model_validator
 
 from .activity_lifecycle_contract import ActivityLifecycleProposalRecordedPayload
+from .world_life_intent_contract import WorldPlanResponseRecordedPayload
 from .chat_life_intent_contract import ChatLifeIntentOrigin
 from .world_life_intent_contract import WorldLifeIntentOrigin
 from .day_open_life_intent_contract import DayOpenLifeIntentOrigin
@@ -145,9 +146,12 @@ class ActivityTransitionPayload(DomainMutationPayload):
     acceptance_id: str | None = Field(default=None, min_length=1)
     activity_lifecycle_proposal_id: str | None = Field(default=None, min_length=1)
     accepted_change_hash: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    world_plan_response_proposal_id: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def scheduler_acceptance_binding_is_complete(self) -> "ActivityTransitionPayload":
+        if self.world_plan_response_proposal_id is not None and self.activity_lifecycle_proposal_id is not None:
+            raise ValueError('activity transition cannot combine separate role authorities')
         values = (
             self.acceptance_id,
             self.activity_lifecycle_proposal_id,
@@ -458,6 +462,7 @@ def outcome_mutation_hash(
 
 
 LIFE_PAYLOAD_MODELS = {
+    "WorldPlanResponseRecorded": WorldPlanResponseRecordedPayload,
     "NpcRegistered": NpcRegisteredPayload,
     "NpcStatusChanged": NpcStatusChangedPayload,
     "NpcStateChanged": NpcStateChangedPayload,

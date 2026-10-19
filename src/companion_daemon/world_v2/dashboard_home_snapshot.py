@@ -650,7 +650,7 @@ _LEDGER_FIELDS_BY_SECTION: Mapping[str, tuple[str, ...]] = MappingProxyType(
             "fact_proposals",
             "fact_proposal_ids",
         ),
-        "withheld": ("semantic_hash", "chat_life_intent_failures", "chat_life_plan_considerations"),
+        "withheld": ("semantic_hash", "chat_life_intent_failures", "chat_life_plan_considerations", "pending_plan_responses"),
     }
 )
 _TYPED_SUMMARY_FIELDS = frozenset(
