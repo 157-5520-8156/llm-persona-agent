@@ -217,6 +217,11 @@ def encode_outlook_request(packet, *, byte_limit):
     candidates = (plain, _wire(tabular), _wire(pack_shared_strings(tabular)),
                   _wire(pack_shared_strings(tabular, min_value_bytes=64)))
     encoded = min(candidates, key=lambda raw: len(raw.encode()))
+    if len(encoded.encode()) > byte_limit:
+        # Short repeated IDs/values also have the existing dictionary meaning.
+        # Preserve every already-fitting wire and all original evidence.
+        shorter = _wire(pack_shared_strings(tabular, min_value_bytes=8))
+        encoded = min((encoded, shorter), key=lambda raw: len(raw.encode()))
     if decode_outlook_request(encoded) != packet:
         raise ValueError("outlook presentation changed the request")
     return encoded

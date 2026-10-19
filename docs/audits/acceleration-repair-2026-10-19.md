@@ -468,3 +468,12 @@ pretty捕获JSON按HTTP紧凑形式重新编码后30/30与观察到的wire SHA�
 条件替模型决定暂停或恢复。
 
 第一轮722冻结全量11008pass/13fail（19skip/2xfail）和全部日志保留。失败覆盖了旧fixture靠renewed标记重问、旧safe_summary读取，以及resume权限与新来源混用。新来源现在由worker独立绑定真实消息；resume仍严格保留repair/plan_authority，未修改Proposal权限矩阵。离线fixture显式声明其造数机会，生产路径不安装fixture机会。303项完整相关回归38.03s通过，47项权限/目录/worker组合2.15s通过；最终全量及实际续跑另记，不借局部通过。
+
+
+## 广义命运链路复查：当前输入仍超限
+
+扩大验收时，在同一保留世界/同一Clock的四库隔离副本复现refresh输入103273字节，原100000字节硬限在HTTP前拒绝；原operation和所有失败保持。精确packet/encoded、分项大小、离线编译反例在activity-feedback-20261019/causal-preflight-size。只用同长度技术nonce越过副本旧失败回执以观察编译，0HTTP、无原World/角色干预。v21等待启动协调器因此暂停启动，未launch；不是因普通模型超时中止。fa65完整冻结回归11021pass/19skip/2xfail/1existingwarning、1426.24s，1722Python未变，只证明它的回归范围。
+
+复用既有shared-string-view.1：仅当原编码仍超过指定预算，再尝试对较短的重复值用同一字典表示，最后仍须完整解码与原packet相等。原已容纳的请求字节保持不变，不改schema/字段/授权/角色选择、不提高上限、不删除来源、不新增框架或审核。同一实际packet经产品入口为98881字节且完整world_changes与原packet相等；此前需对其中两条材料截到512字符仍超限，新编码不需截断它们。最小30计划夹具原4743字节不能进4000预算，新2989字节完整复原；大预算旧wire黄金SHA保持。实际反例及最小红测均保留，86项请求/闭环/schema/字典专项通过。最终代码需独立完整冻结回归，不借fa65结果。
+
+这只证明当前命运请求重新可达，不证明以后所有请求都能容纳或故事已自然发展。后续同世界继续看真实source→选择/结果→Outlook结构回应→规划前驱替换→事件/课表；保持原硬限并保留超限反例。当前实际13条Plan回应为12continue/1起床安排revise，并非持续故事分叉。不得把四条线、阶段数、revision数或单次协议通过当作无人自主一天多样性证据。

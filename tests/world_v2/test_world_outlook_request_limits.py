@@ -1105,3 +1105,38 @@ async def test_failed_refresh_survives_ordinary_execution_of_its_paid_batch(tmp_
         assert len(store.attempts('refresh:' + key_before)) == 1
     finally:
         runtime.close()
+
+
+@pytest.mark.parametrize("byte_limit", [100_000, 4_000])
+def test_repeated_short_schedule_values_fit_without_changing_accepted_wire(byte_limit):
+    import hashlib
+    from companion_daemon.world_v2.world_outlook_request import (
+        ROLLING_REFERENCE_CONTRACT, decode_outlook_request, encode_outlook_request,
+    )
+
+    packet = {
+        "contract": "world-outlook-request.1",
+        "response_reference_contract": ROLLING_REFERENCE_CONTRACT,
+        "condition_sources": [],
+        "plan_schedules": [
+            {
+                "plan_id": f"plan:choice:{index:03}",
+                "owner_actor_ref": "agent:companion",
+                "status": "planned",
+                "scheduled_window": {
+                    "opens_at": "2026-10-19T08:15:00+08:00",
+                    "closes_at": "2026-10-19T09:45:00+08:00",
+                },
+                "participant_refs": ["agent:companion"],
+            }
+            for index in range(30)
+        ],
+    }
+    raw = encode_outlook_request(packet, byte_limit=byte_limit)
+    assert len(raw.encode()) <= byte_limit
+    assert decode_outlook_request(raw) == packet
+    if byte_limit == 100_000:
+        # Already-fitting requests retain their exact pre-fallback wire.
+        assert hashlib.sha256(raw.encode()).hexdigest() == (
+            "cae68f13a6fdbf8416811ea164d5cbaa2f7dd4c6b75cfee6a594c131cc25193f"
+        )
