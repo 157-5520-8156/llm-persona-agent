@@ -44,6 +44,72 @@ def current_context(ledger, store, *, actor_ref="actor:companion"):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize('status,scope', [('active', 'current_activities'), ('planned', 'planned_activities')])
+async def test_existing_activity_remains_in_role_input_under_recent_settlement_pressure(tmp_path, status, scope):
+    from datetime import timedelta
+    from companion_daemon.world_v2.context_capsule import ContextCapsuleBudgetPolicy
+    from companion_daemon.world_v2.world_outlook_runtime import WorldOutlookRuntime
+    from companion_daemon.world_v2.world_outlook_store import SQLiteWorldOutlookStore
+    from companion_daemon.world_v2.world_outlook_execution import WorldOutlookExecutor
+    from companion_daemon.world_v2.occurrence_content_coordinator import OccurrenceContentCoordinator
+    from companion_daemon.world_v2.character_interior.life_source_state_readings import life_source_profile
+    from companion_daemon.world_v2.background_context_profile import slice_background_inner_life_snapshot
+    from test_world_outlook import Author, draft_value
+    from test_life_development_runtime import _seed_clock, _manifest, _projection_cursor, OWNER
+    from test_world_consequence_aftermath import _aftermath, _NoCharacterCalls
+    from test_world_consequence_producer import _advance
+
+    if status == 'active':
+        ledger, content, plan_id, activity_ref = await accepted_current_activity()
+    else:
+        from test_world_life_intent_runtime import _seed, _audit, INTENT
+        from companion_daemon.world_v2.world_life_intent_runtime import WorldLifeIntentRuntime
+        from companion_daemon.world_v2.life_content_store import InMemoryImmutableLifeContentStore
+        ledger, _ = _seed(tmp_path/'future-intention.sqlite')
+        proposal, cursor = _audit(ledger, intent={**INTENT, 'start_after_seconds': 3600, 'duration_seconds': 3600})
+        WorldLifeIntentRuntime(ledger=ledger, owner_actor_ref=OWNER).accept(
+            world_id=ledger.world_id, audit_cursor=cursor, proposal_id=proposal.proposal_id)
+        plan = next(p for p in ledger.project().plans if p.plan_id.startswith('plan:world-life-intent:'))
+        plan_id, activity_ref = plan.plan_id, plan.authority_origin.accepted_event_ref
+        content = InMemoryImmutableLifeContentStore()
+    now = ledger.project().logical_time
+    wake = next(e.event for e in reversed(ledger.export_replay_evidence().events) if e.event.event_type == 'ClockAdvanced')
+    from test_world_outlook_continuity import retime
+    draft = retime(draft_value(wake), ledger.project(), wake)
+    outlook = WorldOutlookRuntime(ledger=ledger,
+        store=SQLiteWorldOutlookStore(path=tmp_path/'outlook.sqlite', world_id=ledger.world_id, actor_ref=OWNER),
+        author=Author([{'decision': 'revise', 'draft': draft}]), actor_ref=OWNER,
+        executor=WorldOutlookExecutor(ledger=ledger,
+            occurrence_content=OccurrenceContentCoordinator(ledger=ledger, store=content), actor_ref=OWNER))
+    try:
+        assert (await outlook.refresh(projection=ledger.project(), context={},
+                                       manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger))))['status'] == 'ready'
+        assert outlook.execute_offer(outlook.ready()[0], wake_event_ref=wake.event_id).status == 'occurrence_committed'
+        later = _seed_clock(ledger, event_id='clock:recent-noise', logical_time=now+timedelta(minutes=31),
+                            logical_time_from=now)
+        assert (await _advance(_aftermath(ledger, content, _NoCharacterCalls()), later)).status == 'settled'
+        before = ledger.project()
+        policy = ContextCapsuleBudgetPolicy()
+        policy = policy.model_copy(update={'world_life': policy.world_life.model_copy(update={'max_items': 1})})
+        capsule = context_capsule_compiler_from_ledger(ledger=ledger, life_content_store=content,
+            policy=policy, relevance_scope=ContextRelevanceScope(actor_ref=OWNER)).compile(
+                query_from_projection(before, actor_ref=OWNER, trigger_ref=later.event_id))
+        snapshot = compile_inner_life_snapshot(json.loads(capsule.model_content_json),
+            source_envelopes=source_envelopes_from_capsule(capsule))
+        rendered = slice_background_inner_life_snapshot(snapshot.model_view(include_lifecycle_states=True),
+                                                        life_source_profile('life-source-review.21'))
+        shown = rendered['materials'].get(scope, [])
+        assert len(shown) == 1, 'Recent completed scenery displaced the live accepted activity'
+        assert shown[0]['plan_id'] == plan_id and shown[0]['source_ref'] == activity_ref
+        assert activity_ref in snapshot.source_refs
+        assert ledger.project() == before
+    finally:
+        outlook.close()
+        if callable(getattr(ledger, 'close', None)):
+            ledger.close()
+
+
+@pytest.mark.asyncio
 async def test_accepted_current_activity_is_readable_and_exactly_source_bound():
     ledger, store, plan_id, current_event_ref = await accepted_current_activity()
     capsule, context, snapshot = current_context(ledger, store)

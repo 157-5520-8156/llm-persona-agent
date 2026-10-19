@@ -944,6 +944,12 @@ def _rank(
             return 10_000
         if isinstance(item, WorldLifeContextItem) and item.world_planning is not None:
             return 9_950
+        # Current accepted execution/intent is grounding for the next choice.
+        # Recent scenery must not evict it before the model sees the World.
+        if isinstance(item, ActiveActivityContextItem):
+            return 9_925
+        if isinstance(item, PlannedActivityContextItem):
+            return 9_900
     if slice_name in _READ_SCORE_SLICES:
         recency_bp = _recency_bp(item, logical_time)
         if slice_name == "relevant_facts" and isinstance(item, FactRecallItem):

@@ -988,9 +988,16 @@ class WorldOutlookRuntime:
                      for c in obj.get("conditions", ())}
         own = {ref for offer in offers if offer["state"] == "considered"
                for ref in offer["payload"].get("effect_refs", ())}
-        protected.update(o.occurrence_id for o in self._entities(projection, own)["world_occurrences"]
+        own_entities = self._entities(projection, own)
+        protected.update(o.occurrence_id for o in own_entities["world_occurrences"]
                          if self._material_consequence(o))
-        ordinary = self._ordinary_effect_refs(sources, offers, material_refs=protected)
+        # A settled own event may leave the live catalog before a new head
+        # tracks it. Its exact terminal state still proves ordinary execution;
+        # absence from the input catalog must not turn its receipt into a retry.
+        from types import SimpleNamespace
+        effect_sources = source_catalog(SimpleNamespace(**own_entities), actor_ref=self.actor_ref,
+            npc_refs=tuple(npc_refs), required_refs=own, legacy_fact_status=False, only_referenced=True)
+        ordinary = self._ordinary_effect_refs({**sources, **effect_sources}, offers, material_refs=protected)
         input_key = running["payload"]["input_key"] if running else digest(
             {
                 "retry_identity": "outlook-ordinary-progress.1",

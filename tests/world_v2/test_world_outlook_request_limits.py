@@ -1057,7 +1057,8 @@ def test_new_reference_contract_uses_lossless_aliases_below_the_size_limit():
 
 
 @pytest.mark.asyncio
-async def test_failed_refresh_survives_ordinary_execution_of_its_paid_batch(tmp_path):
+@pytest.mark.parametrize('settle', [False, True])
+async def test_failed_refresh_survives_ordinary_execution_of_its_paid_batch(tmp_path, settle):
     from test_world_outlook import install_executor
     from test_life_development_runtime import _seed_clock
 
@@ -1067,7 +1068,7 @@ async def test_failed_refresh_survives_ordinary_execution_of_its_paid_batch(tmp_
         return [{'decision': 'revise', 'draft': value}, RuntimeError('provider unavailable'), RuntimeError('unexpected paid retry')]
 
     ledger, wake, store, author, runtime = setup(tmp_path, outputs)
-    install_executor(ledger, runtime)
+    coordinator = install_executor(ledger, runtime)
     try:
         args = {'context': {}, 'manifest': _manifest(wake, pinned_cursor=_projection_cursor(ledger))}
         assert (await runtime.refresh(projection=ledger.project(), **args))['status'] == 'ready'
@@ -1079,6 +1080,14 @@ async def test_failed_refresh_survives_ordinary_execution_of_its_paid_batch(tmp_
         key_before = runtime._refresh_identity(ledger.project(), runtime.view(), (), store.head())[2]
         node = runtime.ready()[0]
         assert runtime.execute_offer(node, wake_event_ref=later.event_id).status == 'occurrence_committed'
+        if settle:
+            from test_world_consequence_aftermath import _aftermath, _NoCharacterCalls
+            from test_world_consequence_producer import _advance
+            later = _seed_clock(ledger, event_id='clock:ordinary-settlement',
+                                logical_time=wake.logical_time + timedelta(minutes=31),
+                                logical_time_from=later.logical_time)
+            assert (await _advance(_aftermath(ledger, coordinator._store, _NoCharacterCalls()), later)).status == 'settled'
+            assert all(o.status == 'settled' for o in ledger.project().world_occurrences)
         key_after = runtime._refresh_identity(ledger.project(), runtime.view(), (), store.head())[2]
         assert key_after == key_before, 'Ordinary paid batch execution reset failed refresh identity'
         args['manifest'] = _manifest(later, pinned_cursor=_projection_cursor(ledger))
