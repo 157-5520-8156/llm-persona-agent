@@ -29,9 +29,9 @@ from .world_outlook import (
 
 _WORKING_SOURCES = "outlook-working-sources.2"
 _WORKING_SOURCE_SCOPES = frozenset({"outlook-working-sources.1", _WORKING_SOURCES})
-_ROLLING_PLANNING = "rolling-world-planning.4"
-_NATIVE_RESULT = "world-outlook-native.9"
-_NATIVE_RESULTS = frozenset({"world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.5", "world-outlook-native.6", "world-outlook-native.7", "world-outlook-native.8", _NATIVE_RESULT})
+_ROLLING_PLANNING = "rolling-world-planning.5"
+_NATIVE_RESULT = "world-outlook-native.10"
+_NATIVE_RESULTS = frozenset({"world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.5", "world-outlook-native.6", "world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9", _NATIVE_RESULT})
 _TERMINAL_SOURCE_EVENTS = frozenset({
     "ActivityCompleted", "ActivityAbandoned", "WorldOccurrenceSettled",
     "WorldOccurrenceCancelled", "WorldOccurrenceExpired", "FactCommitted",
@@ -551,11 +551,19 @@ class WorldOutlookRuntime:
                 ongoing & {ref for s in candidate.long_term for ref in s.thread_refs}) < 2:
             raise ValueError("annual stages must develop at least two ongoing threads")
         changes = {item["source_ref"] for item in pinned.get("world_changes", ())}
-        if changes != {r.source_ref for r in candidate.change_responses} or kept_current and changes:
+        if changes != {r.source_ref for r in candidate.change_responses} or (kept_current and changes and
+                (pinned.get("response_tool_contract") != "world-outlook-native.10"
+                 or any(r.decision != "retain" for r in candidate.change_responses))):
             raise ValueError(f"every offered accepted world change requires one explicit change response; "
                              f"expected world_changes sources {sorted(changes)!r}, received "
                              f"{sorted(r.source_ref for r in candidate.change_responses)!r}. "
                              "Do not add condition_sources or history_offer entries to this list.")
+        if kept_current and changes:
+            previous = pinned['current_outlook']
+            for field in ('threads', 'opportunities', 'long_term'):
+                old = [{k: v for k, v in item.items() if k != 'state'} for item in previous.get(field, ())]
+                if [item.model_dump(mode='json') for item in getattr(candidate, field)] != old:
+                    raise ValueError('keep must retain the exact previously authored future')
         if changes:
             affected = {ref for response in candidate.change_responses if response.decision == "revise"
                         for ref in response.thread_refs}
@@ -1032,7 +1040,7 @@ class WorldOutlookRuntime:
                 **({"rolling_planning": _ROLLING_PLANNING} if self._rolling_planning else {}),
                 **({"response_tool_contract": _NATIVE_RESULT} if native_result else {}),
                 **({"response_carrier": getattr(getattr(self.author, "authority_origin", self.author),
-                    "single_tool_response_carrier", "native")} if native_result and _NATIVE_RESULT in {"world-outlook-native.8", "world-outlook-native.9"} else {}),
+                    "single_tool_response_carrier", "native")} if native_result and _NATIVE_RESULT in {"world-outlook-native.8", "world-outlook-native.9", "world-outlook-native.10"} else {}),
                 "offers": digest([o for o in offers if not (
                     o["state"] == "considered" and o["payload"].get("effect_refs")
                     and set(o["payload"]["effect_refs"]) <= ordinary)]),
@@ -1175,7 +1183,7 @@ class WorldOutlookRuntime:
                 **({"response_tool_contract": _NATIVE_RESULT} if native_result else {}),
                 **({"new_opportunity_ids": list(new_ids)} if new_ids is not None else {}),
                 **({"response_carrier": getattr(getattr(self.author, "authority_origin", self.author),
-                    "single_tool_response_carrier", "native")} if native_result and _NATIVE_RESULT in {"world-outlook-native.8", "world-outlook-native.9"} else {}),
+                    "single_tool_response_carrier", "native")} if native_result and _NATIVE_RESULT in {"world-outlook-native.8", "world-outlook-native.9", "world-outlook-native.10"} else {}),
                 "world_id": projection.world_id,
                 "actor_ref": self.actor_ref,
                 "logical_time": now.isoformat(),
@@ -1244,11 +1252,12 @@ class WorldOutlookRuntime:
             }
             if native_result:
                 allow_keep = not (packet["rolling_preparation"]["due"] or packet["rolling_preparation"]["outline_due"]
-                                  or packet.get("world_changes"))
+                                  or (packet.get("world_changes") and packet["response_tool_contract"] != "world-outlook-native.10"))
                 response_tools = [outlook_result_tool(packet["draft_schema"], allow_keep=allow_keep,
-                    **({"json_object": True} if packet["response_tool_contract"] == "world-outlook-native.9"
+                    retained_changes=bool(packet.get("world_changes")) and packet["response_tool_contract"] == "world-outlook-native.10",
+                    **({"json_object": True} if packet["response_tool_contract"] in {"world-outlook-native.9", "world-outlook-native.10"}
                        and packet.get("response_carrier") == "json_object" else {}))]
-                if packet["response_tool_contract"] in {"world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9"}:
+                if packet["response_tool_contract"] in {"world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9", "world-outlook-native.10"}:
                     # The exact schema is already pinned in response_tools and supplied
                     # by the provider carrier. Do not duplicate it in the evidence body.
                     packet.pop("draft_schema")
@@ -1256,14 +1265,32 @@ class WorldOutlookRuntime:
             system = _ROLLING_SYSTEM if self._rolling_planning else _SYSTEM
             if native_result:
                 before, _, after = system.partition("Return a JSON object, exactly")
+                if packet['response_tool_contract'] == 'world-outlook-native.10':
+                    after = after.replace('Keep cannot acknowledge a nonempty change list.',
+                        'If every offered change leaves the future compatible and no coverage work is due, '
+                        'keep may acknowledge each one with an explicit retain response. '
+                        'A revise response still requires a changed, source-linked future structure.')
+                    before += ('\nA story thread is an ongoing external situation with possible consequences. '
+                        'Use the event detail programme to elaborate one situation; small changes of sound, '
+                        'light or object placement alone need not become new story threads or overlapping '
+                        'independent opportunities. Do not fill the opportunity limit for its own sake. '
+                        'Quiet life is valid; choose the situations and their development yourself. '
+                        'Let long-term situations shape published arrangements and concrete opportunities, '
+                        'and reconsider their branches when actual outcomes change the conditions.\n')
                 if packet.get("response_carrier") == "json_object":
                     instruction = ("Return exactly one JSON object matching the declared response schema. "
                         "If validation rejects it, return a corrected JSON object. Do not call a tool.")
                     if not allow_keep:
                         instruction += ' This request requires exactly {"decision":"revise","draft":<schema>}; keep, root review_at and root reason are not offered.'
-                    elif packet["response_tool_contract"] == "world-outlook-native.9":
+                    elif packet["response_tool_contract"] in {"world-outlook-native.9", "world-outlook-native.10"}:
                         instruction += ' Return exactly {"decision":"keep","review_at":"future ISO timestamp","reason":"why keep"} OR {"decision":"revise","draft":<schema>}. Never add request metadata or notes to either object.'
-                    if packet["response_tool_contract"] == "world-outlook-native.9":
+                        if packet['response_tool_contract'] == 'world-outlook-native.10' and packet.get('world_changes'):
+                            instruction = ('Return exactly one JSON object matching the declared schema: '
+                                '{"decision":"keep","review_at":"future ISO timestamp","reason":"why compatible",'
+                                '"change_responses":[one explicit retain response per world_changes source]} '
+                                'OR {"decision":"revise","draft":<schema>}. '
+                                'Keep copies the entire exact prior future and cannot revise a thread, stage, opportunity or planning key.')
+                    if packet["response_tool_contract"] in {"world-outlook-native.9", "world-outlook-native.10"}:
                         instruction += ' A condition unchanged_token copies condition_sources.token for that source_ref; history anchor authority_hash is a different namespace.'
                 else:
                     instruction = "For each response, call world_outlook_v6 once with your complete candidate. If validation rejects a candidate, your next response must be a corrected function call. Do not return an ordinary text/JSON message."
@@ -1320,7 +1347,9 @@ class WorldOutlookRuntime:
                 kept_current = False
                 if (
                     isinstance(obj, dict)
-                    and set(obj) == {"decision", "review_at", "reason"}
+                    and set(obj) == ({"decision", "review_at", "reason", "change_responses"}
+                        if pinned_request.get("response_tool_contract") == "world-outlook-native.10" and pinned_request.get("world_changes")
+                        else {"decision", "review_at", "reason"})
                     and obj["decision"] == "keep"
                 ):
                     head = self.store.head()
@@ -1334,7 +1363,7 @@ class WorldOutlookRuntime:
                             "parent_revision": head[0],
                             "review_at": obj["review_at"],
                             "revise_reason": obj["reason"],
-                            **({"change_responses": []} if pinned_request.get("draft_schema_contract") == "world-outlook-author-schema.8" else {}),
+                            **({"change_responses": obj.get("change_responses", [])} if pinned_request.get("draft_schema_contract") == "world-outlook-author-schema.8" else {}),
                         },
                     }
                 if (
@@ -1342,8 +1371,11 @@ class WorldOutlookRuntime:
                     or set(obj) != {"decision", "draft"}
                     or obj["decision"] != "revise"
                 ):
+                    keep_fields = 'decision, review_at, reason'
+                    if pinned_request.get('response_tool_contract') == 'world-outlook-native.10' and pinned_request.get('world_changes'):
+                        keep_fields += ', change_responses (one retain response per offered source)'
                     raise ValueError(
-                        "outlook response shape invalid: keep requires exactly decision, review_at, reason; "
+                        f"outlook response shape invalid: keep requires exactly {keep_fields}; "
                         "revise requires exactly decision, draft. Do not copy keep fields onto revise; "
                         "its schedule belongs inside draft."
                     )
@@ -1406,7 +1438,7 @@ class WorldOutlookRuntime:
                 )
                 if ordinal == 0 and raw is not None:
                     error = "Correct the same outlook using only the supplied sources. Exact error: " + str(exc)[:1000]
-                    if pinned_request.get("response_tool_contract") == "world-outlook-native.9":
+                    if pinned_request.get("response_tool_contract") in {"world-outlook-native.9", "world-outlook-native.10"}:
                         reference_errors = _outlook_reference_errors(obj, pinned_request)
                         if reference_errors:
                             error += " Independent reference errors (do not confuse authority_hash with a state token): " + json.dumps(reference_errors, ensure_ascii=False)

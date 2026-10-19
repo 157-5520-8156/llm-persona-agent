@@ -112,6 +112,81 @@ def test_every_accepted_change_needs_explicit_story_response(tmp_path):
         runtime.close()
 
 
+def test_retained_change_can_keep_exact_future_but_not_hide_a_revision(tmp_path):
+    ledger, wake, _, _, runtime = setup(tmp_path, lambda w: [])
+    value = story_draft(wake)
+    old = WorldOutlookDraft.model_validate_json(json.dumps(value))
+    response = {"source_ref": "plan:ordinary", "decision": "retain", "thread_refs": [],
+                "planning_keys": [], "reason": "这次个人安排仍在原来的外部条件内，不改变未来机会。"}
+    value["change_responses"] = [response]
+    packet = {"response_tool_contract": "world-outlook-native.10", "world_changes": [{"source_ref": "plan:ordinary"}],
+              "current_outlook": old.model_dump(mode="json"),
+              "rolling_preparation": {"published": [], "due": [], "outline_due": False}}
+    try:
+        runtime._validate_story_revision(WorldOutlookDraft.model_validate_json(json.dumps(value)), packet, kept_current=True)
+        for change in ({"change_responses": []}, {"change_responses": [{**response, "decision": "revise"}]},
+                       {"threads": [{**value["threads"][0], "situation": "偷偷改写外部条件"}, *value["threads"][1:]]}):
+            with pytest.raises(ValueError):
+                runtime._validate_story_revision(WorldOutlookDraft.model_validate_json(json.dumps({**value, **change})), packet, kept_current=True)
+        with pytest.raises(ValueError):
+            runtime._validate_story_revision(WorldOutlookDraft.model_validate_json(json.dumps(value)),
+                {**packet, "response_tool_contract": "world-outlook-native.9"}, kept_current=True)
+    finally:
+        runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_native_keep_acknowledges_real_abandoned_plan_without_rewriting_year(tmp_path):
+    from test_world_outlook_continuity import npc_setup, npc_manifest, retime
+    from test_life_projection import commit, event, mutation, world_evidence
+    from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
+
+    ledger, wake, _, runtime, _, _ = npc_setup(tmp_path, lambda d: None)
+    class NativeAuthor:
+        model = 'fixture:explicit-retain'
+        single_tool_response_carrier = 'json_object'
+        calls = []
+        async def complete_json(self, messages, **kwargs):
+            packet = decode_outlook_request(messages[1]['content'])
+            self.calls.append(packet)
+            if packet['parent_revision'] is None:
+                value = retime(story_draft(wake), ledger.project(), wake)
+                for index, node in enumerate(value['opportunities']):
+                    node['opportunity_id'] = packet['new_opportunity_ids'][index]
+                return json.dumps({'decision': 'revise', 'draft': value}, ensure_ascii=False)
+            return json.dumps({'decision': 'keep', 'review_at': (wake.logical_time + timedelta(days=2)).isoformat(),
+                'reason': '个人放弃了一个短期安排，外部机会仍可继续。',
+                'change_responses': [{'source_ref': x['source_ref'], 'decision': 'retain', 'thread_refs': [],
+                    'planning_keys': [], 'reason': '这次选择没有改变已有外部条件。'} for x in packet['world_changes']]}, ensure_ascii=False)
+    author = NativeAuthor()
+    runtime.author, runtime._rolling_planning = author, True
+    try:
+        async def refresh():
+            return await runtime.refresh(projection=ledger.project(), context={}, manifest=npc_manifest(ledger, wake))
+        first = await refresh()
+        assert first['status'] == 'ready', (first, [json.loads(r[0]).get('code') for r in runtime.store._db.execute('SELECT payload FROM world_outlook_attempts')])
+        before = runtime.store.head()[1].model_dump(mode='json')
+        template = ledger.project().plans[0].model_dump(mode='json')
+        template.pop('authority_origin', None)
+        ref = 'plan:ordinary-abandoned'
+        plan = {**template, 'plan_id': ref, 'activity_id': 'activity:ordinary',
+                'participant_refs': [], 'location_ref': None, 'scheduled_window': None}
+        commit(ledger, [event('planned:' + ref, 'ActivityPlanned', {
+            **mutation('planned:' + ref, expected_revision=0, evidence_refs=plan['evidence_refs']), 'plan': plan}, at=wake.logical_time)])
+        commit(ledger, [event('abandoned:' + ref, 'ActivityAbandoned', {
+            **mutation('abandoned:' + ref, expected_revision=1, evidence_refs=[world_evidence(ledger, wake.event_id, 'life_transition')]),
+            'plan_id': ref, 'transitioned_at': wake.logical_time.isoformat(), 'reason_ref': wake.event_id}, at=wake.logical_time)])
+        assert (await refresh())['status'] == 'ready', runtime.health()
+        after = runtime.store.head()[1].model_dump(mode='json')
+        assert len(author.calls) == 2 and author.calls[-1]['world_changes'][0]['source_ref'] == ref
+        assert all(after[k] == before[k] for k in ('threads', 'opportunities', 'long_term'))
+        assert after['change_responses'][0]['source_ref'] == ref
+        assert runtime.view()['changed_source_refs'] == []
+        assert (await refresh())['status'] == 'unchanged'
+    finally:
+        runtime.close()
+
+
 def test_new_story_schema_cannot_advertise_unoffered_change_responses():
     from jsonschema import Draft202012Validator
     from companion_daemon.world_v2.world_outlook_author_schema import outlook_author_schema

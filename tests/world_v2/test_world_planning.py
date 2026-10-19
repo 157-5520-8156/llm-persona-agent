@@ -194,6 +194,49 @@ async def test_outlook_publishes_planning_into_real_role_context_without_attenda
             runtime._validate_offered_nodes(WorldOutlookDraft.model_validate_json(json.dumps(rewritten)), projection=state)
         assert not state.plans
         assert not any(e.event_type == "ActivityStarted" for e in state.committed_world_event_refs)
+        # Follow the same published source through Life's actual purpose view,
+        # not only the ordinary chat view checked below.
+        from companion_daemon.world_v2.ledger_context_resolver import context_capsule_compiler_from_ledger
+        from companion_daemon.world_v2.context_resolver import query_from_projection
+        from companion_daemon.world_v2.character_interior.life_source_readings import prepare_life_source_readings
+        from companion_daemon.world_v2.character_interior.life_source_review import prepare_review
+        from test_life_fact_readings import _fact_view
+        from test_life_fact_value_display import candidate
+
+        clock_ref = next(e.event_id for e in reversed(state.committed_world_event_refs) if e.event_type == "ClockAdvanced")
+        compiler = context_capsule_compiler_from_ledger(ledger=app._ledger, life_content_store=app._life_content_store)
+        capsule = compiler.compile(query_from_projection(state, actor_ref="actor:companion", trigger_ref=clock_ref))
+        old_view, old_snapshot = await _fact_view(capsule, review_contract="life-source-review.21")
+        old_bytes = old_view.model_dump_json()
+        assert "world_planning" not in old_view.author_payload()["inner_life_snapshot"]["materials"]
+        view, life_snapshot = await _fact_view(capsule, review_contract="life-source-review.22")
+        assert view.author_payload()["inner_life_snapshot"]["materials"]["world_planning"]
+        readings = prepare_life_source_readings(view=view, snapshot=life_snapshot).as_dict()
+        arrangements = [r for r in readings["readings"] if r["source_family"] == "published_world_planning"]
+        assert arrangements and all(r["permissions"] == [["external_arrangement", "general"]] for r in arrangements), readings["excluded"]
+        assert all(r["value"]["world_planning"]["epistemic_scope"] == "published_external_arrangement_not_attendance" for r in arrangements)
+        from copy import deepcopy
+        from companion_daemon.world_v2.character_interior.life_source_readings import _planning_reading
+        from companion_daemon.world_v2.selected_source_composer import compile_selected_source_table
+        row = next(r for r in compile_selected_source_table(capsule=capsule, include_subjective_history=True,
+            include_lifecycle_states=True).source_references() if r['source_ref'] == values[0].occurrence_ref)
+        shown = view.author_payload()['inner_life_snapshot']
+        altered = deepcopy(shown)
+        altered['materials']['world_planning'][0]['world_planning']['title'] = '未公布的另一个课表'
+        assert _planning_reading(row, rendered=altered, snapshot=life_snapshot)[0] is None
+        with pytest.raises(ValueError, match='actor, time or settlement'):
+            _planning_reading(row, rendered=shown, snapshot=life_snapshot.model_copy(update={'actor_ref': 'actor:other'}))
+        broken = deepcopy(row)
+        broken['review_material']['item']['source_bindings'][0]['immutable_hash'] = '0' * 64
+        with pytest.raises(ValueError, match='actor, time or settlement'):
+            _planning_reading(broken, rendered=shown, snapshot=life_snapshot)
+        assert not any(r['source_family'] == 'published_world_planning' for r in
+            prepare_life_source_readings(view=old_view, snapshot=old_snapshot).as_dict()['readings'])
+        prepared, _ = prepare_review(candidate_json=candidate(), provider_raw=candidate(), view=view, snapshot=life_snapshot)
+        assert json.loads(json.loads(prepared)["request"]["messages"][1]["content"])["contract"] == "life-source-review.22"
+        old_view.verify_snapshot(old_snapshot)
+        assert old_view.model_dump_json() == old_bytes
+        assert app._ledger.project() == state
         await app.respond(InboundTurn(platform="test", platform_user_id="user.1", platform_message_id="planning-question",
                                      text="你今天下午有什么安排？", observed_at=state.logical_time, trace_id="planning-question"))
         request = next(v for v in reversed(role.materials) if not v.get("inner_turn", {}).get("purpose"))

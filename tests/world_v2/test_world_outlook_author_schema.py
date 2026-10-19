@@ -72,6 +72,7 @@ def test_rolling_date_bounds_use_the_planning_timezone_across_utc_midnight():
 
 def test_new_annual_outline_requirement_preserves_old_paid_schema(tmp_path):
     from datetime import timedelta
+
     ledger, wake, _, _, runtime = setup(tmp_path, lambda w: [])
     try:
         now = ledger.project().logical_time
@@ -256,3 +257,24 @@ def test_expired_prior_nodes_are_not_offered_as_retainable_schema_values(tmp_pat
         assert all(not validator.is_valid(node.model_dump(mode='json')) for node in draft.opportunities)
     finally:
         runtime.close()
+
+
+@pytest.mark.parametrize('json_object', [False, True])
+def test_keep_with_changes_requires_exact_model_authored_retain_responses(json_object):
+    from companion_daemon.world_v2.world_outlook_author_schema import outlook_result_tool
+    from companion_daemon.world_v2.world_outlook import WorldOutlookDraft
+    from jsonschema import Draft202012Validator
+
+    schema = WorldOutlookDraft.model_json_schema()
+    schema['properties']['change_responses'].update(minItems=1, maxItems=1)
+    validator = Draft202012Validator(outlook_result_tool(schema, json_object=json_object,
+        retained_changes=True)['function']['parameters'])
+    response = {'source_ref': 'plan:one', 'decision': 'retain', 'thread_refs': [],
+                'planning_keys': [], 'reason': 'The external future remains compatible.'}
+    value = {'decision': 'keep', 'review_at': '2026-10-19T07:00:00+08:00', 'reason': 'Compatible', 'change_responses': [response]}
+    assert validator.is_valid(value)
+    assert not validator.is_valid({k: v for k, v in value.items() if k != 'change_responses'})
+    for responses in ([], [response, response], [{**response, 'decision': 'revise'}],
+                      [{**response, 'planning_keys': ['school']} ]):
+        assert not validator.is_valid({**value, 'change_responses': responses})
+    assert not Draft202012Validator(outlook_result_tool(schema, json_object=json_object)['function']['parameters']).is_valid(value)

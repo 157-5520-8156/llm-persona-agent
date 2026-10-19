@@ -190,7 +190,7 @@ def outlook_author_schema(*, basis_refs=None, npc_privacy_floors=(), prior_oppor
     return without_annotations(schema)
 
 
-def outlook_result_tool(draft_schema, *, allow_keep=True, json_object=False):
+def outlook_result_tool(draft_schema, *, allow_keep=True, json_object=False, retained_changes=False):
     """Native object-root carrier for the same two canonical result shapes."""
     schema = deepcopy(draft_schema)
     definitions = schema.pop("$defs")
@@ -203,6 +203,14 @@ def outlook_result_tool(draft_schema, *, allow_keep=True, json_object=False):
                 "if": {"properties": {"decision": {"const": "keep"}}},
                 "then": {"required": ["review_at", "reason"], "not": {"required": ["draft"]}},
                 "else": {"required": ["draft"], "not": {"anyOf": [{"required": ["review_at"]}, {"required": ["reason"]}]}}}]}}}
+    if retained_changes and allow_keep:
+        response = deepcopy(schema['properties']['change_responses'])
+        response['items'] = {'allOf': [response['items'], {'properties': {
+            'decision': {'const': 'retain'}, 'planning_keys': {'maxItems': 0}}}]}
+        parameters = tool['function']['parameters']
+        parameters['properties']['change_responses'] = response
+        parameters['allOf'][0]['then']['required'].append('change_responses')
+        parameters['allOf'][0]['else']['not']['anyOf'].append({'required': ['change_responses']})
     if not allow_keep:
         # Missing coverage already requires a revision. Do not advertise the
         # keep-only fields and rely on a conditional schema to forbid them.
@@ -224,4 +232,8 @@ def outlook_result_tool(draft_schema, *, allow_keep=True, json_object=False):
              "properties": {"decision": {"const": "revise"}, "draft": fields["draft"]},
              "required": ["decision", "draft"]},
         ]}
+        if retained_changes:
+            branch = tool['function']['parameters']['oneOf'][0]
+            branch['properties']['change_responses'] = fields['change_responses']
+            branch['required'].append('change_responses')
     return tool

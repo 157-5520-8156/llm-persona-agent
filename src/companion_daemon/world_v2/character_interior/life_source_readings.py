@@ -132,6 +132,57 @@ def _shown_exact_field(shown, pointer, expected, family):
     return not numeric and value == expected
 
 
+def _planning_reading(row, *, rendered, snapshot):
+    """Read only the exact published arrangement, with no attendance authority."""
+    from ..context_capsule import ResolvedSourceBinding, source_bindings_hash
+    from ..world_life_context import WorldLifeContextItem
+
+    material = row['review_material']
+    item = material.get('item', {})
+    value = item.get('value', {})
+    if material.get('lane') != 'world_life' or not value.get('world_planning'):
+        return None, 'no_qualified_field_reader'
+    state = WorldLifeContextItem.model_validate_json(canonical(value), strict=True)
+    bindings = tuple(ResolvedSourceBinding.model_validate_json(canonical(b), strict=True)
+                     for b in item.get('source_bindings', ()))
+    source = state.source
+    settlement = [b for b in bindings if b.ref == source.authority_event_ref]
+    if (snapshot.cursor is None or snapshot.logical_time is None
+        or snapshot.actor_ref not in state.participant_refs
+        or state.settled_at > snapshot.logical_time
+        or source.authority_world_revision > snapshot.cursor.world_revision
+        or state.privacy_class == 'withhold'
+        or material.get('privacy_class') != state.privacy_class
+        or item.get('privacy_class') != state.privacy_class
+        or item.get('item_ref') != state.occurrence_id
+        or item.get('value_hash') != digest(canonical(value))
+        or item.get('source_hash') != source_bindings_hash(bindings)
+        or len(settlement) != 1
+        or settlement[0].source_kind != 'committed_event'
+        or settlement[0].authority_type != 'WorldOccurrenceSettled'
+        or settlement[0].source_world_revision != source.authority_world_revision
+        or settlement[0].immutable_hash != source.authority_payload_hash):
+        raise ValueError('Life published planning differs from its original actor, time or settlement')
+    if row['source_ref'] not in {state.occurrence_id, source.authority_event_ref}:
+        return None, 'not_the_planning_publication_reference'
+    scope = 'world_planning'
+    # The compact inventory keeps one row per source, whose first scope can
+    # be week_diary. Prove this exact field in the actual planning material
+    # below; a source's first display scope is not its field authority.
+    if not any(i.get('source_ref') == state.occurrence_id
+               for i in rendered.get('source_inventory', ())):
+        return None, 'source_not_in_presented_family'
+    shown = _presented_items(rendered, scope=scope, source_ref=state.occurrence_id)
+    exact = {'world_planning': value['world_planning'], 'settled_at': value['settled_at']}
+    if len(shown) != 1 or any(shown[0].get(k) != v for k, v in exact.items()):
+        return None, 'exact_field_not_presented'
+    return {'source_family': 'published_world_planning', 'item_ref': state.occurrence_id,
+            'pointer': '/item/value/world_planning', 'value': exact,
+            'shown_scopes': [scope], 'source_owner_ref': snapshot.actor_ref,
+            'permissions': [['external_arrangement', 'general']],
+            'scope': 'Published external arrangement only; no attendance, participation, intention, completed action or private future outcome.'}, None
+
+
 @dataclass(frozen=True)
 class PreparedLifeSourceReadings:
     payload_json: str
@@ -184,8 +235,9 @@ def prepare_life_source_readings(*, view: LifeSourceView, snapshot) -> PreparedL
         material = table['source_materials'][source['material_index']]['material']
         row = {**source, 'review_material': material}
         from .life_situation_readings import situation_plan_reading
-        aligned = view.review_contract in {'life-source-review.19', 'life-source-review.20', 'life-source-review.21'}
+        aligned = view.review_contract in {'life-source-review.19', 'life-source-review.20', 'life-source-review.21', 'life-source-review.22'}
         structured_reader = (
+            _planning_reading if view.review_contract == 'life-source-review.22' and material.get('lane') == 'world_life' and material.get('item', {}).get('value', {}).get('world_planning') else
             situation_plan_reading if aligned and material.get('lane') == 'current_situation' else
             affect_history_reading if view.review_contract in STATE_REVIEW_CONTRACTS and material.get("lane") == "affect_episodes" else
             lifecycle_state_reading if view.review_contract in STATE_REVIEW_CONTRACTS and material.get("item", {}).get("value", {}).get("context_kind") == "activity_lifecycle_state" else
@@ -196,7 +248,7 @@ def prepare_life_source_readings(*, view: LifeSourceView, snapshot) -> PreparedL
             descriptor, reason = structured_reader(row, rendered=rendered,
                 **({'exact_value_display': exact_value_display} if structured_reader is fact_value_reading else
                    {'snapshot': snapshot, 'state_only': aligned} if structured_reader is affect_history_reading else
-                   {'snapshot': snapshot} if structured_reader in {lifecycle_state_reading, situation_plan_reading} else {}))
+                   {'snapshot': snapshot} if structured_reader in {lifecycle_state_reading, situation_plan_reading, _planning_reading} else {}))
             if descriptor is None:
                 excluded.append({'source_ref_index': source['source_ref_index'], 'reason': reason})
                 continue
@@ -249,7 +301,7 @@ def prepare_life_source_readings(*, view: LifeSourceView, snapshot) -> PreparedL
                        'source_ref_indexes': [source['source_ref_index']]}
             identities[identity] = reading
             readings.append(reading)
-    if view.review_contract in {'life-source-review.20', 'life-source-review.21'}:
+    if view.review_contract in {'life-source-review.20', 'life-source-review.21', 'life-source-review.22'}:
         from .life_runtime_readings import runtime_readings
         readings.extend(runtime_readings(view=view, snapshot=snapshot))
     return PreparedLifeSourceReadings(canonical({
