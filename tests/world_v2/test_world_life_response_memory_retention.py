@@ -5,13 +5,10 @@ import pytest
 from test_world_life_response_readers import ACTOR, _cursor, composite as composite
 
 
-@pytest.mark.asyncio
-async def test_retained_composite_memory_returns_structure_without_promoting_response(composite):
+def retain_composite_memory(ledger, store, experience):
     from companion_daemon.world_v2.experience_memory_candidate_lifecycle import ExperienceMemoryCandidateLifecycle
     from companion_daemon.world_v2.fact_memory_draft import FactMemoryRetentionDraft
-    from companion_daemon.world_v2.memory_retrieval import MemoryRetrievalCompiler
     from companion_daemon.world_v2.schemas import MEMORY_SALIENCE_MATRIX_DIGEST
-    ledger, store, experience = composite
     state = ledger.project()
     event, _ = ledger.lookup_event_commit(experience.origin.accepted_event_ref)
     source = next(x for x in state.committed_world_event_refs if x.event_id == event.event_id)
@@ -33,6 +30,15 @@ async def test_retained_composite_memory_returns_structure_without_promoting_res
         trace_id="trace:retention", correlation_id="reader",
     )
     assert candidate is not None
+    return candidate
+
+
+@pytest.mark.asyncio
+async def test_retained_composite_memory_returns_structure_without_promoting_response(composite):
+    from companion_daemon.world_v2.memory_retrieval import MemoryRetrievalCompiler
+
+    ledger, store, experience = composite
+    candidate = retain_composite_memory(ledger, store, experience)
     before = ledger.export_replay_evidence()
     result = MemoryRetrievalCompiler(ledger=ledger, life_content_store=store).compile(
         cursor=_cursor(ledger.project()), candidates=(candidate,), viewer_privacy_ceiling="private",

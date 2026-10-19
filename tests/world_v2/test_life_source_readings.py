@@ -10,6 +10,7 @@ from companion_daemon.world_v2.character_interior.life_source_readings import (
     PreparedLifeSourceReadings, prepare_life_source_readings,
 )
 from test_life_source_view import _prepared
+from test_world_life_response_readers import composite as composite
 
 
 @pytest.mark.asyncio
@@ -164,3 +165,72 @@ def test_identical_text_in_metadata_or_another_source_field_is_not_presentation_
     environment = {'world_consequence': {'environment': {'text': 'same bytes'}}}
     assert _shown_exact_field(environment, '/item/value/content/world_consequence/environment/text', 'same bytes', 'settled_life')
     assert not _shown_exact_field(environment, '/item/value/content/world_consequence/authorized_attempt_result/text', 'same bytes', 'settled_life')
+
+
+@pytest.mark.asyncio
+async def test_current_clock_has_an_exact_pinned_reading_without_activity_authority(tmp_path):
+    from test_life_fact_readings import _fact_view
+    from test_visible_selected_source_context import _sources
+    from companion_daemon.world_v2.character_interior.life_source_review import MINTED_CONTRACT
+
+    async with _sources(tmp_path) as case:
+        view, snapshot = await _fact_view(case.capsule, review_contract=MINTED_CONTRACT)
+        prepared = prepare_life_source_readings(view=view, snapshot=snapshot)
+        clocks = [r for r in prepared.as_dict()['readings'] if r['source_family'] == 'current_world_clock']
+        assert len(clocks) == 1
+        clock = clocks[0]
+        assert clock['value']['logical_time'] == snapshot.logical_time.isoformat()
+        assert clock['permissions'] == [['external_fact', 'general']]
+        legacy, _ = await _fact_view(case.capsule, review_contract='life-source-review.22')
+        assert legacy.messages_json == view.messages_json
+        assert not any(r['source_family'] == 'current_world_clock' for r in
+            prepare_life_source_readings(view=legacy, snapshot=snapshot).as_dict()['readings'])
+        assert prepared.require_reading(reading_id=clock['reading_id'], claim_scope='external_fact',
+            subject_role='general', view=view, snapshot=snapshot) == clock
+        for scope in ('environment', 'activity_lifecycle', 'authorized_attempt_result', 'subjective_history'):
+            with pytest.raises(ValueError, match='field permission'):
+                prepared.require_reading(reading_id=clock['reading_id'], claim_scope=scope,
+                    subject_role='companion', view=view, snapshot=snapshot)
+
+
+@pytest.mark.asyncio
+async def test_paired_memory_fields_reach_review_with_their_two_authors_separate(composite):
+    from test_world_life_response_memory_retention import retain_composite_memory
+    from test_current_activity_context import current_context
+    from test_life_fact_readings import _fact_view
+    from companion_daemon.world_v2.character_interior.life_source_review import MINTED_CONTRACT
+
+    ledger, store, experience = composite
+    retain_composite_memory(ledger, store, experience)
+    capsule, _, _ = current_context(ledger, store, actor_ref='actor:companion')
+    view, snapshot = await _fact_view(capsule, review_contract=MINTED_CONTRACT)
+    shown = view.author_payload()['inner_life_snapshot']['materials']['remembered_material']
+    assert shown and shown[0]['source_excerpts'][0]['source_id'] == experience.experience_id
+    prepared = prepare_life_source_readings(view=view, snapshot=snapshot)
+    readings = prepared.as_dict()['readings']
+    worlds = [r for r in readings if r['source_family'] == 'remembered_world_environment']
+    private = [r for r in readings if r['source_family'] == 'remembered_character_response']
+    assert len(worlds) == len(private) == 1
+    assert worlds[0]['value']['text'] == '一阵短雨已经停了。'
+    assert worlds[0]['permissions'] == [['environment', 'general']]
+    assert private[0]['value']['response_text'] == experience.values.source_bindings[0].response.response_text
+    assert private[0]['permissions'] == [['subjective_history', 'companion']]
+    with pytest.raises(ValueError, match='field permission'):
+        prepared.require_reading(reading_id=private[0]['reading_id'], claim_scope='environment',
+            subject_role='general', view=view, snapshot=snapshot)
+    legacy, _ = await _fact_view(capsule, review_contract='life-source-review.22')
+    assert legacy.messages_json == view.messages_json
+    assert legacy.source_table_json == view.source_table_json
+    assert not any(r['source_family'].startswith('remembered_') for r in
+        prepare_life_source_readings(view=legacy, snapshot=snapshot).as_dict()['readings'])
+    for family, field, value in (
+        ('remembered_world_environment', 'value', {'text': 'A different invented scene.'}),
+        ('remembered_character_response', 'permissions', [['environment', 'general']]),
+        ('remembered_world_environment', 'source_owner_ref', snapshot.actor_ref),
+    ):
+        changed = deepcopy(prepared.as_dict())
+        next(r for r in changed['readings'] if r['source_family'] == family)[field] = value
+        with pytest.raises(ValueError, match='pinned source/view'):
+            PreparedLifeSourceReadings(canonical(changed)).verify(view=view, snapshot=snapshot)
+    cold = type(view).model_validate_json(view.model_dump_json())
+    assert prepared.verify(view=cold, snapshot=type(snapshot).model_validate_json(snapshot.model_dump_json()))

@@ -49,8 +49,12 @@ class ReviewHTTP:
                    'reason': 'Fixture current expression or protocol field.', 'supports': []}
                   for item in packet['text_fields']]
         response_path = next(f for f in fields if f['path'].endswith('/response_text'))
-        if outcome == 'supported':
-            permission = next(p for p in packet['permission_choices'] if p['claim_scope'] == 'environment' and p['subject_role'] == 'general')
+        if outcome in {'supported', 'supported_clock'}:
+            if outcome == 'supported_clock':
+                clock = next(r for r in packet['source_readings']['readings'] if r['source_family'] == 'current_world_clock')
+                permission = next(p for p in packet['permission_choices'] if p['reading_id'] == clock['reading_id'])
+            else:
+                permission = next(p for p in packet['permission_choices'] if p['claim_scope'] == 'environment' and p['subject_role'] == 'general')
             response_path.update(disposition='supported', supports=[{'permission_id': permission['permission_id']}])
         elif outcome != 'accepted':
             response_path.update(disposition=outcome, reason='Only rain is established; no walking or coffee outcome supports this episode.')
@@ -130,6 +134,21 @@ async def run_gate(tmp_path, monkeypatch, *, author, verdicts, fault=None):
         assert any(code in {'invalid_role_result_after_correction', 'life_source_review_unavailable', 'life_source_review_uncertain'} for code in failures)
         assert not evidence.projection.experiences
     return responses, checkpoints, audit, reviews
+
+
+@pytest.mark.asyncio
+async def test_pinned_clock_passes_installed_review_and_cold_receipt_without_reauthoring(tmp_path, monkeypatch):
+    from test_world_stimulus_life_intent import CONSIDERED
+
+    text = f'现在的世界时间是{CONSIDERED.isoformat()}。'
+    author = _ResponseHTTP(text=text)
+    responses, checkpoints, _, reviews = await run_gate(
+        tmp_path, monkeypatch, author=author, verdicts=['supported_clock'])
+    assert responses == [text]
+    assert len(author.stimulus_requests) == len(reviews.requests) == 1
+    result, snapshot, _, _ = _restore_prepared_turn(canonical(checkpoints[0]), purpose='world_stimulus_appraisal')
+    assert result.life_source_review.contract == 'life-source-review.23'
+    assert result.life_source_review.verify(result=result, snapshot=snapshot)
 
 
 @pytest.mark.asyncio

@@ -521,3 +521,15 @@ pretty捕获JSON按HTTP紧凑形式重新编码后30/30与观察到的wire SHA�
 v24从未launch，等待协调器在任何World动作前因这个确定反例停止。v23正常SIGINT到逻辑07:04:40+08，shutdown_errors=[]；Python应用和SQLite清理完后仅原生faulthandler watchdog卡在解释器Finalize，保留native sample并核实DB/WAL/SHM全关后只对该隔离PID发SIGTERM解除原生finalizer。原watcher仍完整保存四库并严格重放/独立重开239.249s、effect-once55.631s均过，64904原事件SHA beb3aacc1b90820aa64775607533ed8c6e83f4fc531d14208898a9d5cfb4fb3e不变，冻结源/受保护源码/QQ和main进程不变。下个私有观测脚本依照[Python faulthandler文档](https://docs.python.org/3.13/library/faulthandler.html#faulthandler.cancel_dump_traceback_later)显式取消watchdog；不修改产品冻结源。
 
 新修复仍须新冻结全量和同保留世界恢复验证。部分paid批次源重叠及旧.5已落回应的恢复冲突需要继续核实；当前时间和配对经历记忆在Life来源审核中的读取漏接也待独立对照，不能借此把环境、私有解释、意图和实际行动混成同一事实权限。跨日闭环、加速与多样性仍未通过，goal继续active。
+
+## 2026-10-20 Goal推进：原付费恢复及Life时间/双作者记忆读取
+
+ff2d3ce6的隔离安装恢复使用v23完整终末四库副本，保持原逻辑07:04:40、原选择和全部失败不变，无HTTP或新模型选择。五份.9提案共35个回应义务对应31个不同来源；源定向的原advance_once恢复与已有.5合法回应共同覆盖31个来源，每项已有CharacterLifeResponseRecorded及experience.2配对经历，实际回应文字与所有原提案一致，没有effect_identity_conflict。新增27对回应/经历来自原两个paid批次，余项是原.5已完成的来源；不是重复执行全部重叠paid提案或语义去重。原64904事件前缀SHA仍beb3aacc1b90820aa64775607533ed8c6e83f4fc531d14208898a9d5cfb4fb3e。coverage-proof.json与原恢复脚本/日志位于goal-life-response/recovery-from-v23-terminal/；早期观测器把Pydantic结果误用dataclasses.asdict、覆盖检查误把Experience当根字段的日志保留，均未改产品/原世界。
+
+另两个精确来源断点已在原公开SQLite/保留记忆路径建立约2秒红对照：作者可见原cursor.logical_time，但审核无clock reading；MemoryRetrievalCompiler已经验证并呈现的双作者经历记忆也没有对应独立World/私人字段reading。新life-source-review.23仅在既有runtime reader中补原Capsule/snapshot绑定的current_world_clock和已展示typed Experience记忆字段；没有新生产模块、回忆检索、自动语义重写或额外审核轮次。原<=.22请求和receipt全部按原版本解读。
+
+Clock只给原钉住时间的general/external_fact权限，不证明天色、地点、出勤、动作或感知。记忆字段从原trusted Capsule的MemoryRetrievalItem读取，逐项检查ExperienceCommitted的ref/type/revision/hash、原角色、世界修订上界和实际展示的精确字段；World environment仅environment/general，绑定attempt仅其原结果权限，character_response仅subjective_history/companion。保留候选的检索分数和rationale不给事实权限，私有解释不升级为World事实；未展示或截断字段不作为完整字段reading。没有移除或绕过原独立语义审核、参与者/隐私/来源闭包。
+
+原6份真实.22作者/审核receipt在新代码下冷恢复后逐字节一致、原review verdict复验通过，0HTTP；另有明确标注的fresh .23编译对照，用原6个实际快照和原作者消息（作者正文/请求hash完全相同），其中5个增加clock、remembered World environment与独立private response，1个只有clock；prepared请求118934..133124字节，仍在原256000审计硬限内。该对照不生成新verdict、不改旧pin、不证明实际GLM首稿质量。原始控制在goal-life-response/legacy-paid-pins.json及actual-reader-controls.json。
+
+137项定向回归（含原Fact范围、生命周期、World planning、Plan组合/Experience/旧wire/审核恢复）通过，新增Clock完整安装gate可一次作者+一次审核并冷恢复，旧.22视图/消息不变及字段/权限/主体篡改被拒；Ruff/diff通过。下一步对本版本冻结完整全量、终末保留世界prestart/replay/effect-once后恢复真实GLM，继续验证全日事件、多样性和真实因果闭环；尚未宣称通过。
