@@ -533,3 +533,15 @@ Clock只给原钉住时间的general/external_fact权限，不证明天色、地
 原6份真实.22作者/审核receipt在新代码下冷恢复后逐字节一致、原review verdict复验通过，0HTTP；另有明确标注的fresh .23编译对照，用原6个实际快照和原作者消息（作者正文/请求hash完全相同），其中5个增加clock、remembered World environment与独立private response，1个只有clock；prepared请求118934..133124字节，仍在原256000审计硬限内。该对照不生成新verdict、不改旧pin、不证明实际GLM首稿质量。原始控制在goal-life-response/legacy-paid-pins.json及actual-reader-controls.json。
 
 137项定向回归（含原Fact范围、生命周期、World planning、Plan组合/Experience/旧wire/审核恢复）通过，新增Clock完整安装gate可一次作者+一次审核并冷恢复，旧.22视图/消息不变及字段/权限/主体篡改被拒；Ruff/diff通过。下一步对本版本冻结完整全量、终末保留世界prestart/replay/effect-once后恢复真实GLM，继续验证全日事件、多样性和真实因果闭环；尚未宣称通过。
+
+## 2026-10-20 Goal推进：取消未来分支不能被迫新增事件
+
+d8ce5205完整full-v6已独立核实：11050pass/19skip/2xfail/1既有warning，1302.6185s，1722Python不变，logSHAbc463885bfa98de0070912db298716b3d8e82e50014a1a5acf02e5b53dac6196。对应v25新源在原v23终末四库副本prestart strictreplay/reopen222.536s、effect-once51.348s均过；尚未launch，因新发现的分支终止校验反例继续hold，不能借该全量给下一修复。
+
+结构反例先在约1秒测试复现：接受拒绝后只移除某支线尚未发生的机会，并可关闭该线程，原比较只遍历仍存在的候选项，因此没有任何“新/修改后留下的项”便拒绝。它与原本允许改变或结束线程的目的矛盾，容易逼作者补无意义事件。[Ink的显式流程结束](https://github.com/inkle/ink/blob/master/Documentation/WritingWithInk.md)及[Yarn的stop命令](https://docs.yarnspinner.dev/2.0/getting-started/writing-in-yarn/commands)也区分合法结束与未完成流程；这里只借用终止语义，不引入其框架或行为脚本。
+
+新world-outlook-author-schema.9/rolling-world-planning.6复用原change_responses.source_ref与thread_refs，认可真实线程状态改变、关联的未实现未来项净减少和实际NPC执行路由改变。没有新输出字段/生产模块。净减少按非措辞执行结构的multiset核对，换ID/换措辞的等价补回不算；过期、已considered和delivery_pending/retry_wait的执行记录不当作新退休证据。所有实际World、历史offers、失败及已发生效果保留。原.schema8采用原解释，实际303原稿仍按原原因拒绝，不改历史结果。私有前景的结束只决定外部未来机会，不替角色选择或承诺感情。
+
+生成前的keep能力用原validate_draft/history privacy/offered-node校验检查其原样保留是否结构合法；过期、旧token、撤销来源等不能原样keep时不再提供该分支。只判断命令是否可用，不生成角色理由/响应、不选择保留剧情；模型仍决定兼容性。keep的review_at按原horizon给出真实上界说明，原全部接受校验继续执行。兼容的技术绑定刷新仍可用draft revision+retain回应，不用编新事件。
+
+143项定向回归通过，包含旧wire/源批次、完整滚动规划、实际ActivityAbandoned进入原刷新通道后撤销未执行分支、无新增World事实、重开状态/通知游标稳定，以及改名/清理过期或已执行项不算改剧情的反例。公开路径只替换HTTP作者为明确fixture，不是无人干预故事质量证明。Ruff/diff通过；本次新源仍需独立完整full与原保留世界门禁。原QQ/main和生产源码未动。

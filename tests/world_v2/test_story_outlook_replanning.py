@@ -23,7 +23,7 @@ def story_draft(wake):
 
 def apply_story_contract(value, packet):
     """Legal protocol fixture; real story quality is tested by provider runs."""
-    if packet.get("draft_schema_contract") != "world-outlook-author-schema.8":
+    if packet.get("draft_schema_contract") not in {"world-outlook-author-schema.8", "world-outlook-author-schema.9"}:
         return value
     if len(value["threads"]) < 2:
         value["threads"].append({"thread_id": "independent-family", "situation": "家中的经营条件。",
@@ -460,5 +460,209 @@ def test_revise_rejection_identifies_the_exact_source_and_linked_unchanged_futur
         # Rejection must not choose retain, rewrite a node or accept anything.
         assert candidate.change_responses[0].decision == 'revise'
         assert runtime.store.head() is None
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize('close_thread', [False, True])
+@pytest.mark.parametrize('contract', ['world-outlook-author-schema.8', 'world-outlook-author-schema.9'])
+def test_accepted_refusal_can_retire_unrealized_future_without_new_events(tmp_path, close_thread, contract):
+    from copy import deepcopy
+
+    ledger, wake, _, _, runtime = setup(tmp_path, lambda w: [])
+    try:
+        old = WorldOutlookDraft.model_validate_json(json.dumps(story_draft(wake))).model_dump(mode="json")
+        value = deepcopy(old)
+        value['opportunities'] = [n for n in value['opportunities'] if 'books' not in n['thread_refs']]
+        if close_thread:
+            next(t for t in value['threads'] if t['thread_id'] == 'books')['status'] = 'closed'
+        value['change_responses'] = [{'source_ref': 'occurrence:declined', 'decision': 'revise',
+            'thread_refs': ['books'], 'planning_keys': [],
+            'reason': 'The accepted refusal retires this future branch; no extra event is required.'}]
+        packet = {'draft_schema_contract': contract, 'logical_time': wake.logical_time.isoformat(),
+            'world_changes': [{'source_ref': 'occurrence:declined'}],
+            'rolling_preparation': {'published': []}, 'current_outlook': old}
+        draft = WorldOutlookDraft.model_validate_json(json.dumps(value))
+        assert {n.opportunity_id for n in draft.opportunities} < {n['opportunity_id'] for n in old['opportunities']}
+        if contract.endswith('.8'):
+            with pytest.raises(ValueError, match='actually changed'):
+                runtime._validate_story_revision(draft, packet)
+        else:
+            runtime._validate_story_revision(draft, packet)
+        assert runtime.store.head() is None
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize('fault', ['renamed', 'expired', 'considered', 'delivery_pending'])
+def test_retirement_proof_rejects_renaming_and_cleanup_of_past_or_pending_effects(tmp_path, fault):
+    from copy import deepcopy
+
+    ledger, wake, _, _, runtime = setup(tmp_path, lambda w: [])
+    try:
+        old = WorldOutlookDraft.model_validate_json(json.dumps(story_draft(wake))).model_dump(mode='json')
+        first = old['opportunities'][0]
+        if fault == 'expired':
+            first.update(opens_at=(wake.logical_time - timedelta(hours=2)).isoformat(),
+                         closes_at=(wake.logical_time - timedelta(hours=1)).isoformat())
+        elif fault in {'considered', 'delivery_pending'}:
+            first['state'] = fault
+        value = deepcopy(old)
+        value['opportunities'] = [{k: v for k, v in n.items() if k != 'state'}
+                                  for n in value['opportunities']]
+        if fault == 'renamed':
+            previous_id = first['opportunity_id']
+            value['opportunities'][0]['opportunity_id'] = 'a-fresh-equivalent-id'
+            value['opportunities'][0]['execution']['text'] = 'Only different wording of the same opportunity.'
+            value['opportunities'][0]['conditions'] = [{'source_ref': 'occurrence:change', 'ready_statuses': ['settled']}]
+            for node in value['opportunities']:
+                node['after_opportunities'] = ['a-fresh-equivalent-id' if ref == previous_id else ref
+                                               for ref in node.get('after_opportunities', ())]
+        else:
+            value['opportunities'] = value['opportunities'][1:]
+        value['change_responses'] = [{'source_ref': 'occurrence:change', 'decision': 'revise',
+            'thread_refs': list(first['thread_refs']), 'planning_keys': [], 'reason': 'Declared structural change.'}]
+        packet = {'draft_schema_contract': 'world-outlook-author-schema.9',
+            'logical_time': wake.logical_time.isoformat(), 'world_changes': [{'source_ref': 'occurrence:change'}],
+            'rolling_preparation': {'published': []}, 'current_outlook': old}
+        with pytest.raises(ValueError, match='actually changed'):
+            runtime._validate_story_revision(WorldOutlookDraft.model_validate_json(json.dumps(value)), packet)
+    finally:
+        runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_real_abandoned_plan_retires_a_future_branch_through_public_refresh_and_reopen(tmp_path):
+    from copy import deepcopy
+    from test_world_outlook_continuity import npc_setup, npc_manifest, retime
+    from test_life_projection import commit, event, mutation, world_evidence
+    from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
+    from companion_daemon.world_v2.world_outlook_store import SQLiteWorldOutlookStore
+
+    ledger, wake, _, runtime, _, _ = npc_setup(tmp_path, lambda d: None)
+
+    class Author:
+        model = 'fixture:retired-branch'
+        single_tool_response_carrier = 'json_object'
+
+        def __init__(self):
+            self.calls = []
+
+        async def complete_json(self, messages, **kwargs):
+            packet = decode_outlook_request(messages[1]['content'])
+            self.calls.append(packet)
+            if packet['parent_revision'] is None:
+                value = retime(story_draft(wake), ledger.project(), wake)
+                value['horizon_end'] = (wake.logical_time + timedelta(days=30)).isoformat()
+                for index, node in enumerate(value['opportunities']):
+                    node['opportunity_id'] = packet['new_opportunity_ids'][index]
+            else:
+                value = deepcopy(runtime.store.head()[1].model_dump(mode='json'))
+                value['parent_revision'] = packet['parent_revision']
+                value['opportunities'] = [n for n in value['opportunities'] if 'books' not in n['thread_refs']]
+                next(t for t in value['threads'] if t['thread_id'] == 'books')['status'] = 'closed'
+                value['change_responses'] = [{'source_ref': change['source_ref'], 'decision': 'revise',
+                    'thread_refs': ['books'], 'planning_keys': [],
+                    'reason': 'The accepted choice closes this unexecuted line without adding pressure.'}
+                    for change in packet['world_changes']]
+            return json.dumps({'decision': 'revise', 'draft': value})
+
+    author = Author()
+    runtime.author, runtime._rolling_planning = author, True
+    try:
+        async def refresh():
+            return await runtime.refresh(projection=ledger.project(), context={}, manifest=npc_manifest(ledger, wake))
+
+        assert (await refresh())['status'] == 'ready'
+        original = runtime.store.head()[1]
+        plan = ledger.project().plans[0].model_dump(mode='json')
+        plan.pop('authority_origin', None)
+        plan.update(plan_id='plan:voluntary-branch', activity_id='activity:voluntary-branch',
+                    participant_refs=[], location_ref=None, scheduled_window=None)
+        commit(ledger, [event('branch:planned', 'ActivityPlanned', {
+            **mutation('branch:planned', expected_revision=0, evidence_refs=plan['evidence_refs']),
+            'plan': plan}, at=wake.logical_time)])
+        commit(ledger, [event('branch:abandoned', 'ActivityAbandoned', {
+            **mutation('branch:abandoned', expected_revision=1,
+                evidence_refs=[world_evidence(ledger, wake.event_id, 'life_transition')]),
+            'plan_id': plan['plan_id'], 'transitioned_at': wake.logical_time.isoformat(),
+            'reason_ref': wake.event_id}, at=wake.logical_time)])
+        before = ledger.project()
+        assert runtime.view()['changed_source_refs'] == [plan['plan_id']]
+        assert (await refresh())['status'] == 'ready', runtime.health()
+        retired = runtime.store.head()[1]
+        assert len(author.calls) == 2
+        assert {n.opportunity_id for n in retired.opportunities} < {n.opportunity_id for n in original.opportunities}
+        assert next(t for t in retired.threads if t.thread_id == 'books').status == 'closed'
+        assert ledger.project() == before
+        runtime.store.close()
+        runtime.store = SQLiteWorldOutlookStore(path=tmp_path/'outlook.sqlite',
+            world_id=ledger.world_id, actor_ref=runtime.actor_ref)
+        assert runtime.store.head()[1] == retired
+        assert runtime.view()['changed_source_refs'] == []
+        assert (await refresh())['status'] == 'unchanged'
+        assert len(author.calls) == 2 and ledger.rebuild() == before
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize('fault', [None, 'expired', 'stale_token'])
+def test_keep_menu_uses_the_same_authority_and_expiry_rules_as_admission(tmp_path, fault):
+    from test_life_development_runtime import _manifest, _projection_cursor
+    from companion_daemon.world_v2.world_outlook_history import OutlookHistoryOffer
+
+    ledger, wake, _, _, runtime = setup(tmp_path, lambda w: [])
+    try:
+        value = story_draft(wake)
+        sources = {}
+        if fault == 'expired':
+            value['opportunities'][0].update(opens_at=(wake.logical_time - timedelta(hours=2)).isoformat(),
+                closes_at=(wake.logical_time - timedelta(hours=1)).isoformat())
+        if fault == 'stale_token':
+            source = OutlookSource(source_ref='plan:condition', source_kind='plan', status='active',
+                allowed_statuses=('planned', 'active', 'abandoned'), token='b' * 64)
+            sources[source.source_ref] = source
+            value['opportunities'][0]['conditions'] = [{'source_ref': source.source_ref,
+                'ready_statuses': ['active'], 'unchanged_token': 'a' * 64}]
+        draft = WorldOutlookDraft.model_validate_json(json.dumps(value))
+        manifest = _manifest(wake, pinned_cursor=_projection_cursor(ledger))
+        packet = {'basis_refs': list(manifest.anchor_refs),
+                  'condition_sources': [source.model_dump(mode='json') for source in sources.values()]}
+        before = ledger.project()
+        available = runtime._keep_is_offered(packet=packet, projection=before, manifest=manifest,
+            prior_head=('a' * 64, draft, {}), npc_refs=(), sources=sources,
+            history_offer=OutlookHistoryOffer(items=()))
+        assert available == (fault is None)
+        assert ledger.project() == before and runtime.store.head() is None
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize('contract', ['world-outlook-author-schema.8', 'world-outlook-author-schema.9'])
+def test_actual_npc_routing_change_is_not_mistaken_for_a_text_only_revision(tmp_path, contract):
+    from copy import deepcopy
+
+    ledger, wake, _, _, runtime = setup(tmp_path, lambda w: [])
+    try:
+        old = story_draft(wake)
+        old['opportunities'][0].update(lane='npc', npc_ref='npc:original',
+            execution={'kind': 'npc_statement', 'text': 'An offered statement.',
+                       'duration_minutes': 1, 'privacy_class': 'private'})
+        old = WorldOutlookDraft.model_validate_json(json.dumps(old)).model_dump(mode='json')
+        value = deepcopy(old)
+        value['opportunities'][0]['npc_ref'] = 'npc:different'
+        value['opportunities'][0]['conditions'] = [{'source_ref': 'occurrence:change', 'ready_statuses': ['settled']}]
+        value['change_responses'] = [{'source_ref': 'occurrence:change', 'decision': 'revise',
+            'thread_refs': value['opportunities'][0]['thread_refs'], 'planning_keys': [],
+            'reason': 'The actual external speaker changed.'}]
+        packet = {'draft_schema_contract': contract, 'logical_time': wake.logical_time.isoformat(),
+            'world_changes': [{'source_ref': 'occurrence:change'}],
+            'rolling_preparation': {'published': []}, 'current_outlook': old}
+        candidate = WorldOutlookDraft.model_validate_json(json.dumps(value))
+        if contract.endswith('.8'):
+            with pytest.raises(ValueError, match='actually changed'):
+                runtime._validate_story_revision(candidate, packet)
+        else:
+            runtime._validate_story_revision(candidate, packet)
     finally:
         runtime.close()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from threading import RLock
@@ -29,7 +30,7 @@ from .world_outlook import (
 
 _WORKING_SOURCES = "outlook-working-sources.3"
 _WORKING_SOURCE_SCOPES = frozenset({"outlook-working-sources.1", "outlook-working-sources.2", _WORKING_SOURCES})
-_ROLLING_PLANNING = "rolling-world-planning.5"
+_ROLLING_PLANNING = "rolling-world-planning.6"
 _NATIVE_RESULT = "world-outlook-native.10"
 _NATIVE_RESULTS = frozenset({"world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.5", "world-outlook-native.6", "world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9", _NATIVE_RESULT})
 _ACTIVITY_CHOICE_SOURCE_EVENTS = frozenset({
@@ -373,7 +374,7 @@ def _encode_story_request(packet, *, byte_limit=100_000):
     return encoded
 
 
-def _future_structure(obj):
+def _future_structure(obj, *, routing=False):
     """Ignore audit/association/wording when proving a declared future edit."""
     if "execution" in obj:
         execution = {k: v for k, v in obj["execution"].items() if k != "text"}
@@ -388,8 +389,39 @@ def _future_structure(obj):
                 "exceptions": [{key: exception.get(key) for key in
                     ("slot_id", "original_date", "action", "new_start", "duration_minutes")}
                     for exception in planning.get("exceptions", ())]}
-        return {"execution": execution, "opens_at": obj.get("opens_at"), "closes_at": obj.get("closes_at")}
+        result = {"execution": execution, "opens_at": obj.get("opens_at"), "closes_at": obj.get("closes_at")}
+        if routing:
+            result.update(lane=obj.get("lane"), npc_ref=obj.get("npc_ref"))
+        return result
     return {key: obj.get(key) for key in ("starts_on", "ends_on", "planning_key")}
+
+
+def _future_retired(candidate, pinned, response):
+    """Prove a declared end/removal, never choose one or erase actual history."""
+    previous = pinned['current_outlook']
+    old_threads = {t['thread_id']: t for t in previous.get('threads', ())}
+    current_threads = {t.thread_id: t for t in candidate.threads}
+    if any(ref in old_threads and ref in current_threads
+           and old_threads[ref].get('status', 'open') != current_threads[ref].status
+           for ref in response.thread_refs):
+        return True
+    now = datetime.fromisoformat(pinned['logical_time'])
+    # An executed/pending effect or expiry cleanup is not a newly retired
+    # possibility. Its original offers, effects and failures remain durable.
+    prior = [n for n in previous.get('opportunities', ())
+             if datetime.fromisoformat(n['closes_at']) > now
+             and n.get('state') not in {'considered', 'delivery_pending', 'retry_wait'}]
+    unavailable = {n['opportunity_id'] for n in previous.get('opportunities', ())
+                   if n.get('state') in {'considered', 'delivery_pending', 'retry_wait'}}
+    current = [n.model_dump(mode='json') for n in candidate.opportunities
+               if n.opportunity_id not in unavailable and n.closes_at > now]
+    def signature(node):
+        return digest(_future_structure(node, routing=True))
+    before = Counter(signature(n) for n in prior)
+    after = Counter(signature(n) for n in current)
+    ids = {n.opportunity_id for n in candidate.opportunities}
+    return any(n['opportunity_id'] not in ids and set(n['thread_refs']) & set(response.thread_refs)
+               and before[signature(n)] > after[signature(n)] for n in prior)
 
 
 def _outlook_request_hash(messages, tools):
@@ -507,21 +539,21 @@ class WorldOutlookRuntime:
 
     def _validate_preparation(self, candidate, pinned, projection, *, kept_current=False):
         contract = pinned.get("draft_schema_contract")
-        if contract != "world-outlook-author-schema.8" and (candidate.change_responses
+        if contract not in {"world-outlook-author-schema.8", "world-outlook-author-schema.9"} and (candidate.change_responses
                 or any(t.developments for t in candidate.threads)
                 or any(s.thread_refs or s.conditions for s in candidate.long_term)):
             raise ValueError("the pinned request did not offer causal story planning")
-        if contract not in {"world-outlook-author-schema.6", "world-outlook-author-schema.7", "world-outlook-author-schema.8"}:
+        if contract not in {"world-outlook-author-schema.6", "world-outlook-author-schema.7", "world-outlook-author-schema.8", "world-outlook-author-schema.9"}:
             if candidate.long_term or any(n.execution.planning and n.execution.planning.contract != "world-planning.1"
                                           for n in candidate.opportunities):
                 raise ValueError("the pinned request did not offer rolling planning")
             return
         now = projection.logical_time
         today = now.astimezone(ZoneInfo("Asia/Shanghai")).date()
-        if kept_current and contract in {"world-outlook-author-schema.7", "world-outlook-author-schema.8"} and (pinned["rolling_preparation"]["due"]
+        if kept_current and contract in {"world-outlook-author-schema.7", "world-outlook-author-schema.8", "world-outlook-author-schema.9"} and (pinned["rolling_preparation"]["due"]
                              or pinned["rolling_preparation"]["outline_due"]):
             raise ValueError("keep cannot complete due rolling coverage")
-        minimum_days = (330 if kept_current else 365) if contract in {"world-outlook-author-schema.7", "world-outlook-author-schema.8"} else 90
+        minimum_days = (330 if kept_current else 365) if contract in {"world-outlook-author-schema.7", "world-outlook-author-schema.8", "world-outlook-author-schema.9"} else 90
         if (not candidate.long_term or max(s.ends_on for s in candidate.long_term) < today + timedelta(days=minimum_days)
                 or any(s.ends_on < today or s.ends_on > today + timedelta(days=730) for s in candidate.long_term)
                 or candidate.review_at > now + timedelta(days=7)):
@@ -534,7 +566,7 @@ class WorldOutlookRuntime:
             if stage.starts_on > covered + timedelta(days=1):
                 raise ValueError(f"long-range outline is missing {covered + timedelta(days=1)} through {stage.starts_on - timedelta(days=1)}; represent uncertain periods explicitly")
             covered = max(covered, stage.ends_on)
-        if contract == "world-outlook-author-schema.8":
+        if contract in {"world-outlook-author-schema.8", "world-outlook-author-schema.9"}:
             self._validate_story_revision(candidate, pinned, kept_current=kept_current)
         publications = {n.execution.planning.planning_key: n for n in candidate.opportunities
                         if n.execution.planning is not None and n.closes_at > now}
@@ -557,7 +589,7 @@ class WorldOutlookRuntime:
             p = node.execution.planning
             if pinned.get("response_tool_contract") in _NATIVE_RESULTS - {"world-outlook-native.1"} and node.execution.duration_minutes != 1:
                 raise ValueError(f"planning {key!r} publication requires duration_minutes=1; this is publication, not the duration of its scheduled events")
-            required_planning = "world-planning.3" if contract in {"world-outlook-author-schema.7", "world-outlook-author-schema.8"} else "world-planning.2"
+            required_planning = "world-planning.3" if contract in {"world-outlook-author-schema.7", "world-outlook-author-schema.8", "world-outlook-author-schema.9"} else "world-planning.2"
             if p.contract != required_planning or not now < p.review_at <= now + timedelta(days=7):
                 raise ValueError(f"planning {key!r} requires {required_planning} and its own review_at after {now.isoformat()} and no later than {(now + timedelta(days=7)).isoformat()}; received {p.review_at}. This is not ends_on or horizon_end.")
             if p.contract == "world-planning.3" and node.execution.privacy_class == "withhold":
@@ -612,8 +644,10 @@ class WorldOutlookRuntime:
                           if set(obj.thread_refs) & set(response.thread_refs)
                           and any(c.source_ref == response.source_ref for c in obj.conditions)]
                 old_objects = [*previous.get("long_term", ()), *previous.get("opportunities", ())]
-                if not any(_future_structure(obj.model_dump(mode="json")) not in
-                           [_future_structure(old) for old in old_objects] for obj in linked):
+                routing = pinned.get('draft_schema_contract') == 'world-outlook-author-schema.9'
+                changed = any(_future_structure(obj.model_dump(mode="json"), routing=routing) not in
+                    [_future_structure(old, routing=routing) for old in old_objects] for obj in linked)
+                if not changed and not (routing and _future_retired(candidate, pinned, response)):
                     identities = [obj.stage_id if hasattr(obj, "stage_id") else obj.opportunity_id for obj in linked]
                     raise ValueError("revise requires an actually changed future stage/opportunity linked to its accepted change source; "
                         f"source_ref={response.source_ref!r}, linked_candidates={identities!r}. "
@@ -626,6 +660,33 @@ class WorldOutlookRuntime:
                         or replacements[0].execution.planning.supersedes_occurrence_ref != published[key]
                         or replacements[0].opens_at.isoformat() != pinned["logical_time"]):
                     raise ValueError(f"changed planning {key!r} requires its exact current publication replacement now")
+
+    def _keep_is_offered(self, *, packet, projection, manifest, prior_head, npc_refs, sources, history_offer):
+        """Offer a structurally legal command, never decide whether to retain a story."""
+        if prior_head is None:
+            return False
+        previous = prior_head[1]
+        now = projection.logical_time
+        if previous.horizon_end <= now or any(s.ends_on < now.astimezone(ZoneInfo('Asia/Shanghai')).date()
+                                             for s in previous.long_term):
+            return False
+        # Same future, no synthetic role rationale or change response. The
+        # model still chooses compatibility and authors every actual response.
+        candidate = previous.model_copy(update={'parent_revision': prior_head[0],
+            'review_at': min(previous.horizon_end, now + timedelta(days=7))})
+        try:
+            history_offer.validate_privacy(candidate, precise_errors=True)
+            validate_draft(candidate, projection=projection, actor_ref=self.actor_ref,
+                parent_revision=prior_head[0], basis_refs=tuple(packet['basis_refs']),
+                sources={s['source_ref']: sources[s['source_ref']] for s in packet['condition_sources']},
+                npc_refs=npc_refs, prior_draft=previous, offered_history=history_offer.anchors,
+                location_refs=tuple(c.location_ref for c in getattr(manifest, 'location_capabilities', ())),
+                location_capabilities=getattr(manifest, 'location_capabilities', ()),
+                precise_errors=True, precise_privacy_errors=True)
+            self._validate_offered_nodes(candidate, projection=projection)
+        except (ValueError, TypeError):
+            return False
+        return True
 
     def record_failure(self, exc):
         self._health = {"status": "technical_failure", "failure_code": type(exc).__name__}
@@ -1293,13 +1354,14 @@ class WorldOutlookRuntime:
                     for c in getattr(manifest, "location_capabilities", ())
                     if c.availability_kind == "reviewed_schedule"
                 ],
-                "draft_schema_contract": "world-outlook-author-schema.8" if self._rolling_planning else "world-outlook-author-schema.5",
+                "draft_schema_contract": "world-outlook-author-schema.9" if self._rolling_planning else "world-outlook-author-schema.5",
                 "draft_schema": outlook_author_schema(
                     basis_refs=basis_refs, npc_privacy_floors=npc_privacy_floors,
                     prior_opportunities=prior_head[1].opportunities if prior_head else (),
                     now=now,
                     rolling_planning=self._rolling_planning,
                     story_planning=self._rolling_planning,
+                    structural_retirements=self._rolling_planning,
                     world_changes=world_changes,
                     prior_threads=prior_head[1].threads if prior_head else (),
                     identity={"world_id": projection.world_id, "actor_ref": self.actor_ref, "parent_revision": view["revision"]} if native_result else None,
@@ -1311,8 +1373,13 @@ class WorldOutlookRuntime:
             if native_result:
                 allow_keep = not (packet["rolling_preparation"]["due"] or packet["rolling_preparation"]["outline_due"]
                                   or (packet.get("world_changes") and packet["response_tool_contract"] != "world-outlook-native.10"))
+                if allow_keep:
+                    allow_keep = self._keep_is_offered(packet=packet, projection=projection, manifest=manifest,
+                        prior_head=prior_head, npc_refs=npc_refs, sources=sources, history_offer=history_offer)
                 response_tools = [outlook_result_tool(packet["draft_schema"], allow_keep=allow_keep,
                     retained_changes=bool(packet.get("world_changes")) and packet["response_tool_contract"] == "world-outlook-native.10",
+                    keep_review_deadline=min(now + timedelta(days=7), prior_head[1].horizon_end).isoformat()
+                        if allow_keep else None,
                     **({"json_object": True} if packet["response_tool_contract"] in {"world-outlook-native.9", "world-outlook-native.10"}
                        and packet.get("response_carrier") == "json_object" else {}))]
                 if packet["response_tool_contract"] in {"world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9", "world-outlook-native.10"}:
@@ -1328,6 +1395,12 @@ class WorldOutlookRuntime:
                         'If every offered change leaves the future compatible and no coverage work is due, '
                         'keep may acknowledge each one with an explicit retain response. '
                         'A revise response still requires a changed, source-linked future structure.')
+                    after += ('\nA net retirement of unrealized opportunities, a linked thread status change, '
+                        'or an actual NPC routing change is a future structural change. '
+                        'Do not create extra events to justify a refusal or closure. '
+                        'Renaming equivalent opportunities or cleaning expired/executed entries is not retirement. '
+                        'Keep is offered only when its exact future still passes authority and expiry checks; '
+                        'a draft revision may retain change responses while refreshing compatible technical bindings.\n')
                     before += ('\nA story thread is an ongoing external situation with possible consequences. '
                         'Use the event detail programme to elaborate one situation; small changes of sound, '
                         'light or object placement alone need not become new story threads or overlapping '
@@ -1421,7 +1494,7 @@ class WorldOutlookRuntime:
                             "parent_revision": head[0],
                             "review_at": obj["review_at"],
                             "revise_reason": obj["reason"],
-                            **({"change_responses": obj.get("change_responses", [])} if pinned_request.get("draft_schema_contract") == "world-outlook-author-schema.8" else {}),
+                            **({"change_responses": obj.get("change_responses", [])} if pinned_request.get("draft_schema_contract") in {"world-outlook-author-schema.8", "world-outlook-author-schema.9"} else {}),
                         },
                     }
                 if (
@@ -1444,7 +1517,7 @@ class WorldOutlookRuntime:
                 # offered, also on correction/restart. Legacy requests retain
                 # their original history-material-only interpretation.
                 pinned_packet = decode_outlook_request(messages[1]["content"])
-                if pinned_packet.get("draft_schema_contract") not in {"world-outlook-author-schema.5", "world-outlook-author-schema.6", "world-outlook-author-schema.7", "world-outlook-author-schema.8"} and any(n.execution.kind == "planning" or n.execution.prepare_details for n in candidate.opportunities):
+                if pinned_packet.get("draft_schema_contract") not in {"world-outlook-author-schema.5", "world-outlook-author-schema.6", "world-outlook-author-schema.7", "world-outlook-author-schema.8", "world-outlook-author-schema.9"} and any(n.execution.kind == "planning" or n.execution.prepare_details for n in candidate.opportunities):
                     raise ValueError("the original outlook request did not offer planning or prepared details")
                 if pinned_packet.get("condition_source_scope") in _WORKING_SOURCE_SCOPES:
                     offered_sources = frozenset(s["source_ref"] for s in pinned_packet["condition_sources"])
@@ -1459,7 +1532,7 @@ class WorldOutlookRuntime:
                                  if "history_offer" in pinned_packet else None)
                 self._validate_preparation(candidate, pinned_packet, projection,
                                            kept_current=kept_current)
-                precise_privacy = pinned_packet.get("draft_schema_contract") in {"world-outlook-author-schema.4", "world-outlook-author-schema.5", "world-outlook-author-schema.6", "world-outlook-author-schema.7", "world-outlook-author-schema.8"}
+                precise_privacy = pinned_packet.get("draft_schema_contract") in {"world-outlook-author-schema.4", "world-outlook-author-schema.5", "world-outlook-author-schema.6", "world-outlook-author-schema.7", "world-outlook-author-schema.8", "world-outlook-author-schema.9"}
                 if history_offer is not None and precise_privacy:
                     history_offer.validate_privacy(candidate, precise_errors=True)
                 accepted_basis = (tuple(pinned_packet["basis_refs"])
@@ -1482,7 +1555,7 @@ class WorldOutlookRuntime:
                         c.location_ref for c in getattr(manifest, "location_capabilities", ())
                     ),
                     location_capabilities=getattr(manifest, "location_capabilities", ()),
-                    precise_errors=pinned_packet.get("draft_schema_contract") in {"world-outlook-author-schema.3", "world-outlook-author-schema.4", "world-outlook-author-schema.5", "world-outlook-author-schema.6", "world-outlook-author-schema.7", "world-outlook-author-schema.8"},
+                    precise_errors=pinned_packet.get("draft_schema_contract") in {"world-outlook-author-schema.3", "world-outlook-author-schema.4", "world-outlook-author-schema.5", "world-outlook-author-schema.6", "world-outlook-author-schema.7", "world-outlook-author-schema.8", "world-outlook-author-schema.9"},
                     precise_privacy_errors=precise_privacy,
                 )
                 if history_offer is not None and not precise_privacy:

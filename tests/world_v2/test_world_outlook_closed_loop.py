@@ -109,7 +109,7 @@ class _WorldAuthor:
                 retired = True
             if retired or packet.get("world_changes"):
                 long_term = deepcopy(current.get("long_term", []))
-                if long_term and packet.get("draft_schema_contract") in {"world-outlook-author-schema.7", "world-outlook-author-schema.8"}:
+                if long_term and packet.get("draft_schema_contract") in {"world-outlook-author-schema.7", "world-outlook-author-schema.8", "world-outlook-author-schema.9"}:
                     long_term[-1]["ends_on"] = (now + timedelta(days=365)).date().isoformat()
                 return json.dumps(
                     {

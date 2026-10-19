@@ -8,7 +8,8 @@ from .world_outlook import WorldOutlookDraft
 
 def outlook_author_schema(*, basis_refs=None, npc_privacy_floors=(), prior_opportunities=(), now=None,
                           rolling_planning=False, prior_threads=(), identity=None, preparation=None, history_offer=None,
-                          new_opportunity_ids=None, story_planning=False, world_changes=()):
+                          new_opportunity_ids=None, story_planning=False, world_changes=(),
+                          structural_retirements=False):
     schema = WorldOutlookDraft.model_json_schema()
     if story_planning:
         schema["$defs"]["OutlookChangeResponse"]["properties"]["decision"]["description"] = (
@@ -16,6 +17,12 @@ def outlook_author_schema(*, basis_refs=None, npc_privacy_floors=(), prior_oppor
             "dates, execution fields other than text, or planning timing/structure; new IDs, prose, "
             "thread links and conditions alone do not prove that change."
         )
+        if structural_retirements:
+            schema["$defs"]["OutlookChangeResponse"]["properties"]["decision"]["description"] += (
+                " A source-linked thread status change or net retirement of its unrealized future "
+                "also counts; do not invent a new event to acknowledge a refusal. Renaming an "
+                "equivalent opportunity or cleaning up expired/executed items is not a retirement."
+            )
         schema["properties"]["threads"]["minItems"] = 2
         thread = schema["$defs"]["OutlookThread"]
         thread["required"].append("developments")
@@ -203,7 +210,8 @@ def outlook_author_schema(*, basis_refs=None, npc_privacy_floors=(), prior_oppor
     return without_annotations(schema)
 
 
-def outlook_result_tool(draft_schema, *, allow_keep=True, json_object=False, retained_changes=False):
+def outlook_result_tool(draft_schema, *, allow_keep=True, json_object=False, retained_changes=False,
+                        keep_review_deadline=None):
     """Native object-root carrier for the same two canonical result shapes."""
     schema = deepcopy(draft_schema)
     definitions = schema.pop("$defs")
@@ -216,6 +224,10 @@ def outlook_result_tool(draft_schema, *, allow_keep=True, json_object=False, ret
                 "if": {"properties": {"decision": {"const": "keep"}}},
                 "then": {"required": ["review_at", "reason"], "not": {"required": ["draft"]}},
                 "else": {"required": ["draft"], "not": {"anyOf": [{"required": ["review_at"]}, {"required": ["reason"]}]}}}]}}}
+    if allow_keep and keep_review_deadline is not None:
+        tool['function']['parameters']['properties']['review_at']['description'] = (
+            'Choose a timestamp after the pinned logical_time and no later than ' + keep_review_deadline +
+            '; keep retains the prior horizon_end exactly.')
     if retained_changes and allow_keep:
         response = deepcopy(schema['properties']['change_responses'])
         response['items'] = {'allOf': [response['items'], {'properties': {
