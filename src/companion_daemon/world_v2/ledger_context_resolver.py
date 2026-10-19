@@ -937,10 +937,16 @@ def _rank(
     item: BaseModel,
     logical_time: datetime | None,
     query_text: str = "",
+    trigger_ref: str | None = None,
 ) -> int:
     # Apply the existing grounding priority before bounded selection and
     # source admission, not only after optional episodes consumed that budget.
     if slice_name == "world_life":
+        if (isinstance(item, ActivityLifecycleStateContextItem)
+                and item.activity_event_ref == trigger_ref):
+            # The exact event being appraised precedes unrelated context.
+            # It retains the same typed source/owner/privacy proof below.
+            return 10_000
         if isinstance(item, BiographicalWorldContextItem):
             return 10_000
         if isinstance(item, WorldLifeContextItem) and item.world_planning is not None:
@@ -1018,6 +1024,7 @@ def _bounded_domain_items(
     logical_time: datetime | None,
     rank_overrides: frozenset[tuple[str, str]] = frozenset(),
     query_text: str = "",
+    trigger_ref: str | None = None,
 ) -> tuple[BaseModel, ...] | None:
     """Apply the installed bounded selection policy before any ledger lookup."""
 
@@ -1030,9 +1037,9 @@ def _bounded_domain_items(
             items,
             key=lambda item: (
                 -(
-                    max(9_900, _rank(slice_name, item, logical_time, query_text))
+                    max(9_900, _rank(slice_name, item, logical_time, query_text, trigger_ref))
                     if (slice_name, _item_ref(slice_name, item)) in rank_overrides
-                    else _rank(slice_name, item, logical_time, query_text)
+                    else _rank(slice_name, item, logical_time, query_text, trigger_ref)
                 ),
                 _item_ref(slice_name, item),
             ),
@@ -2210,6 +2217,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             projection=projection,
             actor_ref=query.actor_ref,
             cursor=query.cursor,
+            focus_event_ref=query.trigger_ref,
             biographical_timeline_source=self._biographical_timeline_source(projection),
             user_channel_limited_content_refs=user_channel_limited_content_refs,
         )
@@ -2870,6 +2878,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                     query.logical_time,
                     source_rank_overrides,
                     trigger_text,
+                    query.trigger_ref,
                 )
             )
             for slice_name, items in domains.items()
@@ -3260,9 +3269,9 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                 ResolvedItemMetadata(
                     item_ref=item_ref,
                     rank_score_bp=(
-                        max(9_900, _rank(slice_name, item, query.logical_time))
+                        max(9_900, _rank(slice_name, item, query.logical_time, trigger_ref=query.trigger_ref))
                         if (slice_name, item_ref) in rank_overrides
-                        else _rank(slice_name, item, query.logical_time)
+                        else _rank(slice_name, item, query.logical_time, trigger_ref=query.trigger_ref)
                     ),
                     privacy_class=_privacy(slice_name, item),
                     source_bindings=bindings,

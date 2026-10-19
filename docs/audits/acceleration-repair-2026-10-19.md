@@ -545,3 +545,22 @@ d8ce5205完整full-v6已独立核实：11050pass/19skip/2xfail/1既有warning，
 生成前的keep能力用原validate_draft/history privacy/offered-node校验检查其原样保留是否结构合法；过期、旧token、撤销来源等不能原样keep时不再提供该分支。只判断命令是否可用，不生成角色理由/响应、不选择保留剧情；模型仍决定兼容性。keep的review_at按原horizon给出真实上界说明，原全部接受校验继续执行。兼容的技术绑定刷新仍可用draft revision+retain回应，不用编新事件。
 
 143项定向回归通过，包含旧wire/源批次、完整滚动规划、实际ActivityAbandoned进入原刷新通道后撤销未执行分支、无新增World事实、重开状态/通知游标稳定，以及改名/清理过期或已执行项不算改剧情的反例。公开路径只替换HTTP作者为明确fixture，不是无人干预故事质量证明。Ruff/diff通过；本次新源仍需独立完整full与原保留世界门禁。原QQ/main和生产源码未动。
+
+### Exact disruption context selection (following e99 qualification)
+
+The real v26 disruption appraisal was anchored to the accepted `ActivityAbandoned`
+at 06:51:44, but its owned abandoned Plan state was absent from both author and
+reviewer context. The preserved offline World reproduces that absence without
+HTTP. Selecting the exact head before the three-item lifecycle bound alone still
+fails: later resolver/source-proof/Capsule budgets discard its lower-ranked item.
+The repair passes the existing query trigger through lifecycle selection and gives
+only that exact eligible lifecycle item grounding priority at both resolver
+admission and Capsule metadata. Existing ownership, current accepted head,
+privacy, source hashes, three-item limit and all byte/source budgets are unchanged.
+It reuses the original lifecycle reader and .23 author/reviewer protocol; no new
+reviewer version, layer, role choice, environment or action permission is added.
+The original captured candidate also claimed unproved sleep/daylight; this source
+repair does not validate those claims. Exact author-view/reader and preserved paid
+pin checks are offline evidence, not a new GLM semantic verdict. Real cross-day,
+story consequences, ordinary-course activation, acceleration and full-day diversity
+remain unqualified until the same retained World actually demonstrates them.

@@ -8,7 +8,8 @@ from .world_life_context import ActivityLifecycleStateContextItem, WorldLifeSour
 MAX_LIFECYCLE_STATES = 3
 
 
-def lifecycle_states_from_projection(*, projection, actor_ref, cursor, viewer_privacy_ceiling):
+def lifecycle_states_from_projection(*, projection, actor_ref, cursor, viewer_privacy_ceiling,
+                                     focus_event_ref=None):
     if cursor is None or cursor != ProjectionCursor(
         world_revision=projection.world_revision,
         deliberation_revision=projection.deliberation_revision,
@@ -21,10 +22,14 @@ def lifecycle_states_from_projection(*, projection, actor_ref, cursor, viewer_pr
     if any(plan.authority_origin is None for plan in candidates):
         raise ValueError("owned lifecycle state lacks its accepted Plan authority")
     selected = tuple(sorted(candidates, key=lambda plan: (
+        plan.authority_origin.accepted_event_ref != focus_event_ref,
         -plan.authority_origin.accepted_at.timestamp(), plan.plan_id,
     ))[:MAX_LIFECYCLE_STATES])
     if not selected:
         return ()
+    # The exact trigger, when it is still an eligible owned lifecycle head,
+    # precedes unrelated recent heads. This never adds a stale/current-state
+    # inference or expands the same three-item attention bound.
     # Bound attention before validation/material construction. The complete
     # projection is already reducer-validated; verify this read's exact heads
     # together so the committed-event index is built only once.

@@ -399,6 +399,7 @@ class WorldLifeContextCompiler:
         viewer_privacy_ceiling: PrivacyClass = "private",
         biographical_timeline_source: WorldLifeSourceBinding | None = None,
         user_channel_limited_content_refs: frozenset[str] = frozenset(),
+        focus_event_ref: str | None = None,
     ) -> tuple[WorldLifeModelContextItem, ...]:
         excerpts = {}
         if self._life_content is not None and cursor is not None:
@@ -629,6 +630,7 @@ class WorldLifeContextCompiler:
         lifecycle_states = lifecycle_states_from_projection(
             projection=projection, actor_ref=actor_ref, cursor=cursor,
             viewer_privacy_ceiling=viewer_privacy_ceiling,
+            focus_event_ref=focus_event_ref,
         )
         historical_intentions = []
         read_intention = getattr(self._planned_activity_reader, 'read_historical_intention', None)

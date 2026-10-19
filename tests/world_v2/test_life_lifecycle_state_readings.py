@@ -133,7 +133,8 @@ async def test_lifecycle_producer_rejects_wrong_owner_head_clock_privacy_and_cur
     state = ledger.project()
     cursor = ProjectionCursor(world_revision=state.world_revision,
         deliberation_revision=state.deliberation_revision, ledger_sequence=state.ledger_sequence)
-    args = dict(projection=state, actor_ref='actor:companion', cursor=cursor, viewer_privacy_ceiling='private')
+    args = dict(projection=state, actor_ref='actor:companion', cursor=cursor,
+        viewer_privacy_ceiling='private', focus_event_ref='event:paused')
     assert len(lifecycle_states_from_projection(**args)) == 1
     assert lifecycle_states_from_projection(**{**args, 'actor_ref': 'actor:other'}) == ()
     assert lifecycle_states_from_projection(**{**args, 'viewer_privacy_ceiling': 'shareable'}) == ()
@@ -157,7 +158,32 @@ async def test_lifecycle_producer_rejects_wrong_owner_head_clock_privacy_and_cur
 
 
 @pytest.mark.asyncio
-async def test_lifecycle_attention_is_bounded_to_three_exact_recent_heads(monkeypatch):
+async def test_disruption_source_survives_resolver_preproof_attention_bound(monkeypatch):
+    from companion_daemon.world_v2.ledger_context_resolver import _bounded_domain_items
+
+    ledger, _, plan_id, _ = await accepted_current_activity()
+    _operator_transition(ledger, plan_id, 'ActivityAbandoned', 'event:focus:ended')
+    state = ledger.project()
+    cursor = ProjectionCursor(world_revision=state.world_revision,
+        deliberation_revision=state.deliberation_revision, ledger_sequence=state.ledger_sequence)
+    (target,) = lifecycle_states_from_projection(projection=state, actor_ref='actor:companion',
+        cursor=cursor, viewer_privacy_ceiling='private')
+    # Selection-only decoys: sorting grants no authority; the source-proof
+    # seam must still validate every admitted original binding afterwards.
+    decoys = tuple(target.model_copy(update={'activity_event_ref': f'event:a:{i:03}'})
+                   for i in range(8))
+    import companion_daemon.world_v2.ledger_context_resolver as module
+    monkeypatch.setattr(module, 'MAX_INPUT_ITEMS_PER_SLICE', 3)
+    ordinary = _bounded_domain_items('world_life', (*decoys, target), state.logical_time)
+    assert target not in ordinary
+    focused = _bounded_domain_items('world_life', (*decoys, target), state.logical_time,
+        trigger_ref=target.activity_event_ref)
+    assert focused[0] == target and len(focused) == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('focus_index', [None, 7])
+async def test_lifecycle_attention_is_bounded_to_three_exact_recent_heads(monkeypatch, focus_index):
     from companion_daemon.world_v2.schemas import plan_authority_binding_hash, plan_authority_projection_hash
 
     ledger, _, plan_id, _ = await accepted_current_activity()
@@ -196,6 +222,8 @@ async def test_lifecycle_attention_is_bounded_to_three_exact_recent_heads(monkey
 
     monkeypatch.setattr(module, 'validate_plan_authority_state', counted)
     selected = lifecycle_states_from_projection(projection=state, actor_ref=original.owner_actor_ref,
-        cursor=cursor, viewer_privacy_ceiling='private')
+        cursor=cursor, viewer_privacy_ceiling='private',
+        **({'focus_event_ref': f'event:ended:{focus_index}'} if focus_index is not None else {}))
     assert validations == [3]
-    assert [item.plan_id for item in selected] == ['plan:ended:0', 'plan:ended:1', 'plan:ended:2']
+    expected = [0, 1, 2] if focus_index is None else [7, 0, 1]
+    assert [item.plan_id for item in selected] == [f'plan:ended:{index}' for index in expected]
