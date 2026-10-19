@@ -105,7 +105,11 @@ async def test_active_attempt_actual_author_review_settlement_and_life_reading(
                         context={**captured["context"], **compile_life_review_context(captured["capsule"])},
                         manifest=manifest, draft=draft, execution_authority=changed, **extra,
                     )
-        assert runtime.pending_active_attempt_ref() is None
+        with monkeypatch.context() as probe:
+            import companion_daemon.world_v2.active_attempt_consequence as source_reader
+            probe.setattr(source_reader, 'read_active_attempt_consequence',
+                lambda **kwargs: pytest.fail('already processed task revalidates historical source'))
+            assert runtime.pending_active_attempt_ref() is None
         assert ledger.project().plans == (plan,) and not ledger.project().experiences
         (occurrence,) = ledger.project().world_occurrences
         for mutation, code in (("missing", "active_attempt_result_binding"),

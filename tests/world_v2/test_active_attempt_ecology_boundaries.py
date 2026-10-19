@@ -106,5 +106,7 @@ def test_consumed_and_unreadable_active_heads_do_not_starve_another_current_plan
 
     monkeypatch.setattr(active_attempt_consequence, "read_active_attempt_consequence", read)
     assert runtime.pending_active_attempt_ref() == "event:old-current"
-    assert reads == ["event:consumed", "event:unreadable", "event:old-current"]
+    assert reads == ["event:unreadable", "event:old-current"]
+    reads.clear()
     assert runtime.pending_active_attempt_ref(after_world_revision=4) is None
+    assert reads == ["event:unreadable"]

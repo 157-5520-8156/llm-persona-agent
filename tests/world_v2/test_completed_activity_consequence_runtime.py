@@ -119,7 +119,11 @@ async def test_completed_attempt_scheduler_settlement_and_character_response_sur
         assert ledger.project().experiences == ()
         (occurrence,) = ledger.project().world_occurrences
         assert occurrence.status == "active"
-        assert runtime.pending_completed_activity_ref() is None
+        with monkeypatch.context() as probe:
+            import companion_daemon.world_v2.completed_activity_consequence as source_reader
+            probe.setattr(source_reader, 'read_completed_activity_consequence',
+                lambda **kwargs: pytest.fail('already processed task revalidates historical source'))
+            assert runtime.pending_completed_activity_ref() is None
 
         # A cold duplicate retains the original completion family, regardless
         # of the later Clock. It must not ask another model or create a result.

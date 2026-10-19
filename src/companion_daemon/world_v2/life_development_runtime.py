@@ -2049,6 +2049,11 @@ class LifeDevelopmentRuntime:
             origin = plan.authority_origin
             if after_world_revision is not None and origin.accepted_world_revision <= after_world_revision:
                 continue
+            # Queue membership is not a new use of the original intention.
+            # Keep full source verification for genuinely unprocessed work.
+            proposal_id = self._completed_activity_proposal_id(origin.accepted_event_ref)
+            if self._ledger.lookup_event_commit("event:life-development:proposal:" + _digest(proposal_id)):
+                return None
             source = read_completed_activity_consequence(
                 ledger=self._ledger, pinned_state=state, actor_ref=self._owner,
                 completion_event_ref=origin.accepted_event_ref,
@@ -2056,9 +2061,6 @@ class LifeDevelopmentRuntime:
             # Missing/withheld authority for the latest completion must not
             # silently substitute an older activity as today's opportunity.
             if source is None:
-                return None
-            proposal_id = self._completed_activity_proposal_id(origin.accepted_event_ref)
-            if self._ledger.lookup_event_commit("event:life-development:proposal:" + _digest(proposal_id)):
                 return None
             return origin.accepted_event_ref
         return None
@@ -2088,15 +2090,17 @@ class LifeDevelopmentRuntime:
             origin = plan.authority_origin
             if after_world_revision is not None and origin.accepted_world_revision <= after_world_revision:
                 continue
+            # Queue membership is not a new use of the original intention.
+            # Keep full source verification for genuinely unprocessed work.
+            proposal_id = self._active_attempt_proposal_id(origin.accepted_event_ref)
+            if self._ledger.lookup_event_commit("event:life-development:proposal:" + _digest(proposal_id)):
+                continue
             source = read_active_attempt_consequence(
                 ledger=self._ledger, content_store=self._store,
                 pinned_state=state, actor_ref=self._owner,
                 execution_event_ref=origin.accepted_event_ref, clock_event_ref=clock.event_id,
             )
             if source is None:
-                continue
-            proposal_id = self._active_attempt_proposal_id(origin.accepted_event_ref)
-            if self._ledger.lookup_event_commit("event:life-development:proposal:" + _digest(proposal_id)):
                 continue
             return origin.accepted_event_ref
         return None
