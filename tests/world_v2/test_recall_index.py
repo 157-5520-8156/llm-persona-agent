@@ -262,6 +262,44 @@ def _query(**updates: object) -> RecallQuery:
     return RecallQuery(**values)
 
 
+def test_restricted_snapshot_keeps_original_rows_and_query_authority_checks() -> None:
+    index = InMemoryRecallIndex(embedding=FeatureHashRecallEmbedding())
+    documents = _documents()
+    index.rebuild(cursor=CURSOR, documents=documents)
+    original = index.snapshot()
+    before = original.documents
+    allowed = frozenset({"recall:experience:rain"})
+    restricted = original.restrict_document_ids(allowed)
+    query = _query(query_text="雨夜回家时觉得很放松。", viewer_privacy_ceiling="private")
+    assert [hit.document.document_id for hit in restricted.search(query).hits] == list(allowed)
+    assert not restricted.search(query.model_copy(update={"viewer_privacy_ceiling": "public"})).hits
+    assert not restricted.search(query.model_copy(update={
+        "actor_ref": "actor:foreign", "subject_refs": ("actor:foreign",),
+    })).hits
+    assert not restricted.search(query.model_copy(update={"occurred_to": NOW.replace(day=19)})).hits
+    assert not original.restrict_document_ids(frozenset()).search(query).hits
+    assert original.documents == before and restricted.cursor == original.cursor
+
+
+def test_world_author_source_filter_does_not_authorize_experience_or_fact_prose() -> None:
+    index = InMemoryRecallIndex(embedding=FeatureHashRecallEmbedding())
+    index.rebuild(cursor=CURSOR, documents=_documents())
+    coordinator = RecallCoordinator.from_built_index(index=index, cursor=CURSOR,
+        actor_ref="agent:companion", subject_refs=("agent:companion", "user:primary"),
+        logical_time=NOW, trigger_ref="trigger:author-filter")
+    try:
+        # Even a mistakenly supplied ID cannot change the author's accepted
+        # source kinds into private Experience or fact prose permissions.
+        assert coordinator.world_author_history(expected_cursor=CURSOR,
+            trigger_ref="trigger:author-filter", actor_ref="agent:companion",
+            query_text="雨夜回家时觉得很放松。", eligible_source_refs=frozenset({
+                "experience:rain", "fact:oolong",
+            })) == ()
+        assert len(index.snapshot().documents) == len(_documents())
+    finally:
+        coordinator.close()
+
+
 def test_absent_retrieval_text_preserves_legacy_document_encoding() -> None:
     document = _documents()[0]
 

@@ -1222,7 +1222,8 @@ class RecallCoordinator:
         finally:
             self._end_recall()
 
-    def world_author_history(self, *, expected_cursor, trigger_ref, actor_ref, query_text, link_refs=()):
+    def world_author_history(self, *, expected_cursor, trigger_ref, actor_ref, query_text, link_refs=(),
+                             eligible_source_refs=None):
         """Bounded local search of an existing snapshot, with no provider or role-pull receipt.
 
         Callers must rebind returned history through their narrower author
@@ -1233,12 +1234,26 @@ class RecallCoordinator:
             context = self._context_for(expected_cursor, trigger_ref=trigger_ref)
             if context is None or context.actor_ref != actor_ref:
                 return ()
+            snapshot = context.snapshot
+            if eligible_source_refs is not None:
+                def eligible(document):
+                    if document.prehistory is not None:
+                        ref = document.source_item_ref.split(":window:")[0]
+                    elif document.settled_life is not None and document.source_item_ref.endswith(":environment"):
+                        ref = document.settled_life.occurrence_id
+                    else:
+                        return False
+                    return ref in eligible_source_refs
+
+                snapshot = snapshot.restrict_document_ids(frozenset(
+                    document.document_id for document in snapshot.documents if eligible(document)
+                ))
             query = RecallQuery(query_text=query_text[:1024] or "生活", cursor=expected_cursor,
                 actor_ref=actor_ref, subject_refs=context.subject_refs,
                 viewer_privacy_ceiling="private", at=context.logical_time,
                 memory_kinds=("episodic",), link_refs=tuple(sorted(set(link_refs)))[:32],
                 limit=8, accessibility_seed="world-author-history")
-            return tuple(hit.document for hit in context.snapshot.search(query).hits)
+            return tuple(hit.document for hit in snapshot.search(query).hits)
         finally:
             self._end_recall()
 

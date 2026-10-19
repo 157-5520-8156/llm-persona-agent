@@ -56,11 +56,16 @@ class _WorldAuthor:
 
     def __init__(self):
         self.calls = []
+        self.life_calls = []
         self.wire_sizes = []
         self.follow_plan = None
 
     async def complete(self, messages, **kwargs):
         packet = decode_outlook_request(messages[1]["content"])
+        if packet.get("contract") != "world-outlook-request.1":
+            assert "private_world_outlook" in packet
+            self.life_calls.append(packet)
+            return json.dumps({"decision": "no_op"})
         self.calls.append(packet)
         self.wire_sizes.append(len(messages[1]["content"].encode()))
         assert packet["contract"] == "world-outlook-request.1", packet.get("contract")

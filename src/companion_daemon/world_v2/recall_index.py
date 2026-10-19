@@ -1490,6 +1490,15 @@ class RecallIndexSnapshot:
             rows=self._rows, preparation=self._preparation,
         )
 
+    def restrict_document_ids(self, document_ids: frozenset[str]) -> "RecallIndexSnapshot":
+        """Search a narrower authorized corpus before ranking and byte limits.
+
+        Keep the same pin, vectors and search policy. Query-level actor, time
+        and privacy checks still apply; this cannot grant document authority.
+        """
+        return RecallIndexSnapshot(core=self._core, cursor=self.cursor,
+            rows=tuple(row for row in self._rows if row[0].document_id in document_ids))
+
     def with_query_embedding(self, embedding: RecallEmbedding) -> "RecallIndexSnapshot":
         """Reuse immutable document rows with a query-only embedding adapter."""
         if embedding.dimensions != self._core._embedding.dimensions:

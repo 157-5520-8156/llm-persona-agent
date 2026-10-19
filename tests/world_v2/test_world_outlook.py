@@ -525,6 +525,99 @@ async def test_life_ecology_dispatches_world_opportunity_through_existing_admiss
         outlook.close()
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("preparation_failed", [False, True])
+async def test_waiting_outlook_does_not_disable_independent_life_authoring(tmp_path, preparation_failed):
+    from types import SimpleNamespace
+    from test_life_ecology_runtime import _Media, _TriggerStore
+    from companion_daemon.world_v2.life_ecology_runtime import (
+        LifeEcologyRuntime, LifeEcologyAvailability,
+    )
+
+    def outputs(wake):
+        draft = draft_value(wake)
+        for node in draft["opportunities"]:
+            node["opens_at"] = (wake.logical_time + timedelta(hours=1)).isoformat()
+            node["closes_at"] = (wake.logical_time + timedelta(hours=2)).isoformat()
+        return [{"decision": "revise", "draft": draft}]
+
+    class Development:
+        def __init__(self):
+            self.calls = []
+
+        async def prepare_outlook_once(self, **kwargs):
+            return ({"status": "technical_failure", "failure_code": "retained_failure"}
+                    if preparation_failed else {"status": "unchanged"})
+
+        async def advance_once(self, **kwargs):
+            self.calls.append(kwargs)
+            return SimpleNamespace(status="no_op")
+
+    ledger, wake, store, author, outlook = setup(tmp_path, outputs)
+    development = Development()
+    try:
+        await outlook.refresh(projection=ledger.project(), context={},
+                              manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)))
+        assert not outlook.ready()
+        ecology = LifeEcologyRuntime(
+            ledger=ledger, trigger_store=_TriggerStore(), media_followup=_Media(),
+            life_development_followup=development,
+            availability=LifeEcologyAvailability(state="installed_and_active"),
+            world_outlook=outlook,
+        )
+        result = await ecology.advance_once(wake_event_ref=wake.event_id,
+                                            trace_id="waiting", correlation_id="waiting")
+        assert len(development.calls) == (0 if preparation_failed else 1)
+        assert result.life_development_followup_status == ("technical_failure" if preparation_failed else "no_op")
+        if preparation_failed:
+            assert result.technical_failure_code == "outlook.retained_failure"
+        assert not store.offers() and len(author.calls) == 1
+        assert not ledger.project().world_occurrences
+    finally:
+        outlook.close()
+
+
+@pytest.mark.asyncio
+async def test_independent_life_author_receives_waiting_outlook_and_keeps_role_silence(tmp_path):
+    from test_life_development_runtime import _runtime, _SequenceModel
+    from test_life_ecology_runtime import _Media, _TriggerStore
+    from companion_daemon.world_v2.life_ecology_runtime import LifeEcologyRuntime, LifeEcologyAvailability
+
+    def outputs(wake):
+        draft = draft_value(wake)
+        for node in draft["opportunities"]:
+            node["opens_at"] = (wake.logical_time + timedelta(hours=1)).isoformat()
+            node["closes_at"] = (wake.logical_time + timedelta(hours=2)).isoformat()
+        return [{"decision": "revise", "draft": draft}]
+
+    ledger, wake, store, planner, outlook = setup(tmp_path, outputs)
+    author = _SequenceModel(model="fixture:world-author", outputs=(json.dumps({"decision": "no_op"}),))
+    character = _SequenceModel(model="fixture:character", outputs=())
+    development, _ = _runtime(ledger=ledger, wake=wake, world_author=author,
+                              character_interior=character, world_outlook=outlook)
+    try:
+        await outlook.refresh(projection=ledger.project(), context={},
+                              manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)))
+        ecology = LifeEcologyRuntime(ledger=ledger, trigger_store=_TriggerStore(), media_followup=_Media(),
+            life_development_followup=development, world_outlook=outlook,
+            availability=LifeEcologyAvailability(state="installed_and_active"))
+        result = await ecology.advance_once(wake_event_ref=wake.event_id,
+                                            trace_id="independent", correlation_id="independent")
+        assert result.life_development_followup_status == "no_op" and author.calls == 1
+        request = json.loads(author.messages[0][1]["content"])
+        assert request["private_world_outlook"]["revision"] == outlook.view()["revision"]
+        assert character.calls == 0 and not ledger.project().world_occurrences
+        assert not store.offers()  # The future script remains pending, never skipped or executed early.
+        later = _seed_clock(ledger, event_id="clock:independent-cooldown",
+                            logical_time=wake.logical_time + timedelta(seconds=1),
+                            logical_time_from=wake.logical_time)
+        await ecology.advance_once(wake_event_ref=later.event_id,
+                                   trace_id="cooldown", correlation_id="cooldown")
+        assert author.calls == 1 and not store.offers()
+    finally:
+        outlook.close()
+
+
 def install_executor(ledger, runtime):
     from companion_daemon.world_v2.life_content_store import InMemoryImmutableLifeContentStore
     from companion_daemon.world_v2.occurrence_content_coordinator import (

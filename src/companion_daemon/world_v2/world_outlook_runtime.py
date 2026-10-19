@@ -1559,6 +1559,7 @@ class WorldOutlookRuntime:
                 actor_ref=self.actor_ref,
                 query_text=history_query_text(context=context, current_outlook=view),
                 link_refs=old_refs[:32],
+                eligible_source_refs=frozenset(catalog),
             )
             if self._history_reader and trigger_ref
             else ()

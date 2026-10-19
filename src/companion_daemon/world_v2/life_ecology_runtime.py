@@ -504,6 +504,7 @@ class LifeEcologyRuntime:
         # Prepare it before unrelated aftermath/cooldown work can return early;
         # publication of its opening phase still uses EventDetailRuntime.
         pending_detail = getattr(self._life_development_followup, "pending_world_event_detail_ref", None)
+        required_detail_prepared = False
         if (current_clock and self._world_outlook is not None
                 and getattr(self._world_outlook, "_rolling_planning", False)
                 and callable(pending_detail)):
@@ -547,6 +548,7 @@ class LifeEcologyRuntime:
                     self._complete_required_detail_retry(source_ref=source_ref,
                         proposal_ref=prepared_detail.proposal_event_ref)
                     prepared_accepted = True
+                    required_detail_prepared = True
                     self._world_outlook.event_details.advance(wake_event_ref=wake_event_ref)
                     projection = self._ledger.project()
                     if pending_detail(required_planning_only=True, excluded_refs=excluded - {source_ref}) == source_ref:
@@ -864,15 +866,21 @@ class LifeEcologyRuntime:
                         event_ref=event_detail_ref, wake_event_ref=wake_event_ref,
                         trace_id=trace_id, correlation_id=correlation_id,
                     )
-                elif self._world_outlook is not None:
-                    if outlook_node is None:
-                        return None
+                elif self._world_outlook is not None and outlook_node is not None:
                     development_result = self._world_outlook.execute_offer(
                         outlook_node, wake_event_ref=wake_event_ref,
                     )
                     if development_result is None:
                         return None
+                elif self._world_outlook is not None and (
+                    required_detail_prepared or preparation_failure or life_development_failure_code
+                ):
+                    return None
                 else:
+                    # A waiting private outlook is advisory, not an exhaustive
+                    # list of what may happen. Keep the original life cadence
+                    # and author (which receives that outlook), including its
+                    # no-op and ordinary/disturbance opportunity decisions.
                     development_result = await self._life_development_followup.advance_once(
                         wake_event_ref=wake_event_ref,
                         trace_id=trace_id,

@@ -77,12 +77,32 @@ def test_query_budget_keeps_each_visible_source_and_excludes_hidden_or_metadata_
         runtime.close()
 
 
-def test_authored_thread_cues_stay_exact_and_empty_context_uses_a_neutral_cue(tmp_path):
+def test_ongoing_outlook_search_reads_current_life_alongside_authored_threads(tmp_path):
     ledger, _, _, _, runtime = setup(tmp_path, lambda _: [])
     threads = [{"situation": "合唱团重聚", "open_question": "旧照片在哪里？"}]
     try:
-        assert _capture(runtime, ledger, _context("陶艺"), threads) == "合唱团重聚 旧照片在哪里？"
+        query = _capture(runtime, ledger, _context("陶艺"), threads)
+        assert "陶艺" in query and "合唱团重聚 旧照片在哪里？" in query
+        assert query != _capture(runtime, ledger, {"slices": {}}, threads)
+        assert _capture(runtime, ledger, {"slices": {}}, threads) == "合唱团重聚 旧照片在哪里？"
         assert _capture(runtime, ledger, {"slices": {}}) == "生活"
+    finally:
+        runtime.close()
+
+
+def test_closed_or_long_prior_threads_cannot_hide_current_life_from_search(tmp_path):
+    ledger, _, _, _, runtime = setup(tmp_path, lambda _: [])
+    threads = [
+        {"situation": "旧记录" * 1000, "open_question": "未决问题？"},
+        {"situation": "CLOSED_SENTINEL", "open_question": "已结束。", "status": "closed"},
+    ]
+    context = _context("陶艺")
+    before = deepcopy((context, threads))
+    try:
+        query = _capture(runtime, ledger, context, threads)
+        assert len(query) <= 1024 and "陶艺" in query and "旧记录" in query
+        assert "CLOSED_SENTINEL" not in query
+        assert (context, threads) == before
     finally:
         runtime.close()
 

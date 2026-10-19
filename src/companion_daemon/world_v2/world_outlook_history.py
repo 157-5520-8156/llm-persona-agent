@@ -17,14 +17,12 @@ _RANK = {value: rank for rank, value in enumerate(("public", "shareable", "perso
 def history_query_text(*, context, current_outlook):
     """Search already presented prose; query text grants no source authority.
 
-    Existing authored threads retain their exact cue. Initial lookup reads
-    only documented text fields of the trusted, bounded Context view, never
+    Read current Context alongside ongoing threads, so a prior outlook cannot
+    completely replace new life evidence in the next lookup. Read only
+    documented text fields of the trusted, bounded Context view, never
     arbitrary JSON strings or metadata. Equal space prevents one long item
     from hiding the other selected materials; no topic or motive is inferred.
     """
-    cue = "\n".join(t["situation"] + " " + t["open_question"] for t in current_outlook["threads"])
-    if cue:
-        return cue[:1024]
     fields = {
         "world_life": (
             ("content", "text"),
@@ -52,6 +50,12 @@ def history_query_text(*, context, current_outlook):
                     value = value.get(key)
                 if isinstance(value, str) and value.strip() and value not in parts:
                     parts.append(value)
+    for thread in current_outlook["threads"]:
+        if thread.get("status", "open") == "closed":
+            continue
+        value = thread["situation"] + " " + thread["open_question"]
+        if value.strip() and value not in parts:
+            parts.append(value)
     if not parts:
         return "生活"
     # The Context compiler already bounds item count. Keep the query bound

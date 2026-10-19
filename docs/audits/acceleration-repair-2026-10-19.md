@@ -220,3 +220,76 @@ HTTP和Capture均为0，冻结源不变、QQ原进程不变。恢复后仍要实
 说明离散事件依次处理、直接推进到下一事件时间；本项目仍使用自己的既有时钟。
 [Temporal重试说明](https://docs.temporal.io/encyclopedia/retry-policies)区分失败操作的重试
 与整段工作重复执行；这里只对齐既有操作身份，不引入Temporal或更改重试次数/等待。
+
+
+## 多样性根因追查（2026-10-19，尚非质量验收通过）
+
+本轮按用户要求追查旧书/环境描写的长期循环，不设置题材配额、危机或角色行为。
+证据保存在修复区 `output/private-audits/diversity-root-cause-20261019/`。
+生产 QQ 79910/8787、主候选 35221/8792 均未控制；真实保留世界仍由冻结 W5d236ecb 的 v13 独占。
+修复区的新源码与 v13 分离，不向运行进程热改 Python。
+
+### 已确认的三个断点
+
+1. `history_query_text` 原来一旦有旧 thread，就直接返回旧 thread situation/open_question，
+   当前 Context 完全不参与查询；closed thread 也参与。实际 paid row173 的离线反例
+   `reproduce_history_cue.py` 在原冻结函数上 exit1：去掉所有当前 Context，query 一字不变。
+   现在把当前已显示的合法文本与进行中 thread 一同放在原1024字符内等分，排除 closed 查询线索，
+   不做题材/动机推断，不改历史记录。缓存付费请求仍走原完整 messages/tools，不重新准备。
+2. 历史检索先在角色 Recall 的宽语料中排名/限长，随后才用 World Author 的严格来源目录过滤。
+   同一冻结快照61764含2344文档/1265前史窗口，原 World Author 目录仍有1175条合法前史；
+   不是“没有前史”，也不是“所有丰富历史都被权限挡住”。原查询只返回2文档/1可用历史；
+   混合查询返回3文档/2可用历史，里面 university-u13 因含 historical_interpretation 被原目录排除。
+   同 pin/query/vectors 下，仅把原目录资格前移到排名前，可得到3文档/3合法历史；包括一条原已允许的
+   操场与朋友闲聊往事，而不是旧书复写。见 final-reader-control/result.json 与 eligibility-control/result.json。
+   这证明候选筛选顺序导致检索遗漏，不是语义多样性通过。
+   修复复用同一 RecallIndexSnapshot，增加按 document ID 收窄的只读视图；World Author caller 将
+   原 anchor_catalog 的 eligible refs 传给原 reader，在排名与字节限制前剔除本就无资格的源。
+   原后置 actor/privacy/精确来源绑定校验保留，主角内心、未保留前史、Experience 或 fact prose
+   不因这个技术过滤获得新权限；全局 anchor_catalog 规则没有放宽。
+3. LifeEcology 启用 WorldOutlook 后，如果没有 ready node，直接 returnNone，原 open-life
+   `advance_once` 永不可达。完成/活动中/事件细节三个替代入口又不进行 ordinary/disturbance 机会抽签。
+   因而新增命运模块意外关闭了原自然独立机会入口；完整事件作者只能细化已有狭窄场景或结算已有选择。
+   同真实 WorldOutlook + LifeEcology 的离线测试 `waiting-outlook-red.log` 在原代码失败：调用0而非1。
+   现在 ready 命运机会仍优先执行；没有当前机会时，在原生活 cadence 内复用原作者，输入原 private
+   Outlook advisory，保留 no_op、原自然机会抽签、角色自行回应及完整审核。
+   若本轮命运准备失败或刚生成必需课程细节，则不另开无关生成；失败仍显式保存。
+   真实作者路径 fixture 验证大纲传递、角色0调用/no_op、未来机会未提前执行、次秒不重新生成。
+   这不是手动扰动、强制危机、降低生活频率或添加一套事件框架。
+
+### 提示词不是已证实的单一解法
+
+4次真实 GLM 诊断使用同一已保存 row31 年度准备 pin，顺序 original/clarified/clarified/original，
+仅增加前瞻创作权限与既有事件细节委托的说明；无纠正调用、World写入、角色选择或QQ发送。
+完整原始请求/输出与独立 usage.sqlite 留在 scope-compare/。
+两份原提示与两份补充提示仍保留原五条故事线和相同书市/课程/画册机会；补充提示的一次还违反
+原历史隐私下限，按失败保留。3份仅通过 canonical shape/原 offer privacy 的局部检查，未进行完整
+host admission/来源语义审核，不能作为接受记录。191871 reported tokens，实际CNY未知，不能报0费用。
+本对照是旧 native.5 年度准备样本，不证明所有新 native.10 请求的因果效果；但明确不支持
+“加一句允许多样性就修好了”。本轮未把这段无改善证据的长提示加入产品。
+
+### 验收边界与原始证据
+
+`accepted-outlook-semantics.json` 保存前52份接受大纲的完整 thread 语义，首稿就围绕清扫残留、
+分拣推车、书店门面与步道胶带；后来主要继承这些线，年度结构又把一次阅读/静卧无进展抬进学期
+描述。多条 thread/两种字符串发展/结构变更，只证明契约结构，不证明真实叙事深度。
+新反例和权限负例未删。第一轮相关机制回归270pass/2fail保留：课程恢复后多发了一次无关生成，
+已加同轮必需细节保护；closed-loop fixture 原来把所有作者请求都当 Outlook，现分开记录正常
+Life author 的 no_op，原“结算不购买重复年度重写”断言仍保留。随后272项机制回归通过。
+原冻结6c6af5d5全量10948pass/19skip/2xfail/1既有warning已核实1716源hash不变，日志SHA
+3fbdb6243c9d9b2bec969ccc098473d20286cf689e465535e09bd8659b2a4422。
+该全量属于本轮改动之前，不能借给当前源码；当前完整回归及真实无人值守整日质量仍待核实。
+
+研究参照：[Generative Agents 原论文](https://arxiv.org/html/2304.03442v2)将观察/检索、规划和
+反思结合，记录了检索遗漏及过度正式行为等失败；[Re3 原论文](https://arxiv.org/abs/2210.06774)
+把大纲与当前故事状态共同反馈给逐段生成。这里借用的是输入/执行/反馈的诊断思路，不采用预写角色
+行为、不照搬额外付费评审框架，也不把论文效果当作本项目已达到的真人多样性。
+
+
+本轮最终组合专项：306 passed（39.70s），包括 Recall snapshot 资格收窄、原角色/时间范围/
+隐私过滤、付费恢复不重准备、Outlook/课表/事件细节和Life调度。Ruff/diff通过。
+最终真实私有快照 product-reader-control/result.json 走修改后的完整 `_history_material`→
+真实 Recall reader，而非猴补排名：3条返回材料全部通过原资格与来源检查，World hash不变，0HTTP。
+资格仍是原1175条前史+合法已结算世界来源；被排除的混合内心记录未被放行。
+v13于04:16:02Z按确认的机制缺陷发正常停止信号，见 W v13/operator-stop.json；不是1-3次模型失败停机。
+等待该阶段四库快照/严格重放/effect-once，并等待本修复的冻结全量；同一DB与固定终点不变。
