@@ -226,16 +226,17 @@ class OutlookSource(FrozenModel):
 
 
 def source_catalog(projection, *, actor_ref: str, npc_refs: tuple[str, ...] = (), required_refs=None,
-                   legacy_fact_status=True):
+                   legacy_fact_status=True, only_referenced=False):
     """Resolve technical state; a working catalog retains live and referenced history.
 
     None retains the legacy full catalog for old pinned requests. A concrete
-    reference set scopes new planning reads, never deletes or retires entities.
+    reference set plus only_referenced scopes new planning input, never deletes
+    or retires entities. State-change tracking may still use the full catalog.
     """
     values = {}
     for p in getattr(projection, "plans", ()):
         if (p.owner_actor_ref == actor_ref or p.owner_actor_ref in npc_refs) and (
-            required_refs is None or p.status in {"planned", "active", "paused"}
+            required_refs is None or not only_referenced and p.status in {"planned", "active", "paused"}
             or p.plan_id in required_refs
         ):
             values[p.plan_id] = OutlookSource(
@@ -247,7 +248,7 @@ def source_catalog(projection, *, actor_ref: str, npc_refs: tuple[str, ...] = ()
             )
     for o in getattr(projection, "world_occurrences", ()):
         if actor_ref in o.participant_refs and (
-            required_refs is None or o.status in {"committed", "active"}
+            required_refs is None or not only_referenced and o.status in {"committed", "active"}
             or o.occurrence_id in required_refs
         ):
             values[o.occurrence_id] = OutlookSource(

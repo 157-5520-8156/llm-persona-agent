@@ -2385,19 +2385,17 @@ def _character_truncated_head_view(
     construction can always terminate inside the global budget.
     """
 
-    material: dict[str, object] = {
-        "availability": "available",
-        "truncated": True,
-        "items": [
-            {
-                "item_ref": item.item_ref,
-                "rank_score_bp": item.rank_score_bp,
-                "privacy_class": item.privacy_class,
-                "value_preview": item.payload_json[: max(0, preview_characters)],
-            }
-            for item in compiled.items
-        ],
-    }
+    previews = []
+    for item in compiled.items:
+        shown = {"item_ref": item.item_ref, "rank_score_bp": item.rank_score_bp,
+                 "privacy_class": item.privacy_class,
+                 "value_preview": item.payload_json[: max(0, preview_characters)]}
+        value = json.loads(item.payload_json)
+        if (compiled.resolver_proof is not None and compiled.resolver_proof.slice_name == "current_situation"
+                and "context_omissions" in value):
+            shown["context_omissions"] = value["context_omissions"]
+        previews.append(shown)
+    material: dict[str, object] = {"availability": "available", "truncated": True, "items": previews}
     return _replace_model_content(compiled, _canonical_json(material))
 
 

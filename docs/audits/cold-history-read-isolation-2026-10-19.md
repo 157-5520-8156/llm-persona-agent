@@ -72,3 +72,37 @@ HTTP边界测试覆盖“多余根字段同时含错误引用”在首个纠正�
 冷重启不重新计费或重建工具。相关62项通过，具体模型输出改善仍需真实续跑证明。
 证据：reference-feedback-red.log、json-branches-red.log、reference-branches-focused.log。
 保留原世界和原定2026-10-20T05:48:48+08终点，不因本次诊断改动重置或延长窗口。
+
+## 累积生活状态的来源与请求工作集
+
+0abd5fab/dd5a0bfd冻结全量10923passed/19skipped/2xfailed，1300.89s，1716Python hash核实。
+v8无人值守触发重复invalid_projection，阻塞Outlook进入模型：实际快照35个不同来源，
+其中34个Plan和1个时钟；不是重复源。完整Situation不可直接装进32源的单条Context。
+
+复用原Situation/Resolver生成显式部分的Context视图：来源仍最多32，时钟、位置、资源、
+注意力、原主要安排保留，当前执行优先；计划/目标/承诺超出部分计数明确展示，原完整
+状态、课表和动作目录不变。若同伴信息不完整，标记预算导致不可用而非声称独处；元数据
+仍保留原完整Situation的隐私等级。每个实际展示字段的源继续通过原完整绑定/哈希校验，
+不允许删除可见事实的绑定，不启用aggregate snapshot替代。无新增角色行为规则。
+旧Situation新增空标记默认不序列化，原保存实例的语义hash核实保持不变。
+
+继而在同一实际快照完整准备路径发现110089bytes：输入还自动扩张所有live计划/事件。
+新outlook-working-sources.2只提供本次可见、原故事依赖和变化所需的来源；来自完整可信
+Capsule锚点的计划仍提供结构化安排，即使模型Situation已按字符退化。许可验证仅用原
+请求已提供来源。全部实时状态仍用于后台变化监测，未降低生活/命运频率或删除实体。
+旧working-sources.1的事实状态、提供范围和付费请求解释保留。滚动输入policy.4区分
+新上下文；付费恢复保存原请求的rolling contract，不伪称新版本。
+
+同一完整thread对象在current_outlook及realized_story_history重复；新scope复用精确
+retain_thread_id请求引用，解码恢复每个字及来源，历史版本不同不合并，未知ID/覆盖字段
+拒绝。原共享字符串规则及校验上限不变。实际同前缀原输入110089bytes，scoped+lossless
+重构原包估算97681bytes；完整最终宿主准备对照另存，不能把估算冒充实测改进。
+
+242相关测试通过：2/35/1000计划、100目标、同伴缺源、withhold保持、丢绑定拒绝，
+0/10/1000未提供live计划/terminal历史下请求稳定，变化仍触发更新、旧付费重启与原
+rolling contract、精确引用的往返/历史版本/拷贝独立/未知和覆盖拒绝。原35源实例的
+保留32源逐条对应原事件，原输入/核心/源hash不变；0HTTP。错误夹具先因缺少owner权限
+失败，不算overflow复现；真正红对照在同一生产切片函数关闭有限视图时35/1000均撞原
+32上限。早期探针日志重名启动失败保留为harness错误，不计供应商失败或验收成功。
+证据：situation-bound-red-control.log、working-context-final-v3-scoped.log、
+situation-overflow/{result,fixed-source-slice-result}.json、outlook-situation-budget/。

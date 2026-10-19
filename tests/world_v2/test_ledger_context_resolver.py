@@ -1343,3 +1343,104 @@ def test_withhold_composite_situation_metadata_satisfies_the_compiler_privacy_fl
             bound=downgraded,
             limit=capsule_module.ContextCapsuleBudgetPolicy().current_situation,
         )
+
+
+@pytest.mark.parametrize("plan_count", [2, 35, 1000])
+def test_situation_context_has_bounded_exact_sources_without_deleting_plans(plan_count):
+    from test_situation_plan_presence import ACTOR, _plan, _request
+    from companion_daemon.world_v2.context_resolver import ContextCompileQuery
+    from companion_daemon.world_v2.context_capsule import (
+        ContextCapsuleRequest, _compile_resolved_context, source_bindings_hash,
+    )
+
+    request = _request(*(_plan(str(i), status="active", importance_bp=5000 + i,
+                              participant_refs=(ACTOR,)) for i in range(plan_count)))
+    situation = SituationCompiler().compile(request).internal
+    original = situation.model_dump(mode="json")
+    query = ContextCompileQuery(world_id=request.world_id, snapshot_id="snapshot:test",
+        snapshot_hash="a" * 64, actor_ref=request.actor_ref, trigger_ref="event:world-started",
+        world_revision=request.pinned_world_revision, deliberation_revision=0, ledger_sequence=100 + plan_count,
+        logical_time=request.logical_time)
+    resolver = LedgerProjectionContextResolver(ledger=WorldLedger.in_memory(world_id=request.world_id),
+                                               situation_compiler=SituationCompiler())
+    bound = resolver._situation_slice(query, situation, ContextRelevanceScope(actor_ref=query.actor_ref))
+    assert situation.model_dump(mode="json") == original
+    assert len(request.authority_snapshot.plans) == plan_count
+    assert len(bound.item_metadata[0].source_bindings) <= 32
+    assert all(b.source_kind == "committed_event" for b in bound.item_metadata[0].source_bindings)
+    kept = len(bound.value.activity_slices)
+    assert bound.value.plan_relation == situation.plan_relation
+    assert kept + dict(bound.value.context_omissions).get("plan", 0) == plan_count
+    assert len(bound.value.source_revisions) == len(bound.item_metadata[0].source_bindings)
+    compiled = _compile_resolved_context(ContextCapsuleRequest(**query.model_dump(), situation=bound))
+    assert compiled.current_situation.availability == "available"
+    if plan_count == 2:
+        assert bound.value is situation
+        assert "context_omissions" not in bound.value.model_dump(mode="json")
+    else:
+        assert dict(bound.value.context_omissions)["plan"] > 0
+        model_item = json.loads(compiled.current_situation.model_content_json)["items"][0]
+        shown_omissions = (model_item["context_omissions"] if "value_preview" in model_item
+                           else model_item["value"]["context_omissions"])
+        assert dict(shown_omissions) == dict(bound.value.context_omissions)
+    # Even a self-consistent metadata hash/proof cannot omit a retained fact's
+    # source. The original canonical source-closure check must still reject it.
+    metadata = bound.item_metadata[0]
+    bindings = metadata.source_bindings[:-1]
+    metadata = metadata.model_copy(update={"source_bindings": bindings,
+                                          "source_hash": source_bindings_hash(bindings)})
+    tampered = bound.model_copy(update={"item_metadata": (metadata,), "resolver_proof":
+        resolver._proof(query, "current_situation", (metadata,), ContextRelevanceScope(actor_ref=query.actor_ref))})
+    with pytest.raises(ValueError, match="source|binding"):
+        _compile_resolved_context(ContextCapsuleRequest(**query.model_dump(), situation=tampered))
+
+
+def test_partial_situation_does_not_claim_complete_current_company():
+    from test_situation_plan_presence import _plan, _request
+    from companion_daemon.world_v2.ledger_context_resolver import _bounded_situation_context_view
+
+    situation = SituationCompiler().compile(_request(*(
+        _plan(str(i), status="active", participant_refs=(f"npc:{i}",)) for i in range(40)
+    ))).internal
+    assert situation.social_environment.availability == "available"
+    view = _bounded_situation_context_view(situation)
+    assert view.social_environment.availability == "unavailable"
+    assert view.social_environment.reason == "budget_truncated"
+    assert view.social_environment.relation is None
+    assert len(situation.activity_slices) == 40
+    assert dict(view.context_omissions)["plan"] == 9
+
+
+def test_goal_growth_is_scoped_by_the_same_situation_source_budget():
+    from test_situation_compiler_v16 import _goal, _request
+    from companion_daemon.world_v2.ledger_context_resolver import _bounded_situation_context_view
+
+    situation = SituationCompiler().compile(_request(goals=tuple(
+        _goal(f"goal:{i}", 5000 + i) for i in range(100)
+    ))).internal
+    view = _bounded_situation_context_view(situation)
+    assert len(situation.goal_slices) == 100
+    assert len(view.source_revisions) == 32
+    assert len(view.goal_slices) + dict(view.context_omissions)["goal"] == 100
+    assert view.resource_pressure == situation.resource_pressure
+    assert view.location_slice == situation.location_slice
+    assert view.attention_slice == situation.attention_slice
+
+
+def test_omitted_withhold_goal_does_not_lower_situation_metadata_privacy():
+    from test_situation_compiler_v16 import _goal, _request
+    from companion_daemon.world_v2.context_resolver import ContextCompileQuery
+
+    request = _request(goals=(_goal("goal:secret", 1, privacy="withhold"), *(
+        _goal(f"goal:{i}", 6000) for i in range(40)
+    )))
+    situation = SituationCompiler().compile(request).internal
+    query = ContextCompileQuery(world_id=request.world_id, snapshot_id="snapshot:privacy",
+        snapshot_hash="a" * 64, actor_ref=request.actor_ref, trigger_ref="event:world-started",
+        world_revision=request.pinned_world_revision, deliberation_revision=0, ledger_sequence=50,
+        logical_time=request.logical_time)
+    resolver = LedgerProjectionContextResolver(ledger=WorldLedger.in_memory(world_id=request.world_id),
+                                               situation_compiler=SituationCompiler())
+    bound = resolver._situation_slice(query, situation, ContextRelevanceScope(actor_ref=query.actor_ref))
+    assert "goal:secret" not in {g.goal_id for g in bound.value.goal_slices}
+    assert bound.item_metadata[0].privacy_class == "withhold"

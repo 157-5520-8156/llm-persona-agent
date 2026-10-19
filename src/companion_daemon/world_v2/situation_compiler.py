@@ -13,7 +13,7 @@ from datetime import datetime
 import hashlib
 import hmac
 import json
-from typing import Literal, Protocol
+from typing import Annotated, Literal, Protocol
 
 from pydantic import Field, model_validator
 
@@ -831,6 +831,9 @@ class SituationProjection(FrozenModel):
     scene_visibility: Literal["private", "shareable", "public"] | None
     source_revisions: tuple[SourceRevision, ...]
     policy_versions: tuple[str, ...]
+    context_omissions: tuple[tuple[Literal["plan", "goal", "commitment"], Annotated[int, Field(ge=1)]], ...] = Field(
+        default=(), max_length=3, exclude_if=lambda value: not value,
+    )
     internal_semantic_hash: str = Field(min_length=64, max_length=64)
 
 

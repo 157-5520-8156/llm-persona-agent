@@ -102,6 +102,8 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
     ledger, wake, store, _, runtime = setup(tmp_path, lambda w: [])
     runtime._rolling_planning = True
     monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime._NATIVE_RESULT", original_contract)
+    if original_contract == "world-outlook-native.3":
+        monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime._ROLLING_PLANNING", "rolling-world-planning.3")
     context = {}
     json_carrier = original_contract in {"world-outlook-native.8", "world-outlook-native.9"}
     if original_contract in {"world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9"}:
@@ -208,19 +210,23 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
         expected_hash = _outlook_request_hash(paid["messages"], paid["response_tools"])
         runtime.close()
         monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime._NATIVE_RESULT", "world-outlook-native.4")
+        monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime._ROLLING_PLANNING", "rolling-world-planning.4")
         reopened = SQLiteWorldOutlookStore(path=tmp_path / "outlook.sqlite", world_id=WORLD_ID, actor_ref=OWNER)
         runtime = WorldOutlookRuntime(ledger=ledger, store=reopened, author=model, actor_ref=OWNER, rolling_planning=False)
         monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime.outlook_result_tool", lambda *_: pytest.fail("paid tools must not be regenerated"))
         assert (await runtime.refresh(**args))["status"] == "ready"
         assert len(requests) == 2
         assert reopened.head()[2]["request_hash"] == expected_hash
+        assert reopened.head()[2]["rolling_planning"] == (
+            "rolling-world-planning.3" if original_contract == "world-outlook-native.3" else "rolling-world-planning.4")
     finally:
         runtime.close()
         await model.aclose()
 
 
 @pytest.mark.asyncio
-async def test_refresh_input_stays_bounded_as_unreferenced_terminal_history_grows(tmp_path):
+@pytest.mark.parametrize("live_history", [False, True])
+async def test_refresh_input_stays_bounded_as_unreferenced_terminal_history_grows(tmp_path, live_history):
     from companion_daemon.world_v2.schemas import EvidenceRef, PlanStateProjection
     from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
 
@@ -251,7 +257,7 @@ async def test_refresh_input_stays_bounded_as_unreferenced_terminal_history_grow
         )
         archived = tuple(live.model_copy(update={
             "plan_id": f"plan:old-{i}", "activity_id": f"activity:old-{i}",
-            "status": "completed" if i % 2 else "abandoned",
+            "status": "planned" if live_history else "completed" if i % 2 else "abandoned",
         }) for i in range(count))
         # The constructor receives the same current work and increasingly long
         # terminal history. No selected evidence, authored condition or World
@@ -260,7 +266,9 @@ async def test_refresh_input_stays_bounded_as_unreferenced_terminal_history_grow
         try:
             with pytest.raises(Captured):
                 await runtime.refresh(
-                    projection=projection, context={},
+                    projection=projection, context={"slices": {"world_life": {
+                        "availability": "available", "items": [{"item_ref": live.plan_id,
+                            "value": {"context_kind": "planned_activity", "plan_id": live.plan_id}}]}}},
                     manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
                 )
             assert len(projection.plans) == count + 1
@@ -550,6 +558,54 @@ def test_reference_feedback_leaves_prior_default_compatibility_to_canonical_vali
     assert _outlook_reference_errors({"draft": {"opportunities": [{"opportunity_id": []}]}}, pinned) == []
 
 
+@pytest.mark.parametrize("count", [0, 10, 1000])
+def test_explicit_source_working_set_does_not_expand_with_unpresented_live_plans(count):
+    from types import SimpleNamespace
+    from test_situation_plan_presence import _plan, ACTOR
+    from companion_daemon.world_v2.world_outlook import source_catalog
+
+    shown = _plan("shown", status="active").head
+    others = tuple(_plan(f"other-{i}", status="planned").head for i in range(count))
+    projection = SimpleNamespace(plans=(shown, *others), world_occurrences=(), facts=(), npcs=())
+    catalog = source_catalog(projection, actor_ref=ACTOR, required_refs={shown.plan_id}, only_referenced=True)
+    assert set(catalog) == {shown.plan_id}
+    assert len(projection.plans) == count + 1
+    # Old pinned requests still resolve their original complete live catalog.
+    assert len(source_catalog(projection, actor_ref=ACTOR, required_refs={shown.plan_id})) == count + 1
+
+
+def test_request_thread_references_deduplicate_only_exact_objects_losslessly():
+    from copy import deepcopy
+    from companion_daemon.world_v2.world_outlook_request import encode_outlook_request, decode_outlook_request, ROLLING_REFERENCE_CONTRACT
+    from companion_daemon.world_v2.shared_string_view import unpack_shared_strings, CONTRACT
+
+    thread = {"thread_id": "thread:one", "situation": "完整的过去与当前依据。" * 50,
+              "history_anchors": [{"source_ref": "occurrence:one", "authority_hash": "a" * 64}]}
+    different = {**thread, "situation": "不同的历史版本不得被当前措辞覆盖。"}
+    packet = {"response_reference_contract": ROLLING_REFERENCE_CONTRACT,
+              "condition_source_scope": "outlook-working-sources.2", "condition_sources": [],
+              "current_outlook": {"threads": [thread]},
+              "realized_story_history": [{"thread": deepcopy(thread)}, {"thread": different}]}
+    original = deepcopy(packet)
+    wire = encode_outlook_request(packet, byte_limit=100000)
+    assert packet == original
+    encoded = json.loads(wire)
+    encoded = unpack_shared_strings(encoded) if encoded.get("contract") == CONTRACT else encoded
+    assert encoded["realized_story_history"][0]["thread"] == {"retain_thread_id": "thread:one"}
+    assert encoded["realized_story_history"][1]["thread"] == different
+    decoded = decode_outlook_request(wire)
+    assert decoded == packet
+    decoded["realized_story_history"][0]["thread"]["situation"] = "改动副本"
+    assert decoded["current_outlook"]["threads"][0] == thread
+    for bad in ({"retain_thread_id": "unknown"}, {"retain_thread_id": "thread:one", "situation": "覆盖"}):
+        broken = deepcopy(encoded)
+        broken["realized_story_history"][0]["thread"] = bad
+        with pytest.raises(ValueError, match="without overrides"):
+            decode_outlook_request(json.dumps(broken))
+    old = {**packet, "condition_source_scope": "outlook-working-sources.1"}
+    assert decode_outlook_request(json.dumps(old)) == old
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("interrupted", [False, True])
 async def test_script_retry_on_later_clock_reuses_its_execution_proposal(
@@ -620,6 +676,7 @@ async def test_previous_live_plan_terminal_state_is_presented_before_consuming_c
         args = dict(context={}, manifest=npc_manifest(ledger, wake))
         assert (await runtime.refresh(projection=ledger.project(), **args))["status"] == "ready"
         assert "plan-tea" in runtime.store.head()[2]["source_tokens"]
+        assert runtime.view(projection=ledger.project())["needs_revision"] is False
         commit(ledger, [event("abandon-existing", "ActivityAbandoned", {
             **mutation("abandon-existing", expected_revision=1,
                        evidence_refs=[world_evidence(ledger, wake.event_id, "life_transition")]),

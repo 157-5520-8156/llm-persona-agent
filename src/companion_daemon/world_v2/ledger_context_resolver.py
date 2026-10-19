@@ -741,6 +741,68 @@ def _typed_authority_claims(
     return tuple(sorted(claims))
 
 
+def _bounded_situation_context_view(situation):
+    """Bound one Context item, never the durable life state or action catalog.
+
+    The full Situation remains in its compiler cache. Every displayed value
+    retains its exact event authority; omitted collections are explicitly partial.
+    """
+    if len(situation.source_revisions) <= MAX_SOURCE_REFS_PER_ITEM:
+        return situation
+    collections = {
+        "plan": ("activity_slices", "plan_id"),
+        "goal": ("goal_slices", "goal_id"),
+        "commitment": ("commitment_slices", "commitment_id"),
+    }
+    items = {(domain, getattr(item, identity)): item
+             for domain, (field, identity) in collections.items() for item in getattr(situation, field)}
+    selected = {source.identity for source in situation.source_revisions if source.domain not in collections}
+    primary = situation.plan_relation.plan_id
+    if primary is not None:
+        selected.update(source.identity for source in situation.source_revisions
+                        if source.domain == "plan" and source.entity_ref == primary)
+    if len(selected) > MAX_SOURCE_REFS_PER_ITEM:
+        raise ValueError("Situation base authority cannot fit its existing Context source budget")
+
+    def rank(source):
+        item = items.get((source.domain, source.entity_ref))
+        # Current execution is temporal evidence. This ordering does not start,
+        # cancel or fulfill anything; all plans remain in the lifecycle catalog.
+        priority = (0 if getattr(item, "status", None) == "active" else
+                    2 if getattr(item, "status", None) == "paused" else 3) if source.domain == "plan" else 1
+        return priority, -(getattr(item, "importance_bp", None) or 0), source.identity
+
+    optional = sorted((s for s in situation.source_revisions if s.domain in collections
+                       and s.identity not in selected), key=rank)
+    selected.update(s.identity for s in optional[:MAX_SOURCE_REFS_PER_ITEM - len(selected)])
+    revisions = tuple(s for s in situation.source_revisions if s.identity in selected)
+    updates = {"source_revisions": revisions}
+    omissions = []
+    for domain, (field, identity) in collections.items():
+        retained = {s.entity_ref for s in revisions if s.domain == domain}
+        full = getattr(situation, field)
+        shown = tuple(item for item in full if getattr(item, identity) in retained)
+        updates[field] = shown
+        if len(shown) != len(full):
+            omissions.append((domain, len(full) - len(shown)))
+    shown_plan_ids = {item.plan_id for item in updates["activity_slices"]}
+    if situation.social_environment.availability == "available" and any(
+        item.status == "active" and any(ref != situation.actor_ref for ref in item.participant_refs)
+        and item.plan_id not in shown_plan_ids
+        for item in situation.activity_slices
+    ):
+        # A partial company list must not become an assertion of being alone or
+        # an exhaustive list of the people currently present.
+        from .situation_compiler import SocialEnvironmentSlice
+        updates["social_environment"] = SocialEnvironmentSlice(availability="unavailable", reason="budget_truncated")
+    updates["context_omissions"] = tuple(sorted(omissions))
+    updates["policy_versions"] = (*situation.policy_versions, "context-situation-source-budget.1")
+    view = situation.model_copy(update=updates)
+    material = view.model_dump(mode="json", exclude={"internal_semantic_hash"})
+    return view.model_copy(update={"internal_semantic_hash": hashlib.sha256(
+        json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()})
+
+
 def _privacy(slice_name: SliceName, item: BaseModel) -> PrivacyClass:
     values = getattr(item, "values", None)
     candidates: list[PrivacyClass] = [_PRIVACY_FLOOR[slice_name]]
@@ -3058,6 +3120,8 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         situation: BaseModel,
         scope: ContextRelevanceScope,
     ) -> ResolvedSlice:
+        privacy = _privacy("current_situation", situation)
+        situation = _bounded_situation_context_view(situation)
         if situation.source_revisions:
             bindings = tuple(
                 sorted(
@@ -3094,7 +3158,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             ResolvedItemMetadata(
                 item_ref=query.actor_ref,
                 rank_score_bp=10_000,
-                privacy_class=_privacy("current_situation", situation),
+                privacy_class=privacy,
                 source_bindings=bindings,
                 source_hash=source_bindings_hash(bindings),
                 value_hash=canonical_value_hash(situation),

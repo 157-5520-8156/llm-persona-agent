@@ -27,8 +27,9 @@ from .world_outlook import (
 )
 
 
-_WORKING_SOURCES = "outlook-working-sources.1"
-_ROLLING_PLANNING = "rolling-world-planning.3"
+_WORKING_SOURCES = "outlook-working-sources.2"
+_WORKING_SOURCE_SCOPES = frozenset({"outlook-working-sources.1", _WORKING_SOURCES})
+_ROLLING_PLANNING = "rolling-world-planning.4"
 _NATIVE_RESULT = "world-outlook-native.9"
 _NATIVE_RESULTS = frozenset({"world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.5", "world-outlook-native.6", "world-outlook-native.7", "world-outlook-native.8", _NATIVE_RESULT})
 _TERMINAL_SOURCE_EVENTS = frozenset({
@@ -88,7 +89,7 @@ def _outlook_reference_errors(candidate, pinned):
     return errors[:4]
 
 
-def _planning_source_refs(view, context, history_offer, story):
+def _planning_source_refs(view, context, history_offer, story, *, projection=None, manifest=None):
     """Exact displayed references, not a relevance or character-choice heuristic."""
     refs = {c["source_ref"] for n in view["opportunities"] for c in n["conditions"]}
     refs.update(c["source_ref"] for stage in view.get("long_term", ()) for c in stage.get("conditions", ()))
@@ -108,6 +109,15 @@ def _planning_source_refs(view, context, history_offer, story):
                     and isinstance(item["value"].get("plan_id"), str))
     refs.update(source["source_ref"] for thread in story for source in thread["realized_sources"])
     refs.update(view.get("changed_source_refs", ()))
+    refs.update(p["occurrence_ref"] for p in view.get("rolling_preparation", {}).get("known_publications", ()))
+    if projection is not None and manifest is not None:
+        # Even when the model-facing Situation is character-truncated, its
+        # trusted Capsule anchors still identify the exact displayed heads.
+        anchors = set(manifest.anchor_refs)
+        npcs = {c.npc_ref for c in manifest.npc_capabilities}
+        refs.update(p.plan_id for p in projection.plans if (
+            p.authority_origin is not None and p.authority_origin.accepted_event_ref in anchors
+            or p.owner_actor_ref in npcs and p.status == "active"))
     return frozenset(refs)
 
 
@@ -235,8 +245,9 @@ ALL its linked threads, its target NPC and participants in npc_privacy_floors. A
 physical place does not lower linked source privacy. Do not guess unprovided NPC floors.
 The linkage is navigation, not proof of causality. Preserve durable thread identities;
 use open/paused/closed for the external storyline, never to assign protagonist feelings.
-condition_source_scope denotes a working set of live and explicitly referenced entities,
-not the whole archive. Absence from it does not mean a past event never happened.
+condition_source_scope denotes only the sources presented or explicitly referenced for this
+pass, not an exhaustive archive or live catalog. Unlisted entities still exist; conditions
+must use the supplied condition_sources. Absence is not proof of nonexistence.
 current_outlook.unavailable_source_refs identifies previously offered sources no longer
 available at this pin; do not infer their current contents or retain conditions on them.
 realized_story_history lists bounded actual source references and technical states;
@@ -591,9 +602,10 @@ class WorldOutlookRuntime:
                 "opportunities": [],
             }
 
-    def _catalog(self, state, npc_refs, *, evidence=None, required_refs=None, legacy_fact_status=None):
+    def _catalog(self, state, npc_refs, *, evidence=None, required_refs=None, legacy_fact_status=None,
+                 only_referenced=False):
         if legacy_fact_status is None:
-            legacy_fact_status = evidence is not None and evidence.get("condition_source_scope") != _WORKING_SOURCES
+            legacy_fact_status = evidence is not None and evidence.get("condition_source_scope") not in _WORKING_SOURCE_SCOPES
         if required_refs is None and evidence:
             required_refs = frozenset(evidence["source_tokens"])
         indexed = getattr(self.ledger, "outlook_entities_at", None)
@@ -604,7 +616,8 @@ class WorldOutlookRuntime:
             state = SimpleNamespace(**indexed(required_refs, cursor=ProjectionCursor(**cursor_of(state)),
                                              actor_ref=self.actor_ref, npc_refs=tuple(npc_refs)))
         return source_catalog(state, actor_ref=self.actor_ref, npc_refs=tuple(npc_refs),
-                              required_refs=required_refs, legacy_fact_status=legacy_fact_status)
+                              required_refs=required_refs, legacy_fact_status=legacy_fact_status,
+                              only_referenced=only_referenced)
 
     def _entities(self, state, refs, *, include_live=False):
         indexed = getattr(self.ledger, "outlook_entities_at", None)
@@ -1084,6 +1097,7 @@ class WorldOutlookRuntime:
                 # Unknown/in-flight provider outcome must not be billed twice.
                 return {"status": "running", "operation_ref": op}
         original_model = self.store.operation(op)["payload"]["model"]
+        observed_sources = sources
         response_tools = None
         if cached_attempts:
             # Recovery owns the original complete request, including its
@@ -1096,7 +1110,7 @@ class WorldOutlookRuntime:
                 return {"status": "stale", "operation_ref": op}
             sources = self._catalog(projection, npc_refs,
                 required_refs=frozenset(s["source_ref"] for s in pinned["condition_sources"]),
-                legacy_fact_status=pinned.get("condition_source_scope") != _WORKING_SOURCES)
+                legacy_fact_status=pinned.get("condition_source_scope") not in _WORKING_SOURCE_SCOPES)
         else:
             history = self._history_material(projection, context, view, history_trigger_ref)
             npc_privacy_floors = [
@@ -1110,8 +1124,8 @@ class WorldOutlookRuntime:
             story = self.story_history(projection=projection, planning=True)
             world_changes = self._world_changes(projection, view.get("changed_source_refs", ())) if self._rolling_planning else []
             working_sources = self._catalog(projection, npc_refs, required_refs=_planning_source_refs(
-                view, context, history_offer, story,
-            ))
+                view, context, history_offer, story, projection=projection, manifest=manifest,
+            ), only_referenced=True)
             new_ids = tuple(f"outlook:{input_key}:{i}" for i in range(24)) if native_result else None
             packet = {
                 "contract": "world-outlook-request.1",
@@ -1161,7 +1175,7 @@ class WorldOutlookRuntime:
                         },
                     )
                     for p in projection.plans
-                    if p.plan_id in sources and p.status in {"planned", "active", "paused"}
+                    if p.plan_id in working_sources and p.status in {"planned", "active", "paused"}
                 ],
                 "location_refs": [
                     c.location_ref for c in getattr(manifest, "location_capabilities", ())
@@ -1300,7 +1314,7 @@ class WorldOutlookRuntime:
                 pinned_packet = decode_outlook_request(messages[1]["content"])
                 if pinned_packet.get("draft_schema_contract") not in {"world-outlook-author-schema.5", "world-outlook-author-schema.6", "world-outlook-author-schema.7", "world-outlook-author-schema.8"} and any(n.execution.kind == "planning" or n.execution.prepare_details for n in candidate.opportunities):
                     raise ValueError("the original outlook request did not offer planning or prepared details")
-                if pinned_packet.get("condition_source_scope") == _WORKING_SOURCES:
+                if pinned_packet.get("condition_source_scope") in _WORKING_SOURCE_SCOPES:
                     offered_sources = frozenset(s["source_ref"] for s in pinned_packet["condition_sources"])
                     if any(c.source_ref not in offered_sources for conditions in
                            [*(n.conditions for n in candidate.opportunities), *(s.conditions for s in candidate.long_term)]
@@ -1403,6 +1417,10 @@ class WorldOutlookRuntime:
                     return self.health()
                 if current.semantic_hash != projection.semantic_hash:
                     raise ValueError("outlook belongs to a different source history")
+                # Input selection does not suppress state-change notifications.
+                # Validation above uses only the offered set; tracking retains
+                # the original full live-state behavior, outside the model input.
+                tracked_sources = observed_sources if pinned_packet.get("condition_source_scope") == _WORKING_SOURCES else sources
                 revision = self.store.install(
                     draft,
                     evidence={
@@ -1412,16 +1430,17 @@ class WorldOutlookRuntime:
                         "response_hash": digest(raw),
                         "cursor": cursor_of(projection),
                         "snapshot_hash": projection.semantic_hash,
-                        **({"rolling_planning": _ROLLING_PLANNING} if "rolling_preparation" in pinned_packet else {}),
+                        **({"rolling_planning": pinned_packet["rolling_preparation"].get(
+                            "contract", "rolling-world-planning.3")} if "rolling_preparation" in pinned_packet else {}),
                         **({"authoring_constraints_hash": pinned_packet["authoring_constraints"]["digest"]}
                            if "authoring_constraints" in pinned_packet else {}),
-                        "source_tokens": {k: v.token for k, v in sources.items()},
-                        **({"condition_source_scope": _WORKING_SOURCES}
-                           if pinned_packet.get("condition_source_scope") == _WORKING_SOURCES else {}),
+                        "source_tokens": {k: v.token for k, v in tracked_sources.items()},
+                        **({"condition_source_scope": pinned_packet["condition_source_scope"]}
+                           if pinned_packet.get("condition_source_scope") in _WORKING_SOURCE_SCOPES else {}),
                         "source_change_cursor": pinned_packet["current_outlook"].get("source_change_cursor", projection.ledger_sequence),
                         "basis_refs": list(manifest.anchor_refs),
-                        "offer_hash": digest(self._relevant_offers({n.opportunity_id for n in draft.opportunities}, sources)
-                                             if pinned_packet.get("condition_source_scope") == _WORKING_SOURCES else self.store.offers()),
+                        "offer_hash": digest(self._relevant_offers({n.opportunity_id for n in draft.opportunities}, tracked_sources)
+                                             if pinned_packet.get("condition_source_scope") in _WORKING_SOURCE_SCOPES else self.store.offers()),
                         "location_refs": [
                             c.location_ref for c in getattr(manifest, "location_capabilities", ())
                         ],

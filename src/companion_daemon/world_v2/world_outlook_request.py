@@ -1,5 +1,6 @@
 """Lossless outlook request transport; no evidence selection or source authority."""
 
+from copy import deepcopy
 import json
 
 from .shared_string_view import (
@@ -25,7 +26,10 @@ These are the same complete values, not summaries. When response_reference_contr
 is outlook-source-references.1, prefer copying exact dictionary aliases for references and hashes;
 the host expands them against this request only, then validates all authority.
 Otherwise output original expanded refs. Write narrative text yourself, never
-dictionary aliases in prose. The draft schema and authority rules are unchanged."""
+dictionary aliases in prose. The draft schema and authority rules are unchanged.
+In outlook-working-sources.2 a realized_story_history thread may be
+{"retain_thread_id":"id"}; read the exact same full thread from current_outlook.threads.
+This removes only a duplicate object, not any text or source."""
 ROLLING_PRESENTATION_GUIDE = """In outlook-source-references.3, native-tool constants/enums use
 expanded IDs. Prefer those expanded IDs in the response; the exact source dictionary remains readable.
 To retain an unchanged prior opportunity use only {"retain_opportunity_id":"offered id"}; for an
@@ -76,6 +80,17 @@ def decode_outlook_request(raw):
             packet[field] = [dict(zip(table["columns"], row, strict=True)) for row in table["rows"]]
         except (TypeError, ValueError) as exc:
             raise ValueError("invalid outlook records table rows") from exc
+    if packet.get("condition_source_scope") == "outlook-working-sources.2":
+        threads = {t["thread_id"]: t for t in packet.get("current_outlook", {}).get("threads", ())}
+        for row in packet.get("realized_story_history", ()):
+            if not isinstance(row, dict):
+                continue
+            thread = row.get("thread")
+            if isinstance(thread, dict) and "retain_thread_id" in thread:
+                identity = thread["retain_thread_id"]
+                if set(thread) != {"retain_thread_id"} or not isinstance(identity, str) or identity not in threads:
+                    raise ValueError("request thread selector must name an exact current thread without overrides")
+                row["thread"] = deepcopy(threads[identity])
     return packet
 
 
@@ -191,6 +206,12 @@ def encode_outlook_request(packet, *, byte_limit):
         if columns and all(isinstance(row, dict) and set(row) == set(columns) for row in rows):
             tabular[field] = {"contract": _RECORDS_TABLE, "columns": columns,
                               "rows": [[row[column] for column in columns] for row in rows]}
+    if packet.get("condition_source_scope") == "outlook-working-sources.2" and isinstance(packet.get("realized_story_history"), list):
+        threads = {t["thread_id"]: t for t in packet.get("current_outlook", {}).get("threads", ())}
+        tabular["realized_story_history"] = [
+            {**row, "thread": {"retain_thread_id": row["thread"]["thread_id"]}}
+            if isinstance(row, dict) and isinstance(row.get("thread"), dict) and row["thread"] == threads.get(row["thread"].get("thread_id"))
+            else row for row in packet.get("realized_story_history", ())]
     # The explicit history offer repeats exact 64-byte authority hashes already
     # shown in Context. Intern these as well; never trim sources to fit the cap.
     candidates = (plain, _wire(tabular), _wire(pack_shared_strings(tabular)),
