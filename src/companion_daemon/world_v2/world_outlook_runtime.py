@@ -33,6 +33,7 @@ _CURSOR_SOURCE_SCOPES = frozenset({"outlook-working-sources.3", _WORKING_SOURCES
 _WORKING_SOURCE_SCOPES = frozenset({"outlook-working-sources.1", "outlook-working-sources.2", *_CURSOR_SOURCE_SCOPES})
 _ROLLING_PLANNING = "rolling-world-planning.6"
 _NATIVE_RESULT = "world-outlook-native.10"
+_EXECUTION_ORIGIN_REVIEW = "world-outlook-origin-review.1"
 _NATIVE_RESULTS = frozenset({"world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.5", "world-outlook-native.6", "world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9", _NATIVE_RESULT})
 _ACTIVITY_CHOICE_SOURCE_EVENTS = frozenset({
     "ActivityPlanned", "ActivityStarted", "ActivityPaused", "ActivityResumed",
@@ -449,6 +450,7 @@ class WorldOutlookRuntime:
         content_store=None,
         authoring_constraints=(),
         rolling_planning=False,
+        source_critic=None,
     ):
         if (not isinstance(authoring_constraints, tuple) or len(authoring_constraints) > 16
                 or any(not isinstance(value, str) or not value.strip() for value in authoring_constraints)
@@ -456,6 +458,7 @@ class WorldOutlookRuntime:
             raise ValueError("World author background constraints must be at most 16 texts and 4096 bytes")
         self._authoring_constraints = authoring_constraints
         self._rolling_planning = rolling_planning
+        self._source_critic = source_critic
         self._authoring_constraints_hash = digest(authoring_constraints) if authoring_constraints else None
         self.ledger, self.store, self.author, self.actor_ref = ledger, store, author, actor_ref
         self._content_store = content_store
@@ -1132,6 +1135,9 @@ class WorldOutlookRuntime:
             "technical_source_refs": sorted(technical),
             "technical_source_authority": "withdrawn_unrealized_execution_permission_not_external_fact_or_new_role_choice",
             "needs_revision": (
+                (self._source_critic is not None
+                 and evidence.get("execution_source_review", {}).get("contract") != _EXECUTION_ORIGIN_REVIEW)
+                or
                 evidence.get("authoring_constraints_hash") != self._authoring_constraints_hash
                 or preparation is not None and (evidence.get("rolling_planning") != _ROLLING_PLANNING
                     or bool(preparation["due"]) or preparation["outline_due"])
@@ -1214,6 +1220,7 @@ class WorldOutlookRuntime:
         input_key = digest(
             {
                 "retry_identity": "outlook-ordinary-progress.2",
+                **({"execution_origin_review": _EXECUTION_ORIGIN_REVIEW} if self._source_critic is not None else {}),
                 "source_contract": _WORKING_SOURCES,
                 "world_id": projection.world_id,
                 "actor_ref": self.actor_ref,
@@ -1394,6 +1401,7 @@ class WorldOutlookRuntime:
                 }} if self._authoring_constraints else {}),
                 "basis_refs": list(basis_refs),
                 "condition_source_scope": _WORKING_SOURCES,
+                **({"execution_origin_review": _EXECUTION_ORIGIN_REVIEW} if self._source_critic is not None else {}),
                 "condition_sources": [v.model_dump(mode="json") for v in working_sources.values()],
                 "available_npc_refs": list(npc_refs),
                 "npc_privacy_floors": npc_privacy_floors,
@@ -1633,6 +1641,9 @@ class WorldOutlookRuntime:
                 if history_offer is not None and not precise_privacy:
                     history_offer.validate_privacy(candidate)
                 self._validate_offered_nodes(candidate, projection=projection)
+                execution_source_review = (await self._review_executable_sources(
+                    candidate=candidate, context=context, manifest=manifest, projection=projection,
+                ) if self._source_critic is not None else None)
             except (ValueError, TypeError) as exc:
                 self._record_attempt(
                     op,
@@ -1714,6 +1725,7 @@ class WorldOutlookRuntime:
                         "response_hash": digest(raw),
                         "cursor": cursor_of(projection),
                         "snapshot_hash": projection.semantic_hash,
+                        **({"execution_source_review": execution_source_review} if execution_source_review is not None else {}),
                         **({"rolling_planning": pinned_packet["rolling_preparation"].get(
                             "contract", "rolling-world-planning.3")} if "rolling_preparation" in pinned_packet else {}),
                         **({"authoring_constraints_hash": pinned_packet["authoring_constraints"]["digest"]}
@@ -1891,9 +1903,158 @@ class WorldOutlookRuntime:
                 except ValueError as exc:
                     raise ValueError(f"outlook opportunity {n.opportunity_id!r}: {exc}") from exc
 
+    @staticmethod
+    def _execution_origin_key(execution):
+        # Timing, source tokens, privacy and CAS retain their own full checks.
+        # This identity covers exactly the prose/structured document judged here.
+        return digest({"kind": execution["kind"], "text": execution.get("text"),
+                       **({"planning": execution["planning"]} if execution.get("planning") else {})})
+
+    async def _review_executable_sources(self, *, candidate, context, manifest, projection):
+        """Reuse the original origin critic before private prose gains fact authority.
+
+        A batch is an adapter to that critic, never a new World proposal or role
+        choice. Immutable attempts close unknown billing/restart gaps. No keyword
+        classifier, local prose rewrite or story-quality verdict is involved.
+        """
+        from .life_development_source_closure import (
+            possibility_draft_from_outcome_texts, life_development_novel_origin_messages,
+            parse_life_development_novel_origin_review, novel_origin_review_tool_contract,
+            life_development_novel_origin_correction_message, LifeDevelopmentSourceClosureError,
+            _TEMPORAL_PUBLICATION_GUIDANCE, _evidence_packet_binding,
+        )
+        from .world_consequence_contract import WorldConsequenceV2, WorldConsequenceAuthority
+        scripts = {}
+        def add(execution, *, available_at=None):
+            value = execution.model_dump(mode="json") if hasattr(execution, "model_dump") else execution
+            if value["kind"] not in {"environment", "planning"}:
+                return
+            key = self._execution_origin_key(value)
+            text = (execution.planning.public_text() if getattr(execution, "planning", None)
+                    else value.get("text", ""))
+            times = scripts[key][1] if key in scripts else []
+            if available_at is not None:
+                times.append(available_at)
+            scripts[key] = text, times
+        for node in candidate.opportunities:
+            add(node.execution, available_at=node.opens_at.isoformat())
+            if node.execution.planning is not None:
+                for slot in node.execution.planning.slots:
+                    add({"kind": "environment", "text": slot.event_text})
+        # A legacy publication may still spawn future appointments after upgrade.
+        # Review those original slot bytes too; never grandfather an unreviewed script.
+        for publication in self._planning_publications(projection) if self._rolling_planning else ():
+            for slot in publication.planning.slots:
+                add({"kind": "environment", "text": slot.event_text})
+        records = []
+        items = tuple(scripts.items())
+        for offset in range(0, len(items), 4):
+            batch = items[offset:offset + 4]
+            texts = tuple(value[0] for _, value in batch)
+            draft, adapted_manifest = possibility_draft_from_outcome_texts(
+                texts=texts, owner_actor_ref=self.actor_ref)
+            claim = draft.claim_declarations[0].model_copy(update={
+                "summary": "本次候选仅生成外部条件，不授权角色的新行动、感知或回应。"})
+            outcomes = tuple(draft.outcomes[0].model_copy(update={
+                "text": None, "world_consequence": WorldConsequenceV2(environment_text=text)})
+                for text in (*texts, *(["外部条件尚未发生变化。"] if len(texts) == 1 else [])))
+            draft = draft.model_copy(update={"premise": "审核即将发布的外部脚本。",
+                "claim_declarations": (claim,), "outcomes": outcomes,
+                "anchor_refs": manifest.anchor_refs})
+            adapted_manifest = adapted_manifest.model_copy(update={
+                "pinned_cursor": manifest.pinned_cursor, "anchor_refs": manifest.anchor_refs,
+                "grounding_refs": manifest.grounding_refs, "entity_refs": manifest.entity_refs,
+                "outcome_contract": "world-consequence.2"})
+            messages = life_development_novel_origin_messages(context=context, manifest=adapted_manifest,
+                draft=draft, reviewer_is_independent=False,
+                execution_authority=WorldConsequenceAuthority(world_id=projection.world_id,
+                    actor_ref=self.actor_ref, evaluated_cursor=manifest.pinned_cursor.model_dump(mode="json"),
+                    execution_bindings=()).model_dump(mode="json"))
+            messages[0]["content"] += (
+                " These are frozen external scripts, not character self-life alternatives. "
+                "Neither a future publication nor an environmental label authorizes a new "
+                "protagonist action, prerequisite submission, consent, attendance or payment. "
+                "Do not assess story variety. Existing sourced facts may be retained; institutions "
+                "may announce new assignments, but permission/assignment is not participation.")
+            messages[0]["content"] += _TEMPORAL_PUBLICATION_GUIDANCE
+            packet = json.loads(messages[1]["content"])
+            packet["pinned_authority"]["temporal_publication"] = {
+                "contract": "world-outlook-script-publication.1",
+                "rule": "no_completed_fact_after_its_first_available_time; explicit future arrangements remain arrangements",
+                "fields": [{"prose_path": f"outcomes.{i}.world_consequence.environment_text",
+                    "first_available_at": min(value[1], key=datetime.fromisoformat, default=None),
+                    "recurring_slot_rule": "if used as a recurring slot: each instance.starts_at; never its later ends_at or a later detail step"}
+                    for i, (_, value) in enumerate(batch)],
+            }
+            packet["evidence_packet_binding"] = _evidence_packet_binding(
+                contract="world-outlook-execution-source-packet.1",
+                reviewed_surface=packet["reviewed_surface"], pinned_authority=packet["pinned_authority"])
+            messages[1]["content"] = json.dumps(packet, ensure_ascii=False)
+            tools = novel_origin_review_tool_contract(draft)
+            subject = {"contract": _EXECUTION_ORIGIN_REVIEW, "scripts": [key for key, _ in batch],
+                "model": str(getattr(self._source_critic, "model", type(self._source_critic).__name__)),
+                "model_version": getattr(self._source_critic, "model_version", None),
+                "request_hash": _outlook_request_hash(messages, tools["tools"])}
+            operation = "origin-review:" + digest(subject)
+            claimed = self.store.claim(operation, kind="script_origin_review", payload=subject)
+            attempts = self.store.attempts(operation)
+            if not claimed and not attempts:
+                raise RuntimeError("outlook_origin_review_outcome_unknown")
+            review = None
+            for ordinal in range(2):
+                cached = attempts.get(ordinal)
+                if cached is None:
+                    call = operation + f":call:{ordinal}"
+                    if not self.store.claim(call, kind="origin_review_call", payload={
+                            "request_hash": _outlook_request_hash(messages, tools["tools"]), "model": subject["model"]}):
+                        raise RuntimeError("outlook_origin_review_outcome_unknown")
+                    with model_call_scope("life_development_novel_origin_review", action_id=call):
+                        raw = await complete_json_object(self._source_critic, messages, temperature=0.0,
+                            **(tools if callable(getattr(self._source_critic, "complete_json", None)) else {}))
+                    self.store.attempt(operation, ordinal=ordinal, payload={"messages": messages,
+                        "response_tools": tools["tools"], "raw": raw})
+                else:
+                    messages, raw = cached["messages"], cached["raw"]
+                try:
+                    review = parse_life_development_novel_origin_review(raw=raw, draft=draft)
+                    break
+                except LifeDevelopmentSourceClosureError as exc:
+                    if ordinal:
+                        raise
+                    messages = [*messages, {"role": "assistant", "content": raw},
+                        life_development_novel_origin_correction_message(error=exc, draft=draft)]
+            record = {**subject, "operation_ref": operation, "response_hash": digest(raw)}
+            self.store.finish(operation, state="accepted" if review.decision == "supported" else "rejected",
+                payload={**record, "review": review.model_dump(mode="json")})
+            if review.decision != "supported":
+                raise ValueError("execution source origin rejected before publication: "
+                                 + json.dumps(review.model_dump(mode="json"), ensure_ascii=False))
+            records.append(record)
+        return {"contract": _EXECUTION_ORIGIN_REVIEW, "records": records}
+
+    def _execution_origin_approved(self, execution):
+        if self._source_critic is None or execution["kind"] not in {"environment", "planning"}:
+            return True
+        head = self.store.head()
+        proof = head[2].get("execution_source_review", {}) if head else {}
+        if proof.get("contract") != _EXECUTION_ORIGIN_REVIEW:
+            return False
+        key = self._execution_origin_key(execution)
+        for record in proof["records"]:
+            if key not in record["scripts"]:
+                continue
+            accepted = self.store.operation(record["operation_ref"])
+            if (accepted is None or accepted["state"] != "accepted"
+                    or any(accepted["payload"].get(k) != v for k, v in record.items())
+                    or accepted["payload"].get("review", {}).get("decision") != "supported"):
+                raise ValueError("outlook script origin review receipt is unavailable")
+            return True
+        return False
+
     def ready(self, *, npc_refs=None):
         return tuple(
-            n for n in (*self.view(npc_refs=npc_refs)["opportunities"], *self.scheduled()) if n["state"] == "ready"
+            n for n in (*self.view(npc_refs=npc_refs)["opportunities"], *self.scheduled())
+            if n["state"] == "ready" and self._execution_origin_approved(n["execution"])
         )
 
     def _scheduled_offers(self):
@@ -2114,6 +2275,10 @@ class WorldOutlookRuntime:
                     )
                     if (current is not None and current["state"] == "delivery_pending"
                             and {k: v for k, v in current.items() if k != "state"} == payload["node"]):
+                        if not self._execution_origin_approved(payload["node"]["execution"]):
+                            # Keep the original unfinished offer and every paid
+                            # receipt. Migration must prove its script first.
+                            continue
                         from .schemas import ProjectionCursor
 
                         result = self._executor.execute(
@@ -2235,7 +2400,8 @@ class WorldOutlookRuntime:
         ]
         scheduled = self.scheduled()
         dates.extend(datetime.fromisoformat(n["opens_at"]) for n in scheduled if n["state"] == "waiting")
-        if any(n["state"] in {"ready", "delivery_pending"} for n in scheduled):
+        if any(n["state"] in {"ready", "delivery_pending"}
+               and self._execution_origin_approved(n["execution"]) for n in scheduled):
             dates.append(state.logical_time + timedelta(seconds=1))
         if any(n["state"] == "retry_wait" for n in scheduled):
             dates.append(datetime.fromtimestamp((int(state.logical_time.timestamp()) // 3600 + 1) * 3600,
@@ -2246,7 +2412,8 @@ class WorldOutlookRuntime:
             if include_preparation and (due := self.next_preparation_due(projection=state, view=view)) is not None:
                 dates.append(max(due, state.logical_time + timedelta(seconds=1)))
             publications = [n for n in view["opportunities"] if n["execution"]["kind"] == "planning"]
-            if any(n["state"] in {"ready", "delivery_pending"} for n in publications):
+            if any(n["state"] in {"ready", "delivery_pending"}
+                   and self._execution_origin_approved(n["execution"]) for n in publications):
                 dates.append(state.logical_time + timedelta(seconds=1))
             if any(n["state"] == "retry_wait" for n in publications):
                 dates.append(datetime.fromtimestamp((int(state.logical_time.timestamp()) // 3600 + 1) * 3600,

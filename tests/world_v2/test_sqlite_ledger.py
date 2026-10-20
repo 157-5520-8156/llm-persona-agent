@@ -809,6 +809,42 @@ def test_historical_projection_replay_reuses_verified_ascending_prefixes(tmp_pat
     independent.close()
 
 
+def test_descending_cold_pins_reuse_a_verified_earlier_floor_without_growing_the_cache(tmp_path, monkeypatch):
+    from companion_daemon.world_v2 import sqlite_ledger as module
+    monkeypatch.setattr(module, "_HISTORICAL_REPLAY_FLOOR_GAP", 8, raising=False)
+    path = tmp_path / "descending-prefix.sqlite3"
+    ledger = SQLiteWorldLedger(path=path, world_id="world-sqlite-test")
+    cursors, projections = [], []
+    try:
+        for index in range(1, 33):
+            committed = ledger.commit([event(f"floor-{index}", f"floor-obs-{index}")],
+                commit_id=f"floor-commit-{index}", expected_world_revision=index-1,
+                expected_deliberation_revision=0)
+            cursors.append(ProjectionCursor(world_revision=committed.world_revision,
+                deliberation_revision=committed.deliberation_revision, ledger_sequence=committed.ledger_sequence))
+            projections.append(ledger.project())
+    finally:
+        ledger.close()
+    ledger = SQLiteWorldLedger(path=path, world_id="world-sqlite-test")
+    try:
+        assert ledger.project_at(cursors[23]) == projections[23]
+        baseline = ledger.performance_counters().replayed_events
+        for index in range(22, 15, -1):
+            assert ledger.project_at(cursors[index]) == projections[index]
+            assert len(ledger._historical_replay_prefix_cache) <= 4
+        assert ledger.performance_counters().replayed_events - baseline == sum(range(1, 8)), (
+            "Earlier paid pins must continue from the validated floor instead of replaying genesis each time")
+        assert ledger.rebuild() == projections[-1]
+        # The floor is a derived process cache, never authority over later
+        # external changes, including corruption before that cached floor.
+        with sqlite3.connect(path) as changed:
+            changed.execute("UPDATE world_v2_events SET event_hash=? WHERE event_id=?", ("0"*64, "floor-1"))
+        with pytest.raises(LedgerIntegrityError):
+            ledger.project_at(cursors[22])
+    finally:
+        ledger.close()
+
+
 def test_commit_seeded_head_cache_invalidates_on_external_append(tmp_path) -> None:
     path = tmp_path / "commit-seeded-head-external-append.sqlite3"
     left = SQLiteWorldLedger(path=path, world_id="world-sqlite-test")

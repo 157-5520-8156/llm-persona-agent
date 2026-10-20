@@ -2829,10 +2829,12 @@ class CharacterInteriorWorldStimulusRuntime:
         if not isinstance(proposal, DecisionProposal):
             return False
         accepted_ids = {plan.plan_id for plan in projection.plans}
+        response_ref = ('event:world-plan-response:' + _digest(audit.proposal_id)
+                        if any(c.kind == 'world_plan_response' for c in proposal.proposed_changes) else None)
         return any(
             change.kind == "world_life_intent" and change.target_id not in accepted_ids
             or change.kind == 'world_plan_response' and not any(
-                ref.event_id == 'event:world-plan-response:' + _digest(audit.proposal_id)
+                ref.event_id == response_ref
                 for ref in projection.committed_world_event_refs)
             for change in proposal.proposed_changes
         )

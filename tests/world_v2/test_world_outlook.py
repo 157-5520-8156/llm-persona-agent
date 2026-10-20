@@ -93,6 +93,111 @@ class Author:
         return json.dumps(value, ensure_ascii=False)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("prepare_details", [False, True])
+async def test_private_script_is_source_checked_before_it_can_become_world_fact(tmp_path, prepare_details):
+    bad = "值班人员把申请连同角色已经补交的活动方案摆上桌面。"
+    good = "值班人员审阅原申请，活动方案尚待申请人自行补交。"
+
+    class Critic:
+        model = "fixture:existing-focused-origin-critic"
+        def __init__(self):
+            self.calls = []
+        async def complete(self, messages, **kwargs):
+            self.calls.append(messages)
+            text = json.dumps(messages, ensure_ascii=False)
+            unsupported = bad in text
+            return json.dumps({"review": {"decision": "unsupported" if unsupported else "supported",
+                "reason": "No accepted character execution proves a supplement." if unsupported else "Only external conditions.",
+                "unsupported_outcome_prerequisites": [{"prose_path": "outcomes.0.world_consequence.environment_text",
+                    "violation_kinds": ["imported_current_or_prior_prerequisite", "completed_character_experience"],
+                    "exact_fragments": ["角色已经补交的活动方案"]}] if unsupported else []}})
+
+    def outputs(wake):
+        first = draft_value(wake)
+        first["opportunities"] = first["opportunities"][:1]
+        first["opportunities"][0]["execution"]["text"] = bad
+        first["opportunities"][0]["execution"]["prepare_details"] = prepare_details
+        second = json.loads(json.dumps(first))
+        second["opportunities"][0]["execution"]["text"] = good
+        return [{"decision": "revise", "draft": first}, {"decision": "revise", "draft": second}]
+
+    ledger, wake, store, author, runtime = setup(tmp_path, outputs)
+    critic = Critic()
+    runtime._source_critic = critic
+    before = ledger.project()
+    try:
+        result = await runtime.refresh(projection=before, context={},
+            manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)))
+        assert result["status"] == "ready", result
+        assert store.head()[1].opportunities[0].execution.text == good
+        assert len(author.calls) == 2 and len(critic.calls) == 2
+        assert ledger.project() == before
+        assert any("completed_character_experience" in json.dumps(m) for m in author.calls[-1:])
+        assert store.head()[2]["execution_source_review"]["contract"] == "world-outlook-origin-review.1"
+    finally:
+        runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_legacy_private_scripts_wait_for_review_and_paid_review_is_reused(tmp_path):
+    ledger, wake, store, _, runtime = setup(tmp_path, lambda w: [
+        {"decision": "revise", "draft": draft_value(w)}])
+    state = ledger.project()
+    manifest = _manifest(wake, pinned_cursor=_projection_cursor(ledger))
+
+    class Critic:
+        model = "fixture:origin-recovery"
+        calls = 0
+        async def complete(self, messages, **kwargs):
+            self.calls += 1
+            assert self.calls == 1, "Reopening the exact paid review must not buy another verdict"
+            return json.dumps({"review": {"decision": "supported", "reason": "External scripts only."}})
+
+    try:
+        assert (await runtime.refresh(projection=state, context={}, manifest=manifest))["status"] == "ready"
+        assert runtime.ready()
+        runtime._source_critic = Critic()
+        assert runtime.ready() == ()
+        assert runtime.view()["needs_revision"]
+        draft = store.head()[1]
+        proof = await runtime._review_executable_sources(candidate=draft, context={},
+            manifest=manifest, projection=state)
+        assert await runtime._review_executable_sources(candidate=draft, context={},
+            manifest=manifest, projection=state) == proof
+        assert runtime._source_critic.calls == 1
+        assert ledger.project() == state
+        assert not store.head()[2].get("execution_source_review"), "A standalone verdict must not silently install authority"
+    finally:
+        runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_unknown_origin_review_never_rebills_or_publishes_the_script(tmp_path):
+    ledger, wake, store, _, runtime = setup(tmp_path, lambda w: [])
+    state = ledger.project()
+    manifest = _manifest(wake, pinned_cursor=_projection_cursor(ledger))
+
+    class TimedOut:
+        model = "fixture:unknown-origin-review"
+        calls = 0
+        async def complete(self, messages, **kwargs):
+            self.calls += 1
+            raise TimeoutError("original provider outcome unknown")
+
+    runtime._source_critic = TimedOut()
+    draft = WorldOutlookDraft.model_validate_json(json.dumps(draft_value(wake)))
+    try:
+        with pytest.raises(TimeoutError, match="outcome unknown"):
+            await runtime._review_executable_sources(candidate=draft, context={}, manifest=manifest, projection=state)
+        with pytest.raises(RuntimeError, match="outcome_unknown"):
+            await runtime._review_executable_sources(candidate=draft, context={}, manifest=manifest, projection=state)
+        assert runtime._source_critic.calls == 1
+        assert store.head() is None and ledger.project() == state
+    finally:
+        runtime.close()
+
+
 def setup(tmp_path, outputs):
     ledger = WorldLedger.in_memory(world_id=WORLD_ID)
     wake = _seed_clock(ledger)
@@ -815,6 +920,7 @@ class ProductionAuthor:
 
     def __init__(self):
         self.calls = []
+        self.origin_reviews = []
 
     async def complete(self, messages, **kwargs):
         from datetime import datetime
@@ -822,6 +928,9 @@ class ProductionAuthor:
         from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
 
         packet = decode_outlook_request(messages[-1]["content"])
+        if packet.get("evidence_packet_binding", {}).get("contract") == "world-outlook-execution-source-packet.1":
+            self.origin_reviews.append(packet)
+            return json.dumps({"review": {"decision": "supported", "reason": "Explicit fixture scripts announce external notices only."}})
         self.calls.append(packet)
         assert packet["contract"] == "world-outlook-request.1"
         now = datetime.fromisoformat(packet["logical_time"])
@@ -924,6 +1033,7 @@ async def test_opt_in_production_composition_executes_frozen_batch_and_cold_reop
         await production_tick(app, now, now + timedelta(minutes=10), "first")
         assert app.world_outlook_health()["status"] == "ready"
         assert len(author.calls) == 1 and npc.calls == 0
+        assert len(author.origin_reviews) == 1
         before = app.export_replay_evidence()
         assert all(
             "PRIVATE_FUTURE_SENTINEL" not in e.event.model_dump_json() for e in before.events
@@ -937,6 +1047,7 @@ async def test_opt_in_production_composition_executes_frozen_batch_and_cold_reop
             )
             assert result.life_development_followup_status == "occurrence_committed"
         assert len(author.calls) == 1 and npc.calls == 0
+        assert len(author.origin_reviews) == 1
         evidence = app.export_replay_evidence()
         assert sum(e.event.event_type == "WorldOccurrenceCommitted" for e in evidence.events) == 3
     finally:

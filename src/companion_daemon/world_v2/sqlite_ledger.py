@@ -571,6 +571,22 @@ class _HistoricalReplayPrefix:
     state: ReducerState
     legacy_trigger_sources: dict[str, str]
     legacy_settlement_sources: dict[str, str]
+    earlier_floor: bool = False
+
+
+_HISTORICAL_REPLAY_FLOOR_GAP = 8192
+
+
+def _trim_historical_prefixes(cache):
+    """Keep one earlier verified floor and three recent pins in the same budget."""
+    floors = [key for key, value in cache.items() if value.earlier_floor]
+    if len(floors) > 1:
+        retained = min(floors, key=lambda key: cache[key].cursor.ledger_sequence)
+        for key in floors:
+            if key != retained:
+                del cache[key]
+    while len(cache) > 4:
+        del cache[next(key for key, value in cache.items() if not value.earlier_floor)]
 
 
 @dataclass(frozen=True, slots=True)
@@ -4954,6 +4970,7 @@ class SQLiteWorldLedger:
         # Unknown RLock implementations conservatively keep that serial path.
         nested = getattr(self._thread_lock, "_is_owned", lambda: True)()
         with self._thread_lock:
+            self._refresh_verified_external_history_locked()
             cached = self._cached_projection_at_locked(cursor)
             if cached is not None:
                 return cached
@@ -4992,10 +5009,11 @@ class SQLiteWorldLedger:
                     raise ConcurrencyConflict("history changed during historical snapshot replay")
                 key = (CURRENT_SCHEMA_VERSION, REDUCER_BUNDLE_VERSION,
                        cursor.world_revision, cursor.deliberation_revision, cursor.ledger_sequence)
-                self._historical_replay_prefix_cache.pop(key, None)
-                self._historical_replay_prefix_cache[key] = view._historical_replay_prefix_cache[key]
-                while len(self._historical_replay_prefix_cache) > 4:
-                    self._historical_replay_prefix_cache.pop(next(iter(self._historical_replay_prefix_cache)))
+                for prefix_key, prefix in view._historical_replay_prefix_cache.items():
+                    if prefix_key not in self._historical_replay_prefix_cache or prefix_key == key:
+                        self._historical_replay_prefix_cache.pop(prefix_key, None)
+                        self._historical_replay_prefix_cache[prefix_key] = prefix
+                _trim_historical_prefixes(self._historical_replay_prefix_cache)
                 self._remember_historical_projection(projection)
             return projection
 
@@ -6712,6 +6730,11 @@ class SQLiteWorldLedger:
             )
             prefix = max(candidates, key=lambda value: value.cursor.ledger_sequence, default=None)
         epoch_binding_mode = self._epoch_binding_replay_mode() if prefix is None else "genesis"
+        # Only a necessary genesis replay creates a floor. Keep it locally until
+        # that entire requested prefix and projection have passed every old check.
+        floor_sequence = (target_cursor.ledger_sequence - _HISTORICAL_REPLAY_FLOOR_GAP
+                          if target_cursor is not None and prefix is None else 0)
+        earlier_floor = None
         if prefix is None:
             state = ReducerState()
             world_revision = 0
@@ -6841,6 +6864,12 @@ class SQLiteWorldLedger:
                 )
             except Exception as exc:
                 raise LedgerIntegrityError("persisted event cannot be reduced") from exc
+            if floor_sequence > 0 and ledger_sequence == floor_sequence:
+                earlier_floor = _HistoricalReplayPrefix(
+                    cursor=ProjectionCursor(world_revision=world_revision,
+                        deliberation_revision=deliberation_revision, ledger_sequence=ledger_sequence),
+                    state=state, legacy_trigger_sources=dict(legacy_trigger_sources),
+                    legacy_settlement_sources=dict(legacy_settlement_sources), earlier_floor=True)
         if (
             target_cursor is not None
             and ProjectionCursor(
@@ -6851,7 +6880,15 @@ class SQLiteWorldLedger:
             != target_cursor
         ):
             raise ValueError("requested projection cursor is not present in the ledger")
+        projection = make_projection(
+            world_id=self._world_id, world_revision=world_revision,
+            deliberation_revision=deliberation_revision, ledger_sequence=ledger_sequence,
+            state=state, reducer_bundle_version=reducer_bundle_version)
         if target_cursor is not None:
+            if earlier_floor is not None:
+                floor = earlier_floor.cursor
+                self._historical_replay_prefix_cache[(target_schema_version, reducer_bundle_version,
+                    floor.world_revision, floor.deliberation_revision, floor.ledger_sequence)] = earlier_floor
             prefix_key = (
                 target_schema_version,
                 reducer_bundle_version,
@@ -6865,16 +6902,7 @@ class SQLiteWorldLedger:
                 state=state,
                 legacy_trigger_sources=dict(legacy_trigger_sources),
                 legacy_settlement_sources=dict(legacy_settlement_sources),
+                earlier_floor=bool(prefix is not None and prefix.earlier_floor and prefix.cursor == target_cursor),
             )
-            while len(self._historical_replay_prefix_cache) > 4:
-                self._historical_replay_prefix_cache.pop(
-                    next(iter(self._historical_replay_prefix_cache))
-                )
-        return make_projection(
-            world_id=self._world_id,
-            world_revision=world_revision,
-            deliberation_revision=deliberation_revision,
-            ledger_sequence=ledger_sequence,
-            state=state,
-            reducer_bundle_version=reducer_bundle_version,
-        )
+            _trim_historical_prefixes(self._historical_replay_prefix_cache)
+        return projection

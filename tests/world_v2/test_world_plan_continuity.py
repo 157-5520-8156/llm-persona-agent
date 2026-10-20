@@ -290,6 +290,43 @@ async def test_identical_new_intentions_remain_two_explicit_choices(tmp_path, mo
 
 
 @pytest.mark.asyncio
+async def test_recovery_reads_the_same_plan_response_without_rehashing_every_event(tmp_path, monkeypatch):
+    from companion_daemon.world_v2.character_interior import world_stimulus as module
+    from companion_daemon.world_v2.character_interior.world_stimulus import CharacterInteriorWorldStimulusRuntime
+    from companion_daemon.world_v2.character_interior.world_stimulus import decode_recorded_proposal
+
+    monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
+    provider = PlanRole()
+    model = _model(provider)
+    app = _build(tmp_path / "recovery-work.sqlite", model)
+    try:
+        await settlement(app, provider, "first")
+        await app.drain_background_once()
+        provider.operation = "continue"
+        provider.plan_id = app.export_replay_evidence().projection.plans[0].plan_id
+        await settlement(app, provider, "next")
+        await app.drain_background_once()
+        state = app.export_replay_evidence().projection
+        audit = next(a for a in reversed(state.proposal_audits)
+                     if any(c.kind == "world_plan_response" for c in
+                            getattr(decode_recorded_proposal(a), "proposed_changes", ())))
+        original = module._digest
+        hashed = []
+
+        def count(value):
+            hashed.append(value)
+            return original(value)
+
+        monkeypatch.setattr(module, "_digest", count)
+        assert not CharacterInteriorWorldStimulusRuntime._world_life_intent_is_pending(state, audit=audit)
+        assert hashed == [audit.proposal_id], "The immutable receipt identity must not be hashed per historical event"
+        assert app.export_replay_evidence().projection == state
+    finally:
+        app.close()
+        await model.aclose()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("operation", ["continue", "revise", "end"])
 @pytest.mark.parametrize("legacy", [False, True])
 async def test_paid_plan_choice_recovers_after_audit_without_reauthoring(

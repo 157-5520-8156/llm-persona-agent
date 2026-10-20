@@ -1,3 +1,26 @@
+Private Outlook execution now has a source-authority admission gate. Production reuses the
+configured focused origin critic (or the same World Author in that critic role) before an
+executable environment/planning document or recurring slot can gain fact authority. The critic
+receives the exact original Context, no new character execution permission, and each field's
+first publication time. One original critic correction and one original author reselect remain;
+unknown paid outcomes fail closed without rebilling. Accepted exact review receipts live in the
+existing Outlook store and survive restart. Legacy unreviewed private work waits for qualification;
+already committed bad history is preserved, not silently repaired or claimed clean. No plot-quality
+or protagonist-choice policy was added. Real paired GLM controls reject the original unperformed
+supplement and support the original source-bound lease/assignment with no World/role changes.
+
+Historical read performance: actual paid cursors descended below all four recent replay prefixes,
+causing repeated genesis replays of 62k..64k events. A necessary full replay now retains one earlier
+verified reducer checkpoint 8192 events before its target, plus three recent pins in the same four
+entry budget. No persisted snapshot is trusted; all old upcast/hash/reducer checks run, failed
+replays publish no floor, and external ledger mutation invalidates cached projections before use.
+Ascending behavior and source/privacy/CAS/replay contracts stay intact. Separately, a Plan-response
+receipt identity is hashed once per recovery question instead of once per event. Sixteen real paid
+questions keep all verdicts/World bytes with 497147->16 hashes; that is not whole-round acceleration.
+New frozen full regression and retained-world gates are required before any candidate switch.
+See output/private-audits/causal-chain-targeted-20261020 and fast-acceptance-20261020. Protected
+QQ/main/W and the original retained DB/sidecars/failures/unknowns/fixed target are unchanged.
+
 Targeted causal continuation found a fresh-request preflight mismatch: the request's
 working source offer can include a historical planning predecessor or closed Context
 Plan absent from the old tracking catalog. Keep eligibility incorrectly indexed the

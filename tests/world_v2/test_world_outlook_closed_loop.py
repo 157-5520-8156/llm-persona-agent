@@ -59,9 +59,13 @@ class _WorldAuthor:
         self.life_calls = []
         self.wire_sizes = []
         self.follow_plan = None
+        self.origin_reviews = []
 
     async def complete(self, messages, **kwargs):
         packet = decode_outlook_request(messages[1]["content"])
+        if packet.get("evidence_packet_binding", {}).get("contract") == "world-outlook-execution-source-packet.1":
+            self.origin_reviews.append(packet)
+            return json.dumps({"review": {"decision": "supported", "reason": "Explicit external fixture notices, no protagonist action."}})
         if packet.get("contract") != "world-outlook-request.1":
             assert "private_world_outlook" in packet
             self.life_calls.append(packet)
