@@ -938,6 +938,7 @@ def _rank(
     logical_time: datetime | None,
     query_text: str = "",
     trigger_ref: str | None = None,
+    focus_plan_id: str | None = None,
 ) -> int:
     # Apply the existing grounding priority before bounded selection and
     # source admission, not only after optional episodes consumed that budget.
@@ -950,6 +951,10 @@ def _rank(
             return 10_000
         if isinstance(item, BiographicalWorldContextItem):
             return 10_000
+        if isinstance(item, HistoricalActivityIntentionContextItem) and item.plan_id == focus_plan_id:
+            # Ground the exact lifecycle event in its original accepted choice.
+            # This is still past intention, never execution or a current duty.
+            return 9_999
         if isinstance(item, WorldLifeContextItem) and item.world_planning is not None:
             return 9_950
         # Current accepted execution/intent is grounding for the next choice.
@@ -1026,6 +1031,7 @@ def _bounded_domain_items(
     rank_overrides: frozenset[tuple[str, str]] = frozenset(),
     query_text: str = "",
     trigger_ref: str | None = None,
+    focus_plan_id: str | None = None,
 ) -> tuple[BaseModel, ...] | None:
     """Apply the installed bounded selection policy before any ledger lookup."""
 
@@ -1038,9 +1044,9 @@ def _bounded_domain_items(
             items,
             key=lambda item: (
                 -(
-                    max(9_900, _rank(slice_name, item, logical_time, query_text, trigger_ref))
+                    max(9_900, _rank(slice_name, item, logical_time, query_text, trigger_ref, focus_plan_id))
                     if (slice_name, _item_ref(slice_name, item)) in rank_overrides
-                    else _rank(slice_name, item, logical_time, query_text, trigger_ref)
+                    else _rank(slice_name, item, logical_time, query_text, trigger_ref, focus_plan_id)
                 ),
                 _item_ref(slice_name, item),
             ),
@@ -2828,6 +2834,11 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             if isinstance(item, HistoricalActivityIntentionContextItem)
             and item.plan_id in situation_plan_ids
         )
+        focus_plan_id = next((
+            item.plan_id for item in world_life
+            if isinstance(item, ActivityLifecycleStateContextItem)
+            and item.activity_event_ref == query.trigger_ref
+        ), None)
 
         domains: dict[SliceName, tuple[BaseModel, ...] | None] = {
             # ``agent:companion`` is the canonical companion actor reference.
@@ -2880,6 +2891,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                     source_rank_overrides,
                     trigger_text,
                     query.trigger_ref,
+                    focus_plan_id,
                 )
             )
             for slice_name, items in domains.items()
@@ -2939,6 +2951,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                 scope,
                 observation_aliases,
                 source_rank_overrides,
+                focus_plan_id,
             )
             resolved[field] = built
 
@@ -3206,6 +3219,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         scope: ContextRelevanceScope,
         observation_aliases: dict[str, str],
         rank_overrides: frozenset[tuple[str, str]] = frozenset(),
+        focus_plan_id: str | None = None,
     ) -> ResolvedSlice | None:
         metadata: list[ResolvedItemMetadata] = []
         selected_items: list[BaseModel] = []
@@ -3270,9 +3284,11 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                 ResolvedItemMetadata(
                     item_ref=item_ref,
                     rank_score_bp=(
-                        max(9_900, _rank(slice_name, item, query.logical_time, trigger_ref=query.trigger_ref))
+                        max(9_900, _rank(slice_name, item, query.logical_time, trigger_ref=query.trigger_ref,
+                                        focus_plan_id=focus_plan_id))
                         if (slice_name, item_ref) in rank_overrides
-                        else _rank(slice_name, item, query.logical_time, trigger_ref=query.trigger_ref)
+                        else _rank(slice_name, item, query.logical_time, trigger_ref=query.trigger_ref,
+                                   focus_plan_id=focus_plan_id)
                     ),
                     privacy_class=_privacy(slice_name, item),
                     source_bindings=bindings,

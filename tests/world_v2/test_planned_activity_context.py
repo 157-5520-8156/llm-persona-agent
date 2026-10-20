@@ -31,6 +31,83 @@ class _FuturePlanHTTP(_DayOpenHTTP):
         return await super().__call__(request)
 
 
+@pytest.mark.parametrize("event_type", ["ActivityPaused", "ActivityAbandoned"])
+@pytest.mark.parametrize("item_limit", [2, 4])
+@pytest.mark.parametrize("source_ref_limit", [2, 32])
+def test_focused_plan_state_keeps_original_meaning_under_active_pressure(
+    tmp_path, monkeypatch, event_type, item_limit, source_ref_limit,
+):
+    from companion_daemon.world_v2.context_capsule import ContextCapsuleBudgetPolicy
+    from companion_daemon.world_v2.context_resolver import query_from_projection
+    from companion_daemon.world_v2.ledger_context_resolver import (
+        ContextRelevanceScope, context_capsule_compiler_from_ledger,
+    )
+    from companion_daemon.world_v2.character_interior.snapshot_compiler import (
+        compile_inner_life_snapshot, source_envelopes_from_capsule,
+    )
+    from companion_daemon.world_v2.day_open_life_intent_runtime import DayOpenLifeIntentRuntime
+    from test_day_open_life_intent_runtime import (
+        ACTOR, INTENT, _accept, _choice, _record, _seed,
+    )
+    from test_world_consequence_authoring_context import _operator_transition
+
+    # A legal, model-authored agenda supplies the history and competing live
+    # Plans. Operator transitions are confined to this offline source fixture.
+    ledger, first = _seed(tmp_path / "focused-history.sqlite")
+    try:
+        agenda = [INTENT] + [
+            {**INTENT, "intention": f"另一项独立意图{i}。"} for i in range(3)
+        ]
+        _accept(ledger, *_record(ledger, *_choice(ledger, first, agenda=agenda)))
+        reader = DayOpenLifeIntentRuntime(ledger=ledger, owner_actor_ref=ACTOR)
+        plan = next(p for p in ledger.project().plans if
+                    reader.read_for_plan(plan_id=p.plan_id).character_intention == INTENT["intention"])
+        creation_ref = plan.authority_origin.accepted_event_ref
+        _operator_transition(ledger, plan.plan_id, "ActivityStarted", "event:target-start")
+        focus = _operator_transition(ledger, plan.plan_id, event_type, "event:target-state")
+        for i, other in enumerate(p for p in ledger.project().plans if p.plan_id != plan.plan_id):
+            _operator_transition(ledger, other.plan_id, "ActivityStarted", f"event:other-start:{i}")
+        monkeypatch.setattr(
+            "companion_daemon.world_v2.ledger_context_resolver.MAX_SOURCE_REFS_PER_ITEM",
+            source_ref_limit,
+        )
+        before = ledger.export_replay_evidence()
+        policy = ContextCapsuleBudgetPolicy()
+        policy = policy.model_copy(update={"world_life": policy.world_life.model_copy(
+            update={"max_items": item_limit})})
+        capsule = context_capsule_compiler_from_ledger(
+            ledger=ledger, policy=policy, relevance_scope=ContextRelevanceScope(actor_ref=ACTOR),
+        ).compile(query_from_projection(ledger.project(), actor_ref=ACTOR, trigger_ref=focus))
+        snapshot = compile_inner_life_snapshot(
+            json.loads(capsule.model_content_json), source_envelopes=source_envelopes_from_capsule(capsule),
+        )
+        (meaning,) = snapshot.materials["historical_activity_intentions"]
+        assert meaning["plan_id"] == plan.plan_id
+        assert meaning["accepted_intention"]["text"] == INTENT["intention"]
+        assert meaning["source_ref"] == creation_ref
+        assert meaning["planning_scope"] == "historical_intention_not_current_plan_or_execution"
+        assert any(x["plan_id"] == plan.plan_id and x["source_ref"] == focus
+                   for x in snapshot.materials["activity_lifecycle_states"])
+        assert all(x["plan_id"] != plan.plan_id for x in snapshot.materials.get("current_activities", []))
+        assert not snapshot.materials.get("recently_ended_activities")
+        assert len(capsule.world_life.items) <= item_limit
+        one_item_policy = policy.model_copy(update={"world_life": policy.world_life.model_copy(
+            update={"max_items": 1})})
+        compiler = context_capsule_compiler_from_ledger(
+            ledger=ledger, policy=one_item_policy, relevance_scope=ContextRelevanceScope(actor_ref=ACTOR),
+        )
+        # An unrelated turn must not pin an abandoned intention ahead of the
+        # current World. Paused Plans retain their existing Situation priority.
+        if event_type == "ActivityAbandoned":
+            unrelated = compiler.compile(query_from_projection(
+                ledger.project(), actor_ref=ACTOR, trigger_ref="event:unrelated",
+            ))
+            assert json.loads(unrelated.world_life.items[0].payload_json)["context_kind"] == "active_activity"
+        assert ledger.export_replay_evidence() == before
+    finally:
+        ledger.close()
+
+
 @pytest.mark.parametrize('status,event_type', [('paused', 'ActivityPaused'), ('abandoned', 'ActivityAbandoned')])
 @pytest.mark.parametrize('source_ref_limit', [32, 1])
 def test_closed_plan_keeps_original_intention_in_the_real_context(status, event_type, source_ref_limit, tmp_path, monkeypatch):

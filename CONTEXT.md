@@ -1,3 +1,13 @@
+Focused Plan meaning repair: actual v33 ended a bed-rest Plan, then the next role request
+retained its opaque lifecycle state but lost the original accepted intention. The role confused
+it with a different book-market Plan; the source critic rejected the unsupported claim.
+The existing resolver now joins the exact focused lifecycle Plan to its typed historical
+intention before source admission and Capsule ranking. All original source/privacy checks,
+limits and intention-only scope remain. Eight pressure cases and100 related tests pass;
+same retained snapshot/cursor now keeps its exact meaning with0HTTP/World unchanged.
+New full regression and actual recovery remain required. Running v33 source stays frozen7d9;
+its complete full-v14 was11081pass/19skip/2xfail, not evidence for this new repair.
+
 Background source-loop isolation repair: synchronous Outlook view, pinned compilation and
 author-message preparation ran inside async entry points on the foreground loop. Four public
 SQLite controls reproduced starvation; they now yield with the exact original projection/model
@@ -5,7 +15,7 @@ work retained. Blocking backends reuse to_thread; cancellation joins the read be
 including repeated cancellation/read errors. No models or domain acceptance move to a thread.
 Actual same retained fourDB/currentclock preparation142.587s allowed4784 loop observations and
 512 head reads (max73.7ms), maxloopdelay519.7ms,0HTTP/Worldunchanged. This is responsiveness,
-not CPU acceleration or fresh-chat SLA.126 related tests pass; final full-v14 still required.
+not CPU acceleration or fresh-chat SLA.126 related tests and final full-v14 passed on7d9.
 The predecessor22849cec full-v13 passed11074 before this IO repair; do not borrow that full.
 
 Temporal publication repair: actual v19 prepared prose was settled07:24:58 while
