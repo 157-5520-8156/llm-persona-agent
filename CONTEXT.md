@@ -1,3 +1,14 @@
+Retained-data Root control blocked5301 AFTER its11213pass full: the literature friend was
+carried in current WorldStarted.continuity, while its archive registration locator has no event
+row in this World. Do not synthesize that event or use a cached head as factual authority.
+The same reader now proves the exact citable committed epoch entry (NPC id, stable identity ref,
+original registration locator), original cursor/event/commit/hash and immutable description.
+Direct registration stays strict. Fresh capability sources use current event refs and omit that
+uncitable archive id; old paid2/3 manifests/history remain unchanged. Uncited/mismatched/future/
+corrupt epoch evidence fails closed. No replay/hydration/state rewrite or new production module.
+681 relevant checks pass; own new full/current actual Root controls still required. V50 never
+launched; live v49 stays frozen9f7 on the same World/clock/target and protected services unchanged.
+
 Fresh execution source4 separates independent external World openings from selected
 active/completed/detail tasks. An ordinary opening no longer offers four unrelated historical
 role execution grants; exact selected attempts retain full original intention and actor audit.

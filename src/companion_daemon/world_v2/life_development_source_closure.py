@@ -1984,8 +1984,11 @@ def _registered_identity_review_view(*, material, manifest, draft):
                 or row["identity_payload_hash"] != cap.identity_payload_hash
                 or life_content_payload_hash(row["identity_summary"]) != row["identity_payload_hash"]
                 or not row["authority_refs"]
-                or not set(row["authority_refs"]) <= set(cap.authority_refs) & citable
-                or row["registration_world_revision"] > manifest.pinned_cursor.world_revision):
+                or not set(row["authority_refs"]) <= citable
+                or not (set(row["authority_refs"]) <= set(cap.authority_refs)
+                        or row.get("source_kind") == "epoch_continuity_npc_identity"
+                        and row.get("original_registration_ref") in cap.authority_refs)
+                or row["source_world_revision"] > manifest.pinned_cursor.world_revision):
             raise ValueError("registered NPC identity source differs from offered exact material")
     privacy = {"premise": draft.privacy_class}
     for i, outcome in enumerate(draft.outcomes):

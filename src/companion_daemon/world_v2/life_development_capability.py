@@ -82,6 +82,17 @@ class ProjectionLifeCapabilityManifestCompiler:
             if isinstance(getattr(item, "event_id", None), str)
         )
         committed_ids = {item.event_id for item in committed_refs}
+        epoch_roots = {item.event_id for item in committed_refs if item.event_type == "WorldStarted"}
+
+        def npc_authority_refs(view):
+            refs = set(view.source_refs) & committed_ids
+            if view.promotion_event_ref not in committed_ids:
+                # Continuity retains the archive registration locator, while
+                # the current epoch is the citable identity definition. The
+                # source reader still proves its exact carried NPC entry.
+                refs.update(epoch_roots)
+            return tuple(sorted(refs))
+
         available_slices = tuple(
             value
             for name in _CAPSULE_SLICE_NAMES
@@ -258,7 +269,11 @@ class ProjectionLifeCapabilityManifestCompiler:
                 continue
             registration_ref = getattr(npc, "registration_event_ref", None)
             if isinstance(registration_ref, str) and registration_ref:
-                grounding_refs_set.add(registration_ref)
+                if registration_ref in committed_ids:
+                    grounding_refs_set.add(registration_ref)
+                else:
+                    grounding_refs_set.discard(registration_ref)
+                    grounding_refs_set.update(epoch_roots)
         for coordinate in getattr(projection, "biographical_coordinates", ()):
             settlement_ref = getattr(coordinate, "settlement_event_ref", None)
             if isinstance(settlement_ref, str) and settlement_ref:
@@ -334,7 +349,7 @@ class ProjectionLifeCapabilityManifestCompiler:
                     identity_content_ref=item.descriptor_content_ref,
                     identity_summary=item.descriptor,
                     identity_payload_hash=item.descriptor_payload_hash,
-                    authority_refs=tuple(sorted(item.source_refs)),
+                    authority_refs=npc_authority_refs(item),
                     first_occurrence_ref=item.first_occurrence_ref,
                     shared_experience_refs=item.shared_experience_refs,
                     active_plan_refs=item.active_plan_refs,

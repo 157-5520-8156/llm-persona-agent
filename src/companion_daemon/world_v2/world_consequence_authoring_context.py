@@ -159,9 +159,12 @@ def build_world_consequence_authoring_context(
 
 
 def read_registered_npc_identity_sources(*, ledger, content_store, manifest):
-    """Read exact registered identity bytes at the original pin, never metadata alone."""
+    """Read exact registered/epoch-carried identity, never a locator as a fact."""
+    import json
+    from .epoch_continuity import ContinuitySnapshot
     from .life_content_store import life_content_payload_hash
     from .life_development_source_closure import REGISTERED_NPC_IDENTITY_CONTRACT
+    from .schemas import NpcProjection
 
     if manifest.execution_intention_sources_version != "4" or not manifest.npc_capabilities:
         return None
@@ -171,36 +174,78 @@ def read_registered_npc_identity_sources(*, ledger, content_store, manifest):
             for name in ("world_revision", "deliberation_revision", "ledger_sequence"))):
         raise ValueError("NPC identity projection differs from its original pin")
     by_ref = {"npc:" + npc.npc_id: npc for npc in pinned.npcs}
+    recorded_refs = {r.event_id: r for r in pinned.committed_world_event_refs}
     citable = set(manifest.anchor_refs) | set(manifest.grounding_refs)
+
+    def exact_source(ref, event_type):
+        found = ledger.lookup_event_commit(ref)
+        if found is None:
+            return None
+        event, commit = found
+        recorded = recorded_refs.get(ref)
+        if (recorded is None or recorded.event_type != event_type
+                or event.event_id != ref or event.event_type != event_type
+                or event.world_id != pinned.world_id
+                or event.payload_hash != recorded.payload_hash
+                or event.logical_time != recorded.logical_time
+                or event.event_id not in commit.event_ids
+                or not recorded.world_revision <= commit.world_revision <= pinned.world_revision
+                or commit.deliberation_revision > pinned.deliberation_revision
+                or commit.ledger_sequence > pinned.ledger_sequence):
+            raise ValueError("NPC identity differs from its exact pinned source")
+        return event, recorded
+
+    epoch_sources = None
     items = []
     for cap in manifest.npc_capabilities:
         if cap.npc_ref not in manifest.entity_refs:
             raise ValueError("NPC identity differs from offered entity refs")
         npc = by_ref.get(cap.npc_ref)
-        registration = npc.registration_event_ref if npc is not None else None
-        if registration is None or registration not in citable or registration not in cap.authority_refs:
-            continue
-        found = ledger.lookup_event_commit(registration)
-        if found is None:
-            continue
-        event, commit = found
-        recorded = next((r for r in pinned.committed_world_event_refs
-                         if r.event_id == registration), None)
-        source = event.payload().get("npc", {})
-        if (recorded is None or recorded.event_type != "NpcRegistered"
-                or event.event_id != registration
-                or event.payload_hash != recorded.payload_hash
-                or event.logical_time != recorded.logical_time
-                or commit.world_revision < recorded.world_revision
-                or event.event_type != "NpcRegistered" or event.world_id != pinned.world_id
-                or event.event_id not in commit.event_ids
-                or commit.world_revision > pinned.world_revision
-                or commit.deliberation_revision > pinned.deliberation_revision
-                or commit.ledger_sequence > pinned.ledger_sequence
-                or source.get("npc_id") != npc.npc_id
-                or source.get("stable_identity_ref") != cap.identity_content_ref
-                or npc.stable_identity_ref != cap.identity_content_ref):
+        if npc is None:
+            raise ValueError("NPC identity is absent from its original pinned registry")
+        if npc.stable_identity_ref != cap.identity_content_ref:
             raise ValueError("NPC identity differs from its exact pinned registration")
+        registration = npc.registration_event_ref
+        origin = None
+        kind = "npc_registration"
+        if registration in citable and registration in cap.authority_refs:
+            origin = exact_source(registration, "NpcRegistered")
+            if origin is not None:
+                source = origin[0].payload().get("npc", {})
+                if (source.get("npc_id") != npc.npc_id
+                        or source.get("stable_identity_ref") != cap.identity_content_ref):
+                    raise ValueError("NPC identity differs from its exact pinned registration")
+        if origin is None:
+            # Epoch continuity carries canonical NPC definitions, not their
+            # archive event rows. Prove the exact entry in a citable current
+            # WorldStarted; never synthesize the absent old registration.
+            if epoch_sources is None:
+                epoch_sources = []
+                for ref in recorded_refs.values():
+                    if ref.event_type != "WorldStarted" or ref.event_id not in citable:
+                        continue
+                    witnessed = exact_source(ref.event_id, "WorldStarted")
+                    raw = witnessed[0].payload().get("continuity") if witnessed is not None else None
+                    if raw is not None:
+                        snapshot = ContinuitySnapshot.model_validate_json(json.dumps(raw))
+                        epoch_sources.append((witnessed, snapshot))
+            matches = []
+            for witnessed, snapshot in epoch_sources:
+                if not (witnessed[0].event_id in cap.authority_refs
+                        or registration is not None and registration in cap.authority_refs):
+                    continue
+                for raw in snapshot.npcs:
+                    carried = NpcProjection.model_validate_json(json.dumps(raw))
+                    if (carried.npc_id == npc.npc_id
+                            and carried.stable_identity_ref == cap.identity_content_ref
+                            and carried.registration_event_ref == registration):
+                        matches.append(witnessed)
+            if len(matches) > 1:
+                raise ValueError("NPC identity has ambiguous epoch continuity authority")
+            if not matches:
+                continue
+            origin = matches[0]
+            kind = "epoch_continuity_npc_identity"
         if manifest.npc_privacy_floors is not None:
             floor = next((f.privacy_class for f in manifest.npc_privacy_floors
                           if f.npc_ref == cap.npc_ref), None)
@@ -216,11 +261,13 @@ def read_registered_npc_identity_sources(*, ledger, content_store, manifest):
                 or stored.content_payload_hash != cap.identity_payload_hash
                 or life_content_payload_hash(stored.text) != cap.identity_payload_hash):
             raise ValueError("NPC identity differs from its exact immutable content")
+        event, recorded = origin
         items.append({"npc_ref": cap.npc_ref, "identity_content_ref": cap.identity_content_ref,
             "identity_summary": stored.text, "identity_payload_hash": stored.content_payload_hash,
-            "privacy_class": npc.privacy_class,
-            "authority_refs": [registration], "registration_payload_hash": event.payload_hash,
-            "registration_world_revision": recorded.world_revision})
+            "privacy_class": npc.privacy_class, "authority_refs": [event.event_id],
+            "source_kind": kind, "source_event_type": event.event_type,
+            "source_payload_hash": event.payload_hash, "source_world_revision": recorded.world_revision,
+            "original_registration_ref": registration})
     if len({row["npc_ref"] for row in items}) != len(items):
         raise ValueError("duplicate pinned NPC identity")
     return ({"contract": REGISTERED_NPC_IDENTITY_CONTRACT,

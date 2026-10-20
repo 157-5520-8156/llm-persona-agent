@@ -450,7 +450,7 @@ async def test_registered_identity_is_an_exact_source_not_current_npc_state(tmp_
         (row,) = source["items"]
         assert row["identity_summary"] == manifest.npc_capabilities[0].identity_summary
         assert row["authority_refs"] == [event.event_id]
-        assert row["registration_payload_hash"] == event.payload_hash
+        assert row["source_payload_hash"] == event.payload_hash
         assert row["privacy_class"] == "personal"
         assert "current_location_ref" not in row and "protagonist_closeness_bp" not in row
         assert source["manifest_hash"] == manifest.manifest_hash and source[
@@ -669,3 +669,126 @@ async def test_registered_identity_rejects_substituted_lookup_or_future_pin(tmp_
     finally:
         store.close()
         ledger.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["valid", "uncited", "identity", "hash", "future"])
+async def test_epoch_carried_registered_identity_uses_its_exact_current_world_root(tmp_path, mode):
+    from companion_daemon.world_v2.epoch_continuity import compile_continuity_snapshot
+    from companion_daemon.world_v2.epoch_genesis import write_epoch_ledger
+    from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
+    from companion_daemon.world_v2.world_consequence_authoring_context import (
+        read_registered_npc_identity_sources,
+    )
+
+    old, content, original, registration = await _registered_identity_fixture(tmp_path)
+    epoch = None
+    current_content = None
+    try:
+        old_state = old.project()
+        snapshot = compile_continuity_snapshot(old_state, epoch_id="epoch:npc-source")
+        path = tmp_path / "epoch-npc.sqlite"
+        epoch = write_epoch_ledger(
+            path=path, world_id=old.world_id + ":new", now=old_state.logical_time, snapshot=snapshot
+        )
+        current_content = SQLiteImmutableLifeContentStore(path=path, world_id=epoch.world_id)
+        current_content.put_if_absent(
+            content.read_exact(content_ref=original.npc_capabilities[0].identity_content_ref)
+        )
+        state = epoch.project()
+        (root,) = (r for r in state.committed_world_event_refs if r.event_type == "WorldStarted")
+        assert epoch.lookup_event_commit(registration.event_id) is None
+        manifest = _manifest(epoch).model_copy(
+            update={
+                "execution_intention_sources_version": "4",
+                "grounding_refs": (root.event_id,),
+                "entity_refs": original.entity_refs,
+                "npc_capabilities": original.npc_capabilities,
+            }
+        )
+        if mode == "uncited":
+            assert (
+                read_registered_npc_identity_sources(
+                    ledger=epoch,
+                    content_store=current_content,
+                    manifest=manifest.model_copy(update={"grounding_refs": ()}),
+                )
+                is None
+            )
+            return
+        if mode == "identity":
+            changed = manifest.model_copy(
+                update={
+                    "npc_capabilities": (
+                        manifest.npc_capabilities[0].model_copy(
+                            update={"identity_content_ref": "identity:wrong"}
+                        ),
+                    )
+                }
+            )
+            with pytest.raises(ValueError, match="NPC identity"):
+                read_registered_npc_identity_sources(
+                    ledger=epoch, content_store=current_content, manifest=changed
+                )
+            return
+        if mode in {"hash", "future"}:
+
+            class WrongWitness:
+                world_id = epoch.world_id
+
+                def project_at(self, cursor):
+                    return epoch.project_at(cursor)
+
+                def lookup_event_commit(self, ref):
+                    event, commit = epoch.lookup_event_commit(ref)
+                    if mode == "hash":
+                        event = event.model_copy(update={"payload_hash": "f" * 64})
+                    else:
+                        commit = commit.model_copy(
+                            update={"world_revision": state.world_revision + 1}
+                        )
+                    return event, commit
+
+            with pytest.raises(ValueError, match="NPC identity"):
+                read_registered_npc_identity_sources(
+                    ledger=WrongWitness(), content_store=current_content, manifest=manifest
+                )
+            return
+        source = read_registered_npc_identity_sources(
+            ledger=epoch, content_store=current_content, manifest=manifest
+        )
+        assert source and source["items"][0]["authority_refs"] == [root.event_id]
+        assert (
+            source["items"][0]["identity_summary"] == original.npc_capabilities[0].identity_summary
+        )
+        assert source["items"][0]["original_registration_ref"] == registration.event_id
+        assert source["items"][0]["source_kind"] == "epoch_continuity_npc_identity"
+        from types import SimpleNamespace
+        from test_life_development_audit_context_recovery import _catalog
+        from companion_daemon.world_v2.life_development_capability import (
+            ProjectionLifeCapabilityManifestCompiler,
+        )
+
+        compiled = ProjectionLifeCapabilityManifestCompiler(
+            owner_actor_ref=manifest.owner_actor_ref,
+            catalog=_catalog(tmp_path),
+            content_store=current_content,
+        ).compile(
+            projection=state,
+            wake=epoch.lookup_event_commit(root.event_id)[0],
+            capsule=SimpleNamespace(model_content_json="{}"),
+        )
+        assert registration.event_id not in compiled.grounding_refs
+        assert compiled.npc_capabilities[0].authority_refs == (root.event_id,)
+        assert root.event_id in compiled.grounding_refs
+        assert read_registered_npc_identity_sources(
+            ledger=epoch, content_store=current_content, manifest=compiled
+        )
+        assert epoch.project() == state and epoch.rebuild() == state
+    finally:
+        if current_content is not None:
+            current_content.close()
+        if epoch is not None:
+            epoch.close()
+        content.close()
+        old.close()
