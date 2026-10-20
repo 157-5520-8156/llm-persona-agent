@@ -1447,7 +1447,7 @@ class WorldOutlookRuntime:
                                   or (packet.get("world_changes") and packet["response_tool_contract"] != "world-outlook-native.10"))
                 if allow_keep:
                     allow_keep = self._keep_is_offered(packet=packet, projection=projection, manifest=manifest,
-                        prior_head=prior_head, npc_refs=npc_refs, sources=sources, history_offer=history_offer)
+                        prior_head=prior_head, npc_refs=npc_refs, sources=working_sources, history_offer=history_offer)
                 response_tools = [outlook_result_tool(packet["draft_schema"], allow_keep=allow_keep,
                     retained_changes=bool(packet.get("world_changes")) and packet["response_tool_contract"] == "world-outlook-native.10",
                     keep_review_deadline=min(now + timedelta(days=7), prior_head[1].horizon_end).isoformat()

@@ -666,3 +666,55 @@ def test_actual_npc_routing_change_is_not_mistaken_for_a_text_only_revision(tmp_
             runtime._validate_story_revision(candidate, packet)
     finally:
         runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_keep_preflight_uses_the_full_current_offer_not_the_prior_tracking_catalog(tmp_path):
+    from test_world_outlook_continuity import npc_setup, npc_manifest, retime
+    from test_life_projection import commit, event, mutation, world_evidence
+    from test_life_development_runtime import _seed_clock
+    from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
+
+    ledger, wake, _, runtime, _, _ = npc_setup(tmp_path, lambda d: None)
+    template = ledger.project().plans[0].model_dump(mode='json', exclude={'authority_origin'})
+    ref = 'plan:closed-context-source'
+    template.update(plan_id=ref, activity_id='activity:closed-context-source', owner_actor_ref=runtime.actor_ref,
+                    participant_refs=[], location_ref=None, scheduled_window=None)
+    commit(ledger, [event('context:planned', 'ActivityPlanned', {
+        **mutation('context:planned', expected_revision=0, evidence_refs=template['evidence_refs']),
+        'plan': template}, at=wake.logical_time)])
+    commit(ledger, [event('context:abandoned', 'ActivityAbandoned', {
+        **mutation('context:abandoned', expected_revision=1,
+                   evidence_refs=[world_evidence(ledger, wake.event_id, 'life_transition')]),
+        'plan_id': ref, 'transitioned_at': wake.logical_time.isoformat(), 'reason_ref': wake.event_id},
+        at=wake.logical_time)])
+
+    class Author:
+        model = 'fixture:current-offer-keep'
+        single_tool_response_carrier = 'json_object'
+        async def complete_json(self, messages, **kwargs):
+            packet = decode_outlook_request(messages[1]['content'])
+            if packet['parent_revision'] is None:
+                value = retime(story_draft(wake), ledger.project(), wake)
+                for i, node in enumerate(value['opportunities']):
+                    node['opportunity_id'] = packet['new_opportunity_ids'][i]
+                return json.dumps({'decision': 'revise', 'draft': value})
+            assert ref in {s['source_ref'] for s in packet['condition_sources']}
+            return json.dumps({'decision': 'keep', 'review_at': (ledger.project().logical_time + timedelta(days=1)).isoformat(),
+                               'reason': '已结束的历史意图不改变这些独立的外部安排。'})
+
+    runtime.author, runtime._rolling_planning = Author(), True
+    try:
+        assert (await runtime.refresh(projection=ledger.project(), context={}, manifest=npc_manifest(ledger, wake)))['status'] == 'ready'
+        before = runtime.store.head()[1]
+        assert ref not in runtime.store.head()[2]['source_tokens']
+        _seed_clock(ledger, event_id='clock:review-context', logical_time_from=ledger.project().logical_time,
+                    logical_time=ledger.project().logical_time + timedelta(days=2))
+        context = {'slices': {'world_life': {'availability': 'available', 'items': [{'item_ref': ref}]}}}
+        assert (await runtime.refresh(projection=ledger.project(), context=context, manifest=npc_manifest(ledger, wake)))['status'] == 'ready'
+        after = runtime.store.head()[1]
+        assert (after.threads, after.opportunities, after.long_term) == (before.threads, before.opportunities, before.long_term)
+        assert ref in runtime.store.head()[2]['source_tokens']
+        assert ledger.rebuild() == ledger.project()
+    finally:
+        runtime.close()

@@ -1,3 +1,15 @@
+Targeted causal continuation found a fresh-request preflight mismatch: the request's
+working source offer can include a historical planning predecessor or closed Context
+Plan absent from the old tracking catalog. Keep eligibility incorrectly indexed the
+old catalog, raising KeyError before HTTP. Pass the already verified current offer to
+the same complete validator; do not hide missing refs or disable keep. A public native
+refresh with a newly presented closed Plan reproduces the fault in1.47s;141 related
+tests pass after the one-argument correction. The retained six-arm historical GLM
+forks replay exactly under24d8bcd1, but their old day2 had no actual scheduled instances.
+New follow-through must preserve all copies, original choices, failures/unknown billing
+and validate actual future execution; no causal/diversity pass from the earlier report.
+Live8793 remains its independent frozen archive, not this repair source.
+
 Full-v1 on40c82f71 failed11158pass/2fail; do not call it passed. The proactive-timeout
 case failed in its interactive setup before reaching background work: a deterministic
 280ms setup reproduces that failure. Setup now uses normal interactive defaults while
