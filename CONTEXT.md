@@ -1,3 +1,19 @@
+Story causality repair: a role-selected Plan replacement was readable by RolePlanResponseReader,
+but the consequence reader routed its role_response_proposal_id through the unrelated open-life
+World Author audit branch. Fresh source reader3 reuses the existing exact role origin; old omitted/2
+manifests and active-request recovery retain their original reader. Fresh active/completed attempts
+now use the same pinned source version. This authorizes an original attempt, never success or a new
+protagonist choice. Public role revision/lifecycle, cold reopening and legacy-marker tests cover it.
+
+Already-paid Outlook execution is separate from a fresh Life author consideration: it no longer
+forces development_due or resets the future consideration deadline. A due author sees the newly
+committed scene and may no_op; prepaid progress is reported separately. Private Outlook preparation
+failure remains recorded/retryable and explicitly reported, while independent due Life authoring
+continues against the same accepted World. Real execution failures keep their original fail-closed
+path. No topic quota, behavioral dedup, forced crisis or added production module. Existing cadence,
+role decisions, source closure, CAS and effect-once remain.186 focused checks pass, own full and
+actual retained-world controls still required; see output/private-audits/story-causality-20261021.
+
 The Outlook submission side now enforces the exact keep_offered bit in the new pinned origin menu
 before paying for origin review. Updating only the generator menu was insufficient: a public-refresh
 counterexample still accepted an unoffered keep (2 author calls instead of same-author reselection

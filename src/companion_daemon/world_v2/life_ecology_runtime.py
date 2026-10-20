@@ -111,6 +111,7 @@ class LifeEcologyRunResult(FrozenModel):
     visual_evidence_followup_status: str | None = None
     biographical_followup_status: str | None = None
     life_development_followup_status: str | None = None
+    prepaid_outlook_followup_status: str | None = None
     technical_failure_code: str | None = None
 
 
@@ -778,8 +779,10 @@ class LifeEcologyRuntime:
             if callable(stimulus_reader):
                 npc_has_stimulus = bool(stimulus_reader(projection=projection))
 
-        life_development_status: str | None = "technical_failure" if preparation_failure else None
-        life_development_failure_code: str | None = preparation_failure
+        life_development_status: str | None = None
+        life_development_failure_code: str | None = None
+        outlook_preparation_failure = preparation_failure
+        prepaid_outlook_status: str | None = None
         completion_ref = None
         # Failed old causal work must not own every later due slot. Yield both
         # consequence and detail work together so they cannot starve independent
@@ -847,24 +850,42 @@ class LifeEcologyRuntime:
                         prepared = await prepare(wake_event_ref=wake_event_ref)
                         if isinstance(prepared, dict) and prepared.get("status") == "technical_failure":
                             code = str(prepared.get("failure_code") or "preparation_failed")
-                            life_development_failure_code = "outlook." + (
+                            outlook_preparation_failure = "outlook." + (
                                 re.sub(r"[^a-z0-9._-]+", "_", code.lower()).strip("._-")[:88]
                                 or "preparation_failed"
                             )
-                            life_development_status = "technical_failure"
                 ready = self._world_outlook.ready()
                 outlook_node = min(
                     ready, key=lambda n: (n["opens_at"], n["opportunity_id"]), default=None,
                 )
-                if outlook_node is not None:
-                    development_due = True
+                if (outlook_node is not None and current_clock
+                        and self._life_development_followup is not None
+                        and completion_ref is None and active_attempt_ref is None and event_detail_ref is None
+                        and not (npc_has_due_work or npc_has_stimulus)
+                        and activity_status != "transitioned"
+                        and aftermath_status not in {"occurrence_opened", "settled", "recovered_experience", "recovered_memory"}):
+                    # Executing an already paid script is not a fresh author
+                    # consideration. Keep the original due flag/deadline; a
+                    # due author sees the newly committed scene in its Context.
+                    prepaid_outlook_status = "technical_failure"
+                    prepaid = self._world_outlook.execute_offer(outlook_node, wake_event_ref=wake_event_ref)
+                    prepaid_outlook_status = getattr(prepaid, "status", None)
+                    if prepaid is not None and not isinstance(prepaid_outlook_status, str):
+                        raise ValueError("prepaid outlook result has no stable status")
+                    if prepaid_outlook_status == "technical_failure":
+                        code = str(getattr(prepaid, "reason_code", None) or "execution_failed")
+                        life_development_failure_code = "outlook.execution." + re.sub(r"[^a-z0-9._-]+", "_", code.lower())[:88]
+                        life_development_status = "technical_failure"
 
             except Exception as exc:
                 self._world_outlook.record_failure(exc)
                 _LOG.warning("world outlook unavailable: %s", type(exc).__name__)
                 outlook_node = None
-                life_development_failure_code = "outlook.preparation_exception"
-                life_development_status = "technical_failure"
+                if prepaid_outlook_status == "technical_failure":
+                    life_development_failure_code = "outlook.execution_exception"
+                    life_development_status = "technical_failure"
+                else:
+                    outlook_preparation_failure = "outlook.preparation_exception"
 
         async def advance_due_development():
             nonlocal life_development_status, life_development_failure_code
@@ -884,14 +905,8 @@ class LifeEcologyRuntime:
                         event_ref=event_detail_ref, wake_event_ref=wake_event_ref,
                         trace_id=trace_id, correlation_id=correlation_id,
                     )
-                elif self._world_outlook is not None and outlook_node is not None:
-                    development_result = self._world_outlook.execute_offer(
-                        outlook_node, wake_event_ref=wake_event_ref,
-                    )
-                    if development_result is None:
-                        return None
                 elif self._world_outlook is not None and (
-                    required_detail_prepared or preparation_failure or life_development_failure_code
+                    required_detail_prepared or life_development_failure_code
                 ):
                     return None
                 else:
@@ -924,6 +939,7 @@ class LifeEcologyRuntime:
                         aftermath_followup_status=aftermath_status,
                         biographical_followup_status=biographical_status,
                         life_development_followup_status=life_development_status,
+                        prepaid_outlook_followup_status=prepaid_outlook_status,
                     )
             except Exception:
                 _LOG.exception(
@@ -935,6 +951,7 @@ class LifeEcologyRuntime:
                     status="failed_safe",
                     trigger_id=claim.trigger_id,
                     reason_code="life_ecology.life_development_followup_failed",
+                    prepaid_outlook_followup_status=prepaid_outlook_status,
                     activity_followup_status=activity_status,
                     aftermath_followup_status=aftermath_status,
                     biographical_followup_status=biographical_status,
@@ -1273,12 +1290,14 @@ class LifeEcologyRuntime:
         return LifeEcologyRunResult(
             status=(
                 "deferred"
-                if life_development_failure_code is not None
+                if life_development_failure_code is not None or outlook_preparation_failure is not None
                 else "advanced"
                 if activity_status == "transitioned"
                 # Reporting retirement does not spend the Life/NPC cadence.
                 or aftermath_status == "cancelled"
                 or biographical_status == "transitioned"
+                or prepaid_outlook_status in {"npc_activity_started", "npc_effect_committed", "plan_committed",
+                                             "plan_completed", "occurrence_committed", "recovered"}
                 or life_development_status
                 in {
                     "npc_activity_started",
@@ -1315,13 +1334,16 @@ class LifeEcologyRuntime:
             visual_evidence_followup_status=visual_evidence_status,
             biographical_followup_status=biographical_status,
             life_development_followup_status=life_development_status,
+            prepaid_outlook_followup_status=prepaid_outlook_status,
             reason_code=(
                 "life_ecology.life_development_technical_failure"
                 if life_development_failure_code is not None
+                else "life_ecology.outlook_preparation_failed"
+                if outlook_preparation_failure is not None
                 else None
             ),
             technical_failure_code=(
-                life_development_failure_code or memory_postprocess_failure_code
+                life_development_failure_code or outlook_preparation_failure or memory_postprocess_failure_code
             ),
         )
 

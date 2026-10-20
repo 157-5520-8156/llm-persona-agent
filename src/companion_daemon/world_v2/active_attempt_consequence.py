@@ -64,6 +64,7 @@ def _exact_event(ledger, state, ref):
 def read_active_attempt_consequence(
     *, ledger, content_store, pinned_state, actor_ref: str,
     execution_event_ref: str, clock_event_ref: str,
+    intention_reader_version: Literal["2", "3"] = "2",
 ) -> ActiveAttemptConsequence | None:
     """Read the current owned active head, never an older attempt of that Plan."""
     from .life_events import ActivityTransitionPayload
@@ -110,7 +111,7 @@ def read_active_attempt_consequence(
     (binding,) = authority.execution_bindings
     (material,) = build_world_consequence_execution_materials(
         ledger=ledger, content_store=content_store, pinned_state=pinned_state,
-        actor_ref=actor_ref, source_events=(execution,), intention_reader_version="2",
+        actor_ref=actor_ref, source_events=(execution,), intention_reader_version=intention_reader_version,
     )
     if material.status != "available" or material.execution_binding != binding:
         return None
@@ -124,12 +125,14 @@ def read_active_attempt_consequence(
 
 def validate_active_attempt_consequence(
     *, ledger, content_store, pinned_state, actor_ref: str, descriptor: ActiveAttemptConsequence,
+    intention_reader_version: Literal["2", "3"] = "2",
 ) -> None:
     supplied = ActiveAttemptConsequence.model_validate_json(descriptor.model_dump_json())
     expected = read_active_attempt_consequence(
         ledger=ledger, content_store=content_store, pinned_state=pinned_state, actor_ref=actor_ref,
         execution_event_ref=supplied.execution_binding.source_event_ref,
         clock_event_ref=supplied.clock_event_ref,
+        intention_reader_version=intention_reader_version,
     )
     if expected is None or expected != supplied:
         raise ValueError("active_attempt_consequence.original_active_head_mismatch")

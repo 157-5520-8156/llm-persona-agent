@@ -41,6 +41,16 @@ INTENTION = "我想把去年在旧书店买的两本书叠好。"
 build_app = day_fixture.build_app
 
 
+@pytest.fixture(autouse=True)
+def fixed_ordinary_source_reader_occasion(monkeypatch):
+    # Reader-version changes alter the manifest hash used by the occasion draw.
+    # This fixture tests source/recovery, not an unrelated disturbance sample.
+    # Production sampling and the separate disturbance tests are unchanged.
+    from companion_daemon.world_v2.life_development_runtime import LIFE_DEVELOPMENT_OPPORTUNITY_REF
+    monkeypatch.setattr(LifeDevelopmentRuntime, "_resolve_occasion_draw",
+                        lambda self, **kwargs: LIFE_DEVELOPMENT_OPPORTUNITY_REF)
+
+
 class _LifecycleHTTP(day_fixture._DayOpenHTTP):
     """Select an actual offered lifecycle token, without seeding transitions."""
 
@@ -138,12 +148,13 @@ def _manifest_compiler(store, *, actor=ACTOR):
 
 
 class _HistoricalCompiler:
-    def __init__(self, store):
+    def __init__(self, store, reader_version=None):
         self.current = _manifest_compiler(store)
+        self.reader_version = reader_version
 
     def compile(self, **kwargs):
         return self.current.compile(**kwargs).model_copy(
-            update={"execution_intention_sources_version": None}
+            update={"execution_intention_sources_version": self.reader_version}
         )
 
 
@@ -190,7 +201,7 @@ async def test_public_day_open_attempt_is_readable_in_the_real_author_request(
         await _advance(_author_runtime(ledger, store, author), _wake(ledger))
         assert len(author.received) == 1
         actual = json.loads(json.loads(author.received[0])[-1]["content"])
-        assert actual["capability_manifest"]["execution_intention_sources_version"] == "2"
+        assert actual["capability_manifest"]["execution_intention_sources_version"] == "3"
         assert source_ref in actual["capability_manifest"]["anchor_refs"]
         assert [item["source_event_ref"] for item in actual["execution_authority"]["execution_bindings"]] == [source_ref]
         (material,) = actual["execution_materials"]
@@ -248,7 +259,7 @@ async def test_existing_public_intention_entries_remain_readable_in_new_author_r
         await _advance(_author_runtime(ledger, store, author, actor=actor), _wake(ledger))
         assert len(author.received) == 1
         actual = json.loads(json.loads(author.received[0])[-1]["content"])
-        assert actual["capability_manifest"]["execution_intention_sources_version"] == "2"
+        assert actual["capability_manifest"]["execution_intention_sources_version"] == "3"
         (material,) = actual["execution_materials"]
         assert material["execution_binding"]["source_event_ref"] == source_ref
         assert material["authorized_intention"]["text"] == expected
@@ -278,7 +289,7 @@ class _EnvironmentAuthor(_ReceivedAuthor):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("historical", [False, True])
+@pytest.mark.parametrize("historical", [False, True, "version2"])
 async def test_day_open_reader_identity_survives_original_author_request_cold_recovery(
     tmp_path, monkeypatch, build_app, historical,
 ):
@@ -300,7 +311,7 @@ async def test_day_open_reader_identity_survives_original_author_request_cold_re
         await _interrupt_before_final(
             ledger,
             _author_runtime(ledger, store, author, critic=critic,
-                            compiler=_HistoricalCompiler(store) if historical else None),
+                            compiler=_HistoricalCompiler(store, "2" if historical == "version2" else None) if historical else None),
             wake, monkeypatch,
         )
         assert len(author.received) == critic.calls == 1
@@ -308,7 +319,7 @@ async def test_day_open_reader_identity_survives_original_author_request_cold_re
         metadata, _ = _audited(ledger)
         stored_manifest = store.read_exact(content_ref=metadata["capability_manifest_binding"]["content_ref"])
         raw_manifest = json.loads(stored_manifest.text)
-        assert ("execution_intention_sources_version" not in raw_manifest) == historical
+        assert ("execution_intention_sources_version" not in raw_manifest) == (historical is True)
         manifest = LifeDevelopmentCapabilityManifest.model_validate_json(stored_manifest.text)
         # Historical serialization and hash stay byte-identical, including absence.
         assert _json(manifest.model_dump(mode="json", exclude_computed_fields=True)) == stored_manifest.text
@@ -318,7 +329,7 @@ async def test_day_open_reader_identity_survives_original_author_request_cold_re
         context = build_world_consequence_authoring_context(
             ledger=ledger, content_store=store, manifest=manifest, actor_ref=ACTOR,
         )
-        assert len(context.execution_materials) == int(not historical)
+        assert len(context.execution_materials) == int(historical is not True)
         assert context.model_dump(mode="json") == {
             "authority": actual["execution_authority"], "execution_materials": actual["execution_materials"],
         }
@@ -362,7 +373,7 @@ async def test_day_open_intention_or_finished_timing_does_not_grant_attempt_resu
         author = _ReceivedAuthor(store, (_json({"decision": "no_op"}),))
         await _advance(_author_runtime(ledger, store, author), _wake(ledger))
         actual = json.loads(json.loads(author.received[0])[-1]["content"])
-        assert actual["capability_manifest"]["execution_intention_sources_version"] == "2"
+        assert actual["capability_manifest"]["execution_intention_sources_version"] == "3"
         assert actual["execution_authority"]["execution_bindings"] == []
         assert actual["execution_materials"] == []
         assert not ledger.project().experiences
@@ -371,7 +382,7 @@ async def test_day_open_intention_or_finished_timing_does_not_grant_attempt_resu
         ledger.close()
 
 
-@pytest.mark.parametrize("version", ["1", "3", 2, True, ""])
+@pytest.mark.parametrize("version", ["1", "4", 2, True, ""])
 def test_manifest_rejects_unknown_execution_intention_reader_identity(version):
     from companion_daemon.world_v2.schemas import ProjectionCursor
 
@@ -428,7 +439,7 @@ async def test_new_day_open_reader_does_not_expand_anchors_or_cross_actor_permis
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("historical", [False, True])
+@pytest.mark.parametrize("historical", [False, True, "version2"])
 async def test_changing_reader_marker_and_self_rehashing_cannot_replace_original_author_audit(
     tmp_path, monkeypatch, build_app, historical,
 ):
@@ -459,7 +470,7 @@ async def test_changing_reader_marker_and_self_rehashing_cannot_replace_original
                     authority = payload["world_author_deliberation"]
                     raw_manifest = authority["capability_manifest"]
                     if historical:
-                        raw_manifest["execution_intention_sources_version"] = "2"
+                        raw_manifest["execution_intention_sources_version"] = "3"
                     else:
                         raw_manifest.pop("execution_intention_sources_version")
                     fresh_manifest = LifeDevelopmentCapabilityManifest.model_validate_json(_json(raw_manifest))
@@ -505,7 +516,7 @@ async def test_changing_reader_marker_and_self_rehashing_cannot_replace_original
         with pytest.raises(ValueError, match="authored subject exceeds its pinned authority"):
             await _advance(_author_runtime(
                 ledger, store, author, critic=critic,
-                compiler=_HistoricalCompiler(store) if historical else None,
+                compiler=_HistoricalCompiler(store, "2" if historical == "version2" else None) if historical else None,
             ), wake)
         assert len(before_final) == len(author.received) == critic.calls == 1
         assert ledger.project() == before_final[0]

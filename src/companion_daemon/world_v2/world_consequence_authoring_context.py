@@ -81,6 +81,7 @@ def build_world_consequence_authoring_context(
         validate_active_attempt_consequence(
             ledger=ledger, content_store=content_store,
             pinned_state=pinned, actor_ref=actor_ref, descriptor=active,
+            intention_reader_version=manifest.execution_intention_sources_version or "2",
         )
         anchors = {active.execution_binding.source_event_ref}
     candidates = sorted(

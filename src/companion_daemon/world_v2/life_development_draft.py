@@ -334,7 +334,8 @@ class LifeDevelopmentCapabilityManifest(FrozenModel):
     )
     # An absent marker retains the original execution reader set on replay.
     # Version 2 additionally reads an already-started day-opening intention.
-    execution_intention_sources_version: Literal["2"] | None = Field(
+    # Version 3 additionally follows the original role audit of a revised Plan.
+    execution_intention_sources_version: Literal["2", "3"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
     # New requests use structural, source-bound material lookup. Absence is
@@ -384,7 +385,7 @@ class LifeDevelopmentCapabilityManifest(FrozenModel):
         if active is not None and (
             completion is not None
             or self.outcome_contract != "world-consequence.2"
-            or self.execution_intention_sources_version != "2"
+            or self.execution_intention_sources_version not in {"2", "3"}
             or active.execution_binding.actor_ref != self.owner_actor_ref
             or not {active.clock_event_ref, active.execution_binding.source_event_ref}
             <= set(self.anchor_refs)
@@ -392,7 +393,7 @@ class LifeDevelopmentCapabilityManifest(FrozenModel):
             raise ValueError("active attempt consequence requires exclusive exact attempt anchors")
         if completion is not None and (
             self.outcome_contract != "world-consequence.2"
-            or self.execution_intention_sources_version != "2"
+            or self.execution_intention_sources_version not in {"2", "3"}
             or completion.execution_binding.actor_ref != self.owner_actor_ref
             or not {completion.completion.event_ref, completion.execution_binding.source_event_ref}
             <= set(self.anchor_refs)

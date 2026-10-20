@@ -117,6 +117,7 @@ def read_world_consequence_author_evidence(
         validate_active_attempt_consequence(
             ledger=ledger, content_store=content_store,
             pinned_state=pinned, actor_ref=actor_ref, descriptor=original_active,
+            intention_reader_version=manifest.execution_intention_sources_version or "2",
         )
         evidence["active_attempt_consequence"] = active.model_dump(mode="json")
     return evidence

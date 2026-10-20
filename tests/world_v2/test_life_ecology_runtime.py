@@ -1629,3 +1629,119 @@ async def test_cancelled_attempt_reports_progress_without_spending_independent_l
     assert observations[1][0].aftermath_followup_status == 'cancelled'
     assert observations[0][1] == observations[1][1] == 1
     assert observations[0][2] == observations[1][2]
+
+
+class _PrepaidOutlookScene:
+    _rolling_planning = False
+    event_details = None
+
+    def __init__(self):
+        self.executed = []
+
+    def advance_prepaid_npcs(self, **kwargs):
+        pass
+
+    def reconcile_accepted_offers(self, **kwargs):
+        pass
+
+    def ready(self):
+        return (
+            []
+            if self.executed
+            else [{"opportunity_id": "already-paid", "opens_at": NOW.isoformat()}]
+        )
+
+    def execute_offer(self, node, **kwargs):
+        self.executed.append(node)
+        return SimpleNamespace(status="occurrence_committed")
+
+    def record_failure(self, error):
+        raise AssertionError("Unexpected fixture interface failure") from error
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("due", [False, True])
+@pytest.mark.parametrize("author_result", ["no_op", "occurrence_committed"])
+async def test_prepaid_execution_keeps_the_independent_author_cadence(tmp_path, due, author_result):
+    event = _event("prepaid-scene")
+    ledger = _Ledger(event)
+    ledger._projection.life_ecology_schedule = LifeEcologyScheduleProjection(
+        last_trigger_id="prior",
+        last_wake_event_ref="event:prior",
+        last_outcome_ref="life-ecology:life_development_no_op",
+        last_completed_at=NOW - timedelta(minutes=30),
+        next_consideration_at=NOW if due else NOW + timedelta(minutes=15),
+        consecutive_failures=0,
+    )
+    development = _LifeDevelopment(author_result)
+    outlook = _PrepaidOutlookScene()
+    triggers = _TriggerStore()
+    runtime = LifeEcologyRuntime(
+        ledger=ledger,
+        trigger_store=triggers,
+        media_followup=_Media(),
+        life_development_followup=development,
+        world_outlook=outlook,
+        availability=LifeEcologyAvailability(state="installed_and_active"),
+    )
+    result = await runtime.advance_once(
+        wake_event_ref=event.event_id, trace_id="prepaid-cadence", correlation_id="prepaid-cadence"
+    )
+    assert len(outlook.executed) == 1, result
+    assert len(development.calls) == (1 if due else 0), (
+        "A paid environment scene displaced a genuinely due independent author consideration"
+    )
+    assert result.prepaid_outlook_followup_status == "occurrence_committed"
+    assert result.life_development_followup_status == (author_result if due else None)
+    if not due:
+        assert triggers.completed[-1][2] == "cooldown", (
+            "Prepaid execution must not reset the future Life consideration deadline"
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("due", [False, True])
+@pytest.mark.parametrize("failure_mode", ["returned", "exception"])
+async def test_private_outlook_repair_failure_does_not_erase_an_independent_author_due(
+    due, failure_mode
+):
+    event = _event("private-repair")
+    ledger = _Ledger(event)
+    triggers = _TriggerStore()
+    failures = []
+    ledger._projection.life_ecology_schedule = LifeEcologyScheduleProjection(
+        last_trigger_id="prior",
+        last_wake_event_ref="event:prior",
+        last_outcome_ref="life-ecology:life_development_no_op",
+        last_completed_at=NOW - timedelta(minutes=30),
+        next_consideration_at=NOW if due else NOW + timedelta(minutes=15),
+        consecutive_failures=0,
+    )
+    outlook = _PrepaidOutlookScene()
+    outlook.executed.append({"old": "already released"})
+    outlook.next_preparation_due = lambda **kwargs: NOW
+    outlook.record_preparation_failure = lambda **kwargs: failures.append(kwargs)
+    development = _LifeDevelopment("no_op")
+
+    async def failed_preparation(**kwargs):
+        if failure_mode == "exception":
+            raise ValueError("fixture: invalid private draft")
+        return {"status": "technical_failure", "failure_code": "invalid_private_draft"}
+
+    development.prepare_outlook_once = failed_preparation
+    runtime = LifeEcologyRuntime(
+        ledger=ledger,
+        trigger_store=triggers,
+        media_followup=_Media(),
+        life_development_followup=development,
+        world_outlook=outlook,
+        availability=LifeEcologyAvailability(state="installed_and_active"),
+    )
+    result = await runtime.advance_once(
+        wake_event_ref=event.event_id, trace_id="private-repair", correlation_id="private-repair"
+    )
+    assert len(development.calls) == (1 if due else 0), (
+        "A failed private draft consumed the independent life author opportunity"
+    )
+    assert failures and result.technical_failure_code
+    assert triggers.completed[-1][2] == ("life_development_no_op" if due else "cooldown")

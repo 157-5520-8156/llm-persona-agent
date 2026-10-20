@@ -121,6 +121,7 @@ from .life_events import (
     WorldOccurrenceCommittedPayload,
 )
 from .life_review_identity import (
+    CURRENT_EXECUTION_INTENTION_SOURCES_VERSION,
     SOURCE_BOUND_LIFE_REVIEW_MANIFEST_VERSION,
     SOURCE_BOUND_NOVEL_EVIDENCE_PACKET_CONTRACT,
     novel_origin_evidence_packet_contract,
@@ -2131,6 +2132,7 @@ class LifeDevelopmentRuntime:
                 ledger=self._ledger, content_store=self._store,
                 pinned_state=state, actor_ref=self._owner,
                 execution_event_ref=origin.accepted_event_ref, clock_event_ref=clock.event_id,
+                intention_reader_version=CURRENT_EXECUTION_INTENTION_SOURCES_VERSION,
             )
             if source is None:
                 continue
@@ -2269,6 +2271,7 @@ class LifeDevelopmentRuntime:
                         ledger=self._ledger, content_store=self._store,
                         pinned_state=self._ledger.project_at(original.pinned_cursor),
                         actor_ref=self._owner, descriptor=marker,
+                        intention_reader_version=original.execution_intention_sources_version or "2",
                     )
                 except (KeyError, TypeError, ValueError, ConcurrencyConflict):
                     return LifeDevelopmentResult(
@@ -2327,6 +2330,7 @@ class LifeDevelopmentRuntime:
                     ledger=self._ledger, content_store=self._store,
                     pinned_state=projection, actor_ref=self._owner,
                     execution_event_ref=active_attempt_event_ref, clock_event_ref=wake_event_ref,
+                    intention_reader_version=CURRENT_EXECUTION_INTENTION_SOURCES_VERSION,
                 )
             except (TypeError, ValueError, ConcurrencyConflict):
                 active = None
@@ -3245,6 +3249,7 @@ class LifeDevelopmentRuntime:
                     ledger=self._ledger, content_store=self._store,
                     pinned_state=projection, actor_ref=self._owner,
                     execution_event_ref=active_attempt_event_ref, clock_event_ref=wake.event_id,
+                    intention_reader_version=manifest.execution_intention_sources_version or "2",
                 )
                 if active is None:
                     raise ValueError("active attempt source is unavailable")

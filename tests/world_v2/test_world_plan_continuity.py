@@ -28,6 +28,7 @@ class PlanRole(_RoleHTTP):
     def __init__(self):
         super().__init__()
         self.operation = None
+        self.replacement_intention = "改为稍后整理另一件自己的事情。"
         self.plan_id = None
         self.candidate = None
         self.other_stimulus_requests = []
@@ -106,7 +107,7 @@ class PlanRole(_RoleHTTP):
             if self.operation == "revise":
                 choice["replacement"] = {
                     "execution_scope": "self_directed",
-                    "intention": "改为稍后整理另一件自己的事情。",
+                    "intention": self.replacement_intention,
                     "start_after_seconds": 300,
                     "duration_seconds": 180,
                     "importance_bp": 5000,

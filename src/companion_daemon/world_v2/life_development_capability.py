@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from datetime import timedelta
 
-from .life_review_identity import SOURCE_BOUND_LIFE_REVIEW_MANIFEST_VERSION
+from .life_review_identity import SOURCE_BOUND_LIFE_REVIEW_MANIFEST_VERSION, CURRENT_EXECUTION_INTENTION_SOURCES_VERSION
 from .life_author_seed import ReviewedLifeSeedCatalog
 from .life_content_store import ImmutableLifeContentStore
 from .life_development_source_closure import pinned_context_grounding_refs
@@ -297,7 +297,7 @@ class ProjectionLifeCapabilityManifestCompiler:
             # manifest schema's legacy omitted value remains unchanged.
             version=SOURCE_BOUND_LIFE_REVIEW_MANIFEST_VERSION,
             outcome_contract="world-consequence.2",
-            execution_intention_sources_version="2",
+            execution_intention_sources_version=CURRENT_EXECUTION_INTENTION_SOURCES_VERSION,
             pinned_source_materials_version="3",
             semantic_source_review_version="2",
             owner_actor_ref=self._owner,
