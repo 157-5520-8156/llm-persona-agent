@@ -7,6 +7,19 @@ from pydantic import Field, model_validator
 from .schema_core import FrozenModel, PrivacyClass
 
 
+def detail_publication_privacy(*, source_privacy, draft_privacy, publication_privacy,
+                               outcome_privacy=None):
+    """The existing source/program/selected-outcome floor, shared with review."""
+    from .life_development_draft import LIFE_DEVELOPMENT_PRIVACY_ORDER
+
+    levels = [draft_privacy, publication_privacy]
+    if source_privacy is not None:
+        levels.append(source_privacy)
+    if outcome_privacy is not None:
+        levels.append(outcome_privacy)
+    return max(levels, key=LIFE_DEVELOPMENT_PRIVACY_ORDER.index)
+
+
 def execution_revocation_event_id(occurrence_id):
     return "event:interrupt:" + occurrence_id
 

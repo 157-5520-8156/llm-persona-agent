@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 import json
 
-from .event_detail_contract import event_detail_index, EventDetailCapability
+from .event_detail_contract import event_detail_index, EventDetailCapability, detail_publication_privacy
 from .life_development_draft import LifeDevelopmentCapabilityManifest, parse_world_author_draft
 from .schemas import ProjectionCursor, WorldEvent
 from .world_outlook import digest
@@ -144,13 +144,16 @@ def is_prepaid_detail_progress(*, ledger, content_store, projection, occurrence,
     expected_origin = {"world_id": projection.world_id, "actor_ref": actor_ref, "event_detail_origin": {
         "proposal_event_ref": program.trigger_ref, "program_hash": index.program_hash,
         "source_event_ref": index.capability.source_event_ref, "phase": position, "due_at": due.isoformat()}}
-    ranks = ("public", "shareable", "personal", "private", "withhold")
-    privacy = [index.capability.privacy_class, draft.privacy_class, program.visibility]
     if step.outcome_index is not None:
         if program.status != "settled" or program.settled_outcome_ref != program.candidate_outcome_refs[step.outcome_index]:
             raise ValueError("conditional detail was not selected")
-        privacy.append(program.candidate_outcomes[step.outcome_index].privacy_class)
-    expected_script = {"kind": "environment", "text": step.text, "privacy_class": max(privacy, key=ranks.index), "duration_minutes": 1}
+    privacy = detail_publication_privacy(
+        source_privacy=index.capability.privacy_class, draft_privacy=draft.privacy_class,
+        publication_privacy=program.visibility,
+        outcome_privacy=(program.candidate_outcomes[step.outcome_index].privacy_class
+                         if step.outcome_index is not None else None),
+    )
+    expected_script = {"kind": "environment", "text": step.text, "privacy_class": privacy, "duration_minutes": 1}
     expected_ref = occurrence_ref(projection.world_id, actor_ref, "detail-" + digest([detail_operation(program.occurrence_id), position, index.program_hash]))
     if (origin != expected_origin or raw.get("script") != expected_script or raw.get("occurrence_id") != occurrence.occurrence_id
             or occurrence.occurrence_id != expected_ref or not due <= event.logical_time < index.capability.ends_at):
@@ -346,15 +349,17 @@ class EventDetailRuntime:
                     self.store.finish(phase_op, state="not_selected", payload={"parent": op, "index": position})
                     terminal += 1
                     continue
-            ranks = ("public", "shareable", "personal", "private", "withhold")
-            privacy = [index.capability.privacy_class, draft.privacy_class, occurrence.visibility]
-            if step.outcome_index is not None:
-                privacy.append(occurrence.candidate_outcomes[step.outcome_index].privacy_class)
+            privacy = detail_publication_privacy(
+                source_privacy=index.capability.privacy_class, draft_privacy=draft.privacy_class,
+                publication_privacy=occurrence.visibility,
+                outcome_privacy=(occurrence.candidate_outcomes[step.outcome_index].privacy_class
+                                 if step.outcome_index is not None else None),
+            )
             identity = digest([op, position, index.program_hash])
             node = {
                 "opportunity_id": "detail-" + identity, "thread_refs": ["event-detail"],
                 "external_possibility": step.text[:1000], "lane": "world", "npc_ref": None,
-                "execution": {"kind": "environment", "text": step.text, "privacy_class": max(privacy, key=ranks.index), "duration_minutes": 1},
+                "execution": {"kind": "environment", "text": step.text, "privacy_class": privacy, "duration_minutes": 1},
                 "opens_at": due.isoformat(), "closes_at": index.capability.ends_at.isoformat(),
                 "basis_refs": [index.capability.source_event_ref], "conditions": [], "after_opportunities": [],
             }

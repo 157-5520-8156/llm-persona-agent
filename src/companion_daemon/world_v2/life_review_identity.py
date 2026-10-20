@@ -32,7 +32,7 @@ WORLD_CONSEQUENCE_NOVEL_EVIDENCE_PACKET_CONTRACT = (
     "life-development-novel-origin-review-evidence-packet.7"
 )
 SOURCE_BOUND_LIFE_REVIEW_MANIFEST_VERSION = "life-development-capability.production.4"
-CURRENT_EXECUTION_INTENTION_SOURCES_VERSION = "3"
+CURRENT_EXECUTION_INTENTION_SOURCES_VERSION = "4"
 SOURCE_BOUND_NOVEL_EVIDENCE_PACKET_CONTRACT = (
     "life-development-novel-origin-review-evidence-packet.8"
 )

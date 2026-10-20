@@ -1714,3 +1714,114 @@ async def test_recurring_publication_has_a_pinned_start_binding_and_legacy_recei
         assert timing["fields"][0]["first_available_at"] == NOW.isoformat()
     finally:
         runtime.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("corrupt_metadata", [False, True])
+async def test_fresh_origin_reuses_pinned_registered_identity_and_real_script_privacy(tmp_path, corrupt_metadata):
+    from test_world_consequence_authoring_context import _registered_identity_fixture
+    from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
+
+    ledger, content, manifest, registration = await _registered_identity_fixture(tmp_path)
+    state = ledger.project()
+    clock = max(
+        (r for r in state.committed_world_event_refs if r.event_type == "ClockAdvanced"),
+        key=lambda r: r.world_revision,
+    )
+    wake = ledger.lookup_event_commit(clock.event_id)[0]
+    value = draft_value(wake)
+    value.update(
+        world_id=ledger.world_id,
+        actor_ref=manifest.owner_actor_ref,
+        review_at=(state.logical_time + timedelta(days=1)).isoformat(),
+        horizon_end=(state.logical_time + timedelta(days=21)).isoformat(),
+    )
+    for node in value["opportunities"]:
+        node.update(
+            opens_at=state.logical_time.isoformat(),
+            closes_at=(state.logical_time + timedelta(days=7)).isoformat(),
+        )
+    value["opportunities"][0]["execution"]["text"] = manifest.npc_capabilities[0].identity_summary
+    value["opportunities"][1]["execution"]["privacy_class"] = "public"
+    author = Author([{"decision": "revise", "draft": value}])
+    packets = []
+
+    class Critic:
+        model = "fixture:registered-identity-transport"
+
+        async def complete(self, messages, **kwargs):
+            packets.append(json.loads(messages[1]["content"]))
+            return json.dumps(
+                {
+                    "review": {
+                        "decision": "supported",
+                        "reason": "Fixture captures exact source/policy transport only, not semantic-quality proof.",
+                    }
+                }
+            )
+
+    outlook_store = SQLiteWorldOutlookStore(
+        path=tmp_path / "npc-outlook.sqlite",
+        world_id=ledger.world_id,
+        actor_ref=manifest.owner_actor_ref,
+    )
+    runtime = WorldOutlookRuntime(
+        ledger=ledger,
+        store=outlook_store,
+        author=author,
+        actor_ref=manifest.owner_actor_ref,
+        content_store=content,
+        source_critic=Critic(),
+    )
+    if corrupt_metadata:
+        cap = manifest.npc_capabilities[0]
+        manifest = manifest.model_copy(update={"npc_capabilities": (
+            cap.model_copy(update={"identity_payload_hash": "f" * 64}),
+        )})
+    try:
+        result = await runtime.refresh(
+            projection=state,
+            context={},
+            manifest=manifest.model_copy(update={"max_future_days": 30, "max_window_minutes": 720}),
+        )
+        if corrupt_metadata:
+            assert result == {"status": "technical_failure", "failure_code": "outlook_npc_identity_evidence_unavailable"}
+            assert len(author.calls) == 1 and packets == []
+            assert outlook_store.head() is None and ledger.project() == state
+            # Readonly evidence cannot be repaired by buying another author.
+            repeat = await runtime.refresh(projection=state, context={}, manifest=manifest.model_copy(update={"max_future_days": 30, "max_window_minutes": 720}))
+            assert repeat["failure_code"] == result["failure_code"] and len(author.calls) == 1
+            return
+        assert result["status"] == "ready", result
+        assert len(author.calls) == len(packets) == 1
+        pinned = decode_outlook_request(author.calls[0][1]["content"])
+        assert (
+            pinned["private_origin_review"]["npc_identity_source_contract"]
+            == "pinned-world-npc-identities.1"
+        )
+        assert (
+            pinned["npc_capabilities"][0]["identity_summary"]
+            == manifest.npc_capabilities[0].identity_summary
+        )
+        identities = packets[0]["pinned_authority"]["registered_npc_identities"]
+        assert identities["items"][0]["authority_refs"] == [registration.event_id]
+        assert identities["items"][0]["privacy_class"] == "personal"
+        assert (
+            identities["publication_privacy"]["outcomes.0.world_consequence.environment_text"]
+            == "private"
+        )
+        assert (
+            identities["publication_privacy"]["outcomes.1.world_consequence.environment_text"]
+            == "public"
+        )
+        assert ledger.project() == state
+        repeat = await runtime.refresh(
+            projection=state,
+            context={},
+            manifest=manifest.model_copy(update={"max_future_days": 30, "max_window_minutes": 720}),
+        )
+        assert repeat["status"] == "unchanged" and len(author.calls) == len(packets) == 1
+    finally:
+        runtime.close()
+        content.close()
+        ledger.close()

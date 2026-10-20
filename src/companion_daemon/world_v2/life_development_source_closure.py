@@ -1945,6 +1945,64 @@ def resolve_cited_pinned_material(
     return None
 
 
+REGISTERED_NPC_IDENTITY_CONTRACT = "pinned-world-npc-identities.1"
+_REGISTERED_NPC_IDENTITY_GUIDANCE = (
+    " registered_npc_identities contains exact identity bytes from the same pinned "
+    "NPC capabilities given to the World Author, with content hashes and already-citable "
+    "registration authority. These supply only the explicit standing identity/history "
+    "in identity_summary; an opaque ref alone still proves no semantics. They never "
+    "prove current presence, participation, a new action, consent, private thoughts or "
+    "any additional friendship/shared past. The recorded description is at its origin, "
+    "not proof that incidental appearance/location still holds now. New accepted World "
+    "changes govern current relationships and status; this source cannot undo them. "
+    "publication_privacy gives each field's declared privacy; its rank must be at least "
+    "the identity source's privacy_class (public, shareable, personal, private, withhold). "
+    "Visibility in this internal review never grants a more public publication. Report "
+    "an identity assertion outside that field's permission at its exact prose path as "
+    "an unsupported prior prerequisite. Judge every extra assertion against its "
+    "own exact sources; registration is not permission to invent that person's history."
+)
+
+
+def _registered_identity_review_view(*, material, manifest, draft):
+    if material is None:
+        return None
+    if (manifest.execution_intention_sources_version != "4"
+            or material.get("contract") != REGISTERED_NPC_IDENTITY_CONTRACT
+            or material.get("manifest_hash") != manifest.manifest_hash
+            or material.get("owner_actor_ref") != manifest.owner_actor_ref
+            or material.get("pinned_cursor") != manifest.pinned_cursor.model_dump(mode="json")):
+        raise ValueError("registered NPC identity source differs from its original manifest pin")
+    from .life_content_store import life_content_payload_hash
+    caps = {c.npc_ref: c for c in manifest.npc_capabilities}
+    citable = set(manifest.anchor_refs) | set(manifest.grounding_refs)
+    for row in material["items"]:
+        cap = caps.get(row["npc_ref"])
+        if (cap is None or row["npc_ref"] not in manifest.entity_refs
+                or row["identity_content_ref"] != cap.identity_content_ref
+                or row["identity_summary"] != cap.identity_summary
+                or row["identity_payload_hash"] != cap.identity_payload_hash
+                or life_content_payload_hash(row["identity_summary"]) != row["identity_payload_hash"]
+                or not row["authority_refs"]
+                or not set(row["authority_refs"]) <= set(cap.authority_refs) & citable
+                or row["registration_world_revision"] > manifest.pinned_cursor.world_revision):
+            raise ValueError("registered NPC identity source differs from offered exact material")
+    privacy = {"premise": draft.privacy_class}
+    for i, outcome in enumerate(draft.outcomes):
+        for path in outcome.prose_fields:
+            privacy[f"outcomes.{i}.{path}"] = outcome.privacy_class
+    from .event_detail_contract import detail_publication_privacy
+    capability = manifest.event_detail_capability
+    for i, step in enumerate(draft.event_details):
+        privacy[f"event_details.{i}.text"] = detail_publication_privacy(
+            source_privacy=capability.privacy_class if capability is not None else None,
+            draft_privacy=draft.privacy_class, publication_privacy=draft.privacy_class,
+            outcome_privacy=(draft.outcomes[step.outcome_index].privacy_class
+                             if step.outcome_index is not None else None),
+        )
+    return {**material, "publication_privacy": privacy}
+
+
 def life_development_source_closure_messages(
     *,
     context: dict[str, object],
@@ -1954,6 +2012,7 @@ def life_development_source_closure_messages(
     cited_pinned_materials: tuple[dict[str, object], ...] = (),
     execution_authority: dict[str, object] | None = None,
     reviewer_is_independent: bool | None = None,
+    registered_npc_identities: dict[str, object] | None = None,
 ) -> list[dict[str, str]]:
     """Compile the independent reviewer request from the exact pinned inputs."""
 
@@ -2109,6 +2168,11 @@ def life_development_source_closure_messages(
             "claims. Opaque ids and broad event types add no unstated facts."
         ),
     }
+    if registered_npc_identities is not None:
+        pinned_source_evidence["registered_npc_identities"] = _registered_identity_review_view(
+            material=registered_npc_identities, manifest=manifest, draft=draft,
+        )
+        system += _REGISTERED_NPC_IDENTITY_GUIDANCE
     if cited_pinned_materials:
         pinned_source_evidence["cited_pinned_materials"] = list(cited_pinned_materials)
     if current:
@@ -2266,6 +2330,7 @@ def life_development_novel_origin_messages(
     draft: LifeDevelopmentPossibilityDraft,
     execution_authority: dict[str, object] | None = None,
     reviewer_is_independent: bool | None = None,
+    registered_npc_identities: dict[str, object] | None = None,
 ) -> list[dict[str, str]]:
     """Compile an independent hard-boundary review of novel fact origin."""
 
@@ -2404,6 +2469,11 @@ def life_development_novel_origin_messages(
             review_lane="focused",
         ),
     }
+    if registered_npc_identities is not None:
+        pinned_authority["registered_npc_identities"] = _registered_identity_review_view(
+            material=registered_npc_identities, manifest=manifest, draft=draft,
+        )
+        system += _REGISTERED_NPC_IDENTITY_GUIDANCE
     if current:
         pinned_authority["execution_authority"] = _required_execution_authority(
             execution_authority, manifest=manifest,

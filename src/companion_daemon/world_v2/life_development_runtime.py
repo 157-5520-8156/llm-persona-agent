@@ -5193,6 +5193,11 @@ class LifeDevelopmentRuntime:
                 context=context,
                 manifest=manifest,
             )
+            from .world_consequence_authoring_context import read_registered_npc_identity_sources
+            npc_identities = await self._read_background_source(
+                read_registered_npc_identity_sources, ledger=self._ledger,
+                content_store=self._store, manifest=manifest,
+            )
         except ValueError as exc:
             _LOG.warning(
                 "Life Development source evidence unavailable error_type=%s detail=%s",
@@ -5204,6 +5209,7 @@ class LifeDevelopmentRuntime:
                 reason_code="life_development.source_closure_evidence_unavailable",
             )
         messages = life_development_source_closure_messages(
+            registered_npc_identities=npc_identities,
             context=context,
             manifest=manifest,
             draft=draft,
@@ -5409,7 +5415,19 @@ class LifeDevelopmentRuntime:
                     status="technical_failure",
                     reason_code="life_development.novel_origin_context_unavailable",
                 )
+        from .world_consequence_authoring_context import read_registered_npc_identity_sources
+        try:
+            npc_identities = await self._read_background_source(
+                read_registered_npc_identity_sources, ledger=self._ledger,
+                content_store=self._store, manifest=manifest,
+            )
+        except ValueError:
+            return LifeDevelopmentResult(
+                status="technical_failure",
+                reason_code="life_development.novel_origin_context_unavailable",
+            )
         messages = life_development_novel_origin_messages(
+            registered_npc_identities=npc_identities,
             context=review_context,
             manifest=manifest,
             draft=draft,

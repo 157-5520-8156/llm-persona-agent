@@ -63,6 +63,19 @@ def build_world_consequence_authoring_context(
         pinned.ledger_sequence != manifest.pinned_cursor.ledger_sequence,
     )):
         raise ValueError("world consequence authoring projection differs from manifest pin")
+    if (manifest.execution_intention_sources_version == "4"
+            and manifest.active_attempt_consequence is None
+            and manifest.completed_activity_consequence is None
+            and manifest.event_detail_capability is None):
+        # Independent World generation has no selected protagonist attempt.
+        # Exact active/completed consequences retain their own original route;
+        # historical anchors are facts, not an invitation to repeat an action.
+        return WorldConsequenceAuthoringContext(
+            authority=derive_world_consequence_authority(
+                pinned_state=pinned, actor_ref=actor_ref, source_events=(),
+            ),
+            execution_materials=(),
+        )
     anchors = set(manifest.anchor_refs)
     completion = manifest.completed_activity_consequence
     if completion is not None:
@@ -143,6 +156,79 @@ def build_world_consequence_authoring_context(
     return WorldConsequenceAuthoringContext(
         authority=authority, execution_materials=tuple(available),
     )
+
+
+def read_registered_npc_identity_sources(*, ledger, content_store, manifest):
+    """Read exact registered identity bytes at the original pin, never metadata alone."""
+    from .life_content_store import life_content_payload_hash
+    from .life_development_source_closure import REGISTERED_NPC_IDENTITY_CONTRACT
+
+    if manifest.execution_intention_sources_version != "4" or not manifest.npc_capabilities:
+        return None
+    pinned = ledger.project_at(manifest.pinned_cursor)
+    if (pinned.world_id != ledger.world_id or any(
+            getattr(pinned, name) != getattr(manifest.pinned_cursor, name)
+            for name in ("world_revision", "deliberation_revision", "ledger_sequence"))):
+        raise ValueError("NPC identity projection differs from its original pin")
+    by_ref = {"npc:" + npc.npc_id: npc for npc in pinned.npcs}
+    citable = set(manifest.anchor_refs) | set(manifest.grounding_refs)
+    items = []
+    for cap in manifest.npc_capabilities:
+        if cap.npc_ref not in manifest.entity_refs:
+            raise ValueError("NPC identity differs from offered entity refs")
+        npc = by_ref.get(cap.npc_ref)
+        registration = npc.registration_event_ref if npc is not None else None
+        if registration is None or registration not in citable or registration not in cap.authority_refs:
+            continue
+        found = ledger.lookup_event_commit(registration)
+        if found is None:
+            continue
+        event, commit = found
+        recorded = next((r for r in pinned.committed_world_event_refs
+                         if r.event_id == registration), None)
+        source = event.payload().get("npc", {})
+        if (recorded is None or recorded.event_type != "NpcRegistered"
+                or event.event_id != registration
+                or event.payload_hash != recorded.payload_hash
+                or event.logical_time != recorded.logical_time
+                or commit.world_revision < recorded.world_revision
+                or event.event_type != "NpcRegistered" or event.world_id != pinned.world_id
+                or event.event_id not in commit.event_ids
+                or commit.world_revision > pinned.world_revision
+                or commit.deliberation_revision > pinned.deliberation_revision
+                or commit.ledger_sequence > pinned.ledger_sequence
+                or source.get("npc_id") != npc.npc_id
+                or source.get("stable_identity_ref") != cap.identity_content_ref
+                or npc.stable_identity_ref != cap.identity_content_ref):
+            raise ValueError("NPC identity differs from its exact pinned registration")
+        if manifest.npc_privacy_floors is not None:
+            floor = next((f.privacy_class for f in manifest.npc_privacy_floors
+                          if f.npc_ref == cap.npc_ref), None)
+            if floor != npc.privacy_class:
+                raise ValueError("NPC identity differs from its pinned privacy floor")
+        stored = (content_store.read_exact(content_ref=cap.identity_content_ref)
+                  if content_store is not None else None)
+        if stored is None:
+            continue
+        if (stored.content_ref != cap.identity_content_ref
+                or stored.content_kind != "provisional_npc_introduction"
+                or stored.text != cap.identity_summary
+                or stored.content_payload_hash != cap.identity_payload_hash
+                or life_content_payload_hash(stored.text) != cap.identity_payload_hash):
+            raise ValueError("NPC identity differs from its exact immutable content")
+        items.append({"npc_ref": cap.npc_ref, "identity_content_ref": cap.identity_content_ref,
+            "identity_summary": stored.text, "identity_payload_hash": stored.content_payload_hash,
+            "privacy_class": npc.privacy_class,
+            "authority_refs": [registration], "registration_payload_hash": event.payload_hash,
+            "registration_world_revision": recorded.world_revision})
+    if len({row["npc_ref"] for row in items}) != len(items):
+        raise ValueError("duplicate pinned NPC identity")
+    return ({"contract": REGISTERED_NPC_IDENTITY_CONTRACT,
+             "scope": "exact_registered_identity_at_origin_not_presence_or_new_action",
+             "manifest_hash": manifest.manifest_hash,
+             "owner_actor_ref": manifest.owner_actor_ref,
+             "pinned_cursor": manifest.pinned_cursor.model_dump(mode="json"),
+             "items": sorted(items, key=lambda row: row["npc_ref"])} if items else None)
 
 
 def validate_world_consequence_authoring_context(

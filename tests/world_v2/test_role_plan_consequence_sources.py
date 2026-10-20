@@ -138,6 +138,25 @@ async def test_revised_intention_reaches_world_result_with_its_exact_original_ro
                 == "authorized_intention_not_embedded_history_or_execution_success"
             )
             assert material.authorized_intention.text == read.accepted_intention.text
+            from companion_daemon.world_v2.world_consequence_authoring_context import (
+                build_world_consequence_authoring_context,
+            )
+
+            ordinary = manifest.model_copy(update={
+                "execution_intention_sources_version": "3",
+                "anchor_refs": tuple(sorted({wake.event_id, start.event_id})),
+            })
+            original_ordinary = build_world_consequence_authoring_context(
+                ledger=app._ledger, content_store=store, manifest=ordinary, actor_ref=ACTOR
+            )
+            assert original_ordinary.execution_materials[0].authorized_intention == material.authorized_intention
+            independent = build_world_consequence_authoring_context(
+                ledger=app._ledger, content_store=store,
+                manifest=ordinary.model_copy(update={"execution_intention_sources_version": "4"}),
+                actor_ref=ACTOR,
+            )
+            assert independent.authority.execution_bindings == independent.execution_materials == ()
+            assert app._ledger.project() == state
             if status == "completed":
                 from companion_daemon.world_v2.completed_activity_consequence import (
                     read_completed_activity_consequence,

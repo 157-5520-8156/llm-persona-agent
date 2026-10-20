@@ -371,7 +371,11 @@ async def test_actual_started_role_attempt_reaches_production_authority_and_worl
             ),
             owner_actor_ref=ACTOR,
         )
-        result = await _advance(runtime, wake)
+        result = await runtime.advance_active_attempt_once(
+            execution_event_ref=source_ref, wake_event_ref=wake.event_id,
+            trace_id="trace:selected-role-attempt",
+            correlation_id="correlation:selected-role-attempt",
+        )
         assert len(author.received) == 1
         actual = json.loads(json.loads(author.received[0])[-1]["content"])
         bindings = actual["execution_authority"]["execution_bindings"]
@@ -389,6 +393,7 @@ async def test_actual_started_role_attempt_reaches_production_authority_and_worl
         assert reviewed["pinned_authority"]["execution_authority"] == {
             "authority": actual["execution_authority"],
             "execution_materials": actual["execution_materials"],
+            "active_attempt_consequence": actual["capability_manifest"]["active_attempt_consequence"],
         }
         assert [item["world_consequence"] for item in reviewed["reviewed_surface"]["outcomes"]] == [
             item["world_consequence"] for item in author.draft["outcomes"]

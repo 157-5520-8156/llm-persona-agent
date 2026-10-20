@@ -1241,6 +1241,7 @@ class WorldOutlookRuntime:
                 **({"execution_origin_review": _EXECUTION_ORIGIN_REVIEW} if self._source_critic is not None else {}),
                 **({"origin_author_menu": _ORIGIN_AUTHOR_MENU} if self._source_critic is not None else {}),
                 **({"origin_publication_contract": _ORIGIN_PUBLICATION} if self._source_critic is not None else {}),
+                **({"npc_identity_source_contract": "pinned-world-npc-identities.1"} if self._source_critic is not None else {}),
                 **({"configured_identity_source_ref": self._identity_source["source_ref"]} if self._identity_source else {}),
                 "source_contract": _WORKING_SOURCES,
                 "world_id": projection.world_id,
@@ -1425,6 +1426,7 @@ class WorldOutlookRuntime:
                 **({"execution_origin_review": _EXECUTION_ORIGIN_REVIEW} if self._source_critic is not None else {}),
                 **({"private_origin_review": {"contract": _ORIGIN_AUTHOR_MENU,
                     "publication_contract": _ORIGIN_PUBLICATION,
+                    "npc_identity_source_contract": "pinned-world-npc-identities.1",
                     "prior_future_qualified": self._origin_head_is_current(prior_head),
                     "keep_offered": self._origin_head_is_current(prior_head),
                     "authority": "technical_review_status_not_world_fact"}} if self._source_critic is not None else {}),
@@ -1569,6 +1571,7 @@ class WorldOutlookRuntime:
         if cached_attempts and pinned_request.get("response_tool_contract") in _NATIVE_RESULTS:
             response_tools = cached_attempts[min(cached_attempts)]["response_tools"]
         draft = None
+        failure_code = "outlook_author_failed"
         for ordinal in range(2):
             raw = None
             obj = None
@@ -1576,6 +1579,8 @@ class WorldOutlookRuntime:
                 if ordinal in cached_attempts:
                     cached = cached_attempts[ordinal]
                     if cached["status"] == "technical_failure":
+                        if cached.get("code") == "outlook_npc_identity_evidence_unavailable":
+                            failure_code = cached["code"]
                         break
                     messages, raw = cached["messages"], cached["raw"]
                     history = decode_outlook_request(messages[1]["content"]).get("history_material", [])
@@ -1700,6 +1705,9 @@ class WorldOutlookRuntime:
                     identity_source=pinned_packet.get("configured_companion_identity"),
                     publication_contract=pinned_packet.get("private_origin_review", {}).get(
                         "publication_contract", "world-outlook-script-publication.1"),
+                    npc_capabilities=(pinned_packet.get("npc_capabilities", ())
+                        if pinned_packet.get("private_origin_review", {}).get("npc_identity_source_contract")
+                        == "pinned-world-npc-identities.1" else None),
                 ) if self._source_critic is not None else None)
             except (ValueError, TypeError) as exc:
                 self._record_attempt(
@@ -1735,6 +1743,8 @@ class WorldOutlookRuntime:
                     continue
                 break
             except Exception as exc:
+                if isinstance(exc, RuntimeError) and str(exc) == "outlook_npc_identity_evidence_unavailable":
+                    failure_code = str(exc)
                 self._record_attempt(
                     op,
                     ordinal=ordinal,
@@ -1743,7 +1753,7 @@ class WorldOutlookRuntime:
                         **({"response_tools": response_tools} if response_tools else {}),
                         "raw": raw,
                         "status": "technical_failure",
-                        "code": type(exc).__name__,
+                        "code": failure_code if failure_code != "outlook_author_failed" else type(exc).__name__,
                     },
                 )
                 break
@@ -1755,9 +1765,9 @@ class WorldOutlookRuntime:
             break
         if draft is None:
             self.store.finish(
-                op, state="technical_failure", payload={"code": "outlook_author_failed"}
+                op, state="technical_failure", payload={"code": failure_code}
             )
-            self._health = {"status": "technical_failure", "failure_code": "outlook_author_failed"}
+            self._health = {"status": "technical_failure", "failure_code": failure_code}
             return self.health()
         try:
             with self.ledger.serialized_commit_sequence():
@@ -1970,7 +1980,8 @@ class WorldOutlookRuntime:
                        **({"planning": execution["planning"]} if execution.get("planning") else {})})
 
     async def _review_executable_sources(self, *, candidate, context, manifest, projection, identity_source=None,
-                                         publication_contract="world-outlook-script-publication.1"):
+                                         publication_contract="world-outlook-script-publication.1",
+                                         npc_capabilities=None):
         """Reuse the original origin critic before private prose gains fact authority.
 
         A batch is an adapter to that critic, never a new World proposal or role
@@ -1987,7 +1998,7 @@ class WorldOutlookRuntime:
         if publication_contract not in {"world-outlook-script-publication.1", _ORIGIN_PUBLICATION}:
             raise ValueError("unsupported pinned outlook publication contract")
         scripts = {}
-        def add(execution, *, path, available_at=None):
+        def add(execution, *, path, available_at=None, privacy_class=None):
             value = execution.model_dump(mode="json") if hasattr(execution, "model_dump") else execution
             if value["kind"] not in {"environment", "planning"}:
                 return
@@ -1996,10 +2007,12 @@ class WorldOutlookRuntime:
                     else value.get("text", ""))
             times = scripts[key][1] if key in scripts else []
             paths = scripts[key][2] if key in scripts else []
+            privacy = scripts[key][3] if key in scripts else []
+            privacy.append(privacy_class or value.get("privacy_class", "private"))
             if available_at is not None or publication_contract == _ORIGIN_PUBLICATION:
                 times.append(available_at)
             paths.append({"path": path} if isinstance(path, str) else path)
-            scripts[key] = text, times, paths
+            scripts[key] = text, times, paths, privacy
         for index, node in enumerate(candidate.opportunities):
             base = f"draft.opportunities[{index}].execution"
             add(node.execution, path=base + (".planning" if node.execution.planning else ".text"),
@@ -2007,7 +2020,8 @@ class WorldOutlookRuntime:
             if node.execution.planning is not None:
                 for slot_index, slot in enumerate(node.execution.planning.slots):
                     add({"kind": "environment", "text": slot.event_text},
-                        path=base + f".planning.slots[{slot_index}].event_text")
+                        path=base + f".planning.slots[{slot_index}].event_text",
+                        privacy_class=node.execution.privacy_class)
         # A legacy publication may still spawn future appointments after upgrade.
         # Review those original slot bytes too; never grandfather an unreviewed script.
         replaced_now = {n.execution.planning.supersedes_occurrence_ref for n in candidate.opportunities
@@ -2020,7 +2034,8 @@ class WorldOutlookRuntime:
                 add({"kind": "environment", "text": slot.event_text},
                     path={"readonly_source_coordinate": f"published_planning[{publication.occurrence_ref}].slots[{slot_index}].event_text",
                           "repair_path": "draft.opportunities[*].execution.planning",
-                          "required_predecessor": publication.occurrence_ref})
+                          "required_predecessor": publication.occurrence_ref},
+                    privacy_class=(publication.privacy_class if npc_capabilities is not None else None))
         records = []
         items = tuple(scripts.items())
         for offset in range(0, len(items), 4):
@@ -2033,14 +2048,44 @@ class WorldOutlookRuntime:
             outcomes = tuple(draft.outcomes[0].model_copy(update={
                 "text": None, "world_consequence": WorldConsequenceV2(environment_text=text)})
                 for text in (*texts, *(["外部条件尚未发生变化。"] if len(texts) == 1 else [])))
+            if npc_capabilities is not None:
+                from .life_development_draft import LIFE_DEVELOPMENT_PRIVACY_ORDER
+                outcomes = tuple(outcome.model_copy(update={
+                    "privacy_class": min(batch[i][1][3], key=LIFE_DEVELOPMENT_PRIVACY_ORDER.index),
+                }) if i < len(batch) else outcome for i, outcome in enumerate(outcomes))
             draft = draft.model_copy(update={"premise": "审核即将发布的外部脚本。",
                 "claim_declarations": (claim,), "outcomes": outcomes,
-                "anchor_refs": manifest.anchor_refs})
+                "anchor_refs": manifest.anchor_refs,
+                **({"privacy_class": min((o.privacy_class for o in outcomes),
+                                         key=LIFE_DEVELOPMENT_PRIVACY_ORDER.index)}
+                   if npc_capabilities is not None else {})})
             adapted_manifest = adapted_manifest.model_copy(update={
                 "pinned_cursor": manifest.pinned_cursor, "anchor_refs": manifest.anchor_refs,
                 "grounding_refs": manifest.grounding_refs, "entity_refs": manifest.entity_refs,
                 "outcome_contract": "world-consequence.2"})
+            if npc_capabilities is not None:
+                from .life_development_draft import LifeDevelopmentNpcCapability
+
+                try:
+                    captured_npcs = tuple(LifeDevelopmentNpcCapability.model_validate_json(json.dumps(item))
+                                          for item in npc_capabilities)
+                except (TypeError, ValueError) as exc:
+                    raise RuntimeError("outlook_npc_identity_evidence_unavailable") from exc
+                adapted_manifest = adapted_manifest.model_copy(update={
+                    "execution_intention_sources_version": "4",
+                    "npc_capabilities": captured_npcs,
+                })
+            from .world_consequence_authoring_context import read_registered_npc_identity_sources
+            try:
+                npc_identities = read_registered_npc_identity_sources(
+                    ledger=self.ledger, content_store=self._content_store, manifest=adapted_manifest,
+                )
+            except (TypeError, ValueError) as exc:
+                # Captured capability/source corruption is a technical failure;
+                # an author cannot repair readonly evidence by rewording a plot.
+                raise RuntimeError("outlook_npc_identity_evidence_unavailable") from exc
             messages = life_development_novel_origin_messages(context=context, manifest=adapted_manifest,
+                registered_npc_identities=npc_identities,
                 draft=draft, reviewer_is_independent=False,
                 execution_authority=WorldConsequenceAuthority(world_id=projection.world_id,
                     actor_ref=self.actor_ref, evaluated_cursor=manifest.pinned_cursor.model_dump(mode="json"),

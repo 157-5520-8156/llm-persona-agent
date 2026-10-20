@@ -131,7 +131,7 @@ def _read_intention(reader, content_store, binding, *, intention_reader_version)
         RolePlanResponseReader(ledger=reader),
         LifeDevelopmentProposalReader(ledger=reader, content_store=content_store),
     )
-    if intention_reader_version in {"2", "3"}:
+    if intention_reader_version in {"2", "3", "4"}:
         source_readers += (DayOpenLifeIntentActiveReader(ledger=reader),)
     for source_reader in source_readers:
         read = source_reader.read_active_plan(
@@ -155,9 +155,9 @@ def _read_intention(reader, content_store, binding, *, intention_reader_version)
     )
     payload = ActivityPlannedPayload.model_validate_json(plan_event.payload_json)
     origin = payload.chat_intent_origin or payload.world_intent_origin
-    if intention_reader_version in {"2", "3"}:
+    if intention_reader_version in {"2", "3", "4"}:
         origin = origin or payload.day_open_intent_origin
-    if intention_reader_version == "3" and payload.role_response_proposal_id is not None:
+    if intention_reader_version in {"3", "4"} and payload.role_response_proposal_id is not None:
         # The shared reader verifies the original role decision, exact predecessor
         # and replacement Plan. It is not an open-life World Author proposal.
         replacement = RolePlanResponseReader(ledger=reader).read_for_plan(plan_id=binding.plan_id)
@@ -221,7 +221,7 @@ def _read_intention(reader, content_store, binding, *, intention_reader_version)
 
 def build_world_consequence_execution_materials(
     *, ledger, content_store, pinned_state, actor_ref: str, source_events,
-    intention_reader_version: Literal["1", "2", "3"] = "1",
+    intention_reader_version: Literal["1", "2", "3", "4"] = "1",
 ) -> tuple[WorldConsequenceExecutionMaterial, ...]:
     """Return available or explicitly unavailable material for each exact source.
 
@@ -234,8 +234,8 @@ def build_world_consequence_execution_materials(
     """
     from .schemas import ProjectionCursor
 
-    if intention_reader_version not in {"1", "2", "3"}:
-        raise ValueError("execution intention reader version must be 1, 2 or 3")
+    if intention_reader_version not in {"1", "2", "3", "4"}:
+        raise ValueError("execution intention reader version must be 1, 2, 3 or 4")
     author_cursor = _cursor(pinned_state)
     if ledger.world_id != pinned_state.world_id or ledger.project_at(author_cursor) != pinned_state:
         raise ValueError("execution materials require the original ledger projection")

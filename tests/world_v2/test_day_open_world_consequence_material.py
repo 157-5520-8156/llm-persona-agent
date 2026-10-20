@@ -182,6 +182,22 @@ def _wake(ledger, suffix="author"):
     )
 
 
+async def _advance_active(runtime, wake, source_ref):
+    source = runtime._ledger.lookup_event_commit(source_ref)[0]
+    plan = next(p for p in runtime._ledger.project().plans if p.plan_id == source.payload()["plan_id"])
+    if plan.status == "completed":
+        return await runtime.advance_completed_activity_once(
+            completion_event_ref=plan.authority_origin.accepted_event_ref,
+            wake_event_ref=wake.event_id, trace_id="trace:day-open-completed-consequence",
+            correlation_id="correlation:day-open-completed-consequence",
+        )
+    return await runtime.advance_active_attempt_once(
+        execution_event_ref=source_ref, wake_event_ref=wake.event_id,
+        trace_id="trace:day-open-active-consequence",
+        correlation_id="correlation:day-open-active-consequence",
+    )
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("phase", ["started", "resumed"])
 async def test_public_day_open_attempt_is_readable_in_the_real_author_request(
@@ -198,10 +214,10 @@ async def test_public_day_open_attempt_is_readable_in_the_real_author_request(
     store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD)
     try:
         author = _ReceivedAuthor(store, (_json({"decision": "no_op"}),))
-        await _advance(_author_runtime(ledger, store, author), _wake(ledger))
+        await _advance_active(_author_runtime(ledger, store, author), _wake(ledger), source_ref)
         assert len(author.received) == 1
         actual = json.loads(json.loads(author.received[0])[-1]["content"])
-        assert actual["capability_manifest"]["execution_intention_sources_version"] == "3"
+        assert actual["capability_manifest"]["execution_intention_sources_version"] == "4"
         assert source_ref in actual["capability_manifest"]["anchor_refs"]
         assert [item["source_event_ref"] for item in actual["execution_authority"]["execution_bindings"]] == [source_ref]
         (material,) = actual["execution_materials"]
@@ -256,10 +272,26 @@ async def test_existing_public_intention_entries_remain_readable_in_new_author_r
         actor = next(item.owner_actor_ref for item in ledger.project().plans
                      if item.plan_id == source.payload()["plan_id"])
         author = _ReceivedAuthor(store, (_json({"decision": "no_op"}),))
-        await _advance(_author_runtime(ledger, store, author, actor=actor), _wake(ledger))
-        assert len(author.received) == 1
+        result = await _advance_active(_author_runtime(ledger, store, author, actor=actor), _wake(ledger), source_ref)
+        if entry == "chat":
+            # The real chat journey already handled this exact attempt. The
+            # selected entry rejoins its paid no-op instead of generating a
+            # second result through the old generic author path.
+            assert result.reason_code == "life_development.world_author_no_op_recovered"
+            assert author.received == [] and result.proposal_event_ref
+            assert ledger.lookup_event_commit(result.proposal_event_ref)[0].event_type == "ProposalRecorded"
+            from companion_daemon.world_v2.world_consequence_execution_context import (
+                build_world_consequence_execution_materials,
+            )
+            (material,) = build_world_consequence_execution_materials(
+                ledger=ledger, content_store=store, pinned_state=ledger.project(),
+                actor_ref=actor, source_events=(source,), intention_reader_version="4",
+            )
+            assert material.authorized_intention.text == expected
+            return
+        assert len(author.received) == 1, result
         actual = json.loads(json.loads(author.received[0])[-1]["content"])
-        assert actual["capability_manifest"]["execution_intention_sources_version"] == "3"
+        assert actual["capability_manifest"]["execution_intention_sources_version"] == "4"
         (material,) = actual["execution_materials"]
         assert material["execution_binding"]["source_event_ref"] == source_ref
         assert material["authorized_intention"]["text"] == expected
@@ -289,7 +321,7 @@ class _EnvironmentAuthor(_ReceivedAuthor):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("historical", [False, True, "version2"])
+@pytest.mark.parametrize("historical", [False, True, "version2", "version3"])
 async def test_day_open_reader_identity_survives_original_author_request_cold_recovery(
     tmp_path, monkeypatch, build_app, historical,
 ):
@@ -311,7 +343,7 @@ async def test_day_open_reader_identity_survives_original_author_request_cold_re
         await _interrupt_before_final(
             ledger,
             _author_runtime(ledger, store, author, critic=critic,
-                            compiler=_HistoricalCompiler(store, "2" if historical == "version2" else None) if historical else None),
+                            compiler=_HistoricalCompiler(store, "2" if historical == "version2" else "3" if historical == "version3" else None) if historical else None),
             wake, monkeypatch,
         )
         assert len(author.received) == critic.calls == 1
@@ -329,7 +361,7 @@ async def test_day_open_reader_identity_survives_original_author_request_cold_re
         context = build_world_consequence_authoring_context(
             ledger=ledger, content_store=store, manifest=manifest, actor_ref=ACTOR,
         )
-        assert len(context.execution_materials) == int(historical is not True)
+        assert len(context.execution_materials) == int(historical in {"version2", "version3"})
         assert context.model_dump(mode="json") == {
             "authority": actual["execution_authority"], "execution_materials": actual["execution_materials"],
         }
@@ -373,7 +405,7 @@ async def test_day_open_intention_or_finished_timing_does_not_grant_attempt_resu
         author = _ReceivedAuthor(store, (_json({"decision": "no_op"}),))
         await _advance(_author_runtime(ledger, store, author), _wake(ledger))
         actual = json.loads(json.loads(author.received[0])[-1]["content"])
-        assert actual["capability_manifest"]["execution_intention_sources_version"] == "3"
+        assert actual["capability_manifest"]["execution_intention_sources_version"] == "4"
         assert actual["execution_authority"]["execution_bindings"] == []
         assert actual["execution_materials"] == []
         assert not ledger.project().experiences
@@ -382,7 +414,7 @@ async def test_day_open_intention_or_finished_timing_does_not_grant_attempt_resu
         ledger.close()
 
 
-@pytest.mark.parametrize("version", ["1", "4", 2, True, ""])
+@pytest.mark.parametrize("version", ["1", "5", 2, True, ""])
 def test_manifest_rejects_unknown_execution_intention_reader_identity(version):
     from companion_daemon.world_v2.schemas import ProjectionCursor
 
@@ -439,7 +471,7 @@ async def test_new_day_open_reader_does_not_expand_anchors_or_cross_actor_permis
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("historical", [False, True, "version2"])
+@pytest.mark.parametrize("historical", [False, True, "version2", "version3"])
 async def test_changing_reader_marker_and_self_rehashing_cannot_replace_original_author_audit(
     tmp_path, monkeypatch, build_app, historical,
 ):
@@ -470,7 +502,9 @@ async def test_changing_reader_marker_and_self_rehashing_cannot_replace_original
                     authority = payload["world_author_deliberation"]
                     raw_manifest = authority["capability_manifest"]
                     if historical:
-                        raw_manifest["execution_intention_sources_version"] = "3"
+                        raw_manifest["execution_intention_sources_version"] = (
+                            "4" if raw_manifest.get("execution_intention_sources_version") == "3" else "3"
+                        )
                     else:
                         raw_manifest.pop("execution_intention_sources_version")
                     fresh_manifest = LifeDevelopmentCapabilityManifest.model_validate_json(_json(raw_manifest))
@@ -516,7 +550,7 @@ async def test_changing_reader_marker_and_self_rehashing_cannot_replace_original
         with pytest.raises(ValueError, match="authored subject exceeds its pinned authority"):
             await _advance(_author_runtime(
                 ledger, store, author, critic=critic,
-                compiler=_HistoricalCompiler(store, "2" if historical == "version2" else None) if historical else None,
+                compiler=_HistoricalCompiler(store, "2" if historical == "version2" else "3" if historical == "version3" else None) if historical else None,
             ), wake)
         assert len(before_final) == len(author.received) == critic.calls == 1
         assert ledger.project() == before_final[0]

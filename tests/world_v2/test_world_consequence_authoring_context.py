@@ -225,7 +225,7 @@ def test_ack_or_unknown_receipt_is_filtered_without_an_execution_offer(tmp_path,
 
 
 @pytest.mark.asyncio
-async def test_public_manifest_compiler_can_offer_the_visible_started_source(tmp_path):
+async def test_public_manifest_requires_a_selected_attempt_to_offer_its_execution(tmp_path):
     from companion_daemon.world_v2.life_author_seed import ReviewedLifeSeedCatalog
     from companion_daemon.world_v2.life_development_capability import ProjectionLifeCapabilityManifestCompiler
     from companion_daemon.world_v2.local_chronology import LocalChronology
@@ -247,7 +247,17 @@ async def test_public_manifest_compiler_can_offer_the_visible_started_source(tmp
     # The caller explicitly opts in; an old manifest remains the old protocol.
     manifest = manifest.model_copy(update={"outcome_contract": "world-consequence.2"})
     context = _build(ledger, store, manifest)
-    assert [item.source_event_ref for item in context.authority.execution_bindings] == [source]
+    assert context.authority.execution_bindings == context.execution_materials == ()
+    legacy = _build(ledger, store, manifest.model_copy(update={"execution_intention_sources_version": "3"}))
+    assert [item.source_event_ref for item in legacy.authority.execution_bindings] == [source]
+    from companion_daemon.world_v2.active_attempt_consequence import read_active_attempt_consequence
+    selected = read_active_attempt_consequence(
+        ledger=ledger, content_store=store, pinned_state=state, actor_ref="actor:companion",
+        execution_event_ref=source, clock_event_ref=wake_ref, intention_reader_version="4",
+    )
+    assert selected is not None
+    context = _build(ledger, store, manifest.model_copy(update={"active_attempt_consequence": selected}))
+    assert context.authority.execution_bindings == (selected.execution_binding,)
 
 
 @pytest.mark.asyncio
@@ -337,3 +347,325 @@ async def test_source_lookup_and_projection_cannot_substitute_later_or_different
 
     with pytest.raises(ValueError, match="exact pinned event|differs from manifest pin"):
         _build(WrongLookup(), store, manifest)
+
+
+async def _registered_identity_fixture(tmp_path):
+    from companion_daemon.world_v2.event_identity import domain_idempotency_key
+    from companion_daemon.world_v2.life_content_store import (
+        StoredLifeContent,
+        life_content_payload_hash,
+    )
+    from companion_daemon.world_v2.life_development_draft import LifeDevelopmentNpcCapability
+    from companion_daemon.world_v2.schemas import EvidenceRef, NpcProjection, WorldEvent
+    from test_life_projection import commit, mutation
+
+    ledger, store, _, _ = await accepted_current_activity(
+        sqlite_path=tmp_path / "npc-source.sqlite"
+    )
+    state = ledger.project()
+    clock = max(
+        (r for r in state.committed_world_event_refs if r.event_type == "ClockAdvanced"),
+        key=lambda r: r.world_revision,
+    )
+    text = "小林，是角色在文学社认识的朋友。"
+    stored = StoredLifeContent(
+        content_ref="identity:registered-lin",
+        content_kind="provisional_npc_introduction",
+        text=text,
+        content_payload_hash=life_content_payload_hash(text),
+    )
+    store.put_if_absent(stored)
+    payload = {
+        **mutation(
+            "registered-lin",
+            expected_revision=0,
+            evidence_refs=[
+                EvidenceRef(
+                    ref_id=clock.event_id,
+                    evidence_type="committed_world_event",
+                    claim_purpose="current_fact",
+                    immutable_hash=clock.payload_hash,
+                    source_world_revision=clock.world_revision,
+                ).model_dump(mode="json")
+            ],
+        ),
+        "npc": NpcProjection(
+            npc_id="registered-lin",
+            entity_revision=1,
+            stable_identity_ref=stored.content_ref,
+            privacy_class="personal",
+        ).model_dump(mode="json"),
+    }
+    event = WorldEvent.from_payload(
+        schema_version="world-v2.1",
+        event_id="event:npc:registered-lin",
+        world_id=ledger.world_id,
+        event_type="NpcRegistered",
+        logical_time=state.logical_time,
+        created_at=state.logical_time,
+        actor="operator:identity-fixture",
+        source="identity-fixture",
+        trace_id="trace:identity",
+        causation_id=clock.event_id,
+        correlation_id="identity",
+        idempotency_key=domain_idempotency_key(
+            event_type="NpcRegistered", world_id=ledger.world_id, payload=payload
+        ),
+        payload=payload,
+    )
+    commit(ledger, [event])
+    cap = LifeDevelopmentNpcCapability(
+        npc_ref="npc:registered-lin",
+        lifecycle_state="active",
+        identity_content_ref=stored.content_ref,
+        identity_summary=text,
+        identity_payload_hash=stored.content_payload_hash,
+        authority_refs=(event.event_id,),
+        current_location_ref="location:NOT_CURRENT_PRESENCE",
+        protagonist_closeness_bp=9000,
+    )
+    manifest = _manifest(ledger, (clock.event_id,)).model_copy(
+        update={
+            "execution_intention_sources_version": "4",
+            "entity_refs": (cap.npc_ref,),
+            "grounding_refs": (event.event_id,),
+            "npc_capabilities": (cap,),
+        }
+    )
+    return ledger, store, manifest, event
+
+
+@pytest.mark.asyncio
+async def test_registered_identity_is_an_exact_source_not_current_npc_state(tmp_path):
+    from companion_daemon.world_v2.world_consequence_authoring_context import (
+        read_registered_npc_identity_sources,
+    )
+
+    ledger, store, manifest, event = await _registered_identity_fixture(tmp_path)
+    try:
+        before = ledger.project()
+        source = read_registered_npc_identity_sources(
+            ledger=ledger, content_store=store, manifest=manifest
+        )
+        (row,) = source["items"]
+        assert row["identity_summary"] == manifest.npc_capabilities[0].identity_summary
+        assert row["authority_refs"] == [event.event_id]
+        assert row["registration_payload_hash"] == event.payload_hash
+        assert row["privacy_class"] == "personal"
+        assert "current_location_ref" not in row and "protagonist_closeness_bp" not in row
+        assert source["manifest_hash"] == manifest.manifest_hash and source[
+            "pinned_cursor"
+        ] == manifest.pinned_cursor.model_dump(mode="json")
+        for version in (None, "2", "3"):
+            assert (
+                read_registered_npc_identity_sources(
+                    ledger=ledger,
+                    content_store=store,
+                    manifest=manifest.model_copy(
+                        update={"execution_intention_sources_version": version}
+                    ),
+                )
+                is None
+            )
+        assert ledger.project() == before and ledger.rebuild() == before
+    finally:
+        store.close()
+        ledger.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["hash", "text", "identity_ref", "unoffered", "privacy"])
+async def test_registered_identity_cannot_substitute_source_or_permission(tmp_path, mode):
+    from companion_daemon.world_v2.life_development_draft import LifeDevelopmentNpcPrivacyFloor
+    from companion_daemon.world_v2.world_consequence_authoring_context import (
+        read_registered_npc_identity_sources,
+    )
+
+    ledger, store, manifest, _ = await _registered_identity_fixture(tmp_path)
+    try:
+        cap = manifest.npc_capabilities[0]
+        changes = (
+            {"npc_capabilities": (cap.model_copy(update={"identity_payload_hash": "f" * 64}),)}
+            if mode == "hash"
+            else {
+                "npc_capabilities": (cap.model_copy(update={"identity_summary": "编造的童年旧友"}),)
+            }
+            if mode == "text"
+            else {
+                "npc_capabilities": (
+                    cap.model_copy(update={"identity_content_ref": "identity:another"}),
+                )
+            }
+            if mode == "identity_ref"
+            else {"entity_refs": ()}
+            if mode == "unoffered"
+            else {
+                "npc_privacy_floors": (
+                    LifeDevelopmentNpcPrivacyFloor(npc_ref=cap.npc_ref, privacy_class="public"),
+                )
+            }
+        )
+        before = ledger.project()
+        with pytest.raises(ValueError, match="NPC identity"):
+            read_registered_npc_identity_sources(
+                ledger=ledger, content_store=store, manifest=manifest.model_copy(update=changes)
+            )
+        assert ledger.project() == before
+    finally:
+        store.close()
+        ledger.close()
+
+
+@pytest.mark.asyncio
+async def test_registered_identity_missing_evidence_never_falls_back_to_manifest_summary(tmp_path):
+    from companion_daemon.world_v2.world_consequence_authoring_context import (
+        read_registered_npc_identity_sources,
+    )
+
+    ledger, store, manifest, _ = await _registered_identity_fixture(tmp_path)
+
+    class MissingBytes:
+        def read_exact(self, **kwargs):
+            return None
+
+    try:
+        assert (
+            read_registered_npc_identity_sources(
+                ledger=ledger, content_store=MissingBytes(), manifest=manifest
+            )
+            is None
+        )
+        assert (
+            read_registered_npc_identity_sources(
+                ledger=ledger,
+                content_store=store,
+                manifest=manifest.model_copy(update={"grounding_refs": ()}),
+            )
+            is None
+        )
+    finally:
+        store.close()
+        ledger.close()
+
+
+@pytest.mark.asyncio
+async def test_both_reviewers_share_exact_identity_and_field_privacy(tmp_path):
+    import json
+    from companion_daemon.world_v2.life_development_draft import LifeDevelopmentPossibilityDraft
+    from companion_daemon.world_v2.life_development_source_closure import (
+        life_development_source_closure_messages,
+        life_development_novel_origin_messages,
+    )
+    from companion_daemon.world_v2.world_consequence_authoring_context import (
+        read_registered_npc_identity_sources,
+    )
+    from test_world_consequence_producer import _draft
+
+    ledger, store, manifest, event = await _registered_identity_fixture(tmp_path)
+    try:
+        material = read_registered_npc_identity_sources(
+            ledger=ledger, content_store=store, manifest=manifest
+        )
+        value = _draft(event)
+        value.pop("location_ref", None)
+        value.pop("location_capability_ref", None)
+        for outcome in value["outcomes"]:
+            outcome["visual_evidence"] = None
+        draft = LifeDevelopmentPossibilityDraft.model_validate_json(json.dumps(value))
+        context = {"world_id": ledger.world_id, "actor_ref": manifest.owner_actor_ref, "slices": {}}
+        general = json.loads(
+            life_development_source_closure_messages(
+                context=context,
+                manifest=manifest,
+                draft=draft,
+                cited_events=(),
+                execution_authority=_build(ledger, store, manifest).model_dump(mode="json"),
+                registered_npc_identities=material,
+            )[1]["content"]
+        )
+        focused = json.loads(
+            life_development_novel_origin_messages(
+                context=context,
+                manifest=manifest,
+                draft=draft,
+                registered_npc_identities=material,
+                execution_authority=_build(ledger, store, manifest).model_dump(mode="json"),
+            )[1]["content"]
+        )
+        a = general["pinned_source_evidence"]["registered_npc_identities"]
+        b = focused["pinned_authority"]["registered_npc_identities"]
+        assert a == b
+        assert (
+            a["publication_privacy"]["outcomes.0.world_consequence.environment_text"]
+            == draft.outcomes[0].privacy_class
+        )
+        assert a["items"][0]["privacy_class"] == "personal"
+        changed = {**material, "manifest_hash": "f" * 64}
+        with pytest.raises(ValueError, match="original manifest pin"):
+            life_development_novel_origin_messages(
+                context=context,
+                manifest=manifest,
+                draft=draft,
+                registered_npc_identities=changed,
+                execution_authority=_build(ledger, store, manifest).model_dump(mode="json"),
+            )
+    finally:
+        store.close()
+        ledger.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mode", ["hash", "later_commit", "wrong_projection", "missing_registration"]
+)
+async def test_registered_identity_rejects_substituted_lookup_or_future_pin(tmp_path, mode):
+    from companion_daemon.world_v2.world_consequence_authoring_context import (
+        read_registered_npc_identity_sources,
+    )
+
+    ledger, store, manifest, event = await _registered_identity_fixture(tmp_path)
+
+    class ChangedReader:
+        world_id = ledger.world_id
+
+        def project_at(self, cursor):
+            state = ledger.project_at(cursor)
+            return (
+                state.model_copy(update={"world_revision": state.world_revision + 1})
+                if mode == "wrong_projection"
+                else state
+            )
+
+        def lookup_event_commit(self, ref):
+            found = ledger.lookup_event_commit(ref)
+            if ref != event.event_id:
+                return found
+            if mode == "missing_registration":
+                return None
+            source, commit = found
+            if mode == "hash":
+                source = source.model_copy(update={"payload_hash": "f" * 64})
+            if mode == "later_commit":
+                commit = commit.model_copy(
+                    update={"ledger_sequence": manifest.pinned_cursor.ledger_sequence + 1}
+                )
+            return source, commit
+
+    try:
+        before = ledger.project()
+        if mode == "missing_registration":
+            assert (
+                read_registered_npc_identity_sources(
+                    ledger=ChangedReader(), content_store=store, manifest=manifest
+                )
+                is None
+            )
+        else:
+            with pytest.raises(ValueError, match="NPC identity"):
+                read_registered_npc_identity_sources(
+                    ledger=ChangedReader(), content_store=store, manifest=manifest
+                )
+        assert ledger.project() == before
+    finally:
+        store.close()
+        ledger.close()

@@ -1,3 +1,24 @@
+Fresh execution source4 separates independent external World openings from selected
+active/completed/detail tasks. An ordinary opening no longer offers four unrelated historical
+role execution grants; exact selected attempts retain full original intention and actor audit.
+Old omitted/2/3 manifests keep their original wire/authority/recovery. Existing chat attempt
+recovery rejoins its paid no_op instead of authoring another generic result; fresh compatible
+independent intents remain legal. No keyword dedup, plan cancellation, role choice or cadence change.
+
+Registered NPC identity is now a shared source view, not an opaque ref or convenient metadata.
+The existing context reader verifies original NpcRegistered/pin/hash, stable identity ref and exact
+immutable bytes; only already offered/citable identities enter both focused/general reviews.
+It supplies one registration proof and original privacy, excludes current location/plans/closeness,
+and never proves new participation/history. Missing evidence stays unavailable. Fresh Fate inputs
+pin the source contract and reuse captured NPC capabilities; old unmarked source reviews remain
+exact. Readonly source corruption is technical failure, with no author reselection or rebilling.
+Per-field privacy follows the same existing programme/source/selected-outcome function as actual
+event-detail publication, removing two duplicate calculations. Reviewer authority remains factual,
+not a plot-quality judge. Constructed real GLM friend-source positive/childhood negative support
+the design, not final Root implementation or natural story qualification.667 relevant checks pass;
+new own full/current retained-source/NPC proof and all original continuation gates still required.
+Current live v49 remains immutable9f7, protected QQ/main/W/N unchanged; no new production module.
+
 Recurring-slot origin review now pins publication.2 in fresh Outlook task identity/menu. It
 uses each_instance.starts_at instead of an absolute null, which actual GLM had misread as the
 current cursor/no publication authority. Same original classroom positive passes with the explicit
