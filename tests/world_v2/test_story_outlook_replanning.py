@@ -606,7 +606,7 @@ async def test_real_abandoned_plan_retires_a_future_branch_through_public_refres
         runtime.close()
 
 
-@pytest.mark.parametrize('fault', [None, 'expired', 'stale_token'])
+@pytest.mark.parametrize('fault', [None, 'expired', 'stale_token', 'unreviewed_origin'])
 def test_keep_menu_uses_the_same_authority_and_expiry_rules_as_admission(tmp_path, fault):
     from test_life_development_runtime import _manifest, _projection_cursor
     from companion_daemon.world_v2.world_outlook_history import OutlookHistoryOffer
@@ -629,6 +629,8 @@ def test_keep_menu_uses_the_same_authority_and_expiry_rules_as_admission(tmp_pat
         packet = {'basis_refs': list(manifest.anchor_refs),
                   'condition_sources': [source.model_dump(mode='json') for source in sources.values()]}
         before = ledger.project()
+        if fault == 'unreviewed_origin':
+            runtime._source_critic = object()
         available = runtime._keep_is_offered(packet=packet, projection=before, manifest=manifest,
             prior_head=('a' * 64, draft, {}), npc_refs=(), sources=sources,
             history_offer=OutlookHistoryOffer(items=()))

@@ -34,6 +34,7 @@ _WORKING_SOURCE_SCOPES = frozenset({"outlook-working-sources.1", "outlook-workin
 _ROLLING_PLANNING = "rolling-world-planning.6"
 _NATIVE_RESULT = "world-outlook-native.10"
 _EXECUTION_ORIGIN_REVIEW = "world-outlook-origin-review.1"
+_ORIGIN_AUTHOR_MENU = "outlook-origin-author-menu.1"
 _NATIVE_RESULTS = frozenset({"world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.5", "world-outlook-native.6", "world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9", _NATIVE_RESULT})
 _ACTIVITY_CHOICE_SOURCE_EVENTS = frozenset({
     "ActivityPlanned", "ActivityStarted", "ActivityPaused", "ActivityResumed",
@@ -675,9 +676,16 @@ class WorldOutlookRuntime:
                         or replacements[0].opens_at.isoformat() != pinned["logical_time"]):
                     raise ValueError(f"changed planning {key!r} requires its exact current publication replacement now")
 
+    def _origin_head_is_current(self, head):
+        if head is None:
+            return False
+        evidence = head[2]
+        return ((self._source_critic is None or evidence.get("execution_source_review", {}).get("contract") == _EXECUTION_ORIGIN_REVIEW)
+                and (self._identity_source is None or evidence.get("configured_identity_source_ref") == self._identity_source["source_ref"]))
+
     def _keep_is_offered(self, *, packet, projection, manifest, prior_head, npc_refs, sources, history_offer):
         """Offer a structurally legal command, never decide whether to retain a story."""
-        if prior_head is None:
+        if not self._origin_head_is_current(prior_head):
             return False
         previous = prior_head[1]
         now = projection.logical_time
@@ -1145,10 +1153,7 @@ class WorldOutlookRuntime:
             "technical_source_refs": sorted(technical),
             "technical_source_authority": "withdrawn_unrealized_execution_permission_not_external_fact_or_new_role_choice",
             "needs_revision": (
-                (self._source_critic is not None
-                 and evidence.get("execution_source_review", {}).get("contract") != _EXECUTION_ORIGIN_REVIEW)
-                or (self._identity_source is not None and evidence.get("configured_identity_source_ref")
-                    != self._identity_source["source_ref"])
+                not self._origin_head_is_current(head)
                 or
                 evidence.get("authoring_constraints_hash") != self._authoring_constraints_hash
                 or preparation is not None and (evidence.get("rolling_planning") != _ROLLING_PLANNING
@@ -1233,6 +1238,7 @@ class WorldOutlookRuntime:
             {
                 "retry_identity": "outlook-ordinary-progress.2",
                 **({"execution_origin_review": _EXECUTION_ORIGIN_REVIEW} if self._source_critic is not None else {}),
+                **({"origin_author_menu": _ORIGIN_AUTHOR_MENU} if self._source_critic is not None else {}),
                 **({"configured_identity_source_ref": self._identity_source["source_ref"]} if self._identity_source else {}),
                 "source_contract": _WORKING_SOURCES,
                 "world_id": projection.world_id,
@@ -1415,6 +1421,9 @@ class WorldOutlookRuntime:
                 "basis_refs": list(basis_refs),
                 "condition_source_scope": _WORKING_SOURCES,
                 **({"execution_origin_review": _EXECUTION_ORIGIN_REVIEW} if self._source_critic is not None else {}),
+                **({"private_origin_review": {"contract": _ORIGIN_AUTHOR_MENU,
+                    "prior_future_qualified": self._origin_head_is_current(prior_head),
+                    "authority": "technical_review_status_not_world_fact"}} if self._source_critic is not None else {}),
                 **({"configured_companion_identity": self._identity_source} if self._identity_source else {}),
                 "condition_sources": [v.model_dump(mode="json") for v in working_sources.values()],
                 "available_npc_refs": list(npc_refs),
@@ -1520,6 +1529,15 @@ class WorldOutlookRuntime:
                 else:
                     instruction = "For each response, call world_outlook_v6 once with your complete candidate. If validation rejects a candidate, your next response must be a corrected function call. Do not return an ordinary text/JSON message."
                 system = before + instruction + after[after.index("\n"): ]
+            if "private_origin_review" in packet:
+                system += ("\nprivate_origin_review is technical status, not new World evidence. An unqualified "
+                    "private future requires a revise candidate for source review, not keep. Retain selectors "
+                    "copy old private prose; they never establish a missing prior event or character action. "
+                    "Correct unsupported descriptions or omit unexecuted prospects; do not invent protagonist "
+                    "behavior to repair them. Executable environment text becomes available at opens_at; "
+                    "planning prose is available at publication, recurring slot text at its instance start. "
+                    "Duration does not authorize completed facts from later in that interval. Put later "
+                    "progression in timed details; explicit future arrangements remain arrangements.")
             if "configured_companion_identity" in packet:
                 system = system.replace("World facts are the only factual authority.",
                     "World facts govern current changing circumstances; the exact configured identity source supplies only its standing baseline.")

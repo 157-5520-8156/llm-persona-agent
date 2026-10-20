@@ -1,3 +1,16 @@
+Private Outlook capability consistency: an unreviewed or differently configured legacy future no
+longer offers keep as if its authority checks had passed. The same origin/identity marker check
+now drives readiness and the keep menu; already qualified compatible futures remain retainable.
+A bounded technical status and the exact publication-time rule reach the FIRST author request,
+including starts of recurring slots and the distinction between duration and elapsed evidence.
+This does not force a new plot or protagonist choice; valid unchanged nodes may appear in a full
+candidate for review. Fresh task identity versions this menu, while old paid requests keep their
+exact inputs. Real v44 low first draft added illegal root review_at; max-budget same-wire contrast
+produced valid keep but retained the same unreviewed future, so no provider budget was promoted.
+An actual menu test reproduces unreviewed keep being offered (1fail/3pass); after the repair,
+80 authority/replanning tests pass, including qualified keep and changed-identity rejection.
+Own frozen full and retained-world continuation remain required. No old history/failure is removed.
+
 Configured identity source continuity: the existing CompanionIdentityFrame now supplies a narrow
 world_background lane (name, aliases, stable_identity_facts only) to both the Outlook author and
 its origin critic through the same exact pinned packet. This closes the actual v43 mismatch where

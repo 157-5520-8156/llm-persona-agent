@@ -279,7 +279,13 @@ async def test_world_author_and_critic_share_only_the_existing_scoped_identity_s
         assert packet["configured_companion_identity"]["source_ref"] == companion_identity_source_ref(frame, scope="world_background")
         assert packet["configured_companion_identity"]["material"] == companion_identity_source_material(frame, scope="world_background")
         assert store.head()[2]["configured_identity_source_ref"] == companion_identity_source_ref(frame, scope="world_background")
+        assert packet["private_origin_review"]["prior_future_qualified"] is False
+        assert "Duration does not authorize completed facts" in author.calls[0][0]["content"]
         assert not runtime.view()["needs_revision"]
+        from companion_daemon.world_v2.world_outlook_history import OutlookHistoryOffer
+        assert runtime._keep_is_offered(packet=packet, projection=before,
+            manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)), prior_head=store.head(),
+            npc_refs=(), sources={}, history_offer=OutlookHistoryOffer(items=()))
         accepted = store.head()
         runtime.close()
         reopened = SQLiteWorldOutlookStore(path=tmp_path / "outlook.sqlite", world_id=WORLD_ID, actor_ref=OWNER)
@@ -287,6 +293,9 @@ async def test_world_author_and_critic_share_only_the_existing_scoped_identity_s
             source_critic=Critic(), identity_frame=frame.model_copy(update={
                 "stable_identity_facts": ("她的父母原来经营一家书店，现在已经歇业。",)}))
         assert runtime.view()["needs_revision"]
+        assert not runtime._keep_is_offered(packet=packet, projection=before,
+            manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)), prior_head=reopened.head(),
+            npc_refs=(), sources={}, history_offer=OutlookHistoryOffer(items=()))
         assert reopened.head() == accepted
         assert len(author.calls) == 1
         assert ledger.project() == before
