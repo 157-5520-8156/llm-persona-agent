@@ -244,6 +244,57 @@ async def test_origin_review_does_not_rebuy_obsolete_publication_slots(tmp_path,
         runtime.close()
 
 
+@pytest.mark.asyncio
+async def test_world_author_and_critic_share_only_the_existing_scoped_identity_source(tmp_path):
+    from companion_daemon.world_v2.companion_identity import (CompanionIdentityFrame,
+        companion_identity_source_ref, companion_identity_source_material)
+    frame = CompanionIdentityFrame(companion_name="知栀", counterpart_name="用户",
+        stable_identity_facts=("她的父母经营一家书店。",),
+        background="UNSCOPED_BACKGROUND", daily_life=("UNSCOPED_DAILY_EPISODE",),
+        speech_examples=("UNSCOPED_EXAMPLE",))
+    ledger, wake, store, author, old = setup(tmp_path, lambda w: [
+        {"decision": "revise", "draft": draft_value(w)}])
+
+    class Critic:
+        model = "fixture:scoped-deployment-identity"
+        async def complete(self, messages, **kwargs):
+            packet = json.loads(messages[1]["content"])
+            source = packet["pinned_authority"]["configured_companion_identity"]
+            assert source["source_ref"] == companion_identity_source_ref(frame, scope="world_background")
+            assert source["material"] == companion_identity_source_material(frame, scope="world_background")
+            assert source["material"]["stable_identity_facts"] == ["她的父母经营一家书店。"]
+            assert source["subject_actor_ref"] == OWNER
+            assert "UNSCOPED_" not in json.dumps(source)
+            assert packet["pinned_authority"]["execution_authority"]["execution_bindings"] == []
+            return json.dumps({"review": {"decision": "supported", "reason": "Standing setting is source-bound; no episode or new character action authorized."}})
+
+    runtime = WorldOutlookRuntime(ledger=ledger, store=store, author=author, actor_ref=OWNER,
+        source_critic=Critic(), identity_frame=frame)
+    before = ledger.project()
+    try:
+        assert (await runtime.refresh(projection=before, context={},
+            manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger))))["status"] == "ready"
+        from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
+        packet = decode_outlook_request(author.calls[0][1]["content"])
+        assert packet["configured_companion_identity"]["source_ref"] == companion_identity_source_ref(frame, scope="world_background")
+        assert packet["configured_companion_identity"]["material"] == companion_identity_source_material(frame, scope="world_background")
+        assert store.head()[2]["configured_identity_source_ref"] == companion_identity_source_ref(frame, scope="world_background")
+        assert not runtime.view()["needs_revision"]
+        accepted = store.head()
+        runtime.close()
+        reopened = SQLiteWorldOutlookStore(path=tmp_path / "outlook.sqlite", world_id=WORLD_ID, actor_ref=OWNER)
+        runtime = WorldOutlookRuntime(ledger=ledger, store=reopened, author=author, actor_ref=OWNER,
+            source_critic=Critic(), identity_frame=frame.model_copy(update={
+                "stable_identity_facts": ("她的父母原来经营一家书店，现在已经歇业。",)}))
+        assert runtime.view()["needs_revision"]
+        assert reopened.head() == accepted
+        assert len(author.calls) == 1
+        assert ledger.project() == before
+    finally:
+        old._executor = None
+        runtime.close()
+
+
 def setup(tmp_path, outputs):
     ledger = WorldLedger.in_memory(world_id=WORLD_ID)
     wake = _seed_clock(ledger)

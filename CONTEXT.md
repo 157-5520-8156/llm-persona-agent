@@ -1,3 +1,18 @@
+Configured identity source continuity: the existing CompanionIdentityFrame now supplies a narrow
+world_background lane (name, aliases, stable_identity_facts only) to both the Outlook author and
+its origin critic through the same exact pinned packet. This closes the actual v43 mismatch where
+parents owning a bookstore appeared only as generation constraints while the critic saw a generic
+migrated core. Style/examples/daily scripts/user or shared history remain outside this source.
+It authorizes standing fictional background, never new participation, perception, consent, payment
+or a completed episode. Newer accepted World consequences govern changed circumstances; a changed
+configured source invalidates private readiness without rewriting the old head/paid request.
+Old requests without the lane remain byte-identical. Existing authority validators, fixed logical
+target, protected production and original failures/history remain. Real critic controls support the
+actual configured background and reject the original invalid episode; the latter critic specifically
+identified a future meeting result asserted too early, not a fresh proof of every prior-action claim.
+A previous paid paired control separately identifies the missing character submission. No narrative
+richness/major branching/unattended-day pass follows from these controls. See current RUN-NOTES.
+
 Predeployment follow-up to d36bb9d3: full-v4 completed with11155pass/12fail, not qualified;
 no source changed during that run and v42 never launched. Eleven fixture authors did not handle
 the new origin-review lane; its explicit test scripts now expose that lane without weakening

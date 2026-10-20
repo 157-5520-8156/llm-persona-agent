@@ -3404,6 +3404,7 @@ def build_qq_c2c_host(
         router=semantic_chat.router,
         character_interior=semantic_chat.character_interior,
         world_author_background_constraints=semantic_chat.identity_frame.stable_identity_facts,
+        world_author_identity_frame=semantic_chat.identity_frame,
         transport=transport,
         media_transport=media_transport,
         media_planner=(media_preview.planner if media_preview is not None else None),

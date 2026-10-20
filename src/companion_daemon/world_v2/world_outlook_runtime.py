@@ -451,6 +451,7 @@ class WorldOutlookRuntime:
         authoring_constraints=(),
         rolling_planning=False,
         source_critic=None,
+        identity_frame=None,
     ):
         if (not isinstance(authoring_constraints, tuple) or len(authoring_constraints) > 16
                 or any(not isinstance(value, str) or not value.strip() for value in authoring_constraints)
@@ -459,6 +460,15 @@ class WorldOutlookRuntime:
         self._authoring_constraints = authoring_constraints
         self._rolling_planning = rolling_planning
         self._source_critic = source_critic
+        self._identity_source = None
+        if identity_frame is not None:
+            from .companion_identity import (CompanionIdentityFrame,
+                companion_identity_source_material, companion_identity_source_ref)
+            if not isinstance(identity_frame, CompanionIdentityFrame):
+                raise TypeError("World identity must use the existing scoped CompanionIdentityFrame")
+            self._identity_source = {"scope": "world_background", "subject_actor_ref": actor_ref,
+                "source_ref": companion_identity_source_ref(identity_frame, scope="world_background"),
+                "material": companion_identity_source_material(identity_frame, scope="world_background")}
         self._authoring_constraints_hash = digest(authoring_constraints) if authoring_constraints else None
         self.ledger, self.store, self.author, self.actor_ref = ledger, store, author, actor_ref
         self._content_store = content_store
@@ -1137,6 +1147,8 @@ class WorldOutlookRuntime:
             "needs_revision": (
                 (self._source_critic is not None
                  and evidence.get("execution_source_review", {}).get("contract") != _EXECUTION_ORIGIN_REVIEW)
+                or (self._identity_source is not None and evidence.get("configured_identity_source_ref")
+                    != self._identity_source["source_ref"])
                 or
                 evidence.get("authoring_constraints_hash") != self._authoring_constraints_hash
                 or preparation is not None and (evidence.get("rolling_planning") != _ROLLING_PLANNING
@@ -1221,6 +1233,7 @@ class WorldOutlookRuntime:
             {
                 "retry_identity": "outlook-ordinary-progress.2",
                 **({"execution_origin_review": _EXECUTION_ORIGIN_REVIEW} if self._source_critic is not None else {}),
+                **({"configured_identity_source_ref": self._identity_source["source_ref"]} if self._identity_source else {}),
                 "source_contract": _WORKING_SOURCES,
                 "world_id": projection.world_id,
                 "actor_ref": self.actor_ref,
@@ -1402,6 +1415,7 @@ class WorldOutlookRuntime:
                 "basis_refs": list(basis_refs),
                 "condition_source_scope": _WORKING_SOURCES,
                 **({"execution_origin_review": _EXECUTION_ORIGIN_REVIEW} if self._source_critic is not None else {}),
+                **({"configured_companion_identity": self._identity_source} if self._identity_source else {}),
                 "condition_sources": [v.model_dump(mode="json") for v in working_sources.values()],
                 "available_npc_refs": list(npc_refs),
                 "npc_privacy_floors": npc_privacy_floors,
@@ -1506,6 +1520,16 @@ class WorldOutlookRuntime:
                 else:
                     instruction = "For each response, call world_outlook_v6 once with your complete candidate. If validation rejects a candidate, your next response must be a corrected function call. Do not return an ordinary text/JSON message."
                 system = before + instruction + after[after.index("\n"): ]
+            if "configured_companion_identity" in packet:
+                system = system.replace("World facts are the only factual authority.",
+                    "World facts govern current changing circumstances; the exact configured identity source supplies only its standing baseline.")
+                system += ("\nconfigured_companion_identity is the exact scoped deployment identity source: "
+                    "its named stable_identity_facts may ground the standing fictional background, not a new "
+                    "episode, attendance, action, perception, consent or current location. Its identity-frame "
+                    "token is not an event basis ref, condition source, history anchor or NPC ref; never copy "
+                    "it into those namespaces. Newer source-bound World consequences govern evolving circumstances; "
+                    "background cannot undo a closure, changed resources, relationship or other accepted consequence. "
+                    "Generation-only constraints still grant no factual evidence.")
             messages = [
                 {"role": "system", "content": system + "\n" + PRESENTATION_GUIDE + ("\n" + ROLLING_PRESENTATION_GUIDE if self._rolling_planning else "")},
                 {"role": "user", "content": (_encode_story_request(packet) if self._rolling_planning else
@@ -1643,6 +1667,7 @@ class WorldOutlookRuntime:
                 self._validate_offered_nodes(candidate, projection=projection)
                 execution_source_review = (await self._review_executable_sources(
                     candidate=candidate, context=context, manifest=manifest, projection=projection,
+                    identity_source=pinned_packet.get("configured_companion_identity"),
                 ) if self._source_critic is not None else None)
             except (ValueError, TypeError) as exc:
                 self._record_attempt(
@@ -1726,6 +1751,8 @@ class WorldOutlookRuntime:
                         "cursor": cursor_of(projection),
                         "snapshot_hash": projection.semantic_hash,
                         **({"execution_source_review": execution_source_review} if execution_source_review is not None else {}),
+                        **({"configured_identity_source_ref": pinned_packet["configured_companion_identity"]["source_ref"]}
+                           if "configured_companion_identity" in pinned_packet else {}),
                         **({"rolling_planning": pinned_packet["rolling_preparation"].get(
                             "contract", "rolling-world-planning.3")} if "rolling_preparation" in pinned_packet else {}),
                         **({"authoring_constraints_hash": pinned_packet["authoring_constraints"]["digest"]}
@@ -1910,7 +1937,7 @@ class WorldOutlookRuntime:
         return digest({"kind": execution["kind"], "text": execution.get("text"),
                        **({"planning": execution["planning"]} if execution.get("planning") else {})})
 
-    async def _review_executable_sources(self, *, candidate, context, manifest, projection):
+    async def _review_executable_sources(self, *, candidate, context, manifest, projection, identity_source=None):
         """Reuse the original origin critic before private prose gains fact authority.
 
         A batch is an adapter to that critic, never a new World proposal or role
@@ -1991,6 +2018,23 @@ class WorldOutlookRuntime:
                 "may announce new assignments, but permission/assignment is not participation.")
             messages[0]["content"] += _TEMPORAL_PUBLICATION_GUIDANCE
             packet = json.loads(messages[1]["content"])
+            if identity_source is not None:
+                material = identity_source.get("material", {})
+                if (identity_source.get("scope") != "world_background"
+                        or identity_source.get("subject_actor_ref") != self.actor_ref
+                        or identity_source.get("source_ref") != "identity-frame:world-background:sha256:" + digest(material)
+                        or set(material) != {"companion_name", "companion_aliases", "stable_identity_facts"}):
+                    raise ValueError("configured identity source differs from its exact stable source lane")
+                packet["pinned_authority"]["configured_companion_identity"] = identity_source
+                messages[0]["content"] += (
+                    " configured_companion_identity is a narrow hashed background projection of the same "
+                    "CompanionIdentityFrame used by the Character Model. Its exact stable_identity_facts and names authorize only that supplied "
+                    "standing fictional identity/background. This is not an unsourced memory or a novel relationship. "
+                    "It never proves a new action, attendance, submission, payment, perception, consent, "
+                    "current location or episode; preferences do not prove current behavior. "
+                    "For evolving circumstances, newer accepted World facts override background defaults; "
+                    "this source cannot undo changed resources, status or other actual consequences. "
+                    "Generation constraints alone remain non-factual. Do not invent facts absent from both lanes.")
             packet["pinned_authority"]["temporal_publication"] = {
                 "contract": "world-outlook-script-publication.1",
                 "rule": "no_completed_fact_after_its_first_available_time; explicit future arrangements remain arrangements",

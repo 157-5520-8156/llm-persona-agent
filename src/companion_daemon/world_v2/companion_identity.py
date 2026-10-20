@@ -55,6 +55,7 @@ def companion_identity_source_material(
         "stable_identity",
         "shared_history",
         "counterpart_history",
+        "world_background",
     ] = "stable_identity",
 ) -> dict[str, object]:
     """Return exactly the configured material covered by one identity token.
@@ -64,6 +65,8 @@ def companion_identity_source_material(
     additional, unhashed fields to an existing source reference.
     """
 
+    if scope == "world_background":
+        return identity.model_dump(mode="json", include={"companion_name", "companion_aliases", "stable_identity_facts"})
     if scope == "stable_identity":
         return identity.model_dump(
             mode="json",
@@ -102,6 +105,7 @@ def companion_identity_source_ref(
         "stable_identity",
         "shared_history",
         "counterpart_history",
+        "world_background",
     ] = "stable_identity",
 ) -> str:
     """Return the byte-compatible token for one configured semantic lane."""
