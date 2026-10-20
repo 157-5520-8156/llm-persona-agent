@@ -254,7 +254,7 @@ async def test_production_manifest_requests_current_consequences_through_http_an
         result = await _advance(_composition(ledger, store, _catalog(tmp_path), model), wake)
         user = json.loads(provider.requests[0]["messages"][1]["content"])
         assert user["capability_manifest"]["outcome_contract"] == "world-consequence.2"
-        assert user["capability_manifest"]["execution_intention_sources_version"] == "2"
+        assert user["capability_manifest"]["execution_intention_sources_version"] == "3"
         assert user["capability_manifest"]["version"] == "life-development-capability.production.4"
         _assert_occurrence(ledger, store, result, provider.draft)
         assert len(provider.requests) == 3  # author + actual general + focused

@@ -1,3 +1,11 @@
+Full-v9 on f74 completed with11181pass/5fail (source unchanged), so no v47 launch.
+Four failures exposed old fresh-reader/prepaid-cadence fixture assumptions; the production fixture
+now handles the independent Life request explicitly and cold-proves prepaid effect-once separately.
+A genuine combined-failure visibility gap also lost the technical code on the generic Life
+exception path: it now returns technical_failure and the retained Outlook/exception code while
+keeping failed-safe ownership and logs.177 focused checks pass; new own full and retained-world
+controls required. Original failed logs/candidate/production remain untouched.
+
 Story causality repair: a role-selected Plan replacement was readable by RolePlanResponseReader,
 but the consequence reader routed its role_response_proposal_id through the unrelated open-life
 World Author audit branch. Fresh source reader3 reuses the existing exact role origin; old omitted/2

@@ -758,11 +758,14 @@ async def test_life_ecology_dispatches_world_opportunity_through_existing_admiss
             wake_event_ref=wake.event_id, trace_id="outlook", correlation_id="outlook"
         )
         assert result.life_development_followup_status == "occurrence_committed"
-        assert len(ledger.project().world_occurrences) == 1
+        assert result.prepaid_outlook_followup_status == "occurrence_committed"
+        occurrences = ledger.project().world_occurrences
+        assert len(occurrences) == 2
+        assert sum(o.occurrence_id.startswith("occurrence:world-outlook:") for o in occurrences) == 1
         assert character.calls == 0
         assert len(store.offers()) == 1 and store.offers()[0]["state"] == "considered"
         assert store.offers()[0]["payload"]["effect_refs"]
-        assert author.calls == 0
+        assert author.calls == 1
     finally:
         outlook.close()
 
@@ -809,8 +812,8 @@ async def test_waiting_outlook_does_not_disable_independent_life_authoring(tmp_p
         )
         result = await ecology.advance_once(wake_event_ref=wake.event_id,
                                             trace_id="waiting", correlation_id="waiting")
-        assert len(development.calls) == (0 if preparation_failed else 1)
-        assert result.life_development_followup_status == ("technical_failure" if preparation_failed else "no_op")
+        assert len(development.calls) == 1
+        assert result.life_development_followup_status == "no_op"
         if preparation_failed:
             assert result.technical_failure_code == "outlook.retained_failure"
         assert not store.offers() and len(author.calls) == 1
@@ -1058,12 +1061,22 @@ class ProductionAuthor:
     def __init__(self):
         self.calls = []
         self.origin_reviews = []
+        self.life_calls = []
 
     async def complete(self, messages, **kwargs):
         from datetime import datetime
 
         from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
 
+        try:
+            life_packet = json.loads(messages[1]["content"])
+        except json.JSONDecodeError:
+            life_packet = {}
+        if "capability_manifest" in life_packet:
+            # This fixture isolates prepaid script execution. Independent Life
+            # authoring still receives its real request and explicitly no-ops.
+            self.life_calls.append(life_packet)
+            return json.dumps({"decision": "no_op"})
         packet = decode_outlook_request(messages[-1]["content"])
         if packet.get("evidence_packet_binding", {}).get("contract") == "world-outlook-execution-source-packet.1":
             self.origin_reviews.append(packet)
@@ -1170,6 +1183,7 @@ async def test_opt_in_production_composition_executes_frozen_batch_and_cold_reop
         await production_tick(app, now, now + timedelta(minutes=10), "first")
         assert app.world_outlook_health()["status"] == "ready"
         assert len(author.calls) == 1 and npc.calls == 0
+        assert len(author.life_calls) == 1
         assert len(author.origin_reviews) == 1
         before = app.export_replay_evidence()
         assert all(
@@ -1182,8 +1196,10 @@ async def test_opt_in_production_composition_executes_frozen_batch_and_cold_reop
                 now + timedelta(minutes=minute),
                 "step" + str(minute),
             )
-            assert result.life_development_followup_status == "occurrence_committed"
+            assert result.prepaid_outlook_followup_status == "occurrence_committed"
+            assert result.life_development_followup_status is None
         assert len(author.calls) == 1 and npc.calls == 0
+        assert len(author.life_calls) == 1
         assert len(author.origin_reviews) == 1
         evidence = app.export_replay_evidence()
         assert sum(e.event.event_type == "WorldOccurrenceCommitted" for e in evidence.events) == 3
@@ -1196,6 +1212,7 @@ async def test_opt_in_production_composition_executes_frozen_batch_and_cold_reop
         )
         assert repeat.status == "joined_existing"
         assert len(author.calls) == 1 and npc.calls == 0
+        assert len(author.life_calls) == 1
         assert len(reopened.export_replay_evidence().events) == len(evidence.events)
     finally:
         await reopened.aclose()

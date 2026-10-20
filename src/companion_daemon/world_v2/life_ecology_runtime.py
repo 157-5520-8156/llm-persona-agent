@@ -941,7 +941,7 @@ class LifeEcologyRuntime:
                         life_development_followup_status=life_development_status,
                         prepaid_outlook_followup_status=prepaid_outlook_status,
                     )
-            except Exception:
+            except Exception as exc:
                 _LOG.exception(
                     "life ecology life development followup failed wake=%s",
                     wake_event_ref,
@@ -955,6 +955,11 @@ class LifeEcologyRuntime:
                     activity_followup_status=activity_status,
                     aftermath_followup_status=aftermath_status,
                     biographical_followup_status=biographical_status,
+                    life_development_followup_status="technical_failure",
+                    technical_failure_code=(
+                        outlook_preparation_failure
+                        or _technical_failure_code("life_development", exc)
+                    ),
                 )
 
             return None

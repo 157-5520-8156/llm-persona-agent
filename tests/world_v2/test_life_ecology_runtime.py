@@ -619,6 +619,8 @@ async def test_life_ecology_fails_safe_when_life_development_raises() -> None:
 
     assert result.status == "failed_safe"
     assert result.reason_code == "life_ecology.life_development_followup_failed"
+    assert result.life_development_followup_status == "technical_failure"
+    assert result.technical_failure_code == "life_development.value_error"
     assert media.calls == []
     assert trigger_store.completed[0][2] == "failed_safe"
 
