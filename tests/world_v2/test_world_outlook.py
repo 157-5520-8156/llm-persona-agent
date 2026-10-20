@@ -134,7 +134,11 @@ async def test_private_script_is_source_checked_before_it_can_become_world_fact(
         assert len(author.calls) == 2 and len(critic.calls) == 2
         assert ledger.project() == before
         assert any("completed_character_experience" in json.dumps(m) for m in author.calls[-1:])
+        assert "draft.opportunities[0].execution.text" in author.calls[-1][-1]["content"]
         assert store.head()[2]["execution_source_review"]["contract"] == "world-outlook-origin-review.1"
+        from companion_daemon.world_v2.world_outlook import digest
+        assert store.head()[2]["execution_source_review"]["records"][0]["request_hash"] == digest({
+            "messages": critic.calls[-1], "temperature": 0.0})
     finally:
         runtime.close()
 
@@ -194,6 +198,48 @@ async def test_unknown_origin_review_never_rebills_or_publishes_the_script(tmp_p
             await runtime._review_executable_sources(candidate=draft, context={}, manifest=manifest, projection=state)
         assert runtime._source_critic.calls == 1
         assert store.head() is None and ledger.project() == state
+    finally:
+        runtime.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("obsolete", ["expired", "replaced_now"])
+async def test_origin_review_does_not_rebuy_obsolete_publication_slots(tmp_path, monkeypatch, obsolete):
+    from test_world_planning import planning
+    ledger, wake, _, _, runtime = setup(tmp_path, lambda w: [])
+    marker = "OBSOLETE-SLOT-NOT-A-FUTURE-EXECUTION"
+    old_end = NOW + timedelta(days=-1 if obsolete == "expired" else 30)
+    old = planning(contract="world-planning.2", starts_on=(NOW-timedelta(days=30)).date().isoformat(),
+        ends_on=old_end.date().isoformat(),
+        detailed_through=(old_end if obsolete == "expired" else NOW+timedelta(days=7)).date().isoformat(),
+        review_at=(NOW+timedelta(days=-2 if obsolete == "expired" else 6)).isoformat(),
+        slots=[{"slot_id": "old", "title": "旧课", "detail": "旧安排", "weekdays": [0],
+        "start_minute": 840, "duration_minutes": 60, "event_text": marker}])
+    publication = SimpleNamespace(occurrence_ref="occurrence:old-publication", planning=old)
+    monkeypatch.setattr(runtime, "_planning_publications", lambda _: (publication,))
+    runtime._rolling_planning = True
+    value = draft_value(wake)
+    if obsolete == "replaced_now":
+        replacement = planning(contract="world-planning.2", supersedes_occurrence_ref=publication.occurrence_ref,
+            starts_on=(NOW-timedelta(days=30)).date().isoformat(), ends_on=(NOW+timedelta(days=30)).date().isoformat(),
+            detailed_through=(NOW+timedelta(days=7)).date().isoformat(), review_at=(NOW+timedelta(days=6)).isoformat(),
+            slots=[{"slot_id": "old", "title": "新课", "detail": "已修订", "weekdays": [0],
+                    "start_minute": 840, "duration_minutes": 60, "event_text": "修订后的外部课程开始。"}])
+        value["opportunities"][0]["execution"] = {"kind": "planning", "text": "公布修订安排。",
+            "duration_minutes": 1, "planning": replacement.model_dump(mode="json")}
+
+    class Critic:
+        model = "fixture:bounded-active-script-scope"
+        async def complete(self, messages, **kwargs):
+            assert marker not in json.dumps(json.loads(messages[1]["content"])["reviewed_surface"])
+            return json.dumps({"review": {"decision": "supported", "reason": "Only prospective active scripts."}})
+
+    runtime._source_critic = Critic()
+    before = ledger.project()
+    try:
+        await runtime._review_executable_sources(candidate=WorldOutlookDraft.model_validate_json(json.dumps(value)),
+            context={}, manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)), projection=before)
+        assert ledger.project() == before
     finally:
         runtime.close()
 

@@ -1925,7 +1925,7 @@ class WorldOutlookRuntime:
         )
         from .world_consequence_contract import WorldConsequenceV2, WorldConsequenceAuthority
         scripts = {}
-        def add(execution, *, available_at=None):
+        def add(execution, *, path, available_at=None):
             value = execution.model_dump(mode="json") if hasattr(execution, "model_dump") else execution
             if value["kind"] not in {"environment", "planning"}:
                 return
@@ -1933,19 +1933,32 @@ class WorldOutlookRuntime:
             text = (execution.planning.public_text() if getattr(execution, "planning", None)
                     else value.get("text", ""))
             times = scripts[key][1] if key in scripts else []
+            paths = scripts[key][2] if key in scripts else []
             if available_at is not None:
                 times.append(available_at)
-            scripts[key] = text, times
-        for node in candidate.opportunities:
-            add(node.execution, available_at=node.opens_at.isoformat())
+            paths.append({"path": path} if isinstance(path, str) else path)
+            scripts[key] = text, times, paths
+        for index, node in enumerate(candidate.opportunities):
+            base = f"draft.opportunities[{index}].execution"
+            add(node.execution, path=base + (".planning" if node.execution.planning else ".text"),
+                available_at=node.opens_at.isoformat())
             if node.execution.planning is not None:
-                for slot in node.execution.planning.slots:
-                    add({"kind": "environment", "text": slot.event_text})
+                for slot_index, slot in enumerate(node.execution.planning.slots):
+                    add({"kind": "environment", "text": slot.event_text},
+                        path=base + f".planning.slots[{slot_index}].event_text")
         # A legacy publication may still spawn future appointments after upgrade.
         # Review those original slot bytes too; never grandfather an unreviewed script.
+        replaced_now = {n.execution.planning.supersedes_occurrence_ref for n in candidate.opportunities
+                        if n.execution.planning is not None and n.opens_at <= projection.logical_time}
         for publication in self._planning_publications(projection) if self._rolling_planning else ():
-            for slot in publication.planning.slots:
-                add({"kind": "environment", "text": slot.event_text})
+            today = projection.logical_time.astimezone(ZoneInfo(publication.planning.timezone_name)).date()
+            if publication.occurrence_ref in replaced_now or publication.planning.ends_on < today:
+                continue
+            for slot_index, slot in enumerate(publication.planning.slots):
+                add({"kind": "environment", "text": slot.event_text},
+                    path={"readonly_source_coordinate": f"published_planning[{publication.occurrence_ref}].slots[{slot_index}].event_text",
+                          "repair_path": "draft.opportunities[*].execution.planning",
+                          "required_predecessor": publication.occurrence_ref})
         records = []
         items = tuple(scripts.items())
         for offset in range(0, len(items), 4):
@@ -1991,10 +2004,14 @@ class WorldOutlookRuntime:
                 reviewed_surface=packet["reviewed_surface"], pinned_authority=packet["pinned_authority"])
             messages[1]["content"] = json.dumps(packet, ensure_ascii=False)
             tools = novel_origin_review_tool_contract(draft)
+            call_kwargs = {"temperature": 0.0,
+                **(tools if callable(getattr(self._source_critic, "complete_json", None)) else {})}
+            def review_request_hash(messages):
+                return digest({"messages": messages, **call_kwargs})
             subject = {"contract": _EXECUTION_ORIGIN_REVIEW, "scripts": [key for key, _ in batch],
                 "model": str(getattr(self._source_critic, "model", type(self._source_critic).__name__)),
                 "model_version": getattr(self._source_critic, "model_version", None),
-                "request_hash": _outlook_request_hash(messages, tools["tools"])}
+                "request_hash": review_request_hash(messages)}
             operation = "origin-review:" + digest(subject)
             claimed = self.store.claim(operation, kind="script_origin_review", payload=subject)
             attempts = self.store.attempts(operation)
@@ -2006,11 +2023,10 @@ class WorldOutlookRuntime:
                 if cached is None:
                     call = operation + f":call:{ordinal}"
                     if not self.store.claim(call, kind="origin_review_call", payload={
-                            "request_hash": _outlook_request_hash(messages, tools["tools"]), "model": subject["model"]}):
+                            "request_hash": review_request_hash(messages), "model": subject["model"]}):
                         raise RuntimeError("outlook_origin_review_outcome_unknown")
                     with model_call_scope("life_development_novel_origin_review", action_id=call):
-                        raw = await complete_json_object(self._source_critic, messages, temperature=0.0,
-                            **(tools if callable(getattr(self._source_critic, "complete_json", None)) else {}))
+                        raw = await complete_json_object(self._source_critic, messages, **call_kwargs)
                     self.store.attempt(operation, ordinal=ordinal, payload={"messages": messages,
                         "response_tools": tools["tools"], "raw": raw})
                 else:
@@ -2027,8 +2043,20 @@ class WorldOutlookRuntime:
             self.store.finish(operation, state="accepted" if review.decision == "supported" else "rejected",
                 payload={**record, "review": review.model_dump(mode="json")})
             if review.decision != "supported":
+                findings = []
+                for finding in review.unsupported_outcome_prerequisites:
+                    index = int(finding.prose_path.split(".")[1])
+                    if index >= len(batch):
+                        raise RuntimeError("outlook_origin_review_rejected_non_executable_adapter_padding")
+                    paths = batch[index][1][2]
+                    findings.extend({**path, "exact_fragments": list(finding.exact_fragments),
+                        "violation_kinds": list(finding.violation_kinds)} for path in paths)
+                if not findings:
+                    raise RuntimeError("outlook_origin_review_rejected_adapter_without_executable_coordinates")
                 raise ValueError("execution source origin rejected before publication: "
-                                 + json.dumps(review.model_dump(mode="json"), ensure_ascii=False))
+                    + json.dumps({"outlook_script_findings": findings,
+                        "repair_authority": "Correct the named draft field, or omit an unexecuted private prospect. A published slot needs a valid planning replacement now through its exact predecessor; never overwrite history or author a new character action.",
+                        "reason": review.reason}, ensure_ascii=False))
             records.append(record)
         return {"contract": _EXECUTION_ORIGIN_REVIEW, "records": records}
 

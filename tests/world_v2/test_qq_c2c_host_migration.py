@@ -3875,11 +3875,20 @@ async def test_qq_c2c_host_runs_text_ingress_and_restart_recovery_without_a_lega
         await restarted.aclose()
 
     assert _visible(second_delivery) == []
-    # The always-on exact-due timer may recover the action before the explicit
-    # scheduler pass.  If the scheduler wins the race it must still report the
-    # same unknown terminal result.
-    if drained.action_statuses:
-        assert any("unknown" in status for status in drained.action_statuses), drained
+    # The timer or scheduler can perform the recovery. "settled" is a work
+    # status, not the receipt's observed state; assert the exact durable action.
+    from companion_daemon.world_v2.sqlite_ledger import SQLiteWorldLedger
+    recovered = SQLiteWorldLedger(path=database, world_id="world:companion-v2:qq-c2c:geoff")
+    try:
+        projection = recovered.project()
+        assert next(a for a in projection.actions if a.action_id == result.action_id).state == "unknown", drained
+        dispatches = [e for e in recovered.export_replay_evidence().events
+                      if e.event.event_type == "ActionDispatchStarted"
+                      and e.event.payload()["action_id"] == result.action_id]
+        assert len(dispatches) == 1
+        assert recovered.rebuild() == projection
+    finally:
+        recovered.close()
 
 
 @pytest.mark.asyncio

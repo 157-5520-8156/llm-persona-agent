@@ -1,3 +1,17 @@
+Predeployment follow-up to d36bb9d3: full-v4 completed with11155pass/12fail, not qualified;
+no source changed during that run and v42 never launched. Eleven fixture authors did not handle
+the new origin-review lane; its explicit test scripts now expose that lane without weakening
+production admission. The QQ fixture actually persisted ActionUnknown with one dispatch while
+the drain returned generic work status settled; the test now cold-checks that exact durable action
+and one dispatch instead of conflating work/result statuses. All old failed logs/fixture DB remain.
+Reviewer request identities now hash the actual named-tool/temperature arguments; precise author
+feedback maps adapter coordinates to real draft fields, with readonly publication coordinates
+requesting a new exact-predecessor planning document. Superseded-now/expired slot templates are not
+rebilled as future scripts; past records remain. Current paid-verdict requalification is an explicit
+0HTTP transcript replay, not a new provider attestation. Full final source and current prestart
+remain required. Parallel testing uses isolated pytest-xdist tooling, complete suite/loadfile,
+not fewer tests or changed time budgets. No product dependency or protected runtime is installed.
+
 Private Outlook execution now has a source-authority admission gate. Production reuses the
 configured focused origin critic (or the same World Author in that critic role) before an
 executable environment/planning document or recurring slot can gain fact authority. The critic

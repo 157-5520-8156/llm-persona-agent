@@ -396,6 +396,25 @@ class _Role(_ResponseHTTP):
 
 
 def _build(path, world, now, role, author, actor="actor:companion", archive=None):
+    # Existing explicit World fixtures also stand in for the origin critic in
+    # production composition. Keep that new provider lane distinct from their
+    # author-call/failure scripts; the production gate stays installed.
+    if not getattr(author, "_outlook_origin_fixture_installed", False):
+        original_complete = author.complete
+        author.origin_reviews = []
+
+        async def complete_with_origin_fixture(messages, **kwargs):
+            packet = json.loads(messages[1]["content"])
+            if packet.get("evidence_packet_binding", {}).get("contract") == "world-outlook-execution-source-packet.1":
+                from companion_daemon.world_v2.life_development_source_closure import life_development_review_packet_identity
+                life_development_review_packet_identity(messages)
+                assert packet["pinned_authority"]["execution_authority"]["execution_bindings"] == []
+                author.origin_reviews.append(packet)
+                return json.dumps({"review": {"decision": "supported", "reason": "Explicit source-bound external fixture scripts only."}})
+            return await original_complete(messages, **kwargs)
+
+        author.complete = complete_with_origin_fixture
+        author._outlook_origin_fixture_installed = True
     model = _model(role)
     capabilities = QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
         update={"private_turn_state_mode": "required"}
