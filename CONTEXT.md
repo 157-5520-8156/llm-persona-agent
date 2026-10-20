@@ -1,3 +1,10 @@
+3324 own full13 completed11217pass/1fail; retained actual Root/scope controls and final
+real GLM private-identity/extra-childhood/public-privacy negatives passed with World unchanged.
+The remaining test-only fixture offered an NPC registration absent from its committed refs.
+It now explicitly covers recorded/missing authority (30 source tests pass); no production source
+or validator changes. New own full still required; previous failed full is not a qualification.
+Current v49 remains live9f7, v50/v51 never launched, all prior gates/history/production preserved.
+
 Retained-data Root control blocked5301 AFTER its11213pass full: the literature friend was
 carried in current WorldStarted.continuity, while its archive registration locator has no event
 row in this World. Do not synthesize that event or use a cached head as factual authority.

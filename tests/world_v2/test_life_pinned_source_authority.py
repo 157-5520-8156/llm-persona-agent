@@ -213,7 +213,8 @@ def test_absent_legacy_marker_and_frozen_request_are_preserved():
         ))
 
 
-def test_production_capability_offers_only_resolvable_context_sources(tmp_path):
+@pytest.mark.parametrize("registration_recorded", [False, True])
+def test_production_capability_offers_only_resolvable_context_sources(tmp_path, registration_recorded):
     from companion_daemon.world_v2.life_author_seed import ReviewedLifeSeedCatalog
     from companion_daemon.world_v2.life_development_capability import (
         ProjectionLifeCapabilityManifestCompiler,
@@ -243,6 +244,8 @@ def test_production_capability_offers_only_resolvable_context_sources(tmp_path):
         ledger_sequence=11,
         committed_world_event_refs=(
             SimpleNamespace(event_id=wake.event_id, event_type=wake.event_type),
+            *((SimpleNamespace(event_id="event:npc:registered", event_type="NpcRegistered"),)
+              if registration_recorded else ()),
         ),
         npcs=(
             SimpleNamespace(
@@ -273,7 +276,7 @@ def test_production_capability_offers_only_resolvable_context_sources(tmp_path):
     )
     assert manifest.pinned_source_materials_version == "3"
     assert injected not in manifest.grounding_refs
-    assert "event:npc:registered" in manifest.grounding_refs
+    assert ("event:npc:registered" in manifest.grounding_refs) is registration_recorded
     assert "npc:friend" in manifest.entity_refs
     for ref in (REF, "reviewed-biography:timeline"):
         assert ref in manifest.grounding_refs
