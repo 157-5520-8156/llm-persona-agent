@@ -6,6 +6,8 @@ critic detects all unauthorized character actions. No accepted event is seeded.
 
 import hashlib
 import json
+import asyncio
+import threading
 
 import pytest
 
@@ -30,6 +32,7 @@ from test_life_development_runtime import (
     _SequenceModel,
     _location_bound_world_draft,
     _location_capability,
+    _projection_cursor,
     _novel_origin_review,
     _source_closure_review,
     _replace_event_payload,
@@ -83,6 +86,141 @@ async def _advance(runtime, wake):
         trace_id="trace:consequence-producer",
         correlation_id="correlation:consequence-producer",
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("phase", ["outlook_view", "pinned_outlook", "pinned_draft", "author_messages"])
+async def test_background_source_preparation_yields_to_foreground(tmp_path, phase):
+    """Public async entry points must yield during a slow SQLite source read.
+
+    The controlled delay catches scheduling starvation, not real chat latency
+    or cold replay throughput. The original projection and model work remain.
+    """
+    path = tmp_path / "source-loop.sqlite"
+    ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
+    store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD_ID)
+    started, finished = threading.Event(), threading.Event()
+    calls = []
+    ping = None
+
+    def delay():
+        started.set()
+        threading.Event().wait(0.25)
+        finished.set()
+
+    class Outlook:
+        event_details = None
+
+        def view(self, *, projection):
+            calls.append(projection)
+            if phase == "outlook_view":
+                delay()
+            return {"needs_revision": phase == "pinned_outlook"}
+
+        async def refresh(self, **kwargs):
+            assert kwargs["projection"] == calls[0]
+            assert kwargs["manifest"].pinned_cursor == _projection_cursor(ledger)
+            assert kwargs["history_trigger_ref"] == wake.event_id
+            return {"status": "unchanged"}
+
+    try:
+        wake = _seed_clock(ledger)
+        before = ledger.project()
+        author = _ReceivedAuthor(store, ('{"decision":"no_op"}',))
+        runtime = _runtime(ledger, store, wake, author,
+                           _SequenceModel(model="unused:general", outputs=()),
+                           _SequenceModel(model="unused:focused", outputs=()))
+        if phase in {"outlook_view", "pinned_outlook"}:
+            runtime._world_outlook = Outlook()
+        name = "_world_author_messages" if phase == "author_messages" else "_compile_pinned"
+        if phase != "outlook_view":
+            original = getattr(runtime, name)
+
+            def delayed(**kwargs):
+                delay()
+                result = original(**kwargs)
+                if phase == "pinned_outlook":
+                    # The minimal shared compiler stub omits this real Capsule
+                    # field; the complete preparation path needs its wake ref.
+                    result[0].trigger_ref = kwargs["wake"].event_id
+                return result
+
+            setattr(runtime, name, delayed)
+
+        async def foreground():
+            while not started.is_set():
+                await asyncio.sleep(0.001)
+            return not finished.is_set()
+
+        ping = asyncio.create_task(foreground())
+        await asyncio.sleep(0)
+        if phase in {"outlook_view", "pinned_outlook"}:
+            assert await runtime.prepare_outlook_once(wake_event_ref=wake.event_id) == {"status": "unchanged"}
+            assert calls == [before] and ledger.project() == before
+            assert not author.received
+        else:
+            assert (await _advance(runtime, wake)).status == "no_op"
+            assert len(author.received) == 1
+            assert ledger.project().world_revision == before.world_revision
+        assert await asyncio.wait_for(ping, 1), "Background source work monopolized the foreground loop"
+    finally:
+        if ping is not None and not ping.done():
+            ping.cancel()
+            await asyncio.gather(ping, return_exceptions=True)
+        store.close()
+        ledger.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel_count,fail_read", [(1, False), (2, False), (1, True)])
+async def test_cancelled_background_source_finishes_before_store_close(tmp_path, caplog, cancel_count, fail_read):
+    path = tmp_path / "cancel-source.sqlite"
+    ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
+    store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD_ID)
+    started, release, finished = threading.Event(), threading.Event(), threading.Event()
+    job = None
+
+    class Outlook:
+        def view(self, *, projection):
+            started.set()
+            assert release.wait(2), "test must release its controlled read"
+            finished.set()
+            if fail_read:
+                raise ValueError("immutable source unavailable during cancellation")
+            return {"needs_revision": False}
+
+    try:
+        wake = _seed_clock(ledger)
+        before = ledger.project()
+        author = _ReceivedAuthor(store, ())
+        runtime = _runtime(ledger, store, wake, author,
+                           _SequenceModel(model="unused:general", outputs=()),
+                           _SequenceModel(model="unused:focused", outputs=()))
+        runtime._world_outlook = Outlook()
+        job = asyncio.create_task(runtime.prepare_outlook_once(wake_event_ref=wake.event_id))
+
+        async def wait_started():
+            while not started.is_set():
+                await asyncio.sleep(0.001)
+
+        await asyncio.wait_for(wait_started(), 1)
+        for _ in range(cancel_count):
+            job.cancel()
+            await asyncio.sleep(0)
+        assert not job.done(), "cancellation must join the read before closing its stores"
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await job
+        assert finished.is_set() and not author.received and ledger.project() == before
+        if fail_read:
+            assert any(record.exc_info and isinstance(record.exc_info[1], ValueError)
+                       for record in caplog.records)
+    finally:
+        release.set()
+        if job is not None:
+            await asyncio.gather(job, return_exceptions=True)
+        store.close()
+        ledger.close()
 
 
 def _assert_original_requests(ledger, store, author):

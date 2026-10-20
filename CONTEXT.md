@@ -1,4 +1,14 @@
-Temporal publication repair in progress: actual v19 prepared prose was settled07:24:58 while
+Background source-loop isolation repair: synchronous Outlook view, pinned compilation and
+author-message preparation ran inside async entry points on the foreground loop. Four public
+SQLite controls reproduced starvation; they now yield with the exact original projection/model
+work retained. Blocking backends reuse to_thread; cancellation joins the read before propagating,
+including repeated cancellation/read errors. No models or domain acceptance move to a thread.
+Actual same retained fourDB/currentclock preparation142.587s allowed4784 loop observations and
+512 head reads (max73.7ms), maxloopdelay519.7ms,0HTTP/Worldunchanged. This is responsiveness,
+not CPU acceleration or fresh-chat SLA.126 related tests pass; final full-v14 still required.
+The predecessor22849cec full-v13 passed11074 before this IO repair; do not borrow that full.
+
+Temporal publication repair: actual v19 prepared prose was settled07:24:58 while
 its environment asserted near08:00 water restoration; v30 actor memory input and Fate received
 it before08:00. Time-gated step receipts alone did not catch this semantic early exposure.
 v30 stopped normally at07:27:48; four-DB save/strict replay/reopen/effect-once passed. Preserve
@@ -11,8 +21,8 @@ coordinates. b956 full-v12 completed11073pass/1static-host-fixture failure; same
 comparison traced it to an old day-opening tool assertion and an unscoped ordinary-event fixture
 receiving a legitimate disturbance draw. The test-only repair explicitly scopes its scripted
 ordinary case, returns valid current day-opening decisions and actually drives owned outcome
-settlement before cold effect-once checks. Two public host cases pass; final full-v13 and
-same-World qualification remain required. f06770 full-v11 passed11070 only before this patch. No new runtime
+settlement before cold effect-once checks. Two public host cases and full-v13 passed; the
+current IO repair still needs its own full and same-World qualification. No new runtime
 module/review call/keyword classifier. QQ79910/8787 and main35221/8792 remain protected.
 
 Day-open completion note repair: repeated instructions plus one accepted prior intention could

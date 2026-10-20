@@ -664,8 +664,9 @@ could not satisfy. The fixture now explicitly declares its ordinary scripted
 scope and valid day-opening no-op, without changing production chance, frequency
 or checks. The host test now actually advances the owned activity to a settled
 model-selected outcome and verifies cold replay without a second selection;
-previously it stopped after plan creation. Both public cases pass; final full-v13
-is still required. This fixture evidence is not real character autonomy or
+previously it stopped after plan creation. Both public cases pass; final22849cec
+full-v13 completed11074pass/19skip/2xfail/1existingwarning with all1722 Python
+hashes unchanged. This fixture evidence is not real character autonomy or
 unattended diversity qualification. Historical marker1/None requests retain their original interpretation.
 Reconstructing the actual paid critic request gives the exact original hash
 `b7c67875146d49f3ec5ebfcaa98c32eb29df1142f7c7417b66937d4f0cad366f`.
@@ -678,3 +679,33 @@ method-name error occurred after the paid response was durably saved; the report
 was recovered from those original bytes and token ledger with zero extra HTTP.
 This proves the named counterexample can be detected with the new contract,
 not that future first drafts, all legacy history or cross-day quality are qualified.
+
+## Background source reads and the foreground event loop
+
+The async Life/Fate entry points still called synchronous source view, pinned
+compilation and author-message preparation directly. The capture dashboard is
+an asyncio task on the same loop. A cold historical read therefore prevented
+foreground tasks from running, independently of provider latency. Four public
+SQLite cases reproduced this with a controlled slow source, before any model
+or new chat. Some initial private fixtures missed a Capsule field or targeted
+an unused legacy correction path; their failures remain, and the corrected
+baseline control rejects all four actual hot boundaries for loop starvation.
+
+The repair reuses the existing blocking-backend flag and `asyncio.to_thread`
+inside the current runtime. The exact projection/source compiler and request
+bytes remain; no model/network call or domain acceptance is moved. Cancellation
+waits for the read before allowing store cleanup, propagates cancellation and
+retains any read exception. Context propagation and cancellation handling follow
+the [Python thread API](https://docs.python.org/3.13/library/asyncio-task.html#asyncio.to_thread)
+and [shield documentation](https://docs.python.org/3.13/library/asyncio-task.html#shielding-from-cancellation).
+No new queue, runtime module, review round, frequency reduction or behavior rule.
+
+Four responsiveness cases and three cancellation/error cases pass. All126
+related compatibility checks pass. On the actual unchanged stopped four-DB copy,
+the same cold public preparation took142.587s, while4784 loop observations and
+512 current-head reads completed; maximum additional loop delay519.7ms and head
+read73.7ms. All heads matched, all66016 original event rows were unchanged,
+and HTTP attempts were0. There was no due refresh, so no packet/capacity result
+was invented. This demonstrates concurrent foreground scheduling/head access
+during that cold read, not faster CPU replay or real chat response latency.
+Current final full-v14 and same-World actual continuation remain required.

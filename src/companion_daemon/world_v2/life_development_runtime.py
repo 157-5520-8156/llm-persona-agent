@@ -6,6 +6,7 @@ from .world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS, publication
 
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
+import asyncio
 import hashlib
 import json
 import logging
@@ -2000,16 +2001,41 @@ class LifeDevelopmentRuntime:
             else "unavailable:life-novel-origin"
         )
 
+    async def _read_background_source(self, reader, /, **kwargs):
+        """Run the same pinned read off the loop for a blocking backend.
+
+        No model call or domain acceptance moves here. Join an uncancellable
+        thread read before propagating cancellation so stores can close safely.
+        """
+        if not getattr(self._ledger, "blocks_event_loop", False):
+            return reader(**kwargs)
+        work = asyncio.create_task(asyncio.to_thread(reader, **kwargs))
+        try:
+            return await asyncio.shield(work)
+        except asyncio.CancelledError:
+            while not work.done():
+                try:
+                    await asyncio.shield(work)
+                except asyncio.CancelledError:
+                    continue
+                except Exception:
+                    break
+            if not work.cancelled() and (error := work.exception()) is not None:
+                _LOG.warning("Life source read failed during cancellation",
+                             exc_info=(type(error), error, error.__traceback__))
+            raise
+
     async def prepare_outlook_once(self, *, wake_event_ref: str):
         if self._world_outlook is None:
             return {"status": "disabled"}
         state = self._ledger.project()
-        if not self._world_outlook.view(projection=state)["needs_revision"]:
+        view = await self._read_background_source(self._world_outlook.view, projection=state)
+        if not view["needs_revision"]:
             return {"status": "unchanged"}
         located = self._ledger.lookup_event_commit(wake_event_ref)
         if located is None or located[0].event_type != "ClockAdvanced":
             return {"status": "rejected", "failure_code": "outlook_requires_committed_clock"}
-        pinned = self._compile_pinned(projection=state, wake=located[0])
+        pinned = await self._read_background_source(self._compile_pinned, projection=state, wake=located[0])
         if isinstance(pinned, LifeDevelopmentResult):
             return {"status": "technical_failure", "failure_code": pinned.reason_code}
         _capsule, _cursor_value, context, manifest = pinned
@@ -2302,7 +2328,7 @@ class LifeDevelopmentRuntime:
                 return LifeDevelopmentResult(
                     status="rejected", reason_code="life_development.active_attempt_source_unavailable",
                 )
-        pinned = self._compile_pinned(
+        pinned = await self._read_background_source(self._compile_pinned,
             projection=projection, wake=wake,
             completed_activity_event_ref=completed_activity_event_ref,
             active_attempt_event_ref=active_attempt_event_ref,
@@ -5845,13 +5871,12 @@ class LifeDevelopmentRuntime:
             logical_time=logical_time,
             manifest=manifest,
         )
+        original_messages = await self._read_background_source(
+            self._world_author_messages, context=context, logical_time=logical_time,
+            manifest=manifest, hard_boundary_contract=hard_boundary_contract,
+        )
         messages = [
-            *self._world_author_messages(
-                context=context,
-                logical_time=logical_time,
-                manifest=manifest,
-                hard_boundary_contract=hard_boundary_contract,
-            ),
+            *original_messages,
             {
                 "role": "user",
                 "content": json.dumps(
@@ -6181,7 +6206,7 @@ class LifeDevelopmentRuntime:
             manifest=manifest,
             owner_actor_ref=self._owner,
         )
-        messages = self._world_author_messages(
+        messages = await self._read_background_source(self._world_author_messages,
             context=context,
             logical_time=logical_time,
             manifest=manifest,
