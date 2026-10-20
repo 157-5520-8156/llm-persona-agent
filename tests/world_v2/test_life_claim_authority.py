@@ -47,6 +47,7 @@ def new_fixture_view(view, snapshot, contract=CONTRACT):
     return view.model_copy(
         update={
             "review_contract": contract,
+            "presentation_contract": None,
             "messages_json": canonical(messages),
             "provider_request_hash": "sha256:"
             + provider_invocation_request_hash(messages=messages, **controls),

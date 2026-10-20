@@ -59,6 +59,11 @@ async def test_actual_life_request_and_original_capsule_survive_close_and_restor
     result, snapshot, _, _ = _restore_prepared_turn(canonical(payload), purpose='world_stimulus_appraisal')
     view = result.life_source_view
     assert view is not None and snapshot.life_source_origin is not None
+    assert view.review_contract is None
+    assert view.presentation_contract == view.profile_contract == 'life-source-review.25'
+    from companion_daemon.world_v2.character_interior.life_source_review import verify_life_review
+    with pytest.raises(ValueError, match='required Life source review is missing'):
+        verify_life_review(result, snapshot, required=True)
     assert view.verify_request(request) == view
     assert json.loads(view.messages_json) == provider.stimulus_requests[0]['messages']
     assert json.loads(view.provider_controls_json)['tools'] == provider.stimulus_requests[0]['tools']
@@ -81,7 +86,7 @@ async def test_actual_life_request_and_original_capsule_survive_close_and_restor
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('fault', ['drop_view', 'system_message', 'rendered_material', 'tools', 'source_table', 'unmatched_refs', 'origin', 'author_hash'])
+@pytest.mark.parametrize('fault', ['drop_view', 'system_message', 'rendered_material', 'tools', 'source_table', 'unmatched_refs', 'origin', 'author_hash', 'presentation_contract', 'review_contract'])
 async def test_durable_source_preparation_rejects_substitution(tmp_path, monkeypatch, fault):
     payload, _, _ = await _prepared(tmp_path, monkeypatch)
     view = payload['result']['life_source_view']
@@ -108,6 +113,10 @@ async def test_durable_source_preparation_rejects_substitution(tmp_path, monkeyp
         view['unmatched_visible_source_refs'] = ['source:invented']
     elif fault == 'origin':
         payload['snapshot']['life_source_origin']['capsule_sha256'] = '0' * 64
+    elif fault == 'presentation_contract':
+        assert view.pop('presentation_contract') == 'life-source-review.25'
+    elif fault == 'review_contract':
+        view['review_contract'] = view.pop('presentation_contract')
     else:
         payload['result']['author_lineage']['request_hash'] = 'sha256:' + '0' * 64
     with pytest.raises(_InteriorTechnicalError, match='invalid_durable_turn_checkpoint'):

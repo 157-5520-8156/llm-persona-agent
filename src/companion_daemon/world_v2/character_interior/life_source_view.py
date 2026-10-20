@@ -39,7 +39,11 @@ class LifeSourceView(FrozenModel):
     write_authority: Literal[False] = False
     semantic_coverage: Literal["not_assessed"] = "not_assessed"
     source_permission_coverage: Literal["not_assessed"] = "not_assessed"
-    review_contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8', 'life-source-review.9', 'life-source-review.10', 'life-source-review.11', 'life-source-review.12', 'life-source-review.13', 'life-source-review.14', 'life-source-review.15', 'life-source-review.16', 'life-source-review.17', 'life-source-review.18', 'life-source-review.19', 'life-source-review.20', 'life-source-review.21', 'life-source-review.22', 'life-source-review.23', 'life-source-review.24'] | None = Field(default=None, exclude_if=lambda value: value is None)
+    review_contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8', 'life-source-review.9', 'life-source-review.10', 'life-source-review.11', 'life-source-review.12', 'life-source-review.13', 'life-source-review.14', 'life-source-review.15', 'life-source-review.16', 'life-source-review.17', 'life-source-review.18', 'life-source-review.19', 'life-source-review.20', 'life-source-review.21', 'life-source-review.22', 'life-source-review.23', 'life-source-review.24', 'life-source-review.25'] | None = Field(default=None, exclude_if=lambda value: value is None)
+    # A fresh unreviewed author can see the same source material without
+    # claiming that a critic was installed. Old None pins omit this field.
+    presentation_contract: Literal['life-source-review.25'] | None = Field(
+        default=None, exclude_if=lambda value: value is None)
     snapshot_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     capsule_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     request_binding_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -51,10 +55,16 @@ class LifeSourceView(FrozenModel):
 
     @model_validator(mode="after")
     def bounded_canonical_carriers(self):
+        if self.presentation_contract is not None and self.review_contract is not None:
+            raise ValueError("Life review already declares its presentation contract")
         for raw in (self.messages_json, self.source_table_json, self.provider_controls_json):
             if len(raw.encode("utf-8")) > MAX_VIEW_BYTES or canonical(json.loads(raw)) != raw:
                 raise ValueError("Life source view carrier is noncanonical or exceeds its byte bound")
         return self
+
+    @property
+    def profile_contract(self):
+        return self.presentation_contract or self.review_contract
 
     def verify_snapshot(self, snapshot) -> "LifeSourceView":
         from ..background_context_profile import profile_audit_record
@@ -78,14 +88,14 @@ class LifeSourceView(FrozenModel):
         payload = _payload(messages, controls)
         from .life_source_state_readings import STATE_REVIEW_CONTRACTS, life_source_profile
 
-        profile = life_source_profile(checked.review_contract)
+        profile = life_source_profile(checked.profile_contract)
         if (
-            payload.get("inner_life_snapshot") != _expected_view(snapshot, checked.review_contract)
+            payload.get("inner_life_snapshot") != _expected_view(snapshot, checked.profile_contract)
             or payload.get("background_context_profile") != profile_audit_record(profile)
         ):
             raise ValueError("Life source view differs from the actual purpose-filtered snapshot")
         table = compile_selected_source_table(capsule=origin.capsule(), include_subjective_history=True,
-            include_lifecycle_states=checked.review_contract in STATE_REVIEW_CONTRACTS)
+            include_lifecycle_states=checked.profile_contract in STATE_REVIEW_CONTRACTS)
         if checked.source_table_json != table.payload_json:
             raise ValueError("Life source catalogue differs from its original Capsule selection")
         if checked.unmatched_visible_source_refs != _unmatched(payload, table.as_dict()):
@@ -129,7 +139,7 @@ def _unmatched(payload, table):
     return tuple(sorted(set(payload['inner_life_snapshot'].get('source_refs', ())) - represented))
 
 
-def prepare_life_source_view(*, request, messages, provider_controls: dict, provider_request_hash: str, review_contract=None) -> LifeSourceView:
+def prepare_life_source_view(*, request, messages, provider_controls: dict, provider_request_hash: str, review_contract=None, presentation_contract='life-source-review.25') -> LifeSourceView:
     from ..selected_source_composer import compile_selected_source_table
 
     if request.purpose != "world_stimulus_appraisal" or request.snapshot.life_source_origin is None:
@@ -137,10 +147,13 @@ def prepare_life_source_view(*, request, messages, provider_controls: dict, prov
     origin = request.snapshot.life_source_origin
     from .life_source_state_readings import STATE_REVIEW_CONTRACTS
 
+    if review_contract is not None:
+        presentation_contract = None
     table = compile_selected_source_table(capsule=origin.capsule(), include_subjective_history=True,
-        include_lifecycle_states=review_contract in STATE_REVIEW_CONTRACTS)
+        include_lifecycle_states=(presentation_contract or review_contract) in STATE_REVIEW_CONTRACTS)
     prepared = LifeSourceView(
         review_contract=review_contract,
+        presentation_contract=presentation_contract,
         snapshot_hash=request.snapshot.snapshot_hash,
         capsule_sha256=origin.capsule_sha256,
         request_binding_sha256=digest(canonical(request.model_dump(mode="json"))),

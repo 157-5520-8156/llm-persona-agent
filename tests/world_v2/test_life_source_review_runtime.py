@@ -147,7 +147,7 @@ async def test_pinned_clock_passes_installed_review_and_cold_receipt_without_rea
     assert responses == [text]
     assert len(author.stimulus_requests) == len(reviews.requests) == 1
     result, snapshot, _, _ = _restore_prepared_turn(canonical(checkpoints[0]), purpose='world_stimulus_appraisal')
-    assert result.life_source_review.contract == 'life-source-review.24'
+    assert result.life_source_review.contract == 'life-source-review.25'
     assert result.life_source_review.verify(result=result, snapshot=snapshot)
 
 
@@ -325,8 +325,14 @@ async def test_fact_permission_choice_still_requires_exact_accepted_value(tmp_pa
         summary.update(disposition='supported', supports=[{'permission_id': choice['permission_id'], 'quoted_value': VALUE}])
         assert inspect_review(raw=canonical({'fields': _wire_fields(packet, fields), 'coverage': 'complete'}), prepared_json=prepared, readings=readings)[0] == 'accepted'
         summary['supports'][0]['quoted_value'] = case.observation.text
-        with pytest.raises(ValueError, match='exact accepted Fact value'):
+        from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
+        with pytest.raises((ValueError, JsonSchemaValidationError)) as rejected:
             inspect_review(raw=canonical({'fields': _wire_fields(packet, fields), 'coverage': 'complete'}), prepared_json=prepared, readings=readings)
+        if isinstance(rejected.value, JsonSchemaValidationError):
+            assert rejected.value.validator == 'anyOf'
+            assert rejected.value.instance == summary['supports'][0]
+        else:
+            assert 'exact accepted Fact value' in str(rejected.value)
 
 
 @pytest.mark.asyncio

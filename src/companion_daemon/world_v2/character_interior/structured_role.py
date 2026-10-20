@@ -1617,6 +1617,7 @@ class StructuredCharacterRoleFaculty:
             life_source_view = prepare_life_source_view(
                 request=request, messages=messages, provider_request_hash=request_hash,
                 review_contract=LIFE_REVIEW_CONTRACT if self.requires_life_source_review else None,
+                presentation_contract=None if self.requires_life_source_review else LIFE_REVIEW_CONTRACT,
                 provider_controls={
                     "temperature": self._temperature,
                     "tools": list(tool_contract.provider_tools) if tool_contract is not None else None,
@@ -2034,7 +2035,8 @@ class StructuredCharacterRoleFaculty:
         current_choice = self._living_frame_json is not None and request.purpose in CHOICE_PURPOSES
         full_snapshot = (
             request.snapshot.model_view(include_lifecycle_states=True)
-            if current_choice or (request.purpose == "world_stimulus_appraisal" and self.requires_life_source_review)
+            if current_choice or (request.purpose == "world_stimulus_appraisal" and (
+                self.requires_life_source_review or request.snapshot.life_source_origin is not None))
             else request.snapshot.model_view()
         )
         if request.purpose in REGISTERED_BACKGROUND_PURPOSES:
@@ -2045,7 +2047,7 @@ class StructuredCharacterRoleFaculty:
                 from .life_source_review import MINTED_CONTRACT as LIFE_REVIEW_CONTRACT
                 from .life_source_state_readings import life_source_profile
                 background_profile = life_source_profile(
-                    LIFE_REVIEW_CONTRACT if self.requires_life_source_review else None
+                    LIFE_REVIEW_CONTRACT
                 )
             if current_choice:
                 background_profile = continuity_profile(background_profile, lifecycle_states=True)

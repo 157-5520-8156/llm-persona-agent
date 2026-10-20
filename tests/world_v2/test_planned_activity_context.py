@@ -91,6 +91,27 @@ def test_focused_plan_state_keeps_original_meaning_under_active_pressure(
         assert all(x["plan_id"] != plan.plan_id for x in snapshot.materials.get("current_activities", []))
         assert not snapshot.materials.get("recently_ended_activities")
         assert len(capsule.world_life.items) <= item_limit
+        # Exercise the actual fresh role presentation and its original narrow
+        # reader too: Capsule admission alone does not prove the author saw it.
+        import asyncio
+        from test_life_fact_readings import _fact_view
+        from companion_daemon.world_v2.character_interior.life_source_review import MINTED_CONTRACT
+        from companion_daemon.world_v2.character_interior.life_source_readings import prepare_life_source_readings
+
+        view, shown = asyncio.run(_fact_view(capsule, review_contract=MINTED_CONTRACT))
+        presented = view.author_payload()["inner_life_snapshot"]["materials"]
+        assert presented["historical_activity_intentions"][0]["accepted_intention"]["text"] == INTENT["intention"]
+        readings = prepare_life_source_readings(view=view, snapshot=shown)
+        reading = next(r for r in readings.as_dict()["readings"]
+                       if r["source_family"] == "activity" and r["item_ref"] == creation_ref)
+        assert reading["value"] == INTENT["intention"]
+        assert reading["permissions"] == [["accepted_intention", "companion"]]
+        readings.require_reading(reading_id=reading["reading_id"], claim_scope="accepted_intention",
+                                 subject_role="companion", view=view, snapshot=shown)
+        for forbidden in ("external_fact", "subjective_history", "activity_lifecycle"):
+            with pytest.raises(ValueError):
+                readings.require_reading(reading_id=reading["reading_id"], claim_scope=forbidden,
+                                         subject_role="companion", view=view, snapshot=shown)
         one_item_policy = policy.model_copy(update={"world_life": policy.world_life.model_copy(
             update={"max_items": 1})})
         compiler = context_capsule_compiler_from_ledger(

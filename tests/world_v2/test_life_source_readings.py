@@ -20,8 +20,11 @@ async def test_actual_environment_can_support_rain_but_not_a_personal_walk(tmp_p
     view = result.life_source_view
     prepared = prepare_life_source_readings(view=view, snapshot=snapshot)
     data = prepared.as_dict()
-    assert len(data['readings']) == 1
-    reading = data['readings'][0]
+    assert {r['source_family'] for r in data['readings']} == {'settled_life', 'current_world_clock'}
+    (reading,) = [r for r in data['readings'] if r['source_family'] == 'settled_life']
+    (clock,) = [r for r in data['readings'] if r['source_family'] == 'current_world_clock']
+    assert clock['value'] == {'logical_time': snapshot.logical_time.isoformat()}
+    assert clock['permissions'] == [['external_fact', 'general']]
     assert reading['value'] == '一阵短雨已经停了。'
     assert reading['pointer'].endswith('/environment/text')
     # Current compact views may present one copy; duplicated diary display
@@ -37,7 +40,19 @@ async def test_actual_environment_can_support_rain_but_not_a_personal_walk(tmp_p
     assert data['write_authority'] is data['complete_source_coverage'] is False
     assert data['semantic_coverage'] == 'not_assessed'
     assert data['excluded']
-    assert all(item['reason'] == 'no_qualified_field_reader' for item in data['excluded'])
+    table = json.loads(view.source_table_json)
+    for item in data['excluded']:
+        if item['reason'] in {'not_the_situation_item_reference', 'plan_state_unavailable'}:
+            row = table['source_references'][item['source_ref_index']]
+            material = table['source_materials'][row['material_index']]['material']
+            assert material['lane'] == 'current_situation'
+            if item['reason'] == 'not_the_situation_item_reference':
+                assert row['source_ref'] != snapshot.actor_ref
+            else:
+                assert row['source_ref'] == snapshot.actor_ref
+                assert material['item']['value']['plan_relation']['availability'] != 'available'
+        else:
+            assert item['reason'] == 'no_qualified_field_reader'
 
 
 @pytest.mark.asyncio

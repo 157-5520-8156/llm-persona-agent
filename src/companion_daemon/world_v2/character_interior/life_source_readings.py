@@ -230,17 +230,17 @@ def prepare_life_source_readings(*, view: LifeSourceView, snapshot) -> PreparedL
     rendered = view.author_payload()['inner_life_snapshot']
     visible = {(item['source_ref'], item['scope']) for item in rendered.get('source_inventory', ())}
     readings, excluded, identities = [], [], {}
-    exact_value_display = view.review_contract in EXACT_VALUE_REVIEW_CONTRACTS
+    exact_value_display = view.profile_contract in EXACT_VALUE_REVIEW_CONTRACTS
     for source in table['source_references']:
         material = table['source_materials'][source['material_index']]['material']
         row = {**source, 'review_material': material}
         from .life_situation_readings import situation_plan_reading
-        aligned = view.review_contract in {'life-source-review.19', 'life-source-review.20', 'life-source-review.21', 'life-source-review.22', 'life-source-review.23', 'life-source-review.24'}
+        aligned = view.profile_contract in {'life-source-review.19', 'life-source-review.20', 'life-source-review.21', 'life-source-review.22', 'life-source-review.23', 'life-source-review.24', 'life-source-review.25'}
         structured_reader = (
-            _planning_reading if view.review_contract in {'life-source-review.22', 'life-source-review.23', 'life-source-review.24'} and material.get('lane') == 'world_life' and material.get('item', {}).get('value', {}).get('world_planning') else
+            _planning_reading if view.profile_contract in {'life-source-review.22', 'life-source-review.23', 'life-source-review.24', 'life-source-review.25'} and material.get('lane') == 'world_life' and material.get('item', {}).get('value', {}).get('world_planning') else
             situation_plan_reading if aligned and material.get('lane') == 'current_situation' else
-            affect_history_reading if view.review_contract in STATE_REVIEW_CONTRACTS and material.get("lane") == "affect_episodes" else
-            lifecycle_state_reading if view.review_contract in STATE_REVIEW_CONTRACTS and material.get("item", {}).get("value", {}).get("context_kind") == "activity_lifecycle_state" else
+            affect_history_reading if view.profile_contract in STATE_REVIEW_CONTRACTS and material.get("lane") == "affect_episodes" else
+            lifecycle_state_reading if view.profile_contract in STATE_REVIEW_CONTRACTS and material.get("item", {}).get("value", {}).get("context_kind") == "activity_lifecycle_state" else
             biographical_reading if material.get('kind') == 'biographical_coordinate' else
             fact_value_reading if material.get('lane') == 'relevant_facts' else None
         )
@@ -301,10 +301,10 @@ def prepare_life_source_readings(*, view: LifeSourceView, snapshot) -> PreparedL
                        'source_ref_indexes': [source['source_ref_index']]}
             identities[identity] = reading
             readings.append(reading)
-    if view.review_contract in {'life-source-review.20', 'life-source-review.21', 'life-source-review.22', 'life-source-review.23', 'life-source-review.24'}:
+    if view.profile_contract in {'life-source-review.20', 'life-source-review.21', 'life-source-review.22', 'life-source-review.23', 'life-source-review.24', 'life-source-review.25'}:
         from .life_runtime_readings import runtime_readings
         readings.extend(runtime_readings(view=view, snapshot=snapshot,
-            include_pinned_context=view.review_contract in {'life-source-review.23', 'life-source-review.24'}))
+            include_pinned_context=view.profile_contract in {'life-source-review.23', 'life-source-review.24', 'life-source-review.25'}))
     return PreparedLifeSourceReadings(canonical({
         'contract': EXACT_VALUE_CONTRACT if exact_value_display else CONTRACT,
         'source_view_sha256': digest(view.model_dump_json()),

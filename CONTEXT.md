@@ -1,12 +1,19 @@
-Focused Plan meaning repair: actual v33 ended a bed-rest Plan, then the next role request
-retained its opaque lifecycle state but lost the original accepted intention. The role confused
-it with a different book-market Plan; the source critic rejected the unsupported claim.
-The existing resolver now joins the exact focused lifecycle Plan to its typed historical
-intention before source admission and Capsule ranking. All original source/privacy checks,
-limits and intention-only scope remain. Eight pressure cases and100 related tests pass;
-same retained snapshot/cursor now keeps its exact meaning with0HTTP/World unchanged.
-New full regression and actual recovery remain required. Running v33 source stays frozen7d9;
-its complete full-v14 was11081pass/19skip/2xfail, not evidence for this new repair.
+Focused Plan meaning: both admission and fresh author presentation now retain the original
+accepted intention. The .25 Life profile enables the bounded historical-intention field;
+old <=.24/None pins retain their original presentation. Fresh unreviewed views declare their
+presentation separately without claiming a critic ran; required reviews remain mandatory.
+94 related tests cover actual role input/field reader, past-intention-only permission, tamper
+rejection and cold receipt. Nine actualv33 .24 checkpoints restore exactly;21 original views
+roundtrip unchanged. Twelve old None checkpoints already reject on394 and still reject now;
+that is unchanged rejection, not recovery. New full and realGLM recovery remain required.
+
+A separate public2.20s counterexample proves paused activity programmes lose future phases
+but their active parent still settles a complete attempt at its original deadline. This causal
+interruption bug remains unfixed. v34 was HELD before dispatch, not stopped for ordinary errors.
+v33 stopped normally07:31:45; fourDB/replay/reopen/effect-once passed. Protected QQ/main/W are
+unchanged. Same original World/sidecars/failures/fixedtarget remain; no new World launched.
+Predecessor394 full-v15 completed11089pass/19skip/2xfail with1722Python unchanged; it does NOT
+qualify subsequent .25 edits. Follow RUN-NOTES for the pending interruption repair and gates.
 
 Background source-loop isolation repair: synchronous Outlook view, pinned compilation and
 author-message preparation ran inside async entry points on the foreground loop. Four public
