@@ -1,3 +1,14 @@
+The Outlook submission side now enforces the exact keep_offered bit in the new pinned origin menu
+before paying for origin review. Updating only the generator menu was insufficient: a public-refresh
+counterexample still accepted an unoffered keep (2 author calls instead of same-author reselection
+3). The receiver now rejects that command with an exact capability error, allows the original one
+reselection and reviews the valid full candidate once. This bit reflects the COMPLETE native keep
+preflight, including structural/expiry preparation as well as origin, not a live-state guess.
+Requests predating the new menu keep their original behavior.123 final focused tests pass; full-v7
+on c984 was intentionally interrupted for this exact new counterexample (6476pass,exit2,source
+unchanged), not full success or a failing product regression. No v45 launched; new frozen full and
+all original retained-world gates remain mandatory. No role/plot policy or validator relaxation.
+
 Private Outlook capability consistency: an unreviewed or differently configured legacy future no
 longer offers keep as if its authority checks had passed. The same origin/identity marker check
 now drives readiness and the keep menu; already qualified compatible futures remain retainable.

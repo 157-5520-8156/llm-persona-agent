@@ -1423,6 +1423,7 @@ class WorldOutlookRuntime:
                 **({"execution_origin_review": _EXECUTION_ORIGIN_REVIEW} if self._source_critic is not None else {}),
                 **({"private_origin_review": {"contract": _ORIGIN_AUTHOR_MENU,
                     "prior_future_qualified": self._origin_head_is_current(prior_head),
+                    "keep_offered": self._origin_head_is_current(prior_head),
                     "authority": "technical_review_status_not_world_fact"}} if self._source_critic is not None else {}),
                 **({"configured_companion_identity": self._identity_source} if self._identity_source else {}),
                 "condition_sources": [v.model_dump(mode="json") for v in working_sources.values()],
@@ -1479,6 +1480,8 @@ class WorldOutlookRuntime:
                 if allow_keep:
                     allow_keep = self._keep_is_offered(packet=packet, projection=projection, manifest=manifest,
                         prior_head=prior_head, npc_refs=npc_refs, sources=working_sources, history_offer=history_offer)
+                if "private_origin_review" in packet:
+                    packet["private_origin_review"]["keep_offered"] = allow_keep
                 response_tools = [outlook_result_tool(packet["draft_schema"], allow_keep=allow_keep,
                     retained_changes=bool(packet.get("world_changes")) and packet["response_tool_contract"] == "world-outlook-native.10",
                     keep_review_deadline=min(now + timedelta(days=7), prior_head[1].horizon_end).isoformat()
@@ -1605,6 +1608,12 @@ class WorldOutlookRuntime:
                         else {"decision", "review_at", "reason"})
                     and obj["decision"] == "keep"
                 ):
+                    origin_menu = pinned_request.get("private_origin_review", {})
+                    if (origin_menu.get("contract") == _ORIGIN_AUTHOR_MENU
+                            and not origin_menu["keep_offered"]):
+                        raise ValueError("keep was not offered by the pinned capability menu. "
+                            "Return a complete revise candidate; valid unchanged nodes "
+                            "may be retained, but do not invent a character action to repair old prose.")
                     head = self.store.head()
                     if head is None or head[0] != view["revision"]:
                         raise ValueError("keep requires the exact prior outlook")

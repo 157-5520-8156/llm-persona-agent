@@ -94,6 +94,36 @@ class Author:
 
 
 @pytest.mark.asyncio
+async def test_unqualified_keep_reselects_with_the_same_author_before_origin_review(tmp_path):
+    ledger, wake, store, author, runtime = setup(tmp_path, lambda w: [
+        {"decision": "revise", "draft": draft_value(w)}])
+    manifest = _manifest(wake, pinned_cursor=_projection_cursor(ledger))
+
+    class Critic:
+        model = "fixture:unoffered-keep-authority"
+        calls = 0
+        async def complete(self, messages, **kwargs):
+            self.calls += 1
+            return json.dumps({"review": {"decision": "supported", "reason": "External fixture only."}})
+
+    critic = Critic()
+    try:
+        before = ledger.project()
+        assert (await runtime.refresh(projection=before, context={}, manifest=manifest))["status"] == "ready"
+        value = draft_value(wake)
+        value["parent_revision"] = store.head()[0]
+        author.outputs = [{"decision": "keep", "review_at": value["review_at"], "reason": "Use old future."},
+            {"decision": "revise", "draft": value}]
+        runtime._source_critic = critic
+        assert (await runtime.refresh(projection=before, context={}, manifest=manifest))["status"] == "ready"
+        assert len(author.calls) == 3 and critic.calls == 1
+        assert "keep was not offered" in author.calls[2][-1]["content"]
+        assert ledger.project() == before
+    finally:
+        runtime.close()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("prepare_details", [False, True])
 async def test_private_script_is_source_checked_before_it_can_become_world_fact(tmp_path, prepare_details):
     bad = "值班人员把申请连同角色已经补交的活动方案摆上桌面。"
@@ -280,6 +310,7 @@ async def test_world_author_and_critic_share_only_the_existing_scoped_identity_s
         assert packet["configured_companion_identity"]["material"] == companion_identity_source_material(frame, scope="world_background")
         assert store.head()[2]["configured_identity_source_ref"] == companion_identity_source_ref(frame, scope="world_background")
         assert packet["private_origin_review"]["prior_future_qualified"] is False
+        assert packet["private_origin_review"]["keep_offered"] is False
         assert "Duration does not authorize completed facts" in author.calls[0][0]["content"]
         assert not runtime.view()["needs_revision"]
         from companion_daemon.world_v2.world_outlook_history import OutlookHistoryOffer
