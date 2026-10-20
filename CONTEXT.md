@@ -1,3 +1,17 @@
+Recurring-slot origin review now pins publication.2 in fresh Outlook task identity/menu. It
+uses each_instance.starts_at instead of an absolute null, which actual GLM had misread as the
+current cursor/no publication authority. Same original classroom positive passes with the explicit
+binding; whole-class-completed-at-start negative still rejects. Missing old pinned markers retain
+publication.1 exact wire/paid receipts. No temporal/role permission was broadened.
+
+Own e833 full-v10 completed11185pass/1fail; it is not qualified. Preserved failed DB shows an
+unrelated PrivateCommitmentDue after ActionClaimed before DispatchStarted. Exact forced CAS
+interleaving reproduces owned_elsewhere/zero dispatch in memory and SQLite. ActionPump now retries
+that start CAS against fresh heads while retaining ONLY its original exact unexpired lease and
+rechecking role/beat permission; it never adopts another lease or repeats a started handoff.
+Expiry/withdrawal/already-started negative controls and original reply-recovery cases pass.
+321 focused checks pass; own full and retained-world gates remain required. No new production module.
+
 Full-v9 on f74 completed with11181pass/5fail (source unchanged), so no v47 launch.
 Four failures exposed old fresh-reader/prepaid-cadence fixture assumptions; the production fixture
 now handles the independent Life request explicitly and cold-proves prepaid effect-once separately.

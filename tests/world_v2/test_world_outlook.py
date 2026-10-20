@@ -296,6 +296,7 @@ async def test_world_author_and_critic_share_only_the_existing_scoped_identity_s
             assert source["subject_actor_ref"] == OWNER
             assert "UNSCOPED_" not in json.dumps(source)
             assert packet["pinned_authority"]["execution_authority"]["execution_bindings"] == []
+            assert packet["pinned_authority"]["temporal_publication"]["contract"] == "world-outlook-script-publication.2"
             return json.dumps({"review": {"decision": "supported", "reason": "Standing setting is source-bound; no episode or new character action authorized."}})
 
     runtime = WorldOutlookRuntime(ledger=ledger, store=store, author=author, actor_ref=OWNER,
@@ -311,6 +312,7 @@ async def test_world_author_and_critic_share_only_the_existing_scoped_identity_s
         assert store.head()[2]["configured_identity_source_ref"] == companion_identity_source_ref(frame, scope="world_background")
         assert packet["private_origin_review"]["prior_future_qualified"] is False
         assert packet["private_origin_review"]["keep_offered"] is False
+        assert packet["private_origin_review"]["publication_contract"] == "world-outlook-script-publication.2"
         assert "Duration does not authorize completed facts" in author.calls[0][0]["content"]
         assert not runtime.view()["needs_revision"]
         from companion_daemon.world_v2.world_outlook_history import OutlookHistoryOffer
@@ -1603,5 +1605,112 @@ async def test_cold_due_peek_defers_full_source_validation_to_background(tmp_pat
         with pytest.raises(AssertionError, match="cold source validation"):
             runtime.prepare_source_history(projection=state)
         assert len(author.calls) == 1
+    finally:
+        runtime.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("shared_text", [False, True])
+@pytest.mark.parametrize(
+    "contract", [None, "world-outlook-script-publication.1", "world-outlook-script-publication.2"]
+)
+async def test_recurring_publication_has_a_pinned_start_binding_and_legacy_receipt_reuse(
+    tmp_path, monkeypatch, contract, shared_text
+):
+    from test_world_planning import planning
+
+    ledger, wake, store, _, runtime = setup(tmp_path, lambda w: [])
+    published = planning(
+        contract="world-planning.2",
+        starts_on=NOW.date().isoformat(),
+        ends_on=(NOW + timedelta(days=30)).date().isoformat(),
+        detailed_through=(NOW + timedelta(days=7)).date().isoformat(),
+        review_at=(NOW + timedelta(days=6)).isoformat(),
+        slots=[
+            {
+                "slot_id": "writing",
+                "title": "写作课",
+                "detail": "教务安排",
+                "weekdays": [4],
+                "start_minute": 840,
+                "duration_minutes": 90,
+                "event_text": "同学们的复印件在课桌间传阅，教师在讲台旁逐段口头点评。",
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_planning_publications",
+        lambda _: (
+            SimpleNamespace(
+                occurrence_ref="occurrence:source-bound-course-plan", planning=published
+            ),
+        ),
+    )
+    runtime._rolling_planning = True
+
+    class Critic:
+        model = "fixture:symbolic-publication-boundary"
+
+        def __init__(self):
+            self.packets = []
+
+        async def complete(self, messages, **kwargs):
+            self.packets.append(json.loads(messages[1]["content"]))
+            return json.dumps(
+                {
+                    "review": {
+                        "decision": "supported",
+                        "reason": "Fixture captures adapter input only; not semantic judgement.",
+                    }
+                }
+            )
+
+    critic = Critic()
+    runtime._source_critic = critic
+    state = ledger.project()
+    candidate = WorldOutlookDraft.model_validate_json(json.dumps(draft_value(wake)))
+    manifest = _manifest(wake, pinned_cursor=_projection_cursor(ledger))
+    if shared_text:
+        candidate = candidate.model_copy(
+            update={
+                "opportunities": (
+                    candidate.opportunities[0].model_copy(
+                        update={
+                            "execution": candidate.opportunities[0].execution.model_copy(
+                                update={"text": published.slots[0].event_text}
+                            )
+                        }
+                    ),
+                    *candidate.opportunities[1:],
+                )
+            }
+        )
+    kwargs = {} if contract is None else {"publication_contract": contract}
+    try:
+        proof = await runtime._review_executable_sources(
+            candidate=candidate, context={}, manifest=manifest, projection=state, **kwargs
+        )
+        again = await runtime._review_executable_sources(
+            candidate=candidate, context={}, manifest=manifest, projection=state, **kwargs
+        )
+        assert proof == again and len(critic.packets) == 1 and ledger.project() == state
+        timing = critic.packets[0]["pinned_authority"]["temporal_publication"]
+        slot = timing["fields"][0 if shared_text else 3]
+        assert timing["contract"] == (contract or "world-outlook-script-publication.1")
+        if contract == "world-outlook-script-publication.2":
+            assert slot["first_available_at_ref"] == "each_instance.starts_at"
+            assert (
+                (slot.get("first_available_at") == NOW.isoformat())
+                if shared_text
+                else "first_available_at" not in slot
+            )
+            assert "NEVER means the evaluated current cursor" in timing["rule"]
+        else:
+            assert (
+                slot["first_available_at"] == (NOW.isoformat() if shared_text else None)
+                and "first_available_at_ref" not in slot
+            )
+        assert timing["fields"][0]["first_available_at"] == NOW.isoformat()
     finally:
         runtime.close()

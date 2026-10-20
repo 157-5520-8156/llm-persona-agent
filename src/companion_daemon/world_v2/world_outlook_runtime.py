@@ -35,6 +35,7 @@ _ROLLING_PLANNING = "rolling-world-planning.6"
 _NATIVE_RESULT = "world-outlook-native.10"
 _EXECUTION_ORIGIN_REVIEW = "world-outlook-origin-review.1"
 _ORIGIN_AUTHOR_MENU = "outlook-origin-author-menu.1"
+_ORIGIN_PUBLICATION = "world-outlook-script-publication.2"
 _NATIVE_RESULTS = frozenset({"world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.5", "world-outlook-native.6", "world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9", _NATIVE_RESULT})
 _ACTIVITY_CHOICE_SOURCE_EVENTS = frozenset({
     "ActivityPlanned", "ActivityStarted", "ActivityPaused", "ActivityResumed",
@@ -1239,6 +1240,7 @@ class WorldOutlookRuntime:
                 "retry_identity": "outlook-ordinary-progress.2",
                 **({"execution_origin_review": _EXECUTION_ORIGIN_REVIEW} if self._source_critic is not None else {}),
                 **({"origin_author_menu": _ORIGIN_AUTHOR_MENU} if self._source_critic is not None else {}),
+                **({"origin_publication_contract": _ORIGIN_PUBLICATION} if self._source_critic is not None else {}),
                 **({"configured_identity_source_ref": self._identity_source["source_ref"]} if self._identity_source else {}),
                 "source_contract": _WORKING_SOURCES,
                 "world_id": projection.world_id,
@@ -1422,6 +1424,7 @@ class WorldOutlookRuntime:
                 "condition_source_scope": _WORKING_SOURCES,
                 **({"execution_origin_review": _EXECUTION_ORIGIN_REVIEW} if self._source_critic is not None else {}),
                 **({"private_origin_review": {"contract": _ORIGIN_AUTHOR_MENU,
+                    "publication_contract": _ORIGIN_PUBLICATION,
                     "prior_future_qualified": self._origin_head_is_current(prior_head),
                     "keep_offered": self._origin_head_is_current(prior_head),
                     "authority": "technical_review_status_not_world_fact"}} if self._source_critic is not None else {}),
@@ -1695,6 +1698,8 @@ class WorldOutlookRuntime:
                 execution_source_review = (await self._review_executable_sources(
                     candidate=candidate, context=context, manifest=manifest, projection=projection,
                     identity_source=pinned_packet.get("configured_companion_identity"),
+                    publication_contract=pinned_packet.get("private_origin_review", {}).get(
+                        "publication_contract", "world-outlook-script-publication.1"),
                 ) if self._source_critic is not None else None)
             except (ValueError, TypeError) as exc:
                 self._record_attempt(
@@ -1964,7 +1969,8 @@ class WorldOutlookRuntime:
         return digest({"kind": execution["kind"], "text": execution.get("text"),
                        **({"planning": execution["planning"]} if execution.get("planning") else {})})
 
-    async def _review_executable_sources(self, *, candidate, context, manifest, projection, identity_source=None):
+    async def _review_executable_sources(self, *, candidate, context, manifest, projection, identity_source=None,
+                                         publication_contract="world-outlook-script-publication.1"):
         """Reuse the original origin critic before private prose gains fact authority.
 
         A batch is an adapter to that critic, never a new World proposal or role
@@ -1978,6 +1984,8 @@ class WorldOutlookRuntime:
             _TEMPORAL_PUBLICATION_GUIDANCE, _evidence_packet_binding,
         )
         from .world_consequence_contract import WorldConsequenceV2, WorldConsequenceAuthority
+        if publication_contract not in {"world-outlook-script-publication.1", _ORIGIN_PUBLICATION}:
+            raise ValueError("unsupported pinned outlook publication contract")
         scripts = {}
         def add(execution, *, path, available_at=None):
             value = execution.model_dump(mode="json") if hasattr(execution, "model_dump") else execution
@@ -1988,7 +1996,7 @@ class WorldOutlookRuntime:
                     else value.get("text", ""))
             times = scripts[key][1] if key in scripts else []
             paths = scripts[key][2] if key in scripts else []
-            if available_at is not None:
+            if available_at is not None or publication_contract == _ORIGIN_PUBLICATION:
                 times.append(available_at)
             paths.append({"path": path} if isinstance(path, str) else path)
             scripts[key] = text, times, paths
@@ -2063,13 +2071,30 @@ class WorldOutlookRuntime:
                     "this source cannot undo changed resources, status or other actual consequences. "
                     "Generation constraints alone remain non-factual. Do not invent facts absent from both lanes.")
             packet["pinned_authority"]["temporal_publication"] = {
-                "contract": "world-outlook-script-publication.1",
+                "contract": publication_contract,
                 "rule": "no_completed_fact_after_its_first_available_time; explicit future arrangements remain arrangements",
                 "fields": [{"prose_path": f"outcomes.{i}.world_consequence.environment_text",
-                    "first_available_at": min(value[1], key=datetime.fromisoformat, default=None),
+                    "first_available_at": min((t for t in value[1] if t is not None),
+                                              key=datetime.fromisoformat, default=None),
                     "recurring_slot_rule": "if used as a recurring slot: each instance.starts_at; never its later ends_at or a later detail step"}
                     for i, (_, value) in enumerate(batch)],
             }
+            if publication_contract == _ORIGIN_PUBLICATION:
+                publication = packet["pinned_authority"]["temporal_publication"]
+                publication["rule"] += (
+                    "; each field has an absolute first_available_at OR symbolic first_available_at_ref. "
+                    "The symbolic reference resolves separately for every recurring instance. "
+                    "Absence of an absolute timestamp NEVER means the evaluated current cursor. "
+                    "Recurring event_text is unavailable until that instance starts; the template is "
+                    "not a statement that this class is happening now. Do not allow completed facts "
+                    "from later than that start. Where identical prose has multiple uses, apply the "
+                    "binding of that use, never borrow a later publication time."
+                )
+                for field, (_, value) in zip(publication["fields"], batch, strict=True):
+                    if None in value[1]:
+                        field["first_available_at_ref"] = "each_instance.starts_at"
+                        if field["first_available_at"] is None:
+                            del field["first_available_at"]
             packet["evidence_packet_binding"] = _evidence_packet_binding(
                 contract="world-outlook-execution-source-packet.1",
                 reviewed_surface=packet["reviewed_surface"], pinned_authority=packet["pinned_authority"])

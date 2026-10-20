@@ -494,19 +494,42 @@ class ActionPump:
 
     async def _start_and_dispatch(self, action: Action) -> ActionPumpResult:
         assert action.claim_lease is not None
-        projection = await self._project()
-        current = next(
-            (item for item in projection.actions if item.action_id == action.action_id), None
-        )
-        if current is None or current.state != "claimed":
-            return ActionPumpResult(action_id=action.action_id, status="owned_elsewhere")
-        if not self._expression_dispatch_allowed(current, projection):
-            # A new Observation may have committed between claim and the
-            # executor call.  Never hand the frozen old payload to a provider
-            # while its reconsideration gate is unresolved.
-            return ActionPumpResult(action_id=action.action_id, status="not_due")
-        action = current
-        at = projection.logical_time or action.logical_time
+        claim = action.claim_lease
+        for attempt in range(3):
+            projection = await self._project()
+            current = next(
+                (item for item in projection.actions if item.action_id == action.action_id), None
+            )
+            # Retain only this call's exact lease across an unrelated ledger
+            # CAS. Owner id alone cannot prove that a claim is still ours.
+            if current is None or current.state != "claimed" or current.claim_lease != claim:
+                return ActionPumpResult(action_id=action.action_id, status="owned_elsewhere")
+            if not self._expression_dispatch_allowed(current, projection):
+                # Recheck every fresh head: a new Observation can withdraw
+                # permission while the original payload remains unchanged.
+                return ActionPumpResult(action_id=action.action_id, status="not_due")
+            action = current
+            at = projection.logical_time or action.logical_time
+            if at >= claim.expires_at:
+                return ActionPumpResult(action_id=action.action_id, status="owned_elsewhere")
+            try:
+                await self._commit_event(
+                    action=action,
+                    event_type="ActionDispatchStarted",
+                    payload={
+                        "action_id": action.action_id,
+                        "owner_id": claim.owner_id,
+                        "attempt_id": claim.attempt_id,
+                        "started_at": at.isoformat(),
+                    },
+                    projection=projection,
+                    suffix=f"dispatch:{claim.attempt_id}",
+                    at=at,
+                )
+                break
+            except ConcurrencyConflict:
+                if attempt == 2:
+                    raise
         if action.not_before is not None:
             _LOG.info(
                 "action due dispatch action_id=%s plan_id=%s due_drift_ms=%.1f",
@@ -514,21 +537,6 @@ class ActionPump:
                 action.expression_plan_id or "none",
                 max(0.0, (at - action.not_before).total_seconds() * 1_000),
             )
-        if at >= action.claim_lease.expires_at:
-            return ActionPumpResult(action_id=action.action_id, status="owned_elsewhere")
-        await self._commit_event(
-            action=action,
-            event_type="ActionDispatchStarted",
-            payload={
-                "action_id": action.action_id,
-                "owner_id": action.claim_lease.owner_id,
-                "attempt_id": action.claim_lease.attempt_id,
-                "started_at": at.isoformat(),
-            },
-            projection=projection,
-            suffix=f"dispatch:{action.claim_lease.attempt_id}",
-            at=at,
-        )
         # Payload/authorization preflight intentionally runs after the durable
         # hand-off event but before the provider.  A declared local rejection
         # can therefore use the existing failed-settlement lifecycle, while an
