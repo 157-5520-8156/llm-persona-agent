@@ -56,6 +56,33 @@ class EventDetailStep(FrozenModel):
                                       exclude_if=lambda value: value is None)
 
 
+def activity_execution_plan(projection, occurrence, source_ref):
+    """Prove the original programme and the owned Plan's current accepted head."""
+    from .schemas import validate_plan_authority_state
+
+    index = occurrence.event_detail_program
+    if index is None or index.capability.source_kind != "activity_execution":
+        raise ValueError("execution source guard requires an activity programme")
+    cap = index.capability
+    plan = next((p for p in projection.plans if p.plan_id == cap.entity_ref), None)
+    original = next((e for e in projection.committed_world_event_refs if e.event_id == source_ref), None)
+    if (source_ref != cap.source_event_ref or original is None
+        or original.event_type not in {"ActivityStarted", "ActivityResumed"}
+        or original.world_revision != cap.source_world_revision
+        or original.payload_hash != cap.source_payload_hash
+        or plan is None or plan.owner_actor_ref not in occurrence.participant_refs
+        or plan.entity_revision < cap.entity_revision):
+        raise ValueError("activity programme lacks its exact owned execution source")
+    validate_plan_authority_state((plan,), projection.committed_world_event_refs,
+                                  logical_time=projection.logical_time)
+    return plan
+
+
+def activity_execution_is_current(plan, capability):
+    return bool(plan.status == "active" and plan.entity_revision == capability.entity_revision
+                and plan.authority_origin.accepted_event_ref == capability.source_event_ref)
+
+
 def validate_event_details(draft, capability, *, logical_time):
     steps = draft.event_details
     if capability is not None and (draft.causal_authority != "world_contingency"

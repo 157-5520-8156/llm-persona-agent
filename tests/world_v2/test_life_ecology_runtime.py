@@ -1608,3 +1608,24 @@ async def test_ready_npc_without_effect_yields_to_due_world_work(status):
     assert len(npc.calls) == 1
     assert len(development.calls) == 1
     assert result.life_development_followup_status == 'occurrence_committed'
+
+
+@pytest.mark.asyncio
+async def test_cancelled_attempt_reports_progress_without_spending_independent_life_cadence():
+    event = _event('clock:cancelled-attempt')
+    observations = []
+    for status in ('no_op', 'cancelled'):
+        store = _TriggerStore()
+        development = _LifeDevelopment('no_op', reason_code='quiet', has_due_work=True)
+        runtime = LifeEcologyRuntime(
+            ledger=_Ledger(event), trigger_store=store, media_followup=_Media(),
+            aftermath_followup=_Aftermath(status=status), life_development_followup=development,
+            availability=LifeEcologyAvailability(state='installed_and_active'),
+        )
+        result = await runtime.advance_once(wake_event_ref=event.event_id,
+            trace_id='trace:cancelled-attempt', correlation_id='cancelled-attempt')
+        observations.append((result, len(development.calls), store.completed[0][2]))
+    assert observations[1][0].status == 'advanced'
+    assert observations[1][0].aftermath_followup_status == 'cancelled'
+    assert observations[0][1] == observations[1][1] == 1
+    assert observations[0][2] == observations[1][2]

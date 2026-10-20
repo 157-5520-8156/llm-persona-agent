@@ -13049,6 +13049,12 @@ def _outcome_observation_recorded(state: ReducerState, event: WorldEvent) -> Red
 
 def _world_occurrence_settled(state: ReducerState, event: WorldEvent) -> ReducerState:
     payload = _validated_life_payload(state, event, WorldOccurrenceSettledPayload)
+    if payload.execution_source_ref is not None:
+        from .event_detail_contract import activity_execution_plan, activity_execution_is_current
+        pending = next(o for o in state.world_occurrences if o.occurrence_id == payload.occurrence_id)
+        plan = activity_execution_plan(state, pending, payload.execution_source_ref)
+        if not activity_execution_is_current(plan, pending.event_detail_program.capability):
+            raise ValueError("settlement execution source is no longer current")
     world_revision = len(state.committed_world_event_refs) + 1
     occurrences = settle_occurrence(
         state.world_occurrences,
@@ -13968,6 +13974,21 @@ def _world_occurrence_terminated(
     state: ReducerState, event: WorldEvent, *, target_status: str
 ) -> ReducerState:
     payload = _validated_life_payload(state, event, WorldOccurrenceTerminalPayload)
+    interrupted = payload.interrupted_execution_source_ref is not None
+    if interrupted:
+        from .event_detail_contract import activity_execution_plan, activity_execution_is_current
+        pending = next(o for o in state.world_occurrences if o.occurrence_id == payload.occurrence_id)
+        plan = activity_execution_plan(state, pending, payload.interrupted_execution_source_ref)
+        if (target_status != "cancelled"
+            or activity_execution_is_current(plan, pending.event_detail_program.capability)
+            or plan.entity_revision <= pending.event_detail_program.capability.entity_revision
+            or plan.authority_origin.accepted_event_ref != payload.reason_ref
+            or payload.effective_at != event.logical_time
+            or payload.effective_at < plan.authority_origin.accepted_at
+            or payload.policy_refs != ("policy:event-detail-interruption.1",)
+            or payload.reason_ref not in {ref.ref_id for ref in payload.evidence_refs}):
+            raise ValueError("active programme cancellation lacks its exact source revocation")
+        _validate_evidence_authority(state, payload.evidence_refs, require_all=True)
     return state.model_copy(
         update={
             "world_occurrences": terminate_occurrence(
@@ -13975,6 +13996,7 @@ def _world_occurrence_terminated(
                 payload,
                 target_status=target_status,
                 logical_time=_require_life_time(state, event),
+                interrupted_active=interrupted,
             )
         }
     )

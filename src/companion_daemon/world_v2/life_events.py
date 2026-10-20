@@ -169,6 +169,8 @@ class WorldOccurrenceTerminalPayload(DomainMutationPayload):
     occurrence_id: str = Field(min_length=1)
     effective_at: datetime
     reason_ref: str = Field(min_length=1)
+    interrupted_execution_source_ref: str | None = Field(
+        default=None, min_length=1, max_length=512, exclude_if=lambda value: value is None)
 
 
 class WorldOccurrenceCommittedPayload(DomainMutationPayload):
@@ -205,6 +207,8 @@ class OutcomeObservationRecordedPayload(DomainMutationPayload):
 
 
 class OutcomeProposalRecordedPayload(FrozenModel):
+    execution_source_ref: str | None = Field(
+        default=None, min_length=1, max_length=512, exclude_if=lambda value: value is None)
     outcome_proposal_id: str = Field(min_length=1)
     decision_proposal_id: str = Field(min_length=1)
     change_id: str = Field(min_length=1)
@@ -267,6 +271,8 @@ class OutcomeProposalRecordedPayload(FrozenModel):
 
     @model_validator(mode="after")
     def proposed_change_hash_matches_fields(self) -> OutcomeProposalRecordedPayload:
+        if self.execution_source_ref is not None and self.decision_authority != "recorded_world_draw":
+            raise ValueError("execution programme outcome requires its recorded World draw")
         if (self.deliberation_trigger_id is None) != (self.source_observation_id is None):
             raise ValueError("outcome proposal trigger binding is incomplete")
         context_identity = (
@@ -376,6 +382,7 @@ class OutcomeProposalRecordedPayload(FrozenModel):
             observation_refs=self.observation_refs,
             adopt_proposed_life_direction=self.adopt_proposed_life_direction,
             character_life_direction=self.character_life_direction,
+            execution_source_ref=self.execution_source_ref,
         )
         if self.proposed_change_hash != expected:
             raise ValueError("outcome proposal change hash does not match proposed mutation")
@@ -383,6 +390,8 @@ class OutcomeProposalRecordedPayload(FrozenModel):
 
 
 class WorldOccurrenceSettledPayload(DomainMutationPayload):
+    execution_source_ref: str | None = Field(
+        default=None, min_length=1, max_length=512, exclude_if=lambda value: value is None)
     acceptance_id: str = Field(min_length=1)
     evaluated_world_revision: int = Field(ge=0)
     accepted_change_hash: str = Field(min_length=64, max_length=64)
@@ -416,6 +425,7 @@ class WorldOccurrenceSettledPayload(DomainMutationPayload):
             observation_refs=self.observation_refs,
             adopt_proposed_life_direction=self.adopt_proposed_life_direction,
             character_life_direction=self.character_life_direction,
+            execution_source_ref=self.execution_source_ref,
         )
         if self.accepted_change_hash != expected:
             raise ValueError("settlement change hash does not match accepted mutation")
@@ -435,6 +445,7 @@ def outcome_mutation_hash(
     observation_refs: tuple[str, ...] | list[str],
     adopt_proposed_life_direction: bool | None = None,
     character_life_direction: BiographicalCoordinateReplacement | None = None,
+    execution_source_ref: str | None = None,
 ) -> str:
     material: dict[str, object] = {
         "candidate_result_ref": candidate_result_ref,
@@ -453,6 +464,8 @@ def outcome_mutation_hash(
         material["adopt_proposed_life_direction"] = adopt_proposed_life_direction
     if character_life_direction is not None:
         material["character_life_direction"] = character_life_direction.model_dump(mode="json")
+    if execution_source_ref is not None:
+        material["execution_source_ref"] = execution_source_ref
     encoded = json.dumps(
         material,
         ensure_ascii=False,

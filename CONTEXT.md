@@ -7,13 +7,19 @@ rejection and cold receipt. Nine actualv33 .24 checkpoints restore exactly;21 or
 roundtrip unchanged. Twelve old None checkpoints already reject on394 and still reject now;
 that is unchanged rejection, not recovery. New full and realGLM recovery remain required.
 
-A separate public2.20s counterexample proves paused activity programmes lose future phases
-but their active parent still settles a complete attempt at its original deadline. This causal
-interruption bug remains unfixed. v34 was HELD before dispatch, not stopped for ordinary errors.
-v33 stopped normally07:31:45; fourDB/replay/reopen/effect-once passed. Protected QQ/main/W are
-unchanged. Same original World/sidecars/failures/fixedtarget remain; no new World launched.
-Predecessor394 full-v15 completed11089pass/19skip/2xfail with1722Python unchanged; it does NOT
-qualify subsequent .25 edits. Follow RUN-NOTES for the pending interruption repair and gates.
+Interrupted execution repair: a paused/resumed/ended/completed owned attempt now retires
+its uncompleted programme through a source-bound WorldOccurrenceCancelled event. The original
+capability, current accepted Plan head, evidence, exact time and CAS are re-proved; ordinary
+active events cannot use this exception. Fresh outcome hashes bind execution_source_ref and
+the settlement reducer rechecks it. Absent legacy fields keep old hashes/replay unchanged.
+Detail and Aftermath share the guard; already published facts and old detail receipts remain.
+Cold capture also reconciles complete/source_changed receipts whose parent was left active.
+The per-capture working set is discarded; independent Life cadence and external events remain.
+109 ecology/detail tests pass, including crash/retry, stale/current-proposal rejection, resumed
+new attempts, independent scenes and cold receipt recovery. New full, retained-history replay
+and actual GLM continuation still required. v34 remains HELD/never launched; v33 stopped normally
+at07:31:45 with fourDB/replay/reopen/effect-once passed. Protected QQ/main/W and original World,
+sidecars/failures/fixed target remain. Predecessor394full15/11089 does not qualify these repairs.
 
 Background source-loop isolation repair: synchronous Outlook view, pinned compilation and
 author-message preparation ran inside async entry points on the foreground loop. Four public

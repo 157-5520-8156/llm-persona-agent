@@ -217,6 +217,7 @@ class LifeAftermathResult(FrozenModel):
     status: Literal[
         "occurrence_opened",
         "settled",
+        "cancelled",
         "recovered_experience",
         "recovered_memory",
         "retry_wait",
@@ -428,9 +429,11 @@ class LifeAftermathRuntime:
                     reason_code="life_aftermath.outcome_retry_wait",
                     occurrence_id=active.occurrence_id,
                 )
+            cancelled = next(o for o in self._ledger.project().world_occurrences
+                             if o.occurrence_id == active.occurrence_id).status == "cancelled"
             return LifeAftermathResult(
-                status="settled",
-                reason_code="life_aftermath.settled",
+                status="cancelled" if cancelled else "settled",
+                reason_code="life_aftermath.execution_interrupted" if cancelled else "life_aftermath.settled",
                 occurrence_id=active.occurrence_id,
                 experience_id=experience_id,
             )
@@ -614,6 +617,10 @@ class LifeAftermathRuntime:
     async def _settle(
         self, *, occurrence, wake, logical_time: datetime, trace_id: str, correlation_id: str
     ) -> str | None:
+        from .event_detail_runtime import cancel_interrupted_execution
+        if cancel_interrupted_execution(ledger=self._ledger, occurrence_id=occurrence.occurrence_id,
+                                        wake_event_ref=wake.event_id):
+            return None
         wake_evidence = self._event_evidence(wake, purpose="life_transition")
         suffix = occurrence.occurrence_id.removeprefix("occurrence:life-aftermath:")
         # Settlement observation is effect-once per occurrence.  A character
@@ -881,6 +888,10 @@ class LifeAftermathRuntime:
             change_hash = persisted.proposed_change_hash
         else:
             adopted = decision_identity.get("adopt_proposed_life_direction")
+            execution_source_ref = (
+                occurrence.event_detail_program.capability.source_event_ref
+                if occurrence.event_detail_program is not None
+                and occurrence.event_detail_program.capability.source_kind == "activity_execution" else None)
             change_id = "change:life-aftermath:settle:" + suffix
             change_hash = outcome_mutation_hash(
                 change_id=change_id,
@@ -892,11 +903,13 @@ class LifeAftermathRuntime:
                 result_payload_ref=chosen.result_payload_ref,
                 result_payload_hash=chosen.result_payload_hash,
                 observation_refs=(observation_id,),
+                execution_source_ref=execution_source_ref,
                 adopt_proposed_life_direction=(
                     adopted if isinstance(adopted, bool) else None
                 ),
             )
             proposal_payload = OutcomeProposalRecordedPayload(
+                execution_source_ref=execution_source_ref,
                 outcome_proposal_id=proposal_id,
                 decision_proposal_id=proposal_id,
                 change_id=change_id,
@@ -954,6 +967,7 @@ class LifeAftermathRuntime:
             else None
         )
         settlement_payload = WorldOccurrenceSettledPayload(
+            execution_source_ref=proposal_payload.execution_source_ref,
             change_id=change_id,
             transition_id="transition:life-aftermath:settle:" + suffix,
             expected_entity_revision=occurrence.entity_revision,
@@ -1004,14 +1018,18 @@ class LifeAftermathRuntime:
                 correlation_id=correlation_id,
             )
         if self._ledger.lookup_event_commit(settlement_event.event_id) is None:
-            self._commit(
-                (
-                    acceptance_event,
-                    settlement_event,
-                    *((trigger_event,) if trigger_event is not None else ()),
-                ),
-                commit_id="commit:life-aftermath:settlement:" + suffix,
-            )
+            with self._ledger.serialized_commit_sequence():
+                if cancel_interrupted_execution(ledger=self._ledger, occurrence_id=occurrence.occurrence_id,
+                                                wake_event_ref=wake.event_id):
+                    return None
+                self._commit(
+                    (
+                        acceptance_event,
+                        settlement_event,
+                        *((trigger_event,) if trigger_event is not None else ()),
+                    ),
+                    commit_id="commit:life-aftermath:settlement:" + suffix,
+                )
 
         if chosen.result_contract in WORLD_CONSEQUENCE_CONTRACTS:
             OccurrenceResultContentRuntime(

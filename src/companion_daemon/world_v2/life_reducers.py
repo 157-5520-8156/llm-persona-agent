@@ -416,6 +416,8 @@ def settle_occurrence(
         raise ValueError("settlement change ID does not match outcome proposal")
     if proposal.proposed_change_hash != payload.accepted_change_hash:
         raise ValueError("settlement mutation was not accepted from outcome proposal")
+    if proposal.execution_source_ref != payload.execution_source_ref:
+        raise ValueError("settlement execution source differs from its accepted proposal")
     if (
         proposal.adopt_proposed_life_direction
         != payload.adopt_proposed_life_direction
@@ -484,10 +486,13 @@ def terminate_occurrence(
     *,
     target_status: str,
     logical_time: datetime,
+    interrupted_active: bool = False,
 ) -> tuple[WorldOccurrenceProjection, ...]:
     index, occurrence = _occurrence(occurrences, payload.occurrence_id)
     _expect_revision(occurrence.entity_revision, payload.expected_entity_revision)
-    if occurrence.status != "committed":
+    if occurrence.status != "committed" and not (
+        interrupted_active and target_status == "cancelled" and occurrence.status == "active"
+    ):
         raise ValueError("only an unactivated occurrence can cancel or expire")
     if payload.effective_at > logical_time:
         raise ValueError("occurrence terminal transition is ahead of logical time")

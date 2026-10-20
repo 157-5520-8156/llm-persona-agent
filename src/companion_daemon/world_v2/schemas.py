@@ -2827,6 +2827,8 @@ class RecordedWorldDrawBinding(FrozenModel):
 
 
 class OutcomeProposalProjection(FrozenModel):
+    execution_source_ref: str | None = Field(
+        default=None, min_length=1, max_length=512, exclude_if=lambda value: value is None)
     outcome_proposal_id: str = Field(min_length=1)
     decision_proposal_id: str = Field(min_length=1)
     change_id: str = Field(min_length=1)

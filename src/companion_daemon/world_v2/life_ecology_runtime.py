@@ -1276,6 +1276,8 @@ class LifeEcologyRuntime:
                 if life_development_failure_code is not None
                 else "advanced"
                 if activity_status == "transitioned"
+                # Reporting retirement does not spend the Life/NPC cadence.
+                or aftermath_status == "cancelled"
                 or biographical_status == "transitioned"
                 or life_development_status
                 in {
