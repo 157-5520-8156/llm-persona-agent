@@ -1,3 +1,13 @@
+Full-v1 on40c82f71 failed11158pass/2fail; do not call it passed. The proactive-timeout
+case failed in its interactive setup before reaching background work: a deterministic
+280ms setup reproduces that failure. Setup now uses normal interactive defaults while
+the original250ms background ceiling,400ms provider cancellation and no-reauthor assertions
+remain unchanged. Complete old/new120-case controls preserve every business manifest
+field; only npc_world_impact.01 replay identity changes. Recursive projections differ by
+351 consistent digest renames, no prose/numeric/structural change. Baseline.117 records
+that exact technical delta without changing corpus or predicates. Two targeted cases pass;
+the final commit requires its own new frozen full run and same-world switch gates.
+
 Reference/maintenance repair is isolated in reference-contract-repair; protected N/W and
 the live df8c archive are unchanged. Fresh pinned-role-sources.1 binds advertised attention
 and effect-source membership to the same request catalog, with exact submitted error paths.

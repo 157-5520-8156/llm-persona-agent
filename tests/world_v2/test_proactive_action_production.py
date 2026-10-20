@@ -2618,8 +2618,15 @@ async def test_sqlite_production_composition_installs_proactive_budget_without_a
 async def test_production_proactive_lane_does_not_reauthor_after_timeout(
     tmp_path,
 ) -> None:  # type: ignore[no-untyped-def]
+    class SetupChat(_NoExpectationChat):
+        async def complete(self, messages, **kwargs):
+            # The interactive precondition is deliberately slower than the
+            # background ceiling. It must not inherit that lane's test budget.
+            await asyncio.sleep(0.28)
+            return await super().complete(messages, **kwargs)
+
     proactive = _SlowPrimaryThenSilentDraftModel(primary_delay_seconds=0.4)
-    chat = _production_expression_wire(_NoExpectationChat())
+    chat = _production_expression_wire(SetupChat())
     app = build_sqlite_world_v2_test_application(
         path=tmp_path / "proactive-timeout-policy.sqlite3",
         config=_application_config(
@@ -2627,17 +2634,8 @@ async def test_production_proactive_lane_does_not_reauthor_after_timeout(
             companion_actor_ref="actor:companion",
             reply_target="user:primary",
             action_pump_owner="worker:actions",
-            interactive_turn_budget_policy=InteractiveTurnBudgetPolicy(
-                total_seconds=0.25,
-                hedge_after_seconds=0.02,
-                acceptance_dispatch_reserve_seconds=0.02,
-                first_provider_entry_seconds=0.01,
-                technical_recovery_seconds=0.2,
-                validation_recovery_seconds=0.2,
-                validation_reselection_seconds=0.2,
-            ),
             # Proactive authorship now owns a separate ceiling, so the timeout
-            # under test has to be set on the background lane.
+            # under test belongs only to that lane; chat uses production defaults.
             background_turn_budget_policy=InteractiveTurnBudgetPolicy(
                 total_seconds=0.25,
                 hedge_after_seconds=0.02,

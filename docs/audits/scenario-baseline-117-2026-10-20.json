@@ -1,0 +1,34 @@
+{
+  "contract": "world-v2-offline-mechanism-rebaseline.1",
+  "status": "verified_offline_only",
+  "old_source_commit": "df8c821f45748dfb09622b1aa48293e266d02d21",
+  "new_runtime_commit": "40c82f7191af856b51229ff7902431c972a2aab1",
+  "old_version": "world-v2-offline-mechanism-baseline.116",
+  "old_manifest_hash": "10198a47a18995ee26742609ffa82dbcf9963212255b3ef4c46afb0f6cb24e16",
+  "new_version": "world-v2-offline-mechanism-baseline.117",
+  "new_manifest_hash": "337c8683333fd26adeae2841730dcd8a9532fb9745ed0791976bcf944e3a4062",
+  "new_rows_with_old_version_hash": "3a02d3c42926668a999e6edbbbe281d105884ffda32afffa146c20d872ec843d",
+  "case_count": 120,
+  "all_existing_predicates_and_replays_passed": true,
+  "all_visible_output_room_states_calls_and_other_manifest_fields_equal": true,
+  "changed_manifest_fields": [
+    {
+      "case": "npc_world_impact.01",
+      "diff": {
+        "replay_hash": {
+          "before": "0bf95c62644e8d03ea60b63ff34a1b6f66cc76fbb4bb0c4b99d67d3dfb27cfb9",
+          "after": "9d7abb794e79b339d2d35ec7e8a3157b47ab521125ab5525e3f5b636739cc917"
+        }
+      }
+    }
+  ],
+  "expanded_projection": {
+    "changed_leaves": 351,
+    "identity_mappings": 127,
+    "numeric_or_structural_changes": [],
+    "nonidentity_text_changes": [],
+    "only_consistent_digest_renames": true,
+    "scope": "Actual complete old/new public case projections, recursively decoded JSON fields; exact unchanged semantic/numeric structure required, no predicate edits or provider calls."
+  },
+  "reason": "Fresh pinned-role-sources.1 binds request/source grammar to author identity. Complete old and new public-case controls preserve all output/room/action/call/behavior fields; only npc_world_impact.01 replay identity changes. No corpus or predicate edits, and no waiver of production manifest guard. Not real-model/diversity/performance or release qualification."
+}
