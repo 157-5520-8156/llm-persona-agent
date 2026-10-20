@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 import json
 
-from .event_detail_contract import event_detail_index
+from .event_detail_contract import event_detail_index, EventDetailCapability
 from .life_development_draft import LifeDevelopmentCapabilityManifest, parse_world_author_draft
 from .schemas import ProjectionCursor, WorldEvent
 from .world_outlook import digest
@@ -18,9 +18,9 @@ def detail_operation(occurrence_id):
     return "event-detail:" + digest(occurrence_id)
 
 
-def cancel_interrupted_execution(*, ledger, occurrence_id, wake_event_ref):
+def cancel_interrupted_execution(*, ledger, occurrence_id, wake_event_ref, content_store=None):
     """Retire a revoked owned attempt, without choosing a replacement or outcome."""
-    from .event_detail_contract import activity_execution_plan, activity_execution_is_current
+    from .event_detail_contract import activity_execution_plan, activity_execution_is_current, execution_authorities
     from .event_identity import domain_idempotency_key
     from .life_events import WorldOccurrenceTerminalPayload
     from .schemas import EvidenceRef
@@ -28,15 +28,14 @@ def cancel_interrupted_execution(*, ledger, occurrence_id, wake_event_ref):
     with ledger.serialized_commit_sequence():
         state = ledger.project()
         occurrence = next(o for o in state.world_occurrences if o.occurrence_id == occurrence_id)
-        index = occurrence.event_detail_program
-        if (occurrence.status not in {"committed", "active"} or index is None
-            or index.capability.source_kind != "activity_execution"):
+        if occurrence.status not in {"committed", "active"}:
             return False
-        plan = activity_execution_plan(state, occurrence, index.capability.source_event_ref)
-        if activity_execution_is_current(plan, index.capability):
+        for authority, content_proof in execution_authorities(occurrence, content_store):
+            plan = activity_execution_plan(state, occurrence, authority.source_event_ref, content_proof)
+            if not activity_execution_is_current(plan, authority):
+                break
+        else:
             return False
-        if plan.entity_revision <= index.capability.entity_revision:
-            raise ValueError("interruption must follow the original execution head")
         wake = ledger.lookup_event_commit(wake_event_ref)
         if wake is None or wake[0].event_type not in {"ClockAdvanced", "ActivityCompleted", "ActivityAbandoned"}:
             raise ValueError("execution interruption needs its committed scheduler wake")
@@ -47,7 +46,8 @@ def cancel_interrupted_execution(*, ledger, occurrence_id, wake_event_ref):
             change_id="interrupt:" + occurrence_id, transition_id="interrupt:" + occurrence_id,
             expected_entity_revision=occurrence.entity_revision, occurrence_id=occurrence_id,
             effective_at=state.logical_time, reason_ref=reason,
-            interrupted_execution_source_ref=index.capability.source_event_ref,
+            interrupted_execution_source_ref=authority.source_event_ref,
+            execution_content_proof=content_proof,
             evidence_refs=tuple(EvidenceRef(ref_id=ref.event_id, evidence_type="committed_world_event",
                 claim_purpose="life_transition", source_world_revision=ref.world_revision,
                 immutable_hash=ref.payload_hash) for ref in sorted(refs.values(), key=lambda r: r.event_id)),
@@ -172,28 +172,38 @@ class EventDetailRuntime:
         programmes = {}
         if any(ref.event_type in execution_changes | {"WorldOccurrenceCommitted"} for ref in refs):
             for occurrence in projection.world_occurrences:
-                index = occurrence.event_detail_program
-                if (occurrence.status in {"committed", "active"} and index is not None
-                    and index.capability.source_kind == "activity_execution"
-                    and self.actor_ref in occurrence.participant_refs):
-                    programmes.setdefault(index.capability.entity_ref, []).append(occurrence)
+                if occurrence.status in {"committed", "active"} and self.actor_ref in occurrence.participant_refs:
+                    from .event_detail_contract import execution_authorities
+                    for authority, _ in execution_authorities(occurrence, self.content_store):
+                        entity_ref = authority.entity_ref if isinstance(authority, EventDetailCapability) else authority.plan_id
+                        if occurrence not in programmes.setdefault(entity_ref, []):
+                            programmes[entity_ref].append(occurrence)
 
         def retire_interrupted(entity_ref):
             # One working set per capture, not a persistent history cache.
             # Completed detail receipts are not completed activity attempts.
             unregistered = []
             for occurrence in programmes.pop(entity_ref, ()):
+                if occurrence.event_detail_program is None:
+                    cancel_interrupted_execution(ledger=self.ledger, occurrence_id=occurrence.occurrence_id,
+                        wake_event_ref=wake_event_ref, content_store=self.content_store)
+                    continue
                 prior = self.store.operation(detail_operation(occurrence.occurrence_id))
                 if prior is None:
                     unregistered.append(occurrence)
                 elif prior["state"] == "running":
                     # The existing per-programme worker owns retry/failure
                     # recording. Wake it even if its first field is not due.
-                    if not self._source_live(occurrence.event_detail_program.capability, projection):
-                        self.store.wake_event_details(entity_ref=entity_ref, at=projection.logical_time.isoformat())
+                    from .event_detail_contract import activity_execution_plan, activity_execution_is_current, execution_authorities
+                    for authority, proof in execution_authorities(occurrence, self.content_store):
+                        plan = activity_execution_plan(projection, occurrence, authority.source_event_ref, proof)
+                        if not activity_execution_is_current(plan, authority):
+                            self.store.wake_event_details(entity_ref=occurrence.occurrence_id,
+                                                          at=projection.logical_time.isoformat())
+                            break
                 else:
                     cancel_interrupted_execution(ledger=self.ledger,
-                        occurrence_id=occurrence.occurrence_id, wake_event_ref=wake_event_ref)
+                        occurrence_id=occurrence.occurrence_id, wake_event_ref=wake_event_ref, content_store=self.content_store)
             if unregistered:
                 programmes[entity_ref] = unregistered
 
@@ -305,10 +315,10 @@ class EventDetailRuntime:
         index = occurrence.event_detail_program
         if index is None or index.model_dump(mode="json") != row["payload"]["program_index"]:
             raise ValueError("event detail pointer differs from committed authority")
-        if occurrence.status in {"cancelled", "expired"} or not self._source_live(index.capability, state):
+        interrupted = cancel_interrupted_execution(ledger=self.ledger,
+            occurrence_id=occurrence.occurrence_id, wake_event_ref=wake_event_ref, content_store=self.content_store)
+        if interrupted or occurrence.status in {"cancelled", "expired"} or not self._source_live(index.capability, state):
             self._close_phases(row, index, wake_event_ref)
-            cancel_interrupted_execution(ledger=self.ledger, occurrence_id=occurrence.occurrence_id,
-                                         wake_event_ref=wake_event_ref)
             self.store.finish(op, state="source_changed", payload={**row["payload"], "reason": "unreleased_detail_no_longer_authorized"})
             return 0
         if state.logical_time >= index.capability.ends_at:

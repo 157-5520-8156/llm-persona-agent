@@ -619,7 +619,7 @@ class LifeAftermathRuntime:
     ) -> str | None:
         from .event_detail_runtime import cancel_interrupted_execution
         if cancel_interrupted_execution(ledger=self._ledger, occurrence_id=occurrence.occurrence_id,
-                                        wake_event_ref=wake.event_id):
+                                        wake_event_ref=wake.event_id, content_store=self._content_store):
             return None
         wake_evidence = self._event_evidence(wake, purpose="life_transition")
         suffix = occurrence.occurrence_id.removeprefix("occurrence:life-aftermath:")
@@ -888,10 +888,10 @@ class LifeAftermathRuntime:
             change_hash = persisted.proposed_change_hash
         else:
             adopted = decision_identity.get("adopt_proposed_life_direction")
-            execution_source_ref = (
-                occurrence.event_detail_program.capability.source_event_ref
-                if occurrence.event_detail_program is not None
-                and occurrence.event_detail_program.capability.source_kind == "activity_execution" else None)
+            from .event_detail_contract import execution_authorities
+            authorities = execution_authorities(occurrence, self._content_store, candidate_ref=chosen.candidate_result_ref)
+            execution_source_ref = authorities[0][0].source_event_ref if authorities else None
+            execution_content_proof = authorities[0][1] if authorities else None
             change_id = "change:life-aftermath:settle:" + suffix
             change_hash = outcome_mutation_hash(
                 change_id=change_id,
@@ -904,12 +904,14 @@ class LifeAftermathRuntime:
                 result_payload_hash=chosen.result_payload_hash,
                 observation_refs=(observation_id,),
                 execution_source_ref=execution_source_ref,
+                execution_content_proof=execution_content_proof,
                 adopt_proposed_life_direction=(
                     adopted if isinstance(adopted, bool) else None
                 ),
             )
             proposal_payload = OutcomeProposalRecordedPayload(
                 execution_source_ref=execution_source_ref,
+                execution_content_proof=execution_content_proof,
                 outcome_proposal_id=proposal_id,
                 decision_proposal_id=proposal_id,
                 change_id=change_id,
@@ -968,6 +970,7 @@ class LifeAftermathRuntime:
         )
         settlement_payload = WorldOccurrenceSettledPayload(
             execution_source_ref=proposal_payload.execution_source_ref,
+            execution_content_proof=proposal_payload.execution_content_proof,
             change_id=change_id,
             transition_id="transition:life-aftermath:settle:" + suffix,
             expected_entity_revision=occurrence.entity_revision,
@@ -1020,7 +1023,7 @@ class LifeAftermathRuntime:
         if self._ledger.lookup_event_commit(settlement_event.event_id) is None:
             with self._ledger.serialized_commit_sequence():
                 if cancel_interrupted_execution(ledger=self._ledger, occurrence_id=occurrence.occurrence_id,
-                                                wake_event_ref=wake.event_id):
+                                                wake_event_ref=wake.event_id, content_store=self._content_store):
                     return None
                 self._commit(
                     (

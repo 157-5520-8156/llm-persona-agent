@@ -418,6 +418,8 @@ def settle_occurrence(
         raise ValueError("settlement mutation was not accepted from outcome proposal")
     if proposal.execution_source_ref != payload.execution_source_ref:
         raise ValueError("settlement execution source differs from its accepted proposal")
+    if proposal.execution_content_proof != payload.execution_content_proof:
+        raise ValueError("settlement execution content differs from its accepted proposal")
     if (
         proposal.adopt_proposed_life_direction
         != payload.adopt_proposed_life_direction

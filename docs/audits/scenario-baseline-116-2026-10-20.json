@@ -1,0 +1,35 @@
+{
+  "contract": "world-v2-offline-mechanism-rebaseline.1",
+  "status": "verified_offline_only",
+  "at": "2026-10-20T03:56:32.832469+00:00",
+  "old_source_commit": "394cf408cf56cdccc7d6052301fa3989db4d5fd1",
+  "755_source_commit": "755bbaf8bcc1d0082019a54a6346f2a8eb74cbd5",
+  "current_source": "uncommitted unified source; all manifest rows equal755",
+  "old_version": "world-v2-offline-mechanism-baseline.115",
+  "old_manifest_hash": "e3abeb12ae78878a3d72ee560fe2ce4b57c9121e5bf6ee0b88396f155ffc2b05",
+  "new_version": "world-v2-offline-mechanism-baseline.116",
+  "new_manifest_hash": "10198a47a18995ee26742609ffa82dbcf9963212255b3ef4c46afb0f6cb24e16",
+  "new_rows_with_old_version_hash": "2f6eff5e90bc0f672ad5db440b15728c76d27b8d78d64014618e80c60d4e89ba",
+  "case_count": 120,
+  "all_case_predicates_and_replays_passed": true,
+  "all_visible_output_room_states_calls_and_other_manifest_fields_equal": true,
+  "changed_manifest_fields": [
+    {
+      "case": "npc_world_impact.01",
+      "diff": {
+        "replay_hash": {
+          "before": "ea4af2ca21f1e6549cbad68fb0a9d16a7d16f2782172a61bda812c68436d5cdc",
+          "after": "0bf95c62644e8d03ea60b63ff34a1b6f66cc76fbb4bb0c4b99d67d3dfb27cfb9"
+        }
+      }
+    }
+  ],
+  "expanded_projection": {
+    "changed_leaves": 334,
+    "only_consistent_reference_or_hash_renames": true,
+    "distinct_identity_mappings": 163,
+    "numeric_changes": [],
+    "semantic_content_changes": []
+  },
+  "reason": "Fresh .25 source-presentation protocol and host proof schema affect the canonical model/request identity. A complete old394 control reproduces .115;755 and unified controls agree. No corpus edits or predicate loosening. This does not qualify real-model semantics, autonomy, speed or diversity."
+}

@@ -118,6 +118,8 @@ def test_settled_course_keeps_accepted_detail_authority_until_original_window_en
 class DetailAuthor(_AttemptAuthor):
     privacy = "private"
     conditional = False
+    without_steps = False
+    outcome_canary = None
     async def complete(self, messages, **kwargs):
         raw = await super().complete(messages, **kwargs)
         value = json.loads(raw)
@@ -136,6 +138,11 @@ class DetailAuthor(_AttemptAuthor):
             value["timing"]["duration_minutes"] = 5
             value["event_details"][1]["after_seconds"] = 600
             value["event_details"][0]["outcome_index"] = 0
+        if self.without_steps:
+            value["event_details"] = []
+        if self.outcome_canary is not None:
+            for outcome in value["outcomes"]:
+                outcome["world_consequence"]["authorized_attempt_result"]["text"] += self.outcome_canary
         self.draft = value
         return json.dumps(value, ensure_ascii=False)
 
@@ -204,7 +211,7 @@ async def test_prepared_details_are_hidden_until_due_and_replay_once(tmp_path, m
 
 
 @asynccontextmanager
-async def prepared(tmp_path, monkeypatch, build_app, *, conditional=False):
+async def prepared(tmp_path, monkeypatch, build_app, *, conditional=False, steps=True, outcome_canary=None):
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
     if conditional:
         import test_day_open_world_consequence_material as fixture
@@ -218,6 +225,8 @@ async def prepared(tmp_path, monkeypatch, build_app, *, conditional=False):
         wake = _wake(ledger)
         author = DetailAuthor(content, wake, plan.authority_origin.accepted_event_ref)
         author.conditional = conditional
+        author.without_steps = not steps
+        author.outcome_canary = outcome_canary
         details = detail_runtime(ledger, content, store)
         outlook = WorldOutlookRuntime(ledger=ledger, store=store, author=author, actor_ref=ACTOR,
             executor=details.executor, content_store=content)
@@ -543,14 +552,15 @@ async def test_reviewed_private_program_and_its_clock_releases_do_not_buy_anothe
 @pytest.mark.parametrize('transition', ['pause', 'resume', 'abandon', 'complete'])
 @pytest.mark.parametrize('details_first', [False, True])
 @pytest.mark.parametrize('cold', [False, True])
+@pytest.mark.parametrize('steps', [False, True])
 async def test_revoked_execution_cancels_parent_before_complete_outcome(
-    tmp_path, monkeypatch, build_app, transition, details_first, cold,
+    tmp_path, monkeypatch, build_app, transition, details_first, cold, steps,
 ):
     from test_world_consequence_authoring_context import _operator_transition
 
-    async with prepared(tmp_path, monkeypatch, build_app) as ctx:
-        assert ctx.details.advance(wake_event_ref=ctx.wake.event_id) == 1
-        published = ctx.ledger.project().world_occurrences[-1].occurrence_id
+    async with prepared(tmp_path, monkeypatch, build_app, steps=steps) as ctx:
+        assert ctx.details.advance(wake_event_ref=ctx.wake.event_id) == int(steps)
+        published = ctx.ledger.project().world_occurrences[-1].occurrence_id if steps else None
         if transition in {'pause', 'resume'}:
             _operator_transition(ctx.ledger, ctx.plan.plan_id, 'ActivityPaused', 'event:interrupt')
             if transition == 'resume':
@@ -582,7 +592,8 @@ async def test_revoked_execution_cancels_parent_before_complete_outcome(
             assert parent.terminal_reason_ref == current_plan.authority_origin.accepted_event_ref
             assert parent.settlement_event_ref is None
             # An external fact already released before the choice remains true.
-            assert next(o for o in state.world_occurrences if o.occurrence_id == published).status == 'settled'
+            if published is not None:
+                assert next(o for o in state.world_occurrences if o.occurrence_id == published).status == 'settled'
             assert len(ctx.author.received) == 1
             before = ledger.export_replay_evidence()
             assert details.advance(wake_event_ref=clock.event_id) == 0
@@ -643,14 +654,16 @@ async def test_active_programme_cancellation_requires_exact_revoked_source(
 
 
 @pytest.mark.asyncio
-async def test_new_resumed_attempt_survives_old_programme_retirement(tmp_path, monkeypatch, build_app):
+@pytest.mark.parametrize('steps', [False, True])
+async def test_new_resumed_attempt_survives_old_programme_retirement(tmp_path, monkeypatch, build_app, steps):
     from test_world_consequence_authoring_context import _operator_transition
 
-    async with prepared(tmp_path, monkeypatch, build_app) as ctx:
+    async with prepared(tmp_path, monkeypatch, build_app, steps=steps) as ctx:
         _operator_transition(ctx.ledger, ctx.plan.plan_id, 'ActivityPaused', 'event:pause-old')
         source = _operator_transition(ctx.ledger, ctx.plan.plan_id, 'ActivityResumed', 'event:resume-new')
         clock = _wake(ctx.ledger, 'resume-program')
         author = DetailAuthor(ctx.content, clock, source)
+        author.without_steps = not steps
         runtime = _author_runtime(ctx.ledger, ctx.content, author,
             critic=_SequenceModel(model='fixture:focused', outputs=(_novel_origin_review(decision='supported'),)))
         runtime._world_outlook = ctx.outlook
@@ -658,8 +671,9 @@ async def test_new_resumed_attempt_survives_old_programme_retirement(tmp_path, m
             wake_event_ref=clock.event_id, trace_id='resume-program', correlation_id='resume-program')
         assert made.status == 'occurrence_committed', made
         fresh = next(o for o in ctx.ledger.project().world_occurrences if o.occurrence_id == made.occurrence_id)
-        assert fresh.event_detail_program.capability.source_event_ref == source
-        assert ctx.details.advance(wake_event_ref=clock.event_id) == 1
+        from companion_daemon.world_v2.event_detail_contract import execution_authorities
+        assert all(a.source_event_ref == source for a, _ in execution_authorities(fresh, ctx.content))
+        assert ctx.details.advance(wake_event_ref=clock.event_id) == int(steps)
         later = _seed_clock(ctx.ledger, event_id='clock:resumed-end', logical_time_from=clock.logical_time,
             logical_time=max(ctx.parent.time_window.closes_at, fresh.time_window.closes_at) + timedelta(seconds=1))
         aftermath = _aftermath(ctx.ledger, ctx.content, _NoCharacterCalls())
@@ -707,12 +721,13 @@ async def test_interruption_during_draw_keeps_audit_but_not_complete_result(tmp_
 
 
 @pytest.mark.asyncio
-async def test_fresh_settlement_guard_rejects_pause_after_proposal(tmp_path, monkeypatch, build_app):
+@pytest.mark.parametrize('steps', [False, True])
+async def test_fresh_settlement_guard_rejects_pause_after_proposal(tmp_path, monkeypatch, build_app, steps):
     from test_world_consequence_authoring_context import _operator_transition
     from companion_daemon.world_v2.life_events import WorldOccurrenceSettledPayload
     from companion_daemon.world_v2.schemas import ProjectionCursor
 
-    async with prepared(tmp_path, monkeypatch, build_app) as ctx:
+    async with prepared(tmp_path, monkeypatch, build_app, steps=steps) as ctx:
         clock = _seed_clock(ctx.ledger, event_id='clock:settle-race', logical_time_from=ctx.wake.logical_time,
             logical_time=ctx.parent.time_window.closes_at + timedelta(seconds=1))
         aftermath = _aftermath(ctx.ledger, ctx.content, _NoCharacterCalls())
@@ -731,8 +746,9 @@ async def test_fresh_settlement_guard_rejects_pause_after_proposal(tmp_path, mon
         assert captured
         settled = next(e for e in captured if e.event_type == 'WorldOccurrenceSettled')
         body = settled.payload()
-        assert body['execution_source_ref'] == ctx.parent.event_detail_program.capability.source_event_ref
-        without_guard = {k: v for k, v in body.items() if k != 'execution_source_ref'}
+        assert body['execution_source_ref'] == ctx.plan.authority_origin.accepted_event_ref
+        assert ('execution_content_proof' in body) == (not steps)
+        without_guard = {k: v for k, v in body.items() if k not in {'execution_source_ref', 'execution_content_proof'}}
         with pytest.raises(ValueError, match='change hash'):
             WorldOccurrenceSettledPayload.model_validate_json(json.dumps(without_guard))
         _operator_transition(ctx.ledger, ctx.plan.plan_id, 'ActivityPaused', 'event:after-proposal')
@@ -747,11 +763,12 @@ async def test_fresh_settlement_guard_rejects_pause_after_proposal(tmp_path, mon
 
 
 @pytest.mark.asyncio
-async def test_reducer_source_guard_rejects_unsafe_caller_with_current_proposal(tmp_path, monkeypatch, build_app):
+@pytest.mark.parametrize('steps', [False, True])
+async def test_reducer_source_guard_rejects_unsafe_caller_with_current_proposal(tmp_path, monkeypatch, build_app, steps):
     from test_world_consequence_authoring_context import _operator_transition
     from companion_daemon.world_v2 import event_detail_runtime
 
-    async with prepared(tmp_path, monkeypatch, build_app) as ctx:
+    async with prepared(tmp_path, monkeypatch, build_app, steps=steps) as ctx:
         clock = _seed_clock(ctx.ledger, event_id='clock:source-guard', logical_time_from=ctx.wake.logical_time,
             logical_time=ctx.parent.time_window.closes_at + timedelta(seconds=1))
         aftermath = _aftermath(ctx.ledger, ctx.content, _NoCharacterCalls())
@@ -772,7 +789,8 @@ async def test_reducer_source_guard_rejects_unsafe_caller_with_current_proposal(
         parent = next(o for o in state.world_occurrences if o.occurrence_id == ctx.parent.occurrence_id)
         assert parent.status == 'active' and parent.settlement_event_ref is None
         proposal = next(p for p in state.outcome_proposals if p.occurrence_id == parent.occurrence_id)
-        assert proposal.execution_source_ref == parent.event_detail_program.capability.source_event_ref
+        assert proposal.execution_source_ref == ctx.plan.authority_origin.accepted_event_ref
+        assert (proposal.execution_content_proof is not None) == (not steps)
         assert proposal.evaluated_world_revision == state.world_revision
         assert (await advance_aftermath(aftermath, clock)).status == 'cancelled'
         assert ctx.ledger.rebuild() == ctx.ledger.project()
@@ -875,3 +893,59 @@ async def test_finished_detail_receipt_does_not_keep_revoked_parent_alive(tmp_pa
         assert ctx.store.operation(op) == prior
         assert all(next(o for o in state.world_occurrences if o.occurrence_id == ref).status == 'active' for ref in published)
         assert ctx.ledger.rebuild() == state
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('steps', [False, True])
+async def test_active_reader_rechecks_execution_before_cleanup(tmp_path, monkeypatch, build_app, steps):
+    from test_world_consequence_authoring_context import _operator_transition
+    from companion_daemon.world_v2.life_development_runtime import LifeDevelopmentProposalReader
+    from companion_daemon.world_v2.schemas import ProjectionCursor
+
+    async with prepared(tmp_path, monkeypatch, build_app, steps=steps) as ctx:
+        reader = LifeDevelopmentProposalReader(ledger=ctx.ledger, content_store=ctx.content)
+        def read():
+            state = ctx.ledger.project()
+            cursor = ProjectionCursor(**{k: getattr(state, k) for k in ('world_revision', 'deliberation_revision', 'ledger_sequence')})
+            return reader.read_active_occurrence(occurrence_id=ctx.parent.occurrence_id,
+                expected_cursor=cursor, actor_ref=ACTOR, viewer_privacy_ceiling='private')
+        assert read() is not None
+        _operator_transition(ctx.ledger, ctx.plan.plan_id, 'ActivityPaused', 'event:reader-interruption')
+        before = ctx.ledger.export_replay_evidence()
+        assert read() is None
+        assert ctx.ledger.export_replay_evidence() == before
+
+
+@pytest.mark.asyncio
+async def test_content_execution_proof_is_bound_and_never_enters_role_view(tmp_path, monkeypatch, build_app):
+    from test_world_consequence_authoring_context import _operator_transition
+    from companion_daemon.world_v2.event_detail_contract import execution_authority
+    from companion_daemon.world_v2.context_resolver import query_from_projection
+    from companion_daemon.world_v2.ledger_context_resolver import context_capsule_compiler_from_ledger, ContextRelevanceScope
+    from test_life_fact_readings import _fact_view
+
+    canary = 'UNSELECTED_PRIVATE_ATTEMPT_CANARY_6551'
+    async with prepared(tmp_path, monkeypatch, build_app, steps=False, outcome_canary=canary) as ctx:
+        first, other = ctx.parent.candidate_outcomes[:2]
+        proof = ctx.content.read_exact(content_ref=first.content_ref).text
+        assert canary in proof
+        assert execution_authority(ctx.parent, proof).source_event_ref == ctx.plan.authority_origin.accepted_event_ref
+        with pytest.raises(ValueError, match='committed candidate'):
+            execution_authority(ctx.parent, proof + ' ')
+        with pytest.raises(ValueError, match='committed candidate'):
+            execution_authority(ctx.parent, proof, candidate_ref=other.candidate_result_ref)
+        _operator_transition(ctx.ledger, ctx.plan.plan_id, 'ActivityPaused', 'event:private-proof-pause')
+        clock = _wake(ctx.ledger, 'private-proof-cleanup')
+        ctx.details.advance(wake_event_ref=clock.event_id)
+        cancelled = next(o for o in ctx.ledger.project().world_occurrences if o.occurrence_id == ctx.parent.occurrence_id)
+        assert cancelled.status == 'cancelled'
+        events = ctx.ledger.export_replay_evidence().events
+        event = next(e.event for e in events if e.event.event_type == 'WorldOccurrenceCancelled')
+        assert canary in event.payload()['execution_content_proof']
+        compiler = context_capsule_compiler_from_ledger(ledger=ctx.ledger, life_content_store=ctx.content,
+            relevance_scope=ContextRelevanceScope(actor_ref=ACTOR))
+        capsule = compiler.compile(query_from_projection(ctx.ledger.project(), actor_ref=ACTOR, trigger_ref=event.event_id))
+        view, _ = await _fact_view(capsule)
+        assert canary not in view.messages_json
+        assert canary not in view.source_table_json
+        assert ctx.ledger.rebuild() == ctx.ledger.project()

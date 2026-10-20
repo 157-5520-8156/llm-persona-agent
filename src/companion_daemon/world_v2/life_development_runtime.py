@@ -1410,6 +1410,11 @@ class LifeDevelopmentProposalReader:
             or privacy_rank[occurrence.visibility] > privacy_rank[viewer_privacy_ceiling]
         ):
             return None
+        from .event_detail_contract import execution_authorities, activity_execution_plan, activity_execution_is_current
+        for authority, proof in execution_authorities(occurrence, self._store):
+            plan = activity_execution_plan(projection, occurrence, authority.source_event_ref, proof)
+            if not activity_execution_is_current(plan, authority):
+                return None
         committed = {item.event_id: item for item in projection.committed_world_event_refs}
 
         def exact_event(event_ref: str, event_type: str):

@@ -46,20 +46,30 @@ async def _fact_view(capsule, *, review_contract=None):
 
 
 @pytest.mark.asyncio
-async def test_predicate_value_requires_the_exact_accepted_quote(tmp_path):
+@pytest.mark.parametrize('legacy_display', [False, True])
+async def test_predicate_value_requires_the_exact_accepted_quote(tmp_path, legacy_display):
     async with _sources(tmp_path, retained_value=VALUE) as case:
         view, snapshot = await _fact_view(case.capsule)
+        if legacy_display:
+            from test_life_claim_authority import new_fixture_view
+            view = new_fixture_view(view, snapshot, None)
         prepared = prepare_life_source_readings(view=view, snapshot=snapshot)
         facts = [r for r in prepared.as_dict()['readings'] if r['source_family'] == 'accepted_fact_value']
         assert len(facts) == 1
         fact = facts[0]
-        assert fact['value'] == case.observation.text != VALUE
+        assert case.observation.text != VALUE
+        assert fact['value'] == (case.observation.text if legacy_display else VALUE)
         assert fact['permissions'] == []
         assert fact['fact_context']['predicate_code'] == 'schedule.commitment'
         chosen = prepared.require_fact_value(reading_id=fact['reading_id'], quoted_value=VALUE,
             claim_scope='accepted_fact', subject_ref=case.observation.actor, view=view, snapshot=snapshot)
         assert chosen['quoted_value'] == VALUE
-        assert chosen['observation_context'] == case.observation.text
+        if legacy_display:
+            assert chosen['observation_context'] == case.observation.text
+        else:
+            assert chosen['accepted_value'] == VALUE
+            assert chosen['observation_event_ref'] == fact['observation_event_ref']
+            assert 'observation_context' not in chosen
         assert chosen['fact_context'] == fact['fact_context']
         assert chosen['write_authority'] is False
         for text in (case.observation.text, '用户决定取消周五的报告', VALUE + '。', '保留周五的约定', ''):

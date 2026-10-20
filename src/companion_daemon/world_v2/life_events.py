@@ -166,11 +166,19 @@ class ActivityTransitionPayload(DomainMutationPayload):
 
 
 class WorldOccurrenceTerminalPayload(DomainMutationPayload):
+    execution_content_proof: str | None = Field(
+        default=None, max_length=64_000, exclude_if=lambda value: value is None)
     occurrence_id: str = Field(min_length=1)
     effective_at: datetime
     reason_ref: str = Field(min_length=1)
     interrupted_execution_source_ref: str | None = Field(
         default=None, min_length=1, max_length=512, exclude_if=lambda value: value is None)
+
+    @model_validator(mode="after")
+    def execution_proof_has_source(self):
+        if self.execution_content_proof is not None and self.interrupted_execution_source_ref is None:
+            raise ValueError("execution content proof requires its interrupted source")
+        return self
 
 
 class WorldOccurrenceCommittedPayload(DomainMutationPayload):
@@ -207,6 +215,8 @@ class OutcomeObservationRecordedPayload(DomainMutationPayload):
 
 
 class OutcomeProposalRecordedPayload(FrozenModel):
+    execution_content_proof: str | None = Field(
+        default=None, max_length=64_000, exclude_if=lambda value: value is None)
     execution_source_ref: str | None = Field(
         default=None, min_length=1, max_length=512, exclude_if=lambda value: value is None)
     outcome_proposal_id: str = Field(min_length=1)
@@ -271,6 +281,8 @@ class OutcomeProposalRecordedPayload(FrozenModel):
 
     @model_validator(mode="after")
     def proposed_change_hash_matches_fields(self) -> OutcomeProposalRecordedPayload:
+        if self.execution_content_proof is not None and self.execution_source_ref is None:
+            raise ValueError("execution content proof requires its source")
         if self.execution_source_ref is not None and self.decision_authority != "recorded_world_draw":
             raise ValueError("execution programme outcome requires its recorded World draw")
         if (self.deliberation_trigger_id is None) != (self.source_observation_id is None):
@@ -383,6 +395,7 @@ class OutcomeProposalRecordedPayload(FrozenModel):
             adopt_proposed_life_direction=self.adopt_proposed_life_direction,
             character_life_direction=self.character_life_direction,
             execution_source_ref=self.execution_source_ref,
+            execution_content_proof=self.execution_content_proof,
         )
         if self.proposed_change_hash != expected:
             raise ValueError("outcome proposal change hash does not match proposed mutation")
@@ -390,6 +403,8 @@ class OutcomeProposalRecordedPayload(FrozenModel):
 
 
 class WorldOccurrenceSettledPayload(DomainMutationPayload):
+    execution_content_proof: str | None = Field(
+        default=None, max_length=64_000, exclude_if=lambda value: value is None)
     execution_source_ref: str | None = Field(
         default=None, min_length=1, max_length=512, exclude_if=lambda value: value is None)
     acceptance_id: str = Field(min_length=1)
@@ -413,6 +428,8 @@ class WorldOccurrenceSettledPayload(DomainMutationPayload):
 
     @model_validator(mode="after")
     def accepted_change_hash_matches_fields(self) -> WorldOccurrenceSettledPayload:
+        if self.execution_content_proof is not None and self.execution_source_ref is None:
+            raise ValueError("execution content proof requires its source")
         expected = outcome_mutation_hash(
             change_id=self.change_id,
             occurrence_id=self.occurrence_id,
@@ -426,6 +443,7 @@ class WorldOccurrenceSettledPayload(DomainMutationPayload):
             adopt_proposed_life_direction=self.adopt_proposed_life_direction,
             character_life_direction=self.character_life_direction,
             execution_source_ref=self.execution_source_ref,
+            execution_content_proof=self.execution_content_proof,
         )
         if self.accepted_change_hash != expected:
             raise ValueError("settlement change hash does not match accepted mutation")
@@ -446,6 +464,7 @@ def outcome_mutation_hash(
     adopt_proposed_life_direction: bool | None = None,
     character_life_direction: BiographicalCoordinateReplacement | None = None,
     execution_source_ref: str | None = None,
+    execution_content_proof: str | None = None,
 ) -> str:
     material: dict[str, object] = {
         "candidate_result_ref": candidate_result_ref,
@@ -466,6 +485,8 @@ def outcome_mutation_hash(
         material["character_life_direction"] = character_life_direction.model_dump(mode="json")
     if execution_source_ref is not None:
         material["execution_source_ref"] = execution_source_ref
+    if execution_content_proof is not None:
+        material["execution_content_proof"] = execution_content_proof
     encoded = json.dumps(
         material,
         ensure_ascii=False,

@@ -56,30 +56,84 @@ class EventDetailStep(FrozenModel):
                                       exclude_if=lambda value: value is None)
 
 
-def activity_execution_plan(projection, occurrence, source_ref):
+def execution_authority(occurrence, content_proof=None, *, candidate_ref=None):
+    """Use an indexed capability or exact committed candidate content, never prose inference."""
+    from .world_consequence_contract import WorldConsequenceV2, ActivityExecutionBinding
+    import hashlib
+
+    if content_proof is not None:
+        digest = hashlib.sha256(content_proof.encode()).hexdigest()
+        if not any(c.content_payload_hash == digest and c.result_contract == "world-consequence.2"
+                   and (candidate_ref is None or c.candidate_result_ref == candidate_ref)
+                   for c in occurrence.candidate_outcomes):
+            raise ValueError("execution proof differs from the committed candidate")
+        value = WorldConsequenceV2.model_validate_json(content_proof)
+        result = value.authorized_attempt_result
+        if result is None or not isinstance(result.execution_binding, ActivityExecutionBinding):
+            raise ValueError("execution proof has no activity authorization")
+        return result.execution_binding
+    index = occurrence.event_detail_program
+    if index is None or index.capability.source_kind != "activity_execution":
+        raise ValueError("execution source guard requires its original authority")
+    return index.capability
+
+
+def execution_authorities(occurrence, content_store, *, candidate_ref=None):
+    """Read existing execution bindings even when there are no timed detail steps."""
+    from .world_consequence_contract import WorldConsequenceV2, ActivityExecutionBinding
+    import hashlib
+
+    index = occurrence.event_detail_program
+    if index is not None and index.capability.source_kind == "activity_execution":
+        return ((index.capability, None),)
+    result = []
+    for candidate in occurrence.candidate_outcomes:
+        if candidate.result_contract != "world-consequence.2" or (
+            candidate_ref is not None and candidate.candidate_result_ref != candidate_ref):
+            continue
+        if content_store is None:
+            raise ValueError("execution source resolution needs its immutable content store")
+        content = content_store.read_exact(content_ref=candidate.content_ref)
+        if content is None or hashlib.sha256(content.text.encode()).hexdigest() != candidate.content_payload_hash:
+            raise ValueError("execution candidate content is unavailable or substituted")
+        value = WorldConsequenceV2.model_validate_json(content.text)
+        attempt = value.authorized_attempt_result
+        if attempt is not None and isinstance(attempt.execution_binding, ActivityExecutionBinding):
+            result.append((execution_authority(occurrence, content.text,
+                candidate_ref=candidate.candidate_result_ref), content.text))
+    return tuple(result)
+
+
+def activity_execution_plan(projection, occurrence, source_ref, content_proof=None, *, candidate_ref=None):
     """Prove the original programme and the owned Plan's current accepted head."""
     from .schemas import validate_plan_authority_state
 
-    index = occurrence.event_detail_program
-    if index is None or index.capability.source_kind != "activity_execution":
-        raise ValueError("execution source guard requires an activity programme")
-    cap = index.capability
-    plan = next((p for p in projection.plans if p.plan_id == cap.entity_ref), None)
+    authority = execution_authority(occurrence, content_proof, candidate_ref=candidate_ref)
+    indexed = isinstance(authority, EventDetailCapability)
+    plan_id = authority.entity_ref if indexed else authority.plan_id
+    revision = authority.entity_revision if indexed else authority.plan_entity_revision
+    plan = next((p for p in projection.plans if p.plan_id == plan_id), None)
     original = next((e for e in projection.committed_world_event_refs if e.event_id == source_ref), None)
-    if (source_ref != cap.source_event_ref or original is None
+    if (source_ref != authority.source_event_ref or original is None
         or original.event_type not in {"ActivityStarted", "ActivityResumed"}
-        or original.world_revision != cap.source_world_revision
-        or original.payload_hash != cap.source_payload_hash
+        or original.world_revision != authority.source_world_revision
+        or original.payload_hash != authority.source_payload_hash
         or plan is None or plan.owner_actor_ref not in occurrence.participant_refs
-        or plan.entity_revision < cap.entity_revision):
+        or plan.entity_revision < revision):
         raise ValueError("activity programme lacks its exact owned execution source")
+    if not indexed and (authority.actor_ref != plan.owner_actor_ref or authority.activity_id != plan.activity_id
+                        or authority.source_event_type != original.event_type):
+        raise ValueError("execution content differs from the original actor or activity")
     validate_plan_authority_state((plan,), projection.committed_world_event_refs,
                                   logical_time=projection.logical_time)
+    if plan.authority_origin.accepted_event_ref != source_ref and plan.entity_revision <= revision:
+        raise ValueError("interruption must follow the original execution head")
     return plan
 
 
 def activity_execution_is_current(plan, capability):
-    return bool(plan.status == "active" and plan.entity_revision == capability.entity_revision
+    revision = capability.entity_revision if isinstance(capability, EventDetailCapability) else capability.plan_entity_revision
+    return bool(plan.status == "active" and plan.entity_revision == revision
                 and plan.authority_origin.accepted_event_ref == capability.source_event_ref)
 
 

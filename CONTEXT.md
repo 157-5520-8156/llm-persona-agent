@@ -7,19 +7,21 @@ rejection and cold receipt. Nine actualv33 .24 checkpoints restore exactly;21 or
 roundtrip unchanged. Twelve old None checkpoints already reject on394 and still reject now;
 that is unchanged rejection, not recovery. New full and realGLM recovery remain required.
 
-Interrupted execution repair: a paused/resumed/ended/completed owned attempt now retires
-its uncompleted programme through a source-bound WorldOccurrenceCancelled event. The original
-capability, current accepted Plan head, evidence, exact time and CAS are re-proved; ordinary
-active events cannot use this exception. Fresh outcome hashes bind execution_source_ref and
-the settlement reducer rechecks it. Absent legacy fields keep old hashes/replay unchanged.
-Detail and Aftermath share the guard; already published facts and old detail receipts remain.
-Cold capture also reconciles complete/source_changed receipts whose parent was left active.
-The per-capture working set is discarded; independent Life cadence and external events remain.
-109 ecology/detail tests pass, including crash/retry, stale/current-proposal rejection, resumed
-new attempts, independent scenes and cold receipt recovery. New full, retained-history replay
-and actual GLM continuation still required. v34 remains HELD/never launched; v33 stopped normally
-at07:31:45 with fourDB/replay/reopen/effect-once passed. Protected QQ/main/W and original World,
-sidecars/failures/fixed target remain. Predecessor394full15/11089 does not qualify these repairs.
+Execution authority is shared across detail/no-detail producers, current readers and settlement.
+Indexed programmes reuse their capability; nonindexed events reuse the exact committed candidate
+content hash and ActivityExecutionBinding. A bounded private content proof lets reducers verify
+legacy candidates without trusting new metadata or adding a framework. Fresh proposal/settlement
+hashes bind that proof; cancellation re-proves current ownership/head/evidence/time/CAS. Old absent
+fields keep legacy hashes. Active readers withhold revoked attempts before cleanup; external events
+and independent Life cadence continue. Audit proofs never enter role views (explicit canary check).
+The retained fourDB/currentClock backup now retires19 stale attempts (14 indexed+5 nonindexed),
+keeps4 current, leaves15 old terminal receipts and every original Plan/event unchanged;0HTTP/choices/
+clockadvance. This control is not installed over the primaryWorld and is not realGLM qualification.
+Scoped tests and complete120-case scenario comparisons pass; only npc_world_impact.01 replay identity
+changes versus394, all behavioral fields/predicates remain. The new .116 audit documents334
+reference/hash renames with no numeric/prose change. Full17 and final-source retained-history gates
+remain required. v34/v35 held, never launched; v33 is the stopped actual predecessor07:31:45.
+QQ/main/W and the original World/allsidecars/failures/fixed target remain protected.
 
 Background source-loop isolation repair: synchronous Outlook view, pinned compilation and
 author-message preparation ran inside async entry points on the foreground loop. Four public
