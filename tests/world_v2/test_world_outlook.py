@@ -1825,3 +1825,85 @@ async def test_fresh_origin_reuses_pinned_registered_identity_and_real_script_pr
         runtime.close()
         content.close()
         ledger.close()
+
+
+@pytest.mark.asyncio
+async def test_original_npc_root_validation_does_not_own_the_foreground_event_loop(
+    tmp_path, monkeypatch
+):
+    import asyncio
+    import threading
+    from test_world_consequence_authoring_context import _registered_identity_fixture
+    import companion_daemon.world_v2.world_consequence_authoring_context as roots
+
+    ledger, content, manifest, _ = await _registered_identity_fixture(tmp_path)
+    state = ledger.project()
+    clock = max(
+        (r for r in state.committed_world_event_refs if r.event_type == "ClockAdvanced"),
+        key=lambda r: r.world_revision,
+    )
+    wake = ledger.lookup_event_commit(clock.event_id)[0]
+    value = draft_value(wake)
+    value.update(
+        world_id=ledger.world_id,
+        actor_ref=manifest.owner_actor_ref,
+        review_at=(state.logical_time + timedelta(days=1)).isoformat(),
+        horizon_end=(state.logical_time + timedelta(days=21)).isoformat(),
+    )
+    entered = threading.Event()
+    released = threading.Event()
+    original = roots.read_registered_npc_identity_sources
+
+    def gated(**kwargs):
+        entered.set()
+        assert released.wait(1), (
+            "Verified Root read blocked the foreground loop; it could not release the gate."
+        )
+        return original(**kwargs)
+
+    monkeypatch.setattr(roots, "read_registered_npc_identity_sources", gated)
+
+    class Critic:
+        model = "fixture:async-root-boundary"
+
+        async def complete(self, *args, **kwargs):
+            return json.dumps(
+                {"review": {"decision": "supported", "reason": "Stipulated transport only."}}
+            )
+
+    store = SQLiteWorldOutlookStore(
+        path=tmp_path / "root-async.sqlite",
+        world_id=ledger.world_id,
+        actor_ref=manifest.owner_actor_ref,
+    )
+    runtime = WorldOutlookRuntime(
+        ledger=ledger,
+        store=store,
+        author=Author([]),
+        actor_ref=manifest.owner_actor_ref,
+        content_store=content,
+        source_critic=Critic(),
+    )
+    before = ledger.project()
+    task = asyncio.create_task(
+        runtime._review_executable_sources(
+            candidate=WorldOutlookDraft.model_validate_json(json.dumps(value)),
+            context={},
+            manifest=manifest,
+            projection=state,
+            publication_contract="world-outlook-script-publication.2",
+            npc_capabilities=[c.model_dump(mode="json") for c in manifest.npc_capabilities],
+        )
+    )
+    try:
+        assert await asyncio.to_thread(entered.wait, 2)
+        released.set()
+        assert await task
+        assert ledger.project() == before
+    finally:
+        released.set()
+        if not task.done():
+            await task
+        runtime.close()
+        content.close()
+        ledger.close()

@@ -1,3 +1,12 @@
+Fresh marked Fate NPC Root validation now runs on the existing asyncio.to_thread boundary,
+with identical arguments/source checks. A deterministic event-loop gate reproduced synchronous
+blocking (1fail6.24s), then passed1.38s;183 related source/Outlook checks pass. Unmarked legacy
+wire stays unchanged. Full14 was intentionally interrupted for this exact new counterexample
+(exit-2/sourceunchanged), not qualified. New own full required; actual Root/provider semantic
+controls from3324 remain separately scoped and may only be reused with exact dependency checks.
+Original v49 normal stop completed at01:17:46+08/no shutdownerror; its original watcher is doing
+terminal4DB/replay/reopen/effectonce. Protected services/source/history remain unchanged.
+
 3324 own full13 completed11217pass/1fail; retained actual Root/scope controls and final
 real GLM private-identity/extra-childhood/public-privacy negatives passed with World unchanged.
 The remaining test-only fixture offered an NPC registration absent from its committed refs.

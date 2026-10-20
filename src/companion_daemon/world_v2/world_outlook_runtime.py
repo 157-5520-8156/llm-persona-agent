@@ -2077,9 +2077,13 @@ class WorldOutlookRuntime:
                 })
             from .world_consequence_authoring_context import read_registered_npc_identity_sources
             try:
-                npc_identities = read_registered_npc_identity_sources(
-                    ledger=self.ledger, content_store=self._content_store, manifest=adapted_manifest,
-                )
+                npc_identities = None
+                if npc_capabilities is not None:
+                    import asyncio
+                    npc_identities = await asyncio.to_thread(
+                        read_registered_npc_identity_sources, ledger=self.ledger,
+                        content_store=self._content_store, manifest=adapted_manifest,
+                    )
             except (TypeError, ValueError) as exc:
                 # Captured capability/source corruption is a technical failure;
                 # an author cannot repair readonly evidence by rewording a plot.
