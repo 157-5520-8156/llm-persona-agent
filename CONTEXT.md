@@ -1,3 +1,15 @@
+Completed-result boundary correction: full17 on1cdc did NOT pass (11147pass/1fail).
+The new execution guard treated a separately authored post-completion result as an
+interrupted pre-completion programme. The original completed-result integration test
+reproduced it offline. Reuse the existing completed-activity proposal family identity,
+exact owned completed head, adjacent last execution revision and registered original
+proposal pin; active programmes still lose authority on pause/resume/end/completion.
+No blanket completed-state exception, new metadata, model call or changed legacy wire.
+The previous19-retirement copy-only certificate was overbroad: five are actual original
+post-completion families and must be retained. That copy was never installed over the
+primary World. Final replacement source/full and fresh retained-copy proof are required;
+v36 failed its full gate and never launched. Preserve all earlier certificates/failures.
+
 Focused Plan meaning: both admission and fresh author presentation now retain the original
 accepted intention. The .25 Life profile enables the bounded historical-intention field;
 old <=.24/None pins retain their original presentation. Fresh unreviewed views declare their

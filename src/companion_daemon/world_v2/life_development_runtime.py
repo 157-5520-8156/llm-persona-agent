@@ -1413,7 +1413,7 @@ class LifeDevelopmentProposalReader:
         from .event_detail_contract import execution_authorities, activity_execution_plan, activity_execution_is_current
         for authority, proof in execution_authorities(occurrence, self._store):
             plan = activity_execution_plan(projection, occurrence, authority.source_event_ref, proof)
-            if not activity_execution_is_current(plan, authority):
+            if not activity_execution_is_current(plan, authority, projection=projection, occurrence=occurrence, world_id=projection.world_id):
                 return None
         committed = {item.event_id: item for item in projection.committed_world_event_refs}
 
@@ -2097,9 +2097,10 @@ class LifeDevelopmentRuntime:
         return None
 
     def _completed_activity_proposal_id(self, event_ref: str) -> str:
-        return "proposal:life-development:" + _digest({
-            "world_id": self._ledger.world_id, "completed_activity_event_ref": event_ref,
-        })
+        from .completed_activity_consequence import completed_activity_proposal_id
+        return completed_activity_proposal_id(
+            world_id=self._ledger.world_id, completion_event_ref=event_ref,
+        )
 
     def pending_active_attempt_ref(self, *, after_world_revision: int | None = None) -> str | None:
         """One latest readable unprocessed active head, within the existing retry schedule."""

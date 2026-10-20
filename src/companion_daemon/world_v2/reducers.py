@@ -13056,7 +13056,7 @@ def _world_occurrence_settled(state: ReducerState, event: WorldEvent) -> Reducer
                                         candidate_ref=payload.candidate_result_ref)
         plan = activity_execution_plan(state, pending, payload.execution_source_ref,
                                        payload.execution_content_proof, candidate_ref=payload.candidate_result_ref)
-        if not activity_execution_is_current(plan, authority):
+        if not activity_execution_is_current(plan, authority, projection=state, occurrence=pending, world_id=event.world_id):
             raise ValueError("settlement execution source is no longer current")
     world_revision = len(state.committed_world_event_refs) + 1
     occurrences = settle_occurrence(
@@ -13985,7 +13985,7 @@ def _world_occurrence_terminated(
         plan = activity_execution_plan(state, pending, payload.interrupted_execution_source_ref,
                                        payload.execution_content_proof)
         if (target_status != "cancelled"
-            or activity_execution_is_current(plan, authority)
+            or activity_execution_is_current(plan, authority, projection=state, occurrence=pending, world_id=event.world_id)
             or plan.authority_origin.accepted_event_ref != payload.reason_ref
             or payload.effective_at != event.logical_time
             or payload.effective_at < plan.authority_origin.accepted_at

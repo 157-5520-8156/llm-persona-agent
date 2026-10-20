@@ -32,7 +32,7 @@ def cancel_interrupted_execution(*, ledger, occurrence_id, wake_event_ref, conte
             return False
         for authority, content_proof in execution_authorities(occurrence, content_store):
             plan = activity_execution_plan(state, occurrence, authority.source_event_ref, content_proof)
-            if not activity_execution_is_current(plan, authority):
+            if not activity_execution_is_current(plan, authority, projection=state, occurrence=occurrence, world_id=ledger.world_id):
                 break
         else:
             return False
@@ -197,7 +197,7 @@ class EventDetailRuntime:
                     from .event_detail_contract import activity_execution_plan, activity_execution_is_current, execution_authorities
                     for authority, proof in execution_authorities(occurrence, self.content_store):
                         plan = activity_execution_plan(projection, occurrence, authority.source_event_ref, proof)
-                        if not activity_execution_is_current(plan, authority):
+                        if not activity_execution_is_current(plan, authority, projection=projection, occurrence=occurrence, world_id=projection.world_id):
                             self.store.wake_event_details(entity_ref=occurrence.occurrence_id,
                                                           at=projection.logical_time.isoformat())
                             break

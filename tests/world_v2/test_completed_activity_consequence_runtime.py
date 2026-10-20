@@ -119,6 +119,33 @@ async def test_completed_attempt_scheduler_settlement_and_character_response_sur
         assert ledger.project().experiences == ()
         (occurrence,) = ledger.project().world_occurrences
         assert occurrence.status == "active"
+        # A completed-at-author-pin result is distinct from an older running
+        # programme whose authorization was subsequently withdrawn.
+        from companion_daemon.world_v2.event_detail_contract import (
+            activity_execution_is_current, execution_authorities,
+        )
+        from companion_daemon.world_v2.event_detail_runtime import cancel_interrupted_execution
+        state = ledger.project()
+        authorities = execution_authorities(occurrence, store)
+        assert len(authorities) == len(occurrence.candidate_outcomes)
+        authority = authorities[0][0]
+        assert all(binding == authority for binding, _ in authorities)
+        def allowed(*, source=occurrence, original=state, world_id=WORLD, binding=authority):
+            return activity_execution_is_current(
+                plan, binding, projection=original, occurrence=source, world_id=world_id,
+            )
+        assert allowed()
+        assert not allowed(world_id="world:other")
+        assert not allowed(source=occurrence.model_copy(update={"trigger_ref": "event:unrelated"}))
+        assert not allowed(source=occurrence.model_copy(update={"occurrence_id": "occurrence:unrelated"}))
+        assert not allowed(binding=authority.model_copy(update={"plan_entity_revision": authority.plan_entity_revision - 1}))
+        assert not allowed(original=state.model_copy(update={"proposal_revisions": ()}))
+        before_cleanup = ledger.export_replay_evidence()
+        assert not cancel_interrupted_execution(
+            ledger=ledger, occurrence_id=occurrence.occurrence_id,
+            wake_event_ref=wake.event_id, content_store=store,
+        )
+        assert ledger.export_replay_evidence() == before_cleanup
         with monkeypatch.context() as probe:
             import companion_daemon.world_v2.completed_activity_consequence as source_reader
             probe.setattr(source_reader, 'read_completed_activity_consequence',

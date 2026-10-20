@@ -131,10 +131,41 @@ def activity_execution_plan(projection, occurrence, source_ref, content_proof=No
     return plan
 
 
-def activity_execution_is_current(plan, capability):
+def activity_execution_is_current(plan, capability, *, projection, occurrence, world_id):
+    """Preserve an active head or the exact post-completion result family.
+
+    Ending an attempt revokes an earlier programme. A separate result authored
+    from its accepted completion is retrospective, not a still-running attempt.
+    Both use the original execution binding; only the latter has this existing
+    source-derived proposal identity and a pin at/after the completion revision.
+    """
     revision = capability.entity_revision if isinstance(capability, EventDetailCapability) else capability.plan_entity_revision
-    return bool(plan.status == "active" and plan.entity_revision == revision
-                and plan.authority_origin.accepted_event_ref == capability.source_event_ref)
+    if (plan.status == "active" and plan.entity_revision == revision
+            and plan.authority_origin.accepted_event_ref == capability.source_event_ref):
+        return True
+    if (isinstance(capability, EventDetailCapability) or plan.status != "completed"
+            or plan.entity_revision != revision + 1):
+        return False
+    from .completed_activity_consequence import completed_activity_proposal_id
+    from .world_outlook import digest
+
+    origin = plan.authority_origin
+    terminal = next((ref for ref in projection.committed_world_event_refs
+                     if ref.event_id == origin.accepted_event_ref), None)
+    if (terminal is None or terminal.event_type != "ActivityCompleted"
+            or terminal.world_revision != origin.accepted_world_revision
+            or occurrence.time_window.opens_at < terminal.logical_time):
+        return False
+    proposal_id = completed_activity_proposal_id(
+        world_id=world_id, completion_event_ref=terminal.event_id,
+    )
+    return bool(
+        occurrence.trigger_ref == "event:life-development:proposal:" + digest(proposal_id)
+        and occurrence.occurrence_id == "occurrence:life-development:" + digest(proposal_id)
+        and any(ref.proposal_id == proposal_id
+                and terminal.world_revision <= ref.evaluated_world_revision <= len(projection.committed_world_event_refs)
+                for ref in projection.proposal_revisions)
+    )
 
 
 def validate_event_details(draft, capability, *, logical_time):

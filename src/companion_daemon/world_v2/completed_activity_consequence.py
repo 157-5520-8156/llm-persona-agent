@@ -20,6 +20,15 @@ from .world_consequence_contract import (
 )
 
 
+def completed_activity_proposal_id(*, world_id: str, completion_event_ref: str) -> str:
+    """The existing stable family for results authored after an accepted completion."""
+    from .world_outlook import digest
+
+    return "proposal:life-development:" + digest({
+        "world_id": world_id, "completed_activity_event_ref": completion_event_ref,
+    })
+
+
 class ActivityLifecycleTransitionReading(FrozenModel):
     event_ref: str
     event_type: Literal["ActivityStarted", "ActivityResumed", "ActivityCompleted"]
