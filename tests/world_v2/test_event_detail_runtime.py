@@ -949,3 +949,84 @@ async def test_content_execution_proof_is_bound_and_never_enters_role_view(tmp_p
         assert canary not in view.messages_json
         assert canary not in view.source_table_json
         assert ctx.ledger.rebuild() == ctx.ledger.project()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('dependent,semantic_block', [(False, False), (True, False), (True, True)])
+async def test_execution_maintenance_blocks_old_attempt_without_reauthoring_story(tmp_path, monkeypatch, build_app, dependent, semantic_block):
+    from companion_daemon.world_v2.event_detail_runtime import cancel_interrupted_execution
+    from companion_daemon.world_v2.world_outlook import WorldOutlookDraft, source_catalog
+    from companion_daemon.world_v2.world_outlook_runtime import _WORKING_SOURCES, cursor_of
+    from test_world_consequence_authoring_context import _operator_transition
+    from test_world_outlook import draft_value
+
+    class NoAuthor:
+        model = 'fixture:no-maintenance-author'
+        async def complete(self, *args, **kwargs):
+            pytest.fail('technical source withdrawal bought a story rewrite')
+
+    async with prepared(tmp_path, monkeypatch, build_app) as ctx:
+        _operator_transition(ctx.ledger, ctx.plan.plan_id, 'ActivityPaused', 'event:already-known-pause')
+        before = ctx.ledger.project()
+        value = draft_value(ctx.wake)
+        value.update(world_id=WORLD, actor_ref=ACTOR,
+                     review_at=(before.logical_time + timedelta(days=1)).isoformat(),
+                     horizon_end=(before.logical_time + timedelta(days=21)).isoformat())
+        for node in value['opportunities']:
+            node.update(opens_at=before.logical_time.isoformat(),
+                        closes_at=(before.logical_time + timedelta(days=7)).isoformat(),
+                        basis_refs=[ctx.wake.event_id])
+        if semantic_block:
+            value['opportunities'][2]['after_opportunities'] = ['calendar']
+        if dependent:
+            value['opportunities'][0]['conditions'] = [{'source_ref': ctx.parent.occurrence_id,
+                'ready_statuses': ['active'], 'invalid_statuses': ['cancelled']}]
+        catalog = source_catalog(before, actor_ref=ACTOR,
+            required_refs={ctx.parent.occurrence_id, ctx.plan.plan_id}, only_referenced=True)
+        revision = ctx.store.install(WorldOutlookDraft.model_validate_json(json.dumps(value)), evidence={
+            'cursor': cursor_of(before), 'snapshot_hash': before.semantic_hash,
+            'source_tokens': {ref: item.token for ref, item in catalog.items()},
+            'source_change_cursor': before.ledger_sequence, 'condition_source_scope': _WORKING_SOURCES,
+            'operation_ref': 'fixture:prior-story',
+        })
+        ctx.outlook.author = NoAuthor()
+        assert not ctx.outlook.view()['needs_revision']
+        identity_before = ctx.outlook._refresh_identity(before, ctx.outlook.view(), (), ctx.store.head())[2]
+        assert cancel_interrupted_execution(ledger=ctx.ledger, content_store=ctx.content,
+            occurrence_id=ctx.parent.occurrence_id, wake_event_ref=ctx.wake.event_id)
+        withdrawn = ctx.ledger.project()
+        if semantic_block:
+            ctx.store.claim('fixture:declined-independent', kind='offer', payload={})
+            ctx.store.finish('fixture:declined-independent', state='considered', payload={
+                'node': value['opportunities'][1], 'effect_refs': [], 'result_cursor': cursor_of(withdrawn)})
+        view = ctx.outlook.view()
+        assert view['needs_revision'] == semantic_block
+        assert view['changed_source_refs'] == []
+        assert view['opportunities'][0]['state'] == ('invalidated' if dependent else 'ready')
+        assert view['opportunities'][1]['state'] == ('considered' if semantic_block else 'ready')
+        identity_after = ctx.outlook._refresh_identity(withdrawn, view, (), ctx.store.head())[2]
+        assert (identity_after != identity_before) == semantic_block
+        from test_life_development_runtime import _manifest, _projection_cursor
+        manifest = _manifest(ctx.wake, pinned_cursor=_projection_cursor(ctx.ledger)).model_copy(update={'npc_capabilities': ()})
+        if not semantic_block:
+            assert (await ctx.outlook.refresh(projection=withdrawn, context={}, manifest=manifest))['status'] == 'unchanged'
+        assert ctx.store.head()[0] == revision
+        assert ctx.ledger.project() == withdrawn
+        path, parent_id, plan_id = ctx.path, ctx.parent.occurrence_id, ctx.plan.plan_id
+    ledger = SQLiteWorldLedger(path=path, world_id=WORLD)
+    content = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD)
+    store = SQLiteWorldOutlookStore(path=path, world_id=WORLD, actor_ref=ACTOR)
+    runtime = WorldOutlookRuntime(ledger=ledger, store=store, author=NoAuthor(), actor_ref=ACTOR, content_store=content)
+    try:
+        assert runtime.view()['needs_revision'] == semantic_block
+        assert ledger.rebuild() == ledger.project()
+        # A subsequent real role choice is still a semantic notification.
+        _operator_transition(ledger, plan_id, 'ActivityResumed', 'event:new-role-choice')
+        view = runtime.view()
+        assert view['needs_revision']
+        assert plan_id in view['changed_source_refs']
+        assert next(o for o in ledger.project().world_occurrences if o.occurrence_id == parent_id).status == 'cancelled'
+    finally:
+        store.close()
+        content.close()
+        ledger.close()

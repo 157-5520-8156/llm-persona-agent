@@ -104,7 +104,7 @@ REVIEW_INSTRUCTIONS = (
 )
 
 
-def _response_schema(*, fields, actor_ref, permission_ids):
+def _response_schema(*, fields, actor_ref, permission_ids, compact_protocol=False):
     text = {'type': 'string', 'minLength': 1, 'maxLength': 2048}
     permission = {'type': 'string', **({'enum': permission_ids} if permission_ids else {})}
     claim = _object({
@@ -131,6 +131,12 @@ def _response_schema(*, fields, actor_ref, permission_ids):
         'record_bound_claims': {'type': 'array', 'maxItems': 32, 'items': claim},
         'coverage': {'type': 'string', 'enum': ['complete', 'uncertain']},
     })
+    if compact_protocol:
+        # Keep factual claim explanations and every coverage obligation.
+        # A duplicate field-level explanation is needed only for uncertainty.
+        field['properties']['reason'] = {'anyOf': [dict(text), {'type': 'null'}]}
+        field['allOf'] = [{'if': {'properties': {'coverage': {'const': 'uncertain'}}},
+                          'then': {'properties': {'reason': dict(text)}}}]
     return _object({
         'fields': {'type': 'array', 'minItems': len(fields), 'maxItems': len(fields), 'items': field},
         'coverage': {'type': 'string', 'enum': ['complete', 'uncertain']},
@@ -160,6 +166,20 @@ def prepare_current_review(*, candidate_json, provider_raw, view, snapshot, cont
         raise ValueError('unsupported current Life source review contract')
     lean = contract in LEAN_REVIEW_CONTRACTS
     candidate, fields = _candidate(candidate_json, drop_identifier_fields=lean, drop_protocol_fields=contract in {INTENT_REVIEW_CONTRACT, NATIVE_REPAIR_CONTRACT, STATE_ALIGNMENT_CONTRACT, RUNTIME_READING_CONTRACT, COMPACT_RUNTIME_CONTRACT, PLANNING_READING_CONTRACT, PINNED_CONTEXT_CONTRACT, SCOPED_INVENTORY_CONTRACT, HISTORICAL_INTENTION_CONTRACT})
+    author_payload = view.author_payload()
+    compact_protocol = (contract == HISTORICAL_INTENTION_CONTRACT
+                        and author_payload.get('wire_contract', {}).get('source_reference_contract') == 'pinned-role-sources.1')
+    checked_paths = []
+    if compact_protocol:
+        # Only this exact, request-bound identity is mechanical. Unmatched
+        # strings and every new nested prose field remain in the inventory.
+        expected = author_payload.get('capability_manifest', {}).get('payload_hash')
+        value = candidate['proposals'][0].get('capability_payload_hash')
+        if (isinstance(expected, str) and len(expected.removeprefix('sha256:')) == 64
+                and all(c in '0123456789abcdef' for c in expected.removeprefix('sha256:'))
+                and value in {expected, expected.removeprefix('sha256:')}):
+            checked_paths.append('/proposals/0/capability_payload_hash')
+            fields = [field for field in fields if field['path'] not in checked_paths]
     if not isinstance(provider_raw, str) or len(provider_raw.encode()) > 131_072:
         raise ValueError('Life review lacks the bounded original author output')
     readings = prepare_life_source_readings(view=view, snapshot=snapshot).as_dict()
@@ -192,6 +212,8 @@ def prepare_current_review(*, candidate_json, provider_raw, view, snapshot, cont
         ],
         'support_selection_contract': 'life-bound-permission-selection.1',
     }
+    if compact_protocol:
+        packet['host_checked_protocol_fields'] = checked_paths
     if lean:
         # Lossless: intern repeated long refs into a table the reviewer reads.
         # Nothing host-side reads this display back, and the ids the reviewer
@@ -199,7 +221,8 @@ def prepare_current_review(*, candidate_json, provider_raw, view, snapshot, cont
         packed_display = pack_shared_strings(packet['author_snapshot_display'])
         if packed_display.get('strings'):
             packet['author_snapshot_display'] = packed_display
-    schema = _response_schema(fields=fields, actor_ref=snapshot.actor_ref, permission_ids=ids)
+    schema = _response_schema(fields=fields, actor_ref=snapshot.actor_ref, permission_ids=ids,
+                              compact_protocol=compact_protocol)
     request = {
         'messages': [{'role': 'system',
                       'content': REVIEW_INSTRUCTIONS + LEAN_REVIEW_NOTE if lean else REVIEW_INSTRUCTIONS},
@@ -276,6 +299,12 @@ def prepare_current_review(*, candidate_json, provider_raw, view, snapshot, cont
             'excluded只说明对应呈现没有该读取项，不撤销另一已列permission的独立字段。')
     if contract == CLAIM_AUTHORITY_CONTRACT:
         configure_claim_authority(request=request, packet=packet, schema=schema)
+    if compact_protocol:
+        request['messages'][0]['content'] += (
+            ' 本请求host_checked_protocol_fields仅列出宿主已精确绑定的协议身份，不是自然语言事实。'
+            '全部其余text_fields和candidate的事实义务仍须完整检查。coverage=complete的字段reason写null，'
+            '不要重复逐项claim已有的解释；每项事实claim.reason与证据、verdict仍必须完整。'
+            'coverage=uncertain的字段必须写具体reason，不能以null代替。')
     envelope = {'candidate_json': candidate_json, 'provider_raw': provider_raw, 'request': request}
     if contract in {INTENT_REVIEW_CONTRACT, NATIVE_REPAIR_CONTRACT, STATE_ALIGNMENT_CONTRACT, RUNTIME_READING_CONTRACT, COMPACT_RUNTIME_CONTRACT, PLANNING_READING_CONTRACT, PINNED_CONTEXT_CONTRACT, SCOPED_INVENTORY_CONTRACT, HISTORICAL_INTENTION_CONTRACT}:
         from .inbound_tool_contract import deepseek_strict_tool_schema

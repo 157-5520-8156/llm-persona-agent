@@ -1204,3 +1204,28 @@ def test_planning_basis_is_task_scoped_and_keeps_exact_old_required_heads(archiv
     assert _planning_basis_refs(*args, trigger_ref="clock:now") == original
     assert _planning_basis_refs(*args) == original
     assert len(projection.plans) == archive_count + 1
+
+
+def test_outlook_alias_error_points_to_reason_without_rewriting_keep():
+    from companion_daemon.world_v2.world_outlook_request import ROLLING_REFERENCE_CONTRACT, decode_outlook_response
+    from companion_daemon.world_v2.shared_string_view import pack_shared_strings
+    value = '一个需要在请求中复用的完整来源文本' * 6
+    packet = pack_shared_strings({'response_reference_contract': ROLLING_REFERENCE_CONTRACT,
+        'error_feedback_contract': 'outlook-error-paths.1', 'repeat': [value, value, value]})
+    alias = next(iter(packet['strings']))
+    raw = {'decision': 'keep', 'reason': '已经处理的来源 ' + alias,
+           'review_at': '2026-10-26T06:00:00+08:00', 'change_responses': []}
+    with pytest.raises(ValueError) as rejected:
+        decode_outlook_response(json.dumps(raw), request_raw=json.dumps(packet))
+    diagnostic = json.loads(str(rejected.value))
+    assert diagnostic['code'] == 'outlook_alias_in_prose'
+    assert diagnostic['path'] == '/reason'
+    assert 'complete' in diagnostic['instruction']
+    repaired = {**raw, 'reason': '此前来源已处理，现有未来仍兼容。'}
+    assert decode_outlook_response(json.dumps(repaired), request_raw=json.dumps(packet)) == repaired
+    # The older paid request keeps exactly its old error interpretation.
+    packet = pack_shared_strings({'response_reference_contract': ROLLING_REFERENCE_CONTRACT,
+        'repeat': [value, value, value]})
+    with pytest.raises(ValueError) as legacy:
+        decode_outlook_response(json.dumps(raw), request_raw=json.dumps(packet))
+    assert str(legacy.value) == 'dictionary aliases are not new prose; use an exact prior-object selector or author full new text'

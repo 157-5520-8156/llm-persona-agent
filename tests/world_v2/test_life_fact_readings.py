@@ -17,7 +17,7 @@ from test_visible_selected_source_context import _sources
 VALUE = '保留周四的约定'
 
 
-async def _fact_view(capsule, *, review_contract=None):
+async def _fact_view(capsule, *, review_contract=None, source_reference_contract=None):
     snapshot = compile_inner_life_snapshot(json.loads(capsule.model_content_json),
         source_envelopes=source_envelopes_from_capsule(capsule),
         life_source_origin=LifeSourceOrigin.from_capsule(capsule))
@@ -29,7 +29,7 @@ async def _fact_view(capsule, *, review_contract=None):
     request = _InteriorRoleRequest(inner_turn_id='life:fact-source', phase='experience',
         purpose='world_stimulus_appraisal', subject_ref=capsule.actor_ref,
         trigger_ref=capsule.trigger_ref, subject_source_refs=(capsule.trigger_ref,), snapshot=snapshot,
-        capability_manifest=manifest)
+        capability_manifest=manifest, source_reference_contract=source_reference_contract)
     response = json.loads(_world_stimulus_no_change_result())
     response['attended_source_refs'] = []
     model = _RequiredToolQueueModel(canonical(response))

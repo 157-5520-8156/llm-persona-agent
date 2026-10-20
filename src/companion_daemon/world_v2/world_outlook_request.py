@@ -17,6 +17,7 @@ _RECORD_TABLE_FIELDS = ("plan_schedules", "npc_capabilities", "npc_activity_loca
 RESPONSE_REFERENCE_CONTRACT = "outlook-source-references.1"
 ROLLING_REFERENCE_CONTRACT = "outlook-source-references.3"
 _PRIOR_ROLLING_CONTRACT = "outlook-source-references.2"
+ERROR_FEEDBACK_CONTRACT = "outlook-error-paths.1"
 PRESENTATION_GUIDE = """Request encoding: a shared-string-view.1 wrapper is lossless. Read value,
 resolving each exact prefix token using strings. If condition_sources is an
 outlook-condition-sources-table.1, each row maps positionally to columns.
@@ -80,7 +81,7 @@ def decode_outlook_request(raw):
             packet[field] = [dict(zip(table["columns"], row, strict=True)) for row in table["rows"]]
         except (TypeError, ValueError) as exc:
             raise ValueError("invalid outlook records table rows") from exc
-    if packet.get("condition_source_scope") in {"outlook-working-sources.2", "outlook-working-sources.3"}:
+    if packet.get("condition_source_scope") in {"outlook-working-sources.2", "outlook-working-sources.3", "outlook-working-sources.4"}:
         threads = {t["thread_id"]: t for t in packet.get("current_outlook", {}).get("threads", ())}
         for row in packet.get("realized_story_history", ()):
             if not isinstance(row, dict):
@@ -103,40 +104,55 @@ def decode_outlook_response(raw, *, request_raw, response_tools=None):
     response = json.loads(raw)
     request = json.loads(request_raw)
     expanded = decode_outlook_request(request_raw)
+    feedback = expanded.get("error_feedback_contract")
+    if feedback not in {None, ERROR_FEEDBACK_CONTRACT}:
+        raise ValueError("unsupported outlook error feedback contract")
+
+    def child_path(path, key):
+        return path + "/" + str(key).replace("~", "~0").replace("/", "~1")
+
+    def fail(message, path, code):
+        if feedback == ERROR_FEEDBACK_CONTRACT:
+            raise ValueError(_wire({
+                "code": code, "path": path or "/", "message": message,
+                "instruction": "Repair the indicated wire field and return a complete result for the same pinned request. All originally offered semantic decisions remain available.",
+            }))
+        raise ValueError(message)
+
     contract = expanded.get("response_reference_contract")
     if contract not in {RESPONSE_REFERENCE_CONTRACT, _PRIOR_ROLLING_CONTRACT, ROLLING_REFERENCE_CONTRACT}:
         return response
     strings = request.get("strings", {}) if request.get("contract") == SHARED_STRINGS else {}
     prefix = request.get("prefix") if strings else None
 
-    def reference(value):
+    def reference(value, path):
         if isinstance(value, str) and prefix and value.startswith(prefix):
             if value not in strings:
-                raise ValueError("outlook response uses an unknown reference alias")
+                fail("outlook response uses an unknown reference alias", path, "outlook_unknown_alias")
             return strings[value]
         if isinstance(value, list):
-            return [reference(item) for item in value]
+            return [reference(item, child_path(path, index)) for index, item in enumerate(value)]
         return value
 
-    def visit(value):
+    def visit(value, path=""):
         if isinstance(value, dict):
-            return {key: reference(child) if key in _REFERENCE_FIELDS else visit(child)
+            return {key: reference(child, child_path(path, key)) if key in _REFERENCE_FIELDS else visit(child, child_path(path, key))
                     for key, child in value.items()}
         if isinstance(value, list):
-            return [visit(item) for item in value]
+            return [visit(item, child_path(path, index)) for index, item in enumerate(value)]
         return value
 
     response = visit(response)
     if contract in {_PRIOR_ROLLING_CONTRACT, ROLLING_REFERENCE_CONTRACT}:
-        def reject_alias(value):
+        def reject_alias(value, path=""):
             if isinstance(value, str) and prefix and (prefix in value if contract == ROLLING_REFERENCE_CONTRACT else value.startswith(prefix)):
-                raise ValueError("dictionary aliases are not new prose; use an exact prior-object selector or author full new text")
+                fail("dictionary aliases are not new prose; use an exact prior-object selector or author full new text", path, "outlook_alias_in_prose")
             if isinstance(value, dict):
-                for child in value.values():
-                    reject_alias(child)
+                for key, child in value.items():
+                    reject_alias(child, child_path(path, key))
             elif isinstance(value, list):
-                for child in value:
-                    reject_alias(child)
+                for index, child in enumerate(value):
+                    reject_alias(child, child_path(path, index))
         reject_alias(response)
         if isinstance(response, dict) and isinstance(response.get("draft"), dict):
             view = expanded["current_outlook"]
@@ -144,10 +160,11 @@ def decode_outlook_response(raw, *, request_raw, response_tools=None):
                                                ("threads", "retain_thread_id", "thread_id")):
                 offered = {n[identity]: {k: v for k, v in n.items() if k != "state"} for n in view[field]}
                 restored = []
-                for item in response["draft"].get(field, ()):
+                for position, item in enumerate(response["draft"].get(field, ())):
                     if isinstance(item, dict) and selector in item:
                         if set(item) != {selector} or not isinstance(item[selector], str) or item[selector] not in offered:
-                            raise ValueError("prior outlook selector must name one complete pinned object without overrides")
+                            fail("prior outlook selector must name one complete pinned object without overrides",
+                                 f"/draft/{field}/{position}", "outlook_prior_selector_invalid")
                         restored.append(offered[item[selector]])
                     else:
                         restored.append(item)
@@ -206,7 +223,7 @@ def encode_outlook_request(packet, *, byte_limit):
         if columns and all(isinstance(row, dict) and set(row) == set(columns) for row in rows):
             tabular[field] = {"contract": _RECORDS_TABLE, "columns": columns,
                               "rows": [[row[column] for column in columns] for row in rows]}
-    if packet.get("condition_source_scope") in {"outlook-working-sources.2", "outlook-working-sources.3"} and isinstance(packet.get("realized_story_history"), list):
+    if packet.get("condition_source_scope") in {"outlook-working-sources.2", "outlook-working-sources.3", "outlook-working-sources.4"} and isinstance(packet.get("realized_story_history"), list):
         threads = {t["thread_id"]: t for t in packet.get("current_outlook", {}).get("threads", ())}
         tabular["realized_story_history"] = [
             {**row, "thread": {"retain_thread_id": row["thread"]["thread_id"]}}

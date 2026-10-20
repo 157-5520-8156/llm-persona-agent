@@ -227,8 +227,29 @@ def _citeable_catalog_for_request(request: _InteriorRoleRequest) -> PinnedSource
     )
 
 
+_HOST_BOUND_DECISION_PURPOSES = frozenset({
+    "fact_memory_retention", "prehistory_memory_batch", "experience_memory_retention",
+    "memory_withdrawal_review", "memory_consolidation", "activity_lifecycle_choice",
+})
+
+
+def _decision_source_refs_for_request(request):
+    manifest = request.capability_manifest
+    if manifest is not None and request.purpose in _HOST_BOUND_DECISION_PURPOSES:
+        return set(manifest.source_refs)
+    return set(request.snapshot.source_refs) | (set(manifest.source_refs) if manifest else set())
+
+
 def _citeable_prompt_for_request(request: _InteriorRoleRequest) -> dict[str, object]:
     view = _citeable_catalog_for_request(request).prompt_value()
+    if request.source_reference_contract is not None:
+        eligible = _decision_source_refs_for_request(request)
+        view["decision_source_ids"] = [item["id"] for item in view["items"] if item["ref"] in eligible]
+        view["instruction"] = (
+            "attended_source_refs 只写下面的 id 或原样 ref。decision.source_refs 只选 decision_source_ids 对应的 id/ref；"
+            "注意到来源不等于获得效果权限。world_claims 还须遵守其范围权限。其他字段中的标识符不会增加来源权限。"
+            "点名哪些、引不引以及如何选择仍由你决定。"
+        )
     manifest = request.capability_manifest
     if request.purpose != "proactive_contact" or manifest is None:
         return view
@@ -1985,6 +2006,13 @@ class StructuredCharacterRoleFaculty:
 
         messages = self._base_messages(request, contract=contract)
         tool = self._tool_contract(request)
+        if request.source_reference_contract is not None:
+            if request.source_reference_contract != "pinned-role-sources.1":
+                raise ValueError("unsupported pinned role source contract")
+            if tool is not None:
+                tool = tool.with_source_catalog(
+                    _citeable_catalog_for_request(request), decision_refs=_decision_source_refs_for_request(request),
+                )
         bindings = None
         if self._reference_wire:
             view, bindings = prepare_reference_view(json.loads(messages[1]["content"]))
@@ -2334,6 +2362,8 @@ class StructuredCharacterRoleFaculty:
                     "unexpected_root_fields": extras,
                     "instruction": "Follow this request's wire_contract.placement_rules for its decision.payload or proposals carrier. Never put purpose fields or capability metadata at the root. Resubmit the whole result; no result has been accepted.",
                 }
+        if request.source_reference_contract is not None:
+            user_payload["wire_contract"]["source_reference_contract"] = request.source_reference_contract
         snapshot = user_payload.get("inner_life_snapshot")
         if isinstance(snapshot, dict):
             user_payload["inner_life_snapshot"] = present_inner_life(snapshot)
@@ -2458,6 +2488,9 @@ class StructuredCharacterRoleFaculty:
                 raise StructuredRoleResultError(
                     "role_result_schema_invalid", detail=str(exc), response_hash=response_hash,
                 ) from exc
+        submitted_attention = decoded.get("attended_source_refs")
+        submitted_decision = decoded.get("decision")
+        submitted_decision_sources = submitted_decision.get("source_refs") if isinstance(submitted_decision, dict) else None
         decoded = self._normalize_provider_wire_shape(
             decoded,
             request=request,
@@ -2541,17 +2574,24 @@ class StructuredCharacterRoleFaculty:
                     field="attended_source_refs",
                     failures=failures,
                     catalog=catalog,
+                    submitted_values=submitted_attention if request.source_reference_contract is not None else None,
                 ),
             )
         if result.decision is not None:
             visible_refs = set(request.snapshot.source_refs)
             if request.capability_manifest is not None:
                 visible_refs.update(request.capability_manifest.source_refs)
+            if request.source_reference_contract is not None:
+                visible_refs = _decision_source_refs_for_request(request)
             outside_decision = [
                 ref for ref in result.decision.source_refs if ref not in visible_refs
             ]
             if outside_decision:
                 catalog = _citeable_catalog_for_request(request)
+                if request.source_reference_contract is not None:
+                    eligible = _decision_source_refs_for_request(request)
+                    catalog = PinnedSourceCatalog.for_resolution(eligible, tokens={
+                        item.token: item.source_ref for item in catalog.items if item.source_ref in eligible})
                 _, failures = resolve_pinned_source_ref_list(outside_decision, catalog)
                 self._raise(
                     "decision_source_unpinned",
@@ -2561,12 +2601,13 @@ class StructuredCharacterRoleFaculty:
                         field="decision.source_refs",
                         failures=failures,
                         catalog=catalog,
+                        submitted_values=submitted_decision_sources if request.source_reference_contract is not None else None,
                     ),
                 )
             manifest = request.capability_manifest
             if (
                 manifest is not None
-                and request.purpose in {"fact_memory_retention", "prehistory_memory_batch", "experience_memory_retention", "memory_withdrawal_review", "memory_consolidation", "activity_lifecycle_choice"}
+                and request.purpose in _HOST_BOUND_DECISION_PURPOSES
                 and tuple(result.decision.source_refs) != manifest.source_refs
             ):
                 self._raise(

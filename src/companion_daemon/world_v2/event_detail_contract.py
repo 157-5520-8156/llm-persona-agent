@@ -7,6 +7,25 @@ from pydantic import Field, model_validator
 from .schema_core import FrozenModel, PrivacyClass
 
 
+def execution_revocation_event_id(occurrence_id):
+    return "event:interrupt:" + occurrence_id
+
+
+def execution_revocation_ref(event):
+    """Classify an already committed permission withdrawal, never a World fact."""
+    if (event.event_type != "WorldOccurrenceCancelled" or event.actor != "worker:event-detail"
+            or event.source != "event-detail-interruption.1"):
+        return None
+    from .life_events import WorldOccurrenceTerminalPayload
+
+    payload = WorldOccurrenceTerminalPayload.model_validate_json(event.payload_json)
+    if (payload.interrupted_execution_source_ref is None
+            or payload.policy_refs != ("policy:event-detail-interruption.1",)
+            or event.event_id != execution_revocation_event_id(payload.occurrence_id)):
+        return None
+    return payload.occurrence_id
+
+
 class EventDetailSourceToken(FrozenModel):
     source_ref: str = Field(min_length=1, max_length=512)
     token: str = Field(pattern=r"^[0-9a-f]{64}$")

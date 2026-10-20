@@ -562,6 +562,60 @@ class StructuredRoleToolContract:
     identity: StructuredRoleToolContractIdentity
     result_wrapper_key: str | None = None
 
+    def with_source_catalog(self, catalog, *, decision_refs):
+        """Advertise the same source membership already checked by the host.
+
+        A selectable Plan/capability ID is not necessarily a citeable source.
+        This closes wire identifiers only; attention, actions and prose remain
+        the character's choices. Existing narrower decision enums stay narrow.
+        """
+        tools = deepcopy(self.provider_tools)
+        attention = sorted({*catalog.token_to_ref, *catalog.canonical_refs})
+
+        def close(field, refs, *, preserve_enum=False):
+            if not isinstance(field, dict) or not isinstance(field.get("items"), dict):
+                return
+            allowed = set(refs)
+            prior = field["items"].get("enum") if preserve_enum else None
+            if isinstance(prior, list):
+                allowed &= {catalog.token_to_ref.get(value, value) for value in prior}
+            values = sorted({*allowed, *(token for token, ref in catalog.token_to_ref.items() if ref in allowed)})
+            field["items"] = {**field["items"], "enum": values} if values else False
+            if not values:
+                field["maxItems"] = 0
+
+        def decision(node):
+            if not isinstance(node, dict):
+                return
+            close(node.get("properties", {}).get("source_refs"), decision_refs, preserve_enum=True)
+            for key in ("anyOf", "oneOf", "allOf"):
+                for branch in node.get(key, ()):
+                    decision(branch)
+
+        def visit(node):
+            if isinstance(node, dict):
+                properties = node.get("properties", {})
+                close(properties.get("attended_source_refs"), attention)
+                decision(properties.get("decision"))
+                for value in node.values():
+                    visit(value)
+            elif isinstance(node, list):
+                for value in node:
+                    visit(value)
+
+        for tool in tools:
+            visit(tool["function"]["parameters"])
+        schema_hash = "sha256:" + sha256(_canonical_json(tools[0]["function"]["parameters"]).encode()).hexdigest()
+        identity = replace(
+            self.identity, version=self.identity.version + "+sources.1", schema_sha256=schema_hash,
+            contract_sha256="sha256:" + sha256(_canonical_json({
+                "original": self.identity.request_identity_material(), "schema_sha256": schema_hash,
+                "sources": [(item.token, item.source_ref) for item in catalog.items],
+                "decision_refs": sorted(decision_refs),
+            }).encode()).hexdigest(),
+        )
+        return replace(self, provider_tools=tools, identity=identity)
+
     def with_reference_bindings(self, bindings):
         if bindings is None:
             return self

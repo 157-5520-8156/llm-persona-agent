@@ -113,6 +113,8 @@ class LifeSourceView(FrozenModel):
         if (_payload(json.loads(checked.messages_json), json.loads(checked.provider_controls_json))["inner_turn"] != expected_turn
             or checked.request_binding_sha256 != digest(canonical(request.model_dump(mode="json")))):
             raise ValueError("Life source view belongs to another role request or correction")
+        if checked.author_payload().get("wire_contract", {}).get("source_reference_contract") != request.source_reference_contract:
+            raise ValueError("Life source view changed its pinned reference contract")
         return checked
 
     def author_payload(self) -> dict:

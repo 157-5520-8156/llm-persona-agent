@@ -20,7 +20,7 @@ def detail_operation(occurrence_id):
 
 def cancel_interrupted_execution(*, ledger, occurrence_id, wake_event_ref, content_store=None):
     """Retire a revoked owned attempt, without choosing a replacement or outcome."""
-    from .event_detail_contract import activity_execution_plan, activity_execution_is_current, execution_authorities
+    from .event_detail_contract import activity_execution_plan, activity_execution_is_current, execution_authorities, execution_revocation_event_id
     from .event_identity import domain_idempotency_key
     from .life_events import WorldOccurrenceTerminalPayload
     from .schemas import EvidenceRef
@@ -54,7 +54,7 @@ def cancel_interrupted_execution(*, ledger, occurrence_id, wake_event_ref, conte
             policy_refs=("policy:event-detail-interruption.1",),
         ).model_dump(mode="json")
         event = WorldEvent.from_payload(
-            schema_version="world-v2.1", event_id="event:interrupt:" + occurrence_id,
+            schema_version="world-v2.1", event_id=execution_revocation_event_id(occurrence_id),
             world_id=state.world_id, event_type="WorldOccurrenceCancelled",
             logical_time=state.logical_time, created_at=state.logical_time,
             actor="worker:event-detail", source="event-detail-interruption.1",

@@ -50,6 +50,7 @@ from .contracts import (
 )
 from .faculty_registry import _FacultyRegistry
 from .ports import (
+    PINNED_SOURCE_REFERENCE_CONTRACT,
     _AuthorityRequest,
     _InteriorRoleRequest,
     _InteriorRoleResult,
@@ -435,6 +436,7 @@ class _TurnCacheEntry:
     prefetch_attempted: bool = False
     recall_attempted: bool = False
     correction_attempted: bool = False
+    source_reference_contract: str | None = None
     presented_prefetch_traces: list[PrefetchPresentationAudit] | None = None
     transition: InnerTransition | None = None
     decision: InnerDecision | None = None
@@ -450,6 +452,7 @@ class _RecallTurnCheckpoint:
     current_snapshot: InnerLifeSnapshot
     correction_attempted: bool
     presented_prefetch_traces: tuple[PrefetchPresentationAudit, ...]
+    source_reference_contract: str | None = None
 
 
 def _coordination_request(
@@ -565,6 +568,8 @@ def _recall_turn_json(
             "initial_snapshot": _durable_snapshot_value(initial_snapshot),
             "current_snapshot": _durable_snapshot_value(current_snapshot),
             "correction_attempted": entry.correction_attempted,
+            **({"source_reference_contract": entry.source_reference_contract}
+               if entry.source_reference_contract is not None else {}),
             "presented_prefetch_traces": [
                 item.model_dump(mode="json") for item in (entry.presented_prefetch_traces or ())
             ],
@@ -652,6 +657,9 @@ def _restore_recall_turn(raw: str) -> _RecallTurnCheckpoint:
         correction_attempted = payload.get("correction_attempted")
         if not isinstance(correction_attempted, bool):
             raise ValueError("Recall checkpoint correction state is invalid")
+        source_reference_contract = payload.get("source_reference_contract")
+        if source_reference_contract not in {None, PINNED_SOURCE_REFERENCE_CONTRACT}:
+            raise ValueError("Recall checkpoint source contract is unsupported")
         traces = tuple(
             PrefetchPresentationAudit.model_validate_json(json.dumps(item, ensure_ascii=False))
             for item in payload.get("presented_prefetch_traces", ())
@@ -662,6 +670,7 @@ def _restore_recall_turn(raw: str) -> _RecallTurnCheckpoint:
             initial_snapshot=initial_snapshot,
             current_snapshot=current_snapshot,
             correction_attempted=correction_attempted,
+            source_reference_contract=source_reference_contract,
             presented_prefetch_traces=traces,
         )
     except (KeyError, TypeError, ValueError, ValidationError, json.JSONDecodeError) as exc:
@@ -1621,7 +1630,10 @@ class CharacterInterior:
                                 else snapshot
                             ),
                             recall_completed=entry.recall_attempted,
+                            source_reference_contract=(resume_recall.source_reference_contract
+                                if resume_recall is not None else PINNED_SOURCE_REFERENCE_CONTRACT),
                         )
+                        entry.source_reference_contract = request.source_reference_contract
                         (
                             result,
                             snapshot,
@@ -1819,7 +1831,10 @@ class CharacterInterior:
                                 else snapshot
                             ),
                             recall_completed=entry.recall_attempted,
+                            source_reference_contract=(resume_recall.source_reference_contract
+                                if resume_recall is not None else PINNED_SOURCE_REFERENCE_CONTRACT),
                         )
+                        entry.source_reference_contract = request.source_reference_contract
                         (
                             result,
                             snapshot,

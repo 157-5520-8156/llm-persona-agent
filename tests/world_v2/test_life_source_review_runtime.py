@@ -406,3 +406,46 @@ async def test_recall_control_transfer_is_not_mistaken_for_a_failed_life_candida
     result = _InteriorRoleResult.model_validate(await role.experience(request))
     assert result.status == 'recall_request' and result.life_source_review is None
     verify_life_review(result, request.snapshot, required=True)
+
+
+@pytest.mark.asyncio
+async def test_fresh_protocol_review_skips_only_bound_hash_and_keeps_all_prose_obligations(tmp_path):
+    from jsonschema import ValidationError as SchemaValidationError
+    from test_life_fact_readings import _sources, _fact_view, VALUE
+    from test_character_interior_structured_role import _world_stimulus_no_change_result
+    from companion_daemon.world_v2.character_interior.life_source_review import prepare_review, inspect_review
+
+    async with _sources(tmp_path, retained_value=VALUE) as case:
+        view, snapshot = await _fact_view(case.capsule, review_contract=MINTED_CONTRACT,
+            source_reference_contract='pinned-role-sources.1')
+        candidate = json.loads(_world_stimulus_no_change_result())
+        bound_hash = view.author_payload()['capability_manifest']['payload_hash']
+        candidate['proposals'][0]['capability_payload_hash'] = bound_hash
+        candidate['proposals'][0]['new_nested_prose'] = {'text': UNSUPPORTED}
+        def prepare(value):
+            prepared, readings = prepare_review(candidate_json=canonical(value), provider_raw=canonical(value),
+                view=view, snapshot=snapshot, contract=MINTED_CONTRACT)
+            return prepared, readings, json.loads(json.loads(prepared)['request']['messages'][1]['content'])
+        prepared, readings, packet = prepare(candidate)
+        hash_path = '/proposals/0/capability_payload_hash'
+        assert hash_path not in {f['path'] for f in packet['text_fields']}
+        prose_path = '/proposals/0/new_nested_prose/text'
+        assert prose_path in {f['path'] for f in packet['text_fields']}
+        response = {'fields': [{'path': f['path'], 'reason': None, 'created_current_states': [],
+            'record_bound_claims': [], 'coverage': 'complete'} for f in packet['text_fields']], 'coverage': 'complete'}
+        target = next(f for f in response['fields'] if f['path'] == prose_path)
+        target['record_bound_claims'] = [{'source_span': UNSUPPORTED, 'proposition': UNSUPPORTED,
+            'reason': '当前来源不支持这次过去行动。', 'supports': [], 'verdict': 'unsupported'}]
+        assert inspect_review(raw=canonical(response), prepared_json=prepared, readings=readings)[0] == 'rejected'
+        missing = deepcopy(response)
+        missing['fields'] = [f for f in missing['fields'] if f['path'] != prose_path]
+        with pytest.raises((ValueError, SchemaValidationError)):
+            inspect_review(raw=canonical(missing), prepared_json=prepared, readings=readings)
+        target['coverage'] = 'uncertain'
+        with pytest.raises((ValueError, SchemaValidationError)):
+            inspect_review(raw=canonical(response), prepared_json=prepared, readings=readings)
+        target['reason'] = '该字段的义务未能确定。'
+        assert inspect_review(raw=canonical(response), prepared_json=prepared, readings=readings)[0] == 'uncertain'
+        altered = deepcopy(candidate)
+        altered['proposals'][0]['capability_payload_hash'] = '我昨天已经完成这项活动。'
+        assert hash_path in {f['path'] for f in prepare(altered)[2]['text_fields']}

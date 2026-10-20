@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+import json
 from typing import Literal
 
 
@@ -311,8 +312,27 @@ def unpinned_source_failure_detail(
     field: str,
     failures: Sequence[SourceRefResolution],
     catalog: PinnedSourceCatalog,
+    submitted_values: Sequence[str] | None = None,
 ) -> str:
     """Chinese, exact, bounded explanation for the same role model's one retry."""
+
+    if submitted_values is not None:
+        # Permission validation happens after short-token decoding. Resolve
+        # against this field's eligible catalog again to locate the original
+        # submitted tokens, including duplicates, without renumbering them.
+        failed = {index: resolution for index, value in enumerate(submitted_values)
+                  if (resolution := resolve_pinned_source_ref(value, catalog)).status != "unique"}
+        indices = list(failed)
+        pointer = "/" + field.replace(".", "/")
+        return json.dumps({
+            "code": code, "field": pointer, "invalid_indices": indices,
+            "errors": [{"path": pointer + "/" + str(index),
+                        "value": _clip(submitted_values[index], _REF_DISPLAY_LIMIT),
+                        "reason": _clip(failed[index].reason, 120)}
+                       for index in indices[:4]],
+            "catalog": "citeable_sources.items",
+            "instruction": "Select an offered source id or exact ref for the indicated field. Identifiers in other payload fields add no source authority. Return a complete result; all originally offered decisions remain available.",
+        }, ensure_ascii=False, separators=(",", ":"))
 
     heading = {
         "attended_source_unpinned": "attended_source_refs 点名了本轮钉不住的来源。",

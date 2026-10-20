@@ -10,7 +10,7 @@ from threading import RLock
 from .lived_story import StoryAnchor, anchor_catalog
 from .world_outlook_request import (
     PRESENTATION_GUIDE, RESPONSE_REFERENCE_CONTRACT, decode_outlook_request,
-    decode_outlook_response, encode_outlook_request,
+    ERROR_FEEDBACK_CONTRACT, decode_outlook_response, encode_outlook_request,
     ROLLING_REFERENCE_CONTRACT, ROLLING_PRESENTATION_GUIDE,
 )
 
@@ -28,8 +28,9 @@ from .world_outlook import (
 )
 
 
-_WORKING_SOURCES = "outlook-working-sources.3"
-_WORKING_SOURCE_SCOPES = frozenset({"outlook-working-sources.1", "outlook-working-sources.2", _WORKING_SOURCES})
+_WORKING_SOURCES = "outlook-working-sources.4"
+_CURSOR_SOURCE_SCOPES = frozenset({"outlook-working-sources.3", _WORKING_SOURCES})
+_WORKING_SOURCE_SCOPES = frozenset({"outlook-working-sources.1", "outlook-working-sources.2", *_CURSOR_SOURCE_SCOPES})
 _ROLLING_PLANNING = "rolling-world-planning.6"
 _NATIVE_RESULT = "world-outlook-native.10"
 _NATIVE_RESULTS = frozenset({"world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4", "world-outlook-native.5", "world-outlook-native.6", "world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9", _NATIVE_RESULT})
@@ -708,7 +709,7 @@ class WorldOutlookRuntime:
             legacy_fact_status = evidence is not None and evidence.get("condition_source_scope") not in _WORKING_SOURCE_SCOPES
         if required_refs is None and evidence:
             required_refs = frozenset(evidence["source_tokens"])
-        if evidence and evidence.get("condition_source_scope") == "outlook-working-sources.3":
+        if evidence and evidence.get("condition_source_scope") in _CURSOR_SOURCE_SCOPES:
             only_referenced = True
         indexed = getattr(self.ledger, "outlook_entities_at", None)
         if required_refs is not None and callable(indexed) and state is self.ledger.project():
@@ -784,12 +785,20 @@ class WorldOutlookRuntime:
         changed, safe_after = [], after
         while after < state.ledger_sequence:
             event_types = _TERMINAL_SOURCE_EVENTS | (
-                _ACTIVITY_CHOICE_SOURCE_EVENTS if _WORKING_SOURCES == "outlook-working-sources.3" else frozenset())
+                _ACTIVITY_CHOICE_SOURCE_EVENTS if _WORKING_SOURCES in _CURSOR_SOURCE_SCOPES else frozenset())
             page = self.ledger.events_after(cursor=ProjectionCursor(**cursor_of(state)),
                 after_sequence=after, event_types=event_types)
             if not page:
                 return tuple(changed), safe_after if changed else state.ledger_sequence, state.ledger_sequence
             for sequence, event in page:
+                from .event_detail_contract import execution_revocation_ref
+                if execution_revocation_ref(event) is not None:
+                    # The original role transition remains a semantic source.
+                    # This derived cleanup only withdraws an unrealized attempt.
+                    after = sequence
+                    if not changed:
+                        safe_after = after
+                    continue
                 raw = event.payload()
                 if event.event_type == "FactCommittedV2":
                     from .fact_accepted_contracts import rehydrate_fact_commit_materialized_v2_json
@@ -803,7 +812,7 @@ class WorldOutlookRuntime:
                     entities = self._entities(state, (ref,))
                     plan = next((p for p in entities["plans"] if p.plan_id == ref), None)
                     origin = getattr(plan, "authority_origin", None)
-                    if (_WORKING_SOURCES == "outlook-working-sources.3" and origin is not None
+                    if (_WORKING_SOURCES in _CURSOR_SOURCE_SCOPES and origin is not None
                             and origin.accepted_event_type in event_types
                             and origin.accepted_event_ref != event.event_id):
                         # State notifications use this source's proven current
@@ -822,7 +831,7 @@ class WorldOutlookRuntime:
                     # .3's cursor owns notification acknowledgment. Merely
                     # seeing a source in Context is not an explicit change reply.
                     previous = ({ref: evidence["source_tokens"][ref]}
-                                if _WORKING_SOURCES != "outlook-working-sources.3"
+                                if _WORKING_SOURCES not in _CURSOR_SOURCE_SCOPES
                                 and ref in evidence["source_tokens"] else {})
                     offers = self.store.offers_for_effects((ref,), as_of=cursor_of(state))
                     if source is not None and self._sources_changed(previous, {ref: source}, offers,
@@ -854,6 +863,39 @@ class WorldOutlookRuntime:
         return frozenset(o.occurrence_id for o in self._entities(state, refs)["world_occurrences"]
             if not self._material_consequence(o) and is_prepaid_detail_progress(ledger=self.ledger,
                 content_store=self._content_store, projection=state, occurrence=o, actor_ref=self.actor_ref))
+
+    def _technical_execution_refs(self, state, refs):
+        """Prove withdrawals only for the current bounded read/dependency set.
+
+        No new persistent cursor/cache or semantic summary is needed. A cold
+        reader checks the same committed event; an ordinary cancellation is
+        never hidden merely because its status also says cancelled.
+        """
+        from .event_detail_contract import execution_revocation_event_id, execution_revocation_ref
+
+        lookup = getattr(self.ledger, "lookup_event_commit", None)
+        if not callable(lookup) or not refs:
+            return frozenset()
+        cancelled = tuple(o for o in self._entities(state, refs)["world_occurrences"] if o.status == "cancelled")
+        found = set()
+        for occurrence in cancelled:
+            identity = execution_revocation_event_id(occurrence.occurrence_id)
+            located = lookup(identity)
+            if located is None:
+                # No exact authority means no exemption from story refresh.
+                continue
+            if execution_revocation_ref(located[0]) != occurrence.occurrence_id:
+                continue
+            event, commit = located
+            committed = self.ledger.resolve_committed_event_refs(
+                (event.event_id,), at_world_revision=state.world_revision)
+            ref = committed.get(event.event_id)
+            if (ref is None or event.world_id != state.world_id or ref.payload_hash != event.payload_hash
+                    or commit.ledger_sequence > state.ledger_sequence or event.logical_time > state.logical_time
+                    or occurrence.terminal_reason_ref != event.payload()["reason_ref"]):
+                raise ValueError("execution withdrawal is not exact at the pinned source prefix")
+            found.add(occurrence.occurrence_id)
+        return frozenset(found)
 
     def _world_changes(self, state, refs):
         """Pinned accepted descriptors and bounded exact excerpts, not summaries.
@@ -903,6 +945,7 @@ class WorldOutlookRuntime:
                 if item.privacy_class != "withhold":
                     changes.append({"source_ref": ref, "status": item.status, "token": digest(item),
                         "activity_kind": item.activity_kind,
+                        "authority_scope": "recorded_plan_status_not_performance_or_external_cancellation",
                         "execution_event_ref": item.authority_origin.accepted_event_ref if item.authority_origin else None})
             elif item.values.privacy_class != "withhold":
                 # Facts already have their source-bound presentation in Context;
@@ -987,6 +1030,8 @@ class WorldOutlookRuntime:
         }
         sources = self._catalog(state, npc_refs, evidence=evidence)
         anchors = self._anchors(state, (a.source_ref for t in draft.threads for a in t.history_anchors))
+        dependencies = {c.source_ref for obj in (*draft.opportunities, *draft.long_term) for c in obj.conditions}
+        technical = self._technical_execution_refs(state, set(evidence["source_tokens"]) | dependencies | occurrence_refs)
         threads = {t.thread_id: t for t in draft.threads}
         withdrawn = {ref for ref in occurrence_refs if effect_states.get(ref) in {"cancelled", "expired"}}
         invalidated = {
@@ -999,12 +1044,17 @@ class WorldOutlookRuntime:
                 != getattr(sources.get(n.npc_ref), "token", None)
             )
         }
+        semantic_invalidated = set(invalidated)
+        semantic_invalidated.update(
+            n.opportunity_id for n in draft.opportunities
+            if occurrence_ref(state.world_id, self.actor_ref, n.opportunity_id) in withdrawn - technical
+        )
         invalidated.update(
             n.opportunity_id
             for n in draft.opportunities
             if occurrence_ref(state.world_id, self.actor_ref, n.opportunity_id) in withdrawn
         )
-        invalidated.update(
+        history_invalidated = {
             n.opportunity_id
             for n in draft.opportunities
             if any(
@@ -1012,7 +1062,9 @@ class WorldOutlookRuntime:
                 or any(anchors.get(a.source_ref) != a for a in threads[t].history_anchors)
                 for t in n.thread_refs
             )
-        )
+        }
+        invalidated.update(history_invalidated)
+        semantic_invalidated.update(history_invalidated)
         states = opportunity_states(
             draft,
             now=state.logical_time,
@@ -1045,7 +1097,23 @@ class WorldOutlookRuntime:
         changed_sources, source_change_cursor = self._new_terminal_source(state, revision, evidence, npc_refs, sources)
         preparation = self._preparation(state, draft, states) if self._rolling_planning else None
         stage_states = {s.stage_id: dependency_state(s.conditions, sources) for s in draft.long_term}
-        dependencies = {c.source_ref for obj in (*draft.opportunities, *draft.long_term) for c in obj.conditions}
+        # Counterfactual cause check for buying a revision only. Never expose,
+        # install, authorize or execute these nodes: `states` above retains all
+        # original conditions. Reuse the same dependency propagation so an
+        # unrelated declined/expired parent still requests semantic authoring.
+        refresh_states = states
+        if technical:
+            refresh_only = draft.model_copy(update={"opportunities": tuple(
+                node.model_copy(update={"conditions": tuple(c for c in node.conditions if c.source_ref not in technical)})
+                for node in draft.opportunities)})
+            refresh_states = opportunity_states(refresh_only, now=state.logical_time,
+                sources=sources, offered=terminal, produced=produced,
+                invalidated=semantic_invalidated, pending_effects=pending_effects)
+        semantic_node_change = any(value in {"invalidated", "expired"} for value in refresh_states.values())
+        semantic_stage_change = any(
+            stage_states[stage.stage_id] == "invalidated"
+            and dependency_state(tuple(c for c in stage.conditions if c.source_ref not in technical), sources) == "invalidated"
+            for stage in draft.long_term)
         prepaid = self._prepaid_detail_refs(state,
             {k for k, v in sources.items() if evidence["source_tokens"].get(k) != v.token}) - dependencies
         return {
@@ -1061,14 +1129,15 @@ class WorldOutlookRuntime:
             "changed_source_refs": list(changed_sources),
             "unavailable_source_refs": sorted(evidence["source_tokens"].keys() - sources.keys()),
             "source_change_cursor": source_change_cursor,
+            "technical_source_refs": sorted(technical),
+            "technical_source_authority": "withdrawn_unrealized_execution_permission_not_external_fact_or_new_role_choice",
             "needs_revision": (
                 evidence.get("authoring_constraints_hash") != self._authoring_constraints_hash
                 or preparation is not None and (evidence.get("rolling_planning") != _ROLLING_PLANNING
                     or bool(preparation["due"]) or preparation["outline_due"])
                 or state.logical_time >= draft.review_at
-                or any(s in {"invalidated", "expired"} for s in states.values())
-                or "invalidated" in stage_states.values()
-                or self._sources_changed(evidence["source_tokens"], sources, offers, ordinary_refs=prepaid)
+                or semantic_node_change or semantic_stage_change
+                or self._sources_changed(evidence["source_tokens"], sources, offers, ordinary_refs=prepaid, technical_refs=technical)
                 or bool(changed_sources)
             ),
         }
@@ -1100,10 +1169,10 @@ class WorldOutlookRuntime:
         }
 
     @classmethod
-    def _sources_changed(cls, previous, sources, offers, *, material_refs=frozenset(), ordinary_refs=frozenset()):
+    def _sources_changed(cls, previous, sources, offers, *, material_refs=frozenset(), ordinary_refs=frozenset(), technical_refs=frozenset()):
         ordinary = cls._ordinary_effect_refs(sources, offers, material_refs=material_refs) | (ordinary_refs - material_refs)
         current = {k: v.token for k, v in sources.items()}
-        return any(previous.get(key) != current.get(key) and key not in ordinary
+        return any(previous.get(key) != current.get(key) and key not in ordinary and key not in technical_refs
                    for key in previous.keys() | current.keys())
 
     def _refresh_identity(self, projection, view, npc_refs, prior_head):
@@ -1140,6 +1209,8 @@ class WorldOutlookRuntime:
         ordinary = (self._ordinary_effect_refs({**sources, **effect_sources}, offers, material_refs=protected)
                     | (self._prepaid_detail_refs(projection,
                         {k for k, v in sources.items() if previous_tokens.get(k) != v.token}) - protected))
+        technical = frozenset(view.get("technical_source_refs", ()))
+        ignored = ordinary | technical
         input_key = digest(
             {
                 "retry_identity": "outlook-ordinary-progress.2",
@@ -1147,8 +1218,8 @@ class WorldOutlookRuntime:
                 "world_id": projection.world_id,
                 "actor_ref": self.actor_ref,
                 "parent": view["revision"],
-                "sources": {k: previous_tokens[k] if k in ordinary else v.token
-                            for k, v in sources.items() if k not in ordinary or k in previous_tokens},
+                "sources": {k: previous_tokens[k] if k in ignored else v.token
+                            for k, v in sources.items() if k not in ignored or k in previous_tokens},
                 "retry_epoch": retry_epoch,
                 **({"rolling_planning": _ROLLING_PLANNING} if self._rolling_planning else {}),
                 **({"response_tool_contract": _NATIVE_RESULT} if native_result else {}),
@@ -1293,11 +1364,12 @@ class WorldOutlookRuntime:
                                             only_referenced=True)
             basis_refs = (_planning_basis_refs(projection, context, manifest, required_refs,
                 history_offer, story, history_trigger_ref)
-                if _WORKING_SOURCES == "outlook-working-sources.3"
+                if _WORKING_SOURCES in _CURSOR_SOURCE_SCOPES
                 else manifest.anchor_refs)
             new_ids = tuple(f"outlook:{input_key}:{i}" for i in range(24)) if native_result else None
             packet = {
                 "contract": "world-outlook-request.1",
+                "error_feedback_contract": ERROR_FEEDBACK_CONTRACT,
                 "response_reference_contract": ROLLING_REFERENCE_CONTRACT if self._rolling_planning else RESPONSE_REFERENCE_CONTRACT,
                 **({"response_tool_contract": _NATIVE_RESULT} if native_result else {}),
                 **({"new_opportunity_ids": list(new_ids)} if new_ids is not None else {}),
@@ -1526,7 +1598,7 @@ class WorldOutlookRuntime:
                            for c in conditions):
                         raise ValueError("outlook condition source was not offered in the pinned working set")
                     current = self._catalog(projection, npc_refs, required_refs=offered_sources,
-                        only_referenced=pinned_packet.get("condition_source_scope") == "outlook-working-sources.3")
+                        only_referenced=pinned_packet.get("condition_source_scope") in _CURSOR_SOURCE_SCOPES)
                     sources = {key: value for key, value in current.items() if key in offered_sources}
                 history_offer = (OutlookHistoryOffer.model_validate_json(json.dumps(pinned_packet["history_offer"]))
                                  if "history_offer" in pinned_packet else None)
@@ -1536,7 +1608,7 @@ class WorldOutlookRuntime:
                 if history_offer is not None and precise_privacy:
                     history_offer.validate_privacy(candidate, precise_errors=True)
                 accepted_basis = (tuple(pinned_packet["basis_refs"])
-                    if pinned_packet.get("condition_source_scope") == "outlook-working-sources.3"
+                    if pinned_packet.get("condition_source_scope") in _CURSOR_SOURCE_SCOPES
                     else manifest.anchor_refs)
                 if not set(accepted_basis) <= set(manifest.anchor_refs):
                     raise ValueError("outlook task basis exceeds its pinned manifest authority")

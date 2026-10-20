@@ -1,3 +1,18 @@
+Reference/maintenance repair is isolated in reference-contract-repair; protected N/W and
+the live df8c archive are unchanged. Fresh pinned-role-sources.1 binds advertised attention
+and effect-source membership to the same request catalog, with exact submitted error paths.
+Recall/paid legacy requests retain their original source policy and reviewer bytes. Fresh
+Outlook error-paths.1 identifies the offending field instead of prompting unrelated rewrites.
+Working-sources.4 excludes proven execution-permission cleanup from semantic refresh causes,
+not from actual opportunity/dependency invalidation. Original role choices and material
+consequences remain causes. Exact event-id proof reads reuse the existing bounded ledger index.
+Fresh Life .25 requests may omit only the exact host-bound capability hash from semantic
+inventory and use null field-level reason for complete coverage; claims/evidence/uncertainty
+and all new nested text remain checked. No new runtime module or role behavior policy.
+See output/private-audits/reference-contract-20261020 for focused/actual-wire and retained-copy
+evidence. New full regression, real same-world continuation and causal/diversity acceptance
+remain required; do not borrow df8c's full result or claim historical early exposure repaired.
+
 Completed-result boundary correction: full17 on1cdc did NOT pass (11147pass/1fail).
 The new execution guard treated a separately authored post-completion result as an
 interrupted pre-completion programme. The original completed-result integration test

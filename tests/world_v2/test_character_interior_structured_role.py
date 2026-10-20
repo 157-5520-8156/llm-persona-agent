@@ -5307,3 +5307,144 @@ async def test_state_choice_first_prompt_matches_its_actual_capability_and_prese
         assert len(ACTIVITY_STATE_CHOICE_SCOPE) < len(LIVING_CHOICE_SCOPE)
         assert "duration_seconds" not in material["living_choice_scope"]
         assert "noticed" in material["living_choice_scope"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('reference_wire', [False, True])
+async def test_fresh_reference_contract_closes_attention_to_the_displayed_catalog(reference_wire):
+    """A Plan/capability identifier must not pass the advertised attention grammar."""
+    role = StructuredCharacterRoleFaculty(
+        model=_RequiredToolQueueModel(), model_id='reference-test', reference_wire=reference_wire,
+    )
+    legacy = await _request(phase='experience', purpose='world_stimulus_appraisal',
+                            capability_manifest=_world_stimulus_manifest())
+    if reference_wire:
+        opaque = 'source:' + 'b' * 480
+        legacy = legacy.model_copy(update={'snapshot': legacy.snapshot.model_copy(
+            update={'source_refs': (*legacy.snapshot.source_refs, opaque)})})
+    original_legacy = role._prepare_request(legacy, contract=role._resolve_contract(legacy))
+    request = legacy.model_copy(update={'source_reference_contract': 'pinned-role-sources.1'})
+    messages, contract, bindings = role._prepare_request(request, contract=role._resolve_contract(request))
+    assert (bindings is not None) == reference_wire
+    body = json.loads(messages[1]['content'])
+    offered = body['citeable_sources']['items']
+    expected = {value for item in offered for value in (item['id'], item['ref'])}
+    schema = contract.provider_tools[0]['function']['parameters']
+    attention_fields = []
+    def collect(node):
+        if isinstance(node, dict):
+            properties = node.get('properties', {})
+            if 'attended_source_refs' in properties:
+                attention_fields.append(properties['attended_source_refs'])
+            for value in node.values():
+                collect(value)
+        elif isinstance(node, list):
+            for value in node:
+                collect(value)
+    collect(schema)
+    assert attention_fields
+    for field in attention_fields:
+        validator = Draft202012Validator(field)
+        assert not validator.is_valid(['plan:not-an-offered-source'])
+        assert not validator.is_valid(['capability:not-an-offered-source'])
+        assert not validator.is_valid(['s9999'])
+        assert validator.is_valid([])
+        assert set(field['items']['enum']) == expected
+        assert all(validator.is_valid([ref]) for ref in expected)
+    # Pinning transport values does not select an action or invent an attention.
+    assert role._prepare_request(legacy, contract=role._resolve_contract(legacy)) == original_legacy
+
+
+@pytest.mark.asyncio
+async def test_source_contract_preserves_pinned_plan_refs_and_separate_decision_authority():
+    from companion_daemon.world_v2.pinned_source_ref import PinnedSourceCatalog
+
+    legacy = await _request(purpose='life_development_choice', capability_manifest=_life_development_manifest())
+    role = StructuredCharacterRoleFaculty(model=_RequiredToolQueueModel(), model_id='ref-authority')
+    tool = role._tool_contract(legacy)
+    catalog = PinnedSourceCatalog.from_refs(('source:private_self', 'source:attention-only', 'plan:actually-pinned'))
+    fresh = tool.with_source_catalog(catalog, decision_refs={'source:private_self'})
+    def fields(node, name):
+        if isinstance(node, dict):
+            if name in node.get('properties', {}):
+                yield node['properties'][name]
+            for value in node.values():
+                yield from fields(value, name)
+        elif isinstance(node, list):
+            for value in node:
+                yield from fields(value, name)
+    for field in fields(fresh.provider_tools[0]['function']['parameters'], 'attended_source_refs'):
+        validator = Draft202012Validator(field)
+        assert validator.is_valid(['plan:actually-pinned'])
+        assert validator.is_valid(['source:attention-only'])
+        assert not validator.is_valid(['plan:unoffered'])
+    # Attention eligibility does not become effect/decision source authority.
+    for decision in fields(fresh.provider_tools[0]['function']['parameters'], 'decision'):
+        for field in fields(decision, 'source_refs'):
+            validator = Draft202012Validator(field)
+            assert validator.is_valid(['source:private_self'])
+            assert not validator.is_valid(['source:attention-only'])
+            assert not validator.is_valid(['plan:actually-pinned'])
+    empty = tool.with_source_catalog(PinnedSourceCatalog.from_refs(()), decision_refs=set())
+    for field in fields(empty.provider_tools[0]['function']['parameters'], 'attended_source_refs'):
+        Draft202012Validator.check_schema(field)
+        assert Draft202012Validator(field).is_valid([])
+        assert not Draft202012Validator(field).is_valid(['s0'])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('contract', [None, 'pinned-role-sources.1'])
+async def test_recall_checkpoint_pins_source_contract_without_changing_legacy_bytes(contract):
+    from companion_daemon.world_v2.character_interior.core import (
+        _InteriorTechnicalError, _TurnCacheEntry, _recall_turn_json, _restore_recall_turn,
+    )
+    from companion_daemon.world_v2.character_interior.ports import _InteriorRoleResult
+    request = await _request()
+    result = _InteriorRoleResult(status='recall_request', summary='想先查清这件事', recall_query='先前的安排')
+    entry = _TurnCacheEntry(source_reference_contract=contract)
+    raw = _recall_turn_json(stage='recall_choice_recorded', initial_result=result,
+        initial_snapshot=request.snapshot, current_snapshot=request.snapshot, entry=entry)
+    assert _restore_recall_turn(raw).source_reference_contract == contract
+    assert ('source_reference_contract' in json.loads(raw)) == (contract is not None)
+    payload = json.loads(raw)
+    payload['source_reference_contract'] = 'unknown-policy'
+    with pytest.raises(_InteriorTechnicalError, match='invalid_durable_turn_checkpoint'):
+        _restore_recall_turn(json.dumps(payload))
+
+
+@pytest.mark.asyncio
+async def test_fresh_source_error_names_the_submitted_field_index_and_keeps_legacy_feedback():
+    role = StructuredCharacterRoleFaculty(model=_RequiredToolQueueModel(), model_id='source-feedback')
+    legacy = await _request(phase='experience', purpose='world_stimulus_appraisal',
+                            capability_manifest=_world_stimulus_manifest())
+    raw = json.loads(_world_stimulus_no_change_result())
+    raw['attended_source_refs'] = ['source:private_self', 'plan:unoffered']
+    fresh = legacy.model_copy(update={'source_reference_contract': 'pinned-role-sources.1'})
+    with pytest.raises(StructuredRoleResultError) as rejected:
+        role._parse_and_validate(json.dumps(raw), request=fresh, contract=role._resolve_contract(fresh))
+    detail = json.loads(rejected.value.detail)
+    assert detail['code'] == 'attended_source_unpinned'
+    assert detail['errors'][0]['path'] == '/attended_source_refs/1'
+    assert detail['errors'][0]['value'] == 'plan:unoffered'
+    assert detail['invalid_indices'] == [1]
+    assert detail['catalog'] == 'citeable_sources.items'
+    with pytest.raises(StructuredRoleResultError) as old_rejected:
+        role._parse_and_validate(json.dumps(raw), request=legacy, contract=role._resolve_contract(legacy))
+    assert old_rejected.value.code == 'attended_source_unpinned'
+    assert old_rejected.value.detail.startswith('attended_source_refs 点名')
+
+
+def test_ineligible_decision_source_feedback_keeps_original_short_token_position():
+    from companion_daemon.world_v2.pinned_source_ref import (
+        PinnedSourceCatalog, resolve_pinned_source_ref_list, unpinned_source_failure_detail,
+    )
+    # s1 was displayed for attention; it has no decision authority. The host
+    # already decoded it before discovering that narrower permission boundary.
+    eligible = PinnedSourceCatalog.for_resolution(('source:allowed',), tokens={'s0': 'source:allowed'})
+    _, failures = resolve_pinned_source_ref_list(['source:attention-only'], eligible)
+    detail = json.loads(unpinned_source_failure_detail(code='decision_source_unpinned',
+        field='decision.source_refs', failures=failures, catalog=eligible,
+        submitted_values=['s0', 's1', 's1']))
+    assert detail['invalid_indices'] == [1, 2]
+    assert [item['path'] for item in detail['errors']] == ['/decision/source_refs/1', '/decision/source_refs/2']
+    assert all(item['value'] == 's1' for item in detail['errors'])

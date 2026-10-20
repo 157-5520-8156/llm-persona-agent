@@ -22,6 +22,8 @@ from .rejected_role_result import RejectedRoleResult
 from .life_source_view import LifeSourceView
 from .life_source_review import LifeSourceReviewReceipt
 
+PINNED_SOURCE_REFERENCE_CONTRACT = "pinned-role-sources.1"
+
 
 class _RoleResultContractError(ValueError):
     """A provider result that violates a Character Interior wire contract.
@@ -148,6 +150,9 @@ class _InteriorRoleRequest(FrozenModel):
     subject_source_refs: tuple[str, ...] = Field(min_length=1)
     capability_manifest: _InteriorCapabilityManifest | None = None
     snapshot: InnerLifeSnapshot
+    source_reference_contract: Literal["pinned-role-sources.1"] | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
     recall_completed: bool = False
     recall_parent_author_lineage: _InteriorAuthorLineage | None = None
     recall_parent_usage_json: str | None = Field(default=None, max_length=8_192)
