@@ -6074,12 +6074,12 @@ class LifeDevelopmentRuntime:
                                      closing_offset_seconds=manifest.event_detail_capability.closing_offset_seconds if required_detail else None,
                                      event_detail_privacy_class=(manifest.event_detail_capability.privacy_class
                                          if ordinary_course else None),
-                                     exact_now_timing=manifest.world_author_output_contract == "2")
+                                     **({"exact_now_timing": True} if manifest.world_author_output_contract == "2" else {}))
                                  if manifest.event_detail_capability is not None
                                  else world_consequence_author_tool_contract(provider=self._world_author,
-                                     exact_now_timing=manifest.world_author_output_contract == "2" and
+                                     **({"exact_now_timing": True} if manifest.world_author_output_contract == "2" and
                                          (manifest.completed_activity_consequence is not None or
-                                          manifest.active_attempt_consequence is not None)))
+                                          manifest.active_attempt_consequence is not None) else {})))
                 origin = getattr(self._world_author, "authority_origin", self._world_author)
                 carrier = getattr(origin, "single_tool_response_carrier", None)
                 messages = bind_world_consequence_author_tool(

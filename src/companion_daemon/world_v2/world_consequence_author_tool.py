@@ -313,9 +313,11 @@ def recover_world_consequence_author_tool(
             if contract_id in {REQUIRED_EVENT_CONTRACT, *_COURSE_EVENT_CONTRACTS} else None),
         event_detail_privacy_class=(required_detail.get("privacy_class")
             if contract_id in _COURSE_EVENT_CONTRACTS else None),
-        exact_now_timing=(user.get("capability_manifest") or {}).get("world_author_output_contract") == "2"
+        **({"exact_now_timing": True} if (
+            (user.get("capability_manifest") or {}).get("world_author_output_contract") == "2"
             and any((user.get("capability_manifest") or {}).get(key) is not None for key in (
-                "completed_activity_consequence", "active_attempt_consequence", "event_detail_capability")))
+                "completed_activity_consequence", "active_attempt_consequence", "event_detail_capability"))
+        ) else {}))
     if user["world_author_wire"] != _wire_identity(
         contract, response_carrier=marker.get("response_carrier"),
     ):
