@@ -67,8 +67,8 @@ def anchor_catalog(projection, *, actor_ref):
     return result
 
 
-def validate_navigation(navigation, *, projection, privacy_class):
-    catalog = anchor_catalog(projection, actor_ref=navigation.actor_ref)
+def navigation_privacy_floors(projection):
+    """The same current source/memory privacy floor for validation and navigation."""
     ranks = ("public", "shareable", "personal", "private", "withhold")
     floors = {r.record.record_id: r.record.privacy_class for r in projection.prehistory_records}
     floors.update({o.occurrence_id: o.visibility for o in projection.world_occurrences})
@@ -80,6 +80,13 @@ def validate_navigation(navigation, *, projection, privacy_class):
                         (floors[binding.source_id], candidate.values.privacy_ceiling),
                         key=ranks.index,
                     )
+    return floors
+
+
+def validate_navigation(navigation, *, projection, privacy_class):
+    catalog = anchor_catalog(projection, actor_ref=navigation.actor_ref)
+    ranks = ("public", "shareable", "personal", "private", "withhold")
+    floors = navigation_privacy_floors(projection)
     for anchor in navigation.anchors:
         if catalog.get(anchor.source_ref) != anchor:
             raise ValueError("story anchor is unavailable or changed")

@@ -657,3 +657,71 @@ async def test_revised_npc_script_after_precommit_failure_gets_its_own_author_ev
         assert len(author.calls) == 2 and npc.calls == [] and world.calls == []
     finally:
         runtime.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("later_privacy", ["personal", "private"])
+async def test_automatic_thread_navigation_respects_publication_privacy(tmp_path, later_privacy):
+    """A private earlier event cannot taint an independently authored announcement."""
+    from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
+    from companion_daemon.world_v2.lived_story import LivedStoryNavigation, validate_navigation
+    from test_character_prehistory import started_ledger
+    from test_world_consequence_aftermath import _aftermath, _NoCharacterCalls
+    from test_world_consequence_producer import _advance
+
+    path = tmp_path / "world.sqlite"
+    ledger = started_ledger(path)
+    content = SQLiteImmutableLifeContentStore(path=path, world_id=ledger.world_id)
+    now = ledger.project().logical_time
+    wake = _seed_clock(ledger, logical_time=now + timedelta(minutes=1), logical_time_from=now)
+    value = retime(draft_value(wake), ledger.project(), wake)
+    first, later = value["opportunities"][0], value["opportunities"][2]
+    first["thread_refs"] = later["thread_refs"] = ["books"]
+    first["execution"].update(text="寝室窗外的灯光照着树叶。", privacy_class="private")
+    later["execution"].update(text="学院公布了下周的开放活动安排。", privacy_class=later_privacy)
+    later["opens_at"] = (wake.logical_time + timedelta(minutes=31)).isoformat()
+    value["opportunities"] = [first, later]
+    author = Author([{"decision": "revise", "draft": value}])
+    runtime = WorldOutlookRuntime(
+        ledger=ledger,
+        store=SQLiteWorldOutlookStore(path=path, world_id=ledger.world_id, actor_ref=OWNER),
+        author=author, actor_ref=OWNER,
+        executor=WorldOutlookExecutor(
+            ledger=ledger,
+            occurrence_content=OccurrenceContentCoordinator(ledger=ledger, store=content),
+            actor_ref=OWNER,
+        ),
+    )
+    try:
+        assert (await runtime.refresh(
+            projection=ledger.project(), context={},
+            manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)),
+        ))["status"] == "ready"
+        result = runtime.execute_offer(runtime.ready()[0], wake_event_ref=wake.event_id)
+        assert result.status == "occurrence_committed"
+        first_ref = result.occurrence_id
+        due = _seed_clock(ledger, event_id="clock:settle:first",
+            logical_time=wake.logical_time + timedelta(minutes=30), logical_time_from=wake.logical_time)
+        assert (await _advance(_aftermath(ledger, content, _NoCharacterCalls()), due)).status == "settled"
+        # Explicitly citing the private source is still forbidden at a lower floor.
+        anchor = anchor_catalog(ledger.project(), actor_ref=OWNER)[first_ref]
+        with pytest.raises(ValueError, match="story navigation weakens source privacy"):
+            validate_navigation(LivedStoryNavigation(actor_ref=OWNER, thread_refs=(), anchors=(anchor,)),
+                                projection=ledger.project(), privacy_class="personal")
+        next_wake = _seed_clock(ledger, event_id="clock:later:announcement",
+            logical_time=wake.logical_time + timedelta(minutes=31), logical_time_from=due.logical_time)
+        node = next(n for n in runtime.ready() if n["opportunity_id"] == later["opportunity_id"])
+        result = runtime.execute_offer(node, wake_event_ref=next_wake.event_id)
+        assert result.status == "occurrence_committed", runtime.health()
+        occurrence = next(o for o in ledger.project().world_occurrences if o.occurrence_id == result.occurrence_id)
+        assert occurrence.visibility == later_privacy
+        operation = next(o for o in runtime.store.offers()
+                         if o["payload"]["node"]["opportunity_id"] == later["opportunity_id"])
+        refs = {a["source_ref"] for a in operation["payload"]["origin"]["story_navigation"]["anchors"]}
+        assert (first_ref in refs) == (later_privacy == "private")
+        assert next(o for o in ledger.project().world_occurrences if o.occurrence_id == first_ref).visibility == "private"
+        assert len(author.calls) == 1
+    finally:
+        runtime.close()
+        content.close()
+        ledger.close()

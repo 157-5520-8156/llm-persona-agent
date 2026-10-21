@@ -1,3 +1,16 @@
+Outlook publication repair: host-derived navigation may only add historical
+anchors permitted at the authored execution privacy. Explicit author anchors
+still undergo the original strict validation. The claim and final admission
+share the same source plus active-memory privacy floors. This fixes an actual
+retained GLM planning publication that repeatedly failed after hidden private
+history was appended to its origin; no author text, planning predecessor or
+privacy class is rewritten. Execution exceptions now retain their stack in
+private service logs while the existing failure receipt contract stays intact.
+Minimal public red/green and79 regressions pass. A separate retained-data retry
+control publishes/settles the exact original planning through its predecessor,
+retains36 failed offers and has0model calls/no role changes/no duplicate effect.
+That control is declared clock-driven diagnostics, not natural branching proof.
+
 Chat/storage maintenance now uses one shared cognition payload shape for the
 full-turn and reply-only carriers; their exact serialized grammar is unchanged.
 SQLite projection conversion copies the147 declared ReducerState fields through

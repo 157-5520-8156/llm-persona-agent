@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections import Counter
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from threading import RLock
-from .lived_story import StoryAnchor, anchor_catalog
+from .lived_story import StoryAnchor, anchor_catalog, navigation_privacy_floors
 from .world_outlook_request import (
     PRESENTATION_GUIDE, RESPONSE_REFERENCE_CONTRACT, decode_outlook_request,
     ERROR_FEEDBACK_CONTRACT, decode_outlook_response, encode_outlook_request,
@@ -26,6 +27,9 @@ from .world_outlook import (
     opportunity_states,
     dependency_state,
 )
+
+
+_LOG = logging.getLogger(__name__)
 
 
 _WORKING_SOURCES = "outlook-working-sources.4"
@@ -2281,10 +2285,11 @@ class WorldOutlookRuntime:
         }
         if clean["opportunity_id"] in terminal:
             return None
+        state = self.ledger.project()
         op = "offer:" + digest(
             {
                 "node_id": clean["opportunity_id"],
-                "retry_epoch": int(self.ledger.project().logical_time.timestamp()) // 3600,
+                "retry_epoch": int(state.logical_time.timestamp()) // 3600,
             }
         )
         if prepared_origin is not None:
@@ -2306,15 +2311,22 @@ class WorldOutlookRuntime:
                 if t.thread_id in clean["thread_refs"]
                 for a in t.history_anchors
             }
+            # Authored anchors retain their original validation and privacy.
+            # Extra navigation is optional host indexing: it may not attach a
+            # more private past event to an otherwise valid public arrangement.
+            floors = navigation_privacy_floors(state)
+            ranks = ("public", "shareable", "personal", "private", "withhold")
+            publication_rank = ranks.index(clean["execution"]["privacy_class"])
             before = None
             while len(anchors) < 24:
                 page = self.store.navigation_offer_page(clean["thread_refs"], before=before)
                 if not page:
                     break
-                catalog = self._anchors(self.ledger.project(), (ref for _, offer in page for ref in offer["payload"].get("effect_refs", ())))
+                catalog = self._anchors(state, (ref for _, offer in page for ref in offer["payload"].get("effect_refs", ())))
                 for _, offer in page:
                     for ref in offer["payload"].get("effect_refs", ()):
-                        if ref in catalog and len(anchors) < 24:
+                        if (ref in catalog and len(anchors) < 24
+                                and ranks.index(floors[ref]) <= publication_rank):
                             anchors[ref] = catalog[ref]
                 before = page[-1][0]
             origin["story_navigation"] = LivedStoryNavigation(
@@ -2331,9 +2343,9 @@ class WorldOutlookRuntime:
             payload={
                 "node": clean,
                 "wake_event_ref": wake_event_ref,
-                "claim_cursor": cursor_of(self.ledger.project()),
+                "claim_cursor": cursor_of(state),
                 "origin": origin,
-                "retry_epoch": int(self.ledger.project().logical_time.timestamp()) // 3600,
+                "retry_epoch": int(state.logical_time.timestamp()) // 3600,
             },
         )
         return op if claimed else None
@@ -2361,6 +2373,8 @@ class WorldOutlookRuntime:
                 origin=self.store.operation(operation)["payload"]["origin"],
             )
         except Exception as exc:
+            _LOG.exception("world outlook execution failed opportunity=%s wake=%s",
+                           node["opportunity_id"], wake_event_ref)
             self.record_failure(exc)
             from types import SimpleNamespace
 
