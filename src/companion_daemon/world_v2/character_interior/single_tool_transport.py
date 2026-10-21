@@ -43,7 +43,7 @@ def resolve_single_tool_transport(
                 or tool_choice.get("type") != "function" or identity.get("tool_name") != name):
             raise ValueError("JSON text carrier cannot change the expected schema")
         material = {
-            "contract_id":"single-schema-json-text-carrier", "version":{"json_schema":"4", "json_object":"3", "auto":"2"}.get(mode, "1"),
+            "contract_id":"single-schema-json-text-carrier", "version":{"json_schema":"5", "json_object":"3", "auto":"2"}.get(mode, "1"),
             "selection_mode":mode, "response_carrier":carrier, "expected_tool_name":name,
             "schema_contract_identity_json":json.dumps(dict(identity),sort_keys=True,separators=(",",":")),
         }

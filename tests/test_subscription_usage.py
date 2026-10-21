@@ -176,7 +176,7 @@ async def test_glm_explicit_json_text_carrier_preserves_raw_object(tmp_path, car
         with pytest.raises(ValidationError):
             Draft202012Validator(tools[0]['function']['parameters']).validate(json.loads(result))
         suffix = {'native_or_json_object':':json-object-carrier.1',
-                  'json_object':':json-object-schema.2', 'json_schema':':json-schema.1'}[carrier]
+                  'json_object':':json-object-schema.2', 'json_schema':':json-schema.2'}[carrier]
         assert model.model_version.endswith(suffix)
     finally:
         await model.aclose()
@@ -207,7 +207,7 @@ async def test_glm_text_carrier_rejects_ambiguous_or_unconfigured_results(tmp_pa
         await model.aclose()
 
 
-@pytest.mark.parametrize('carrier,version', [('native_or_json_object','2'),('json_object','3'),('json_schema','4')])
+@pytest.mark.parametrize('carrier,version', [('native_or_json_object','2'),('json_object','3'),('json_schema','5')])
 def test_glm_text_identity_declares_carrier_without_changing_schema(tmp_path, carrier, version):
     from companion_daemon.world_v2.character_interior.single_tool_transport import resolve_single_tool_transport
     model=BackgroundGLMModel('fixture','http://localhost:8788','fixture',token_ledger=ledger(tmp_path),
@@ -228,7 +228,7 @@ def test_glm_text_identity_declares_carrier_without_changing_schema(tmp_path, ca
 @pytest.mark.asyncio
 @pytest.mark.parametrize('unexpected_tool', [False, True])
 @pytest.mark.parametrize('carrier', ['json_object', 'json_schema'])
-async def test_glm_json_schema_profile_sends_the_same_schema_as_text(tmp_path, unexpected_tool, carrier):
+async def test_glm_text_profiles_send_exact_schema_without_strict_prompt_duplication(tmp_path, unexpected_tool, carrier):
     from copy import deepcopy
     schema={'type':'object','$defs':{'Keep':{'type':'string','const':'keep'}},'anyOf': [
         {'type':'object','properties':{'decision':{'$ref':'#/$defs/Keep'}},'required':['decision'],'additionalProperties':False},
@@ -244,8 +244,11 @@ async def test_glm_json_schema_profile_sends_the_same_schema_as_text(tmp_path, u
         expected_format = ({'type':'json_object'} if carrier=='json_object' else {
             'type':'json_schema', 'json_schema':{'name':'role_result','strict':True,'schema':schema}})
         assert body['response_format']==expected_format
-        envelope=json.loads(body['messages'][-1]['content'])
-        assert envelope['response_schema']==schema
+        if carrier == 'json_schema':
+            assert body['messages'] == [{'role':'user','content':'same pinned context'}]
+        else:
+            envelope=json.loads(body['messages'][-1]['content'])
+            assert envelope['response_schema']==schema
         message = {'content':raw}
         if unexpected_tool:
             message['tool_calls']=[{'type':'function','function':{'name':'role_result','arguments':raw}}]
@@ -264,7 +267,7 @@ async def test_glm_json_schema_profile_sends_the_same_schema_as_text(tmp_path, u
                     tool_choice={'type':'function','function':{'name':'role_result'}})
                 assert out==raw
         assert tools==original and len(seen)==1
-        assert model.model_version.endswith(':json-object-schema.2' if carrier=='json_object' else ':json-schema.1')
+        assert model.model_version.endswith(':json-object-schema.2' if carrier=='json_object' else ':json-schema.2')
     finally:
         await model.aclose()
 

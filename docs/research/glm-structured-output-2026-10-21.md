@@ -54,3 +54,9 @@
 现有 BackgroundGLMModel 增加显式 `WORLD_V2_BACKGROUND_TOOL_RESULT_CARRIER=json_schema` 选项。它复用同一个单结果载体，把原完整 schema/root 交给 response_format，并保留原提示、命名绑定和严格本地解析/事实审核；模式有独立模型版本和请求身份。遇到不支持、非法结果或工具调用混入时不偷偷改用其他载体、不修补模型字段。默认配置仍未改动，正在运行的 v53 仍使用原 json_object。
 
 旧 native/native_or_json_object/json_object 六个完整工具/身份/请求对照的5893字节一致，新编译器的请求与第二次真实探测完全相等。现有 Life 审核公共入口及冷回执验证覆盖新/旧文本载体；这些离线证据不替代新模式的真实完整因果链验收。原生产 QQ 与保留世界没有因探测改变。
+
+## Strict carrier schema duplication
+
+The explicit `json_schema` carrier initially retained the complete schema in both its trailing user message and `response_format`. A single controlled replay of an actual World Author request removed only that trailing message: all source material, model settings and complete response schema remained. Both original and trial returned a structurally valid `no_op`. Reported input tokens fell from52,504 to47,158 (5,346 fewer); compact request bytes fell from176,101 to153,994. This is one structural sample, not semantic acceptance, a latency guarantee or proof of server-enforced decoding. Price/charge amounts remain unknown; raw outputs and usage are preserved under the private audit.
+
+The new explicit adapter version `json-schema.2` and transport identity5 send the schema only through the named response format. `json_object`, native and mixed legacy carriers retain their exact wire. Local parsing, bounds, source review, failure recording and no-fallback behavior remain. A frozen78bc `.1` author/reviewer checkpoint (scripted provider, identity4) is retained as a compatibility fixture and must restore with no HTTP. Production QQ and the currently running78bc candidate archive are unchanged.

@@ -139,7 +139,7 @@ class BackgroundGLMModel(_BackgroundTokenBudget, DeepSeekChatModel):
         if tool_result_carrier == "json_object":
             self.model_version = self.model + ":json-object-schema.2"
         elif tool_result_carrier == "json_schema":
-            self.model_version = self.model + ":json-schema.1"
+            self.model_version = self.model + ":json-schema.2"
         elif tool_result_carrier != "native":
             self.model_version += ":json-object-carrier.1"
 
@@ -186,19 +186,23 @@ class BackgroundGLMModel(_BackgroundTokenBudget, DeepSeekChatModel):
             # Its JSON root stays in place, so local $defs/$ref keep their
             # meaning. Expansion is needed only when wrapping a native root.
             function = tools[0]["function"]
-            schema_message = {
-                "contract": "single-schema-json-object-request.1",
-                "schema_name": function["name"],
-                "response_schema": function["parameters"],
-                "instruction": "Use this schema as the response contract instead of the tool carrier. Return the matching JSON object itself, without an additional wrapper, tool call, fence or explanatory prose. All original evidence and permissions still apply.",
-            }
+            rendered = messages
+            if self._tool_result_carrier == "json_object":
+                schema_message = {
+                    "contract": "single-schema-json-object-request.1",
+                    "schema_name": function["name"],
+                    "response_schema": function["parameters"],
+                    "instruction": "Use this schema as the response contract instead of the tool carrier. Return the matching JSON object itself, without an additional wrapper, tool call, fence or explanatory prose. All original evidence and permissions still apply.",
+                }
+                rendered = [*messages, {"role": "user", "content": json.dumps(schema_message, ensure_ascii=False)}]
             payload = super().request_payload(
-                [*messages, {"role":"user", "content":json.dumps(schema_message, ensure_ascii=False)}],
+                rendered,
                 temperature=temperature, json_object=True, tools=None, tool_choice=None,
             )
             if self._tool_result_carrier == "json_schema":
-                # Explicit gateway capability: retain the exact original
-                # schema/root and local decoder. Never fall back or rewrite
+                # The named response format already supplies the exact schema;
+                # do not inject a second copy into the conversation. Retain
+                # the original root and local decoder. Never fall back or rewrite
                 # invalid results when this mode is rejected or ignored.
                 payload["response_format"] = {
                     "type": "json_schema",

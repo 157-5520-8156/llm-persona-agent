@@ -10,6 +10,8 @@ import httpx
 from jsonschema import Draft202012Validator, ValidationError
 import pytest
 
+from character_interior import json_text_response_contract
+
 from companion_daemon.llm import DeepSeekChatModel
 from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
 from companion_daemon.world_v2.life_development_draft import (
@@ -68,12 +70,13 @@ async def test_text_author_structure_correction_preserves_failure_and_same_carri
     try:
         result = await _advance(_runtime(ledger, store, wake, provider), wake)
         assert result.status == "no_op" and len(requests) == 2
-        assistant, correction = requests[1]["messages"][-3:-1]
+        _, initial_messages = json_text_response_contract(requests[0])
+        _, corrected_messages = json_text_response_contract(requests[1])
+        assistant, correction = corrected_messages[-2:]
         assert assistant == {"role": "assistant", "content": rejected}
         assert correction["role"] == "user"
         assert "do not return it as plain assistant text" not in correction["content"]
-        assert requests[1]["messages"][:-3] == requests[0]["messages"][:-1]
-        assert requests[1]["messages"][-1] == requests[0]["messages"][-1]
+        assert corrected_messages[:-2] == initial_messages
         failures = [json.loads(a.audit_json) for a in ledger.project().model_result_audits]
         failed = next(a for a in failures if a["status"] == "main_invalid")
         assert store.read_exact(content_ref=failed["response_storage"]["content_ref"]).text == rejected
@@ -491,10 +494,7 @@ async def test_source_rewrite_keeps_original_wire_and_review_permissions(
         # old JSON carrier must still be used on the correction request.
         if text_carrier:
             assert wire["response_format"]["type"] == text_carrier and "tools" not in wire
-            schema = json.loads(wire["messages"][-1]["content"])
-            if text_carrier == "json_schema":
-                assert wire["response_format"]["json_schema"] == {
-                    "name": schema["schema_name"], "strict": True, "schema": schema["response_schema"]}
+            schema, _ = json_text_response_contract(wire)
             raw = _json({"replacement": authored})
             Draft202012Validator(schema["response_schema"]).validate(json.loads(raw))
             return httpx.Response(200, json={"choices": [{"finish_reason": "stop", "message": {"content": raw}}],
@@ -536,9 +536,10 @@ async def test_source_rewrite_keeps_original_wire_and_review_permissions(
         assert len(requests) == 2
         assert general.calls == focused.calls == (1 if rewrite_decision == "no_op" else 2)
         if text_carrier:
-            assert requests[1]["messages"][:-3] == requests[0]["messages"][:-1]
-            assert requests[1]["messages"][-1] == requests[0]["messages"][-1]
-            assistant, correction = requests[1]["messages"][-3:-1]
+            initial_schema, initial_messages = json_text_response_contract(requests[0])
+            corrected_schema, corrected_messages = json_text_response_contract(requests[1])
+            assert corrected_schema == initial_schema and corrected_messages[:-2] == initial_messages
+            assistant, correction = corrected_messages[-2:]
             assert assistant["role"] == "assistant" and assistant["content"] == _json({"replacement": rejected})
             assert correction["role"] == "user" and "tool_calls" not in assistant
             assert "do not return it as plain assistant text" not in correction["content"]
@@ -553,7 +554,7 @@ async def test_source_rewrite_keeps_original_wire_and_review_permissions(
         if text_carrier:
             assert original_user["world_author_wire"]["response_carrier"] == text_carrier
         for wire in requests:
-            raw_messages = _json(wire["messages"][:-1] if text_carrier else wire["messages"])
+            raw_messages = _json(json_text_response_contract(wire)[1] if text_carrier else wire["messages"])
             digest = hashlib.sha256(raw_messages.encode()).hexdigest()
             assert store.read_exact(content_ref="content:world-author-request:" + digest).text == raw_messages
         before = ledger.export_replay_evidence()
@@ -792,13 +793,13 @@ async def test_paid_propose_reopens_before_first_source_rewrite(
         assert "tools" not in correction_wire
         marker2 = json.loads(correction_wire["messages"][1]["content"])["world_author_wire"]
         assert marker2 == marker
-        messages = correction_wire["messages"]
+        _, messages = json_text_response_contract(correction_wire)
         uses_tool_history = any("tool_calls" in x or x["role"] == "tool" for x in messages)
         forbids_text = "do not return it as plain assistant text" in json.dumps(messages, ensure_ascii=False)
         assert not uses_tool_history and not forbids_text
-        assert messages[:-3] == json.loads(original_content.text)
-        assert messages[-3] == {"role": "assistant", "content": _json({"replacement": rejected})}
-        feedback = json.loads(messages[-2]["content"])
+        assert messages[:-2] == json.loads(original_content.text)
+        assert messages[-2] == {"role": "assistant", "content": _json({"replacement": rejected})}
+        feedback = json.loads(messages[-1]["content"])
         if not original_marker:
             assert feedback["correction_transport"] == {
                 "contract": "world-author-correction-carrier.1",

@@ -4,6 +4,8 @@ from datetime import timedelta
 import json
 
 import pytest
+
+from character_interior import json_text_response_contract
 import httpx
 
 from companion_daemon.llm import DeepSeekChatModel
@@ -133,10 +135,7 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
             assert body["response_format"]["type"] == text_carrier and "tools" not in body
             assert "Do not return an ordinary text/JSON message" not in body["messages"][0]["content"]
             assert 'This request requires exactly {"decision":"revise","draft":<schema>}' in body["messages"][0]["content"]
-            envelope = json.loads(body["messages"][-1]["content"])
-            if text_carrier == "json_schema":
-                assert body["response_format"]["json_schema"] == {
-                    "name": envelope["schema_name"], "strict": True, "schema": envelope["response_schema"]}
+            envelope, logical_messages = json_text_response_contract(body)
             tool = {"function": {"parameters": envelope["response_schema"]}}
         else:
             assert body["tool_choice"] == "auto" and "response_format" not in body
@@ -170,7 +169,7 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
             else:
                 result["draft"]["actor_ref"] = "actor:wrong-owner"
         elif json_carrier:
-            assistant, feedback = body["messages"][-3:-1]  # Last is the same schema clause.
+            assistant, feedback = logical_messages[-2:]
             assert assistant["role"] == "assistant" and "tool_calls" not in assistant
             if original_contract in {"world-outlook-native.9", "world-outlook-native.10"}:
                 assert json.loads(assistant["content"])["draft_schema_carrier"] == "copied-request-metadata"

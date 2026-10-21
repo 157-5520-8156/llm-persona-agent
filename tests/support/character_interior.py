@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import hashlib
+import json
 
 from companion_daemon.world_v2.character_interior.contracts import (
     InnerDecision,
@@ -110,3 +111,16 @@ def canonical_inner_decision(
 
 
 __all__ = ["canonical_inner_decision", "canonical_inner_life_model_view"]
+
+
+def json_text_response_contract(wire):
+    """Read the real wire before adapting a shared native-review fixture."""
+    assert "tools" not in wire and "tool_choice" not in wire
+    if wire["response_format"]["type"] == "json_schema":
+        contract = wire["response_format"]["json_schema"]
+        assert contract["strict"] is True
+        return {"schema_name": contract["name"], "response_schema": contract["schema"]}, wire["messages"]
+    assert wire["response_format"] == {"type": "json_object"}
+    contract = json.loads(wire["messages"][-1]["content"])
+    assert contract["contract"] == "single-schema-json-object-request.1"
+    return contract, wire["messages"][:-1]
