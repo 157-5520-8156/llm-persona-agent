@@ -152,6 +152,15 @@ Fate may schedule a separate encounter. Write natural-language fields in Chinese
 keys, enums and source coordinates.
 """
 
+_COURSE_CONTENT_GUIDANCE = _COURSE_GUIDANCE.replace(
+    "Author its full environmental progression now; only due\nevent_details become visible later.",
+    "Author its full external course progression now; only due event_details become visible later. "
+    "Each timed step should advance what is actually taught or done in this class, such as the "
+    "changing lesson focus or course materials, rather than only light, footsteps and weather. "
+    "Use proposal-scoped novel_world_generation for new external lesson content. This never proves "
+    "that the companion attended, perceived, answered or completed anything.",
+)
+
 
 def _without_schema_annotations(node):
     """Remove display metadata at schema nodes, never domain properties/literals."""
@@ -223,11 +232,13 @@ def compile_world_consequence_messages(
     detail_capability = manifest.get("event_detail_capability") or {}
     required_details = bool(detail_capability.get("required_program"))
     ordinary_course_detail = required_details and detail_capability.get("contract") == "event-detail-capability.2"
+    exact_output = manifest.get("world_author_output_contract") == "2"
     closing_offset = detail_capability.get("closing_offset_seconds")
     bound_attempt = scope in {"completed_activity_consequence", "active_attempt_consequence"}
     value["world_author_task"] = scope or "open_world_possibility"
     value["world_author_prompt_contract"] = (
-        "world-consequence-prompt.8" if temporal_publication is not None
+        "world-consequence-prompt.9" if exact_output
+        else "world-consequence-prompt.8" if temporal_publication is not None
         else "world-consequence-prompt.4" if ordinary_course_detail else "world-consequence-prompt.7"
     )
     boundary["world_consequence"] = {
@@ -265,7 +276,8 @@ def compile_world_consequence_messages(
         authorized_attempt_claims=bool(authority.execution_bindings), event_details=has_details,
         required_event_details=required_details, closing_offset_seconds=closing_offset,
         ordinary_course_detail=ordinary_course_detail,
-        event_detail_privacy_class=detail_capability.get("privacy_class") if ordinary_course_detail else None)
+        event_detail_privacy_class=detail_capability.get("privacy_class") if ordinary_course_detail else None,
+        exact_now_timing=exact_output and (scope is not None or has_details))
     if not ordinary_course_detail:
         # Advertise the existing canonical validators, including constraints
         # Pydantic after-validators cannot express in generated JSON Schema.
@@ -285,14 +297,15 @@ def compile_world_consequence_messages(
         boundary["authority_pairings"] = {"world_contingency": {"outcome_resolution_authority": resolutions}}
         schema["properties"]["causal_authority"] = {"type": "string", "const": "world_contingency"}
         schema["properties"]["outcome_resolution_authority"] = {"type": "string", "enum": resolutions}
-        timing_schema = schema["$defs"]["LifeDevelopmentTimingDraft"]
-        timing_schema["properties"]["mode"] = {"type": "string", "const": "now"}
-        timing_schema["properties"]["duration_minutes"] = next(
-            option for option in timing_schema["properties"]["duration_minutes"]["anyOf"] if option.get("type") != "null"
-        )
-        for field in ("opens_at", "closes_at"):
-            timing_schema["properties"][field] = {"type": "null"}
-        timing_schema["required"] = [*timing_schema["required"], "duration_minutes"]
+        if not exact_output:
+            timing_schema = schema["$defs"]["LifeDevelopmentTimingDraft"]
+            timing_schema["properties"]["mode"] = {"type": "string", "const": "now"}
+            timing_schema["properties"]["duration_minutes"] = next(
+                option for option in timing_schema["properties"]["duration_minutes"]["anyOf"] if option.get("type") != "null"
+            )
+            for field in ("opens_at", "closes_at"):
+                timing_schema["properties"][field] = {"type": "null"}
+            timing_schema["required"] = [*timing_schema["required"], "duration_minutes"]
     consequence = schema["$defs"]["WorldConsequenceV2"]
     if not authority.execution_bindings:
         consequence["properties"]["authorized_attempt_result"] = {"type": "null"}
@@ -421,7 +434,7 @@ def compile_world_consequence_messages(
             "version", "owner_actor_ref", "location_capabilities", "entity_refs", "npc_capabilities",
             "npc_privacy_floors", "biographical_context_tags", "allow_external_observation_outcomes",
             "outcome_contract", "execution_intention_sources_version", "pinned_source_materials_version",
-            "semantic_source_review_version", "max_future_days", "max_window_minutes",
+            "semantic_source_review_version", "world_author_output_contract", "max_future_days", "max_window_minutes",
         )
         value["capability_manifest"] = {
             **{key: manifest[key] for key in stable_manifest_fields if key in manifest},
@@ -437,7 +450,7 @@ def compile_world_consequence_messages(
         stable_fields = ("output_contract", "claim_classification_contract", "authored_subject", "world_author_wire")
         value = {**{key: value[key] for key in stable_fields if key in value},
                  **{key: item for key, item in value.items() if key not in stable_fields}}
-    core = _COURSE_GUIDANCE if ordinary_course_detail else _CORE_GUIDANCE
+    core = (_COURSE_CONTENT_GUIDANCE if exact_output else _COURSE_GUIDANCE) if ordinary_course_detail else _CORE_GUIDANCE
     if required_details and not ordinary_course_detail:
         core = core.replace("no_op, or one source-bound", "one source-bound").replace(
             "Choose the content yourself; no_op remains valid.",

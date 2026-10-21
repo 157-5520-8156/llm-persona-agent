@@ -340,6 +340,33 @@ def test_ordinary_course_prompt_narrows_only_the_new_event_capability():
     assert 'Fate may schedule a separate encounter' in messages[0]['content']
 
 
+def test_new_course_prompt_requires_lesson_progress_and_exact_now_timing():
+    from jsonschema import Draft202012Validator
+
+    authority, context = _inputs()
+    context['capability_manifest'].update({
+        'world_author_output_contract': '2',
+        'event_detail_capability': {
+            'contract': 'event-detail-capability.2', 'source_kind': 'world_occurrence',
+            'required_program': True, 'closing_offset_seconds': 5940,
+            'privacy_class': 'private',
+        },
+    })
+    messages = compile_world_consequence_messages(
+        user_context=context, authority=authority, execution_materials=())
+    packet = json.loads(messages[1]['content'])
+    timing = packet['output_contract']['propose']['$defs']['LifeDevelopmentTimingDraft']
+    assert packet['world_author_prompt_contract'] == 'world-consequence-prompt.9'
+    assert timing['properties']['opens_at'] == timing['properties']['closes_at'] == {'type': 'null'}
+    assert Draft202012Validator(timing).is_valid({
+        'mode': 'now', 'duration_minutes': 100, 'opens_at': None, 'closes_at': None})
+    assert not Draft202012Validator(timing).is_valid({
+        'mode': 'now', 'duration_minutes': 100,
+        'opens_at': '2026-10-21T08:15:00+08:00', 'closes_at': None})
+    assert 'what is actually taught or done in this class' in messages[0]['content']
+    assert 'companion attended' in messages[0]['content']
+
+
 def test_current_prompt_deduplicates_identical_location_capabilities_only():
     authority, context = _inputs()
     capabilities = [{'location_ref':'room:one', 'capability_ref':'cap:one', 'privacy_class':'private'}]

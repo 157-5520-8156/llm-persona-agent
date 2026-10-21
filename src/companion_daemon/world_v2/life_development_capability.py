@@ -315,6 +315,7 @@ class ProjectionLifeCapabilityManifestCompiler:
             execution_intention_sources_version=CURRENT_EXECUTION_INTENTION_SOURCES_VERSION,
             pinned_source_materials_version="3",
             semantic_source_review_version="2",
+            world_author_output_contract="2",
             owner_actor_ref=self._owner,
             pinned_cursor=ProjectionCursor(
                 world_revision=getattr(projection, "world_revision"),

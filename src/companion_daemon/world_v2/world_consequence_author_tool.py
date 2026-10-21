@@ -57,6 +57,7 @@ def world_consequence_author_tool_contract(
     *, provider: object, contract_id: str = CONTRACT,
     closing_offset_seconds: int | None = None,
     event_detail_privacy_class: str | None = None,
+    exact_now_timing: bool = False,
 ) -> dict[str, object]:
     if not isinstance(contract_id, str) or contract_id not in _CONTRACTS:
         raise ValueError("unknown World author tool contract")
@@ -73,7 +74,8 @@ def world_consequence_author_tool_contract(
     tool_name = _CONTRACTS[contract_id]
     # Only the static schema is reusable. Provider mode is resolved anew on
     # every invocation; callers receive an owned copy they may safely bind.
-    tools = deepcopy(_static_author_tools(contract_id, closing_offset_seconds, event_detail_privacy_class))
+    tools = deepcopy(_static_author_tools(contract_id, closing_offset_seconds, event_detail_privacy_class,
+                                          exact_now_timing))
     transport = resolve_single_tool_transport(
         provider=getattr(provider, "authority_origin", provider),
         tools=tools,
@@ -85,7 +87,8 @@ def world_consequence_author_tool_contract(
 
 @lru_cache(maxsize=32)
 def _static_author_tools(contract_id: str, closing_offset_seconds: int | None = None,
-                         event_detail_privacy_class: str | None = None) -> list[dict[str, object]]:
+                         event_detail_privacy_class: str | None = None,
+                         exact_now_timing: bool = False) -> list[dict[str, object]]:
     tool_name = _CONTRACTS[contract_id]
     event_detail_tool = contract_id in {EVENT_CONTRACT, REQUIRED_EVENT_CONTRACT, *_COURSE_EVENT_CONTRACTS}
     propose = life_possibility_output_schema(outcome_contract="world-consequence.2",
@@ -94,7 +97,8 @@ def _static_author_tools(contract_id: str, closing_offset_seconds: int | None = 
         closing_offset_seconds=closing_offset_seconds,
         ordinary_course_detail=contract_id in _COURSE_EVENT_CONTRACTS,
         unconditional_course_steps=contract_id == RELEASABLE_COURSE_EVENT_CONTRACT,
-        event_detail_privacy_class=event_detail_privacy_class)
+        event_detail_privacy_class=event_detail_privacy_class,
+        exact_now_timing=exact_now_timing)
     if contract_id in {"world-consequence-author-tool.3", "world-consequence-author-tool.4", CONTRACT, EVENT_CONTRACT, REQUIRED_EVENT_CONTRACT}:
         _bind_nonempty_visual_environment(propose)
     if contract_id in {"world-consequence-author-tool.4", CONTRACT, EVENT_CONTRACT, REQUIRED_EVENT_CONTRACT}:
@@ -308,7 +312,10 @@ def recover_world_consequence_author_tool(
         closing_offset_seconds=(required_detail.get("closing_offset_seconds")
             if contract_id in {REQUIRED_EVENT_CONTRACT, *_COURSE_EVENT_CONTRACTS} else None),
         event_detail_privacy_class=(required_detail.get("privacy_class")
-            if contract_id in _COURSE_EVENT_CONTRACTS else None))
+            if contract_id in _COURSE_EVENT_CONTRACTS else None),
+        exact_now_timing=(user.get("capability_manifest") or {}).get("world_author_output_contract") == "2"
+            and any((user.get("capability_manifest") or {}).get(key) is not None for key in (
+                "completed_activity_consequence", "active_attempt_consequence", "event_detail_capability")))
     if user["world_author_wire"] != _wire_identity(
         contract, response_carrier=marker.get("response_carrier"),
     ):

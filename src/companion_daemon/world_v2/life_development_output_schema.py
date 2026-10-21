@@ -23,9 +23,17 @@ def life_possibility_output_schema(*, outcome_contract: str | None = None,
                                   closing_offset_seconds: int | None = None,
                                   ordinary_course_detail: bool = False,
                                   unconditional_course_steps: bool = False,
-                                  event_detail_privacy_class: str | None = None) -> dict[str, object]:
+                                  event_detail_privacy_class: str | None = None,
+                                  exact_now_timing: bool = False) -> dict[str, object]:
     schema = LifeDevelopmentPossibilityDraft.model_json_schema(mode="validation")
     definitions = schema["$defs"]
+    if exact_now_timing:
+        timing = definitions["LifeDevelopmentTimingDraft"]["properties"]
+        timing["mode"] = {"type": "string", "const": "now"}
+        timing["duration_minutes"] = next(
+            item for item in timing["duration_minutes"]["anyOf"] if item.get("type") != "null"
+        )
+        timing["opens_at"] = timing["closes_at"] = {"type": "null"}
     if event_details:
         for field in ("causal_authority", "outcome_resolution_authority"):
             schema["properties"][field] = {"type": "string", "const": "world_contingency"}

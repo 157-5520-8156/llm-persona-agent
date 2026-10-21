@@ -352,6 +352,11 @@ class LifeDevelopmentCapabilityManifest(FrozenModel):
     semantic_source_review_version: Literal["1", "2"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    # Omission preserves already-paid World Author requests. Fresh requests
+    # pin the tighter now-timing wire and substantive course guidance.
+    world_author_output_contract: Literal["2"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     # A separate request for the aftermath of one accepted attempt. Absence
     # retains historical manifest/request bytes and ordinary opportunity scope.
     completed_activity_consequence: CompletedActivityConsequence | None = Field(
