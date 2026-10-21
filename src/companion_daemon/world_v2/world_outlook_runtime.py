@@ -2317,18 +2317,17 @@ class WorldOutlookRuntime:
             floors = navigation_privacy_floors(state)
             ranks = ("public", "shareable", "personal", "private", "withhold")
             publication_rank = ranks.index(clean["execution"]["privacy_class"])
-            before = None
-            while len(anchors) < 24:
-                page = self.store.navigation_offer_page(clean["thread_refs"], before=before)
-                if not page:
-                    break
+            if len(anchors) < 24:
+                # Bound optional navigation work, including when every recent
+                # source is private, duplicated or unavailable. Explicit author
+                # anchors above and all actual events remain intact.
+                page = self.store.navigation_offer_page(clean["thread_refs"], limit=32)
                 catalog = self._anchors(state, (ref for _, offer in page for ref in offer["payload"].get("effect_refs", ())))
                 for _, offer in page:
                     for ref in offer["payload"].get("effect_refs", ()):
                         if (ref in catalog and len(anchors) < 24
                                 and ranks.index(floors[ref]) <= publication_rank):
                             anchors[ref] = catalog[ref]
-                before = page[-1][0]
             origin["story_navigation"] = LivedStoryNavigation(
                 actor_ref=self.actor_ref,
                 thread_refs=tuple(

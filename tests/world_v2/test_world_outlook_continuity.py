@@ -661,7 +661,10 @@ async def test_revised_npc_script_after_precommit_failure_gets_its_own_author_ev
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("later_privacy", ["personal", "private"])
-async def test_automatic_thread_navigation_respects_publication_privacy(tmp_path, later_privacy):
+@pytest.mark.parametrize("history_offers", [0, 256, 10_000])
+async def test_automatic_thread_navigation_respects_publication_privacy(
+    tmp_path, monkeypatch, later_privacy, history_offers,
+):
     """A private earlier event cannot taint an independently authored announcement."""
     from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
     from companion_daemon.world_v2.lived_story import LivedStoryNavigation, validate_navigation
@@ -710,8 +713,23 @@ async def test_automatic_thread_navigation_respects_publication_privacy(tmp_path
                                 projection=ledger.project(), privacy_class="personal")
         next_wake = _seed_clock(ledger, event_id="clock:later:announcement",
             logical_time=wake.logical_time + timedelta(minutes=31), logical_time_from=due.logical_time)
+        page_calls = []
+        if history_offers:
+            # Valid original effects may occur in many retained retry receipts.
+            # Simulate that history through the page seam, not new World facts.
+            saved = next(o for o in runtime.store.offers()
+                         if o["payload"]["node"]["opportunity_id"] == first["opportunity_id"])
+
+            def history_pages(thread_refs, *, before=None, limit=32):
+                page_calls.append((before, limit))
+                end = history_offers + 1 if before is None else before
+                return tuple((i, saved) for i in range(end - 1, max(0, end - limit - 1), -1))
+
+            monkeypatch.setattr(runtime.store, "navigation_offer_page", history_pages)
         node = next(n for n in runtime.ready() if n["opportunity_id"] == later["opportunity_id"])
         result = runtime.execute_offer(node, wake_event_ref=next_wake.event_id)
+        if history_offers:
+            assert page_calls == [(None, 32)]
         assert result.status == "occurrence_committed", runtime.health()
         occurrence = next(o for o in ledger.project().world_occurrences if o.occurrence_id == result.occurrence_id)
         assert occurrence.visibility == later_privacy

@@ -1,3 +1,11 @@
+Automatic story navigation now inspects one bounded32-offer page. It does
+not scan an entire thread when all optional links are private, repeated or
+unavailable; explicit authored anchors and all actual events remain intact.
+A deterministic256-receipt counterexample showed9pages; fixed public tests
+cover0/256/10000 histories at both privacy levels with one page and strict
+explicit-anchor rejection. The966c full was intentionally interrupted for
+this counterexample (4572pass/exit2/source unchanged), not a full pass.
+
 Outlook publication repair: host-derived navigation may only add historical
 anchors permitted at the authored execution privacy. Explicit author anchors
 still undergo the original strict validation. The claim and final admission
