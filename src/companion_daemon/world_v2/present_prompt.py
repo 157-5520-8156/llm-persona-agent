@@ -1989,18 +1989,20 @@ def _clip_text(value: object, limit: int) -> str:
     return text[:limit]
 
 
-def _slim_messages(value: object) -> list[str] | None:
+def _slim_beats(
+    value: object, *, allow_nontext: bool = False,
+) -> list[dict[str, object]] | None:
     if value is None:
         return []
     if isinstance(value, str):
         text = value.strip()
-        return [text] if text else []
+        return [{"modality": "text", "text": text}] if text else []
     if not isinstance(value, list):
         return None
-    messages: list[str] = []
-    for item in value:
+    messages: list[dict[str, object]] = []
+    for index, item in enumerate(value):
         if isinstance(item, str) and item.strip():
-            messages.append(item.strip())
+            messages.append({"modality": "text", "text": item.strip()})
             continue
         if (
             isinstance(item, dict)
@@ -2008,8 +2010,26 @@ def _slim_messages(value: object) -> list[str] | None:
             and isinstance(item.get("text"), str)
             and item["text"].strip()
         ):
-            messages.append(item["text"].strip())
+            messages.append({"modality": "text", "text": item["text"].strip()})
             continue
+        if allow_nontext and isinstance(item, dict):
+            if set(item) == {"typing"} and item["typing"] is True:
+                messages.append({"modality": "typing"})
+                continue
+            for key, modality in (("sticker_id", "sticker"), ("reaction_id", "reaction")):
+                if set(item) == {key} and isinstance(item[key], str) and item[key]:
+                    # The chosen ID stays exact; the original capability and
+                    # Acceptance checks reject absent or unavailable options.
+                    messages.append({"modality": modality, key: item[key]})
+                    break
+            else:
+                raise ValueError(
+                    f"messages[{index}]只能是一条文字、{{sticker_id:已提供ID}}、"
+                    "{reaction_id:已提供ID}或{typing:true}，不能混写字段"
+                )
+            continue
+        if allow_nontext:
+            raise ValueError(f"messages[{index}]不是有效的文字或表达选项对象")
         return None
     return messages
 
@@ -2450,7 +2470,7 @@ def _raise_if_invalid_declared_display(value: Mapping[str, object]) -> None:
 def _raise_if_invalid_later(
     value: Mapping[str, object],
     *,
-    messages: list[str],
+    messages: list[dict[str, object]],
     media_request: str,
 ) -> tuple[int, int] | None:
     """Refuse a written-but-unreadable later instead of sending now or dropping."""
@@ -2465,7 +2485,8 @@ def _raise_if_invalid_later(
             "也不会把写坏的 later 当成现在发，更不会丢掉后假装没写。"
             "不写 later 也可以，那就是现在发。"
         )
-    if not messages or media_request != "none":
+    if (not messages or media_request != "none"
+        or any(item["modality"] != "text" for item in messages)):
         raise ValueError(
             SLIM_LATER_REQUIRES_TEXT
             + "。later 只能配已经想好的文字气泡；沉默和 photo 都不能跟 later 一起写。"
@@ -2491,6 +2512,8 @@ def _raise_if_invalid_how_it_landed(value: Mapping[str, object]) -> None:
 
 def compile_slim_consider_payload(
     value: Mapping[str, object],
+    *,
+    allow_nontext: bool = False,
 ) -> dict[str, object] | None:
     """Compile the slim consider shape into dual drafts. Old drafts stay as-is."""
 
@@ -2528,7 +2551,7 @@ def compile_slim_consider_payload(
             raise ValueError("come_back.after_seconds必须是30到86400整数秒")
         value = {**value, "come_back": thought, "come_back_in": seconds}
     validate_authored_impression_retention(value)
-    messages = _slim_messages(value.get("messages"))
+    messages = _slim_beats(value.get("messages"), allow_nontext=allow_nontext)
     if messages is None:
         return None
     meaning_of_this = _clip_text(value.get("meaning_of_this"), 240)
@@ -2615,7 +2638,7 @@ def compile_slim_consider_payload(
         "private_turn_state": private_turn_state,
         "timing_choice": timing,
         "cadence": "conversational",
-        "beats": [{"modality": "text", "text": item} for item in messages],
+        "beats": messages,
         "stance": label,
         "brief_rationale": meaning_of_this[:240],
         "confidence": 5000,

@@ -41,7 +41,7 @@ from ..present_prompt import (
 InboundToolPhase = Literal["gate", "initial", "after_recall", "final"]
 InboundToolTransport = Literal["atomic", "stream"]
 InboundToolSchemaDialect = Literal["standard", "deepseek-strict"]
-InboundAtomicEnvelopeVersion = Literal["1", "2", "3", "slim"]
+InboundAtomicEnvelopeVersion = Literal["1", "2", "3", "slim", "slim2"]
 _CONTRACT_VERSION = "1"
 _COMPACT_GATE_CONTRACT_VERSION = "2"
 _REPLY_ONLY_APPRAISAL_FIELDS = (
@@ -560,6 +560,7 @@ def expand_atomic_slim_payload(
     value: dict[str, object],
     *,
     recall_allowed: bool,
+    allow_nontext: bool = False,
 ) -> dict[str, object]:
     """Compile the slim atomic carrier into the existing typed drafts.
 
@@ -601,7 +602,7 @@ def expand_atomic_slim_payload(
                     request[field] = sorted(set(values))
             payload = {**payload, "recall_request": request}
         return {"result_kind": "recall", **payload}
-    compiled = compile_slim_consider_payload(payload)
+    compiled = compile_slim_consider_payload(payload, allow_nontext=allow_nontext)
     if compiled is None:
         if set(payload) == {"appraisal_draft", "expression_draft"}:
             return {"result_kind": "decision", **payload}
@@ -1197,7 +1198,7 @@ class InboundToolContract:
     def unwrap(self, raw_arguments: str) -> str:
         """Validate and remove only the exact forced-tool transport wrapper."""
 
-        if self.identity.version == "slim":
+        if self.identity.version in {"slim", "slim2"}:
             try:
                 value = json.loads(raw_arguments, object_pairs_hook=_unique_compact_gate_object)
             except (TypeError, json.JSONDecodeError) as exc:
@@ -1208,7 +1209,10 @@ class InboundToolContract:
                 from .slim_native_core import decode
 
                 value = decode(value, recall_allowed=self.recall_allowed)
-            inner = expand_atomic_slim_payload(value, recall_allowed=self.recall_allowed)
+            inner = expand_atomic_slim_payload(
+                value, recall_allowed=self.recall_allowed,
+                allow_nontext=self.identity.version == "slim2",
+            )
             inner.pop("result_kind")
             return json.dumps(inner, ensure_ascii=False, separators=(",", ":"))
         try:
@@ -1358,6 +1362,7 @@ class InboundToolContracts:
         recall_allowed: bool,
         tool_name: str,
         schema_dialect: InboundToolSchemaDialect,
+        version: str = "slim",
     ) -> InboundToolContract:
         """One branch name plus one payload string, instead of the full envelope.
 
@@ -1427,7 +1432,7 @@ class InboundToolContracts:
             transport="atomic",
             schema_dialect=schema_dialect,
             tool_name=tool_name,
-            version="slim",
+            version=version,
             schema_sha256=schema_digest,
             capabilities_sha256=capabilities_digest,
             contract_sha256=contract_digest,
@@ -1578,15 +1583,15 @@ class InboundToolContracts:
             raise ValueError("unsupported inbound tool transport")
         if schema_dialect not in {"standard", "deepseek-strict"}:
             raise ValueError("unsupported inbound tool schema dialect")
-        if atomic_envelope_version not in {"1", "2", "3", "slim"}:
+        if atomic_envelope_version not in {"1", "2", "3", "slim", "slim2"}:
             raise ValueError("unsupported atomic inbound envelope version")
         if atomic_envelope_version in {"2", "3"} and (
             transport != "atomic" or schema_dialect != "deepseek-strict"
         ):
             raise ValueError("versioned atomic transport requires the DeepSeek strict atomic dialect")
-        if atomic_envelope_version == "slim" and transport != "atomic":
+        if atomic_envelope_version in {"slim", "slim2"} and transport != "atomic":
             raise ValueError("atomic slim transport requires the atomic carrier")
-        if atomic_envelope_version == "slim" and (use_schema_references or evidence_first_schema):
+        if atomic_envelope_version in {"slim", "slim2"} and (use_schema_references or evidence_first_schema):
             # V4 carries the whole decision inside one opaque payload string, so
             # the schema-reference and evidence-first projections have nothing
             # left to shrink and must not silently change its carrier.
@@ -1605,18 +1610,19 @@ class InboundToolContracts:
             atomic_envelope_version != "3" or recall_allowed
         )
         tool_name = (
-            f"character_inbound_{phase}_slim"
-            if atomic_envelope_version == "slim" and phase in {"initial", "after_recall"}
-            else f"character_inbound_{phase}_{transport}_slim"
-            if atomic_envelope_version == "slim"
+            f"character_inbound_{phase}_{atomic_envelope_version}"
+            if atomic_envelope_version in {"slim", "slim2"} and phase in {"initial", "after_recall"}
+            else f"character_inbound_{phase}_{transport}_{atomic_envelope_version}"
+            if atomic_envelope_version in {"slim", "slim2"}
             else f"character_inbound_{phase}_v{contract_version}"
             if transport == "atomic" and phase in {"initial", "after_recall"}
             else f"character_inbound_{phase}_{transport}_v{contract_version}"
         )
-        if atomic_envelope_version == "slim":
+        if atomic_envelope_version in {"slim", "slim2"}:
             return self._atomic_slim_contract(
                 phase=phase, capabilities=capabilities, recall_allowed=recall_allowed,
                 tool_name=tool_name, schema_dialect=schema_dialect,
+                version=atomic_envelope_version,
             )
         appraisal_schema = _provider_schema(AppraisalDraftWire)
         appraisal_required = appraisal_schema.get("required")

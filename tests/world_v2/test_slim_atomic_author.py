@@ -24,6 +24,119 @@ MEANING = "他就是想让我自己说说想说什么。"
 MY_STATE = "松下来一点，想把两句想法完整表达出来。"
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("messages,kinds", [
+    (["我在呀"], ["text"]),
+    ([{"sticker_id": "qq-face:179"}], ["sticker"]),
+    ([{"reaction_id": "like"}], ["reaction"]),
+    ([{"typing": True}, "等我说完"], ["typing", "text"]),
+    (["哎", {"sticker_id": "qq-face:179"}], ["text", "sticker"]),
+    ([], []),
+])
+async def test_slim2_choices_deliver_through_original_qq_transport_and_reopen_once(
+    tmp_path, monkeypatch, messages, kinds,
+):
+    from companion_daemon.world_v2.longitudinal_journey import CaptureDelivery, JourneyClock
+    from companion_daemon.world_v2.qq_c2c_transport import QQC2CPlatformTransport
+
+    clock = JourneyClock(NOW)
+    capture = CaptureDelivery(clock)
+    transport = QQC2CPlatformTransport(
+        delivery=capture, recipients_by_target={"user:user.1": "isolated-capture"}, now=clock.now,
+    )
+    http = _CurrentSlimHTTP(first_payload={**_slim(), "messages": messages})
+    async with _application(
+        tmp_path, monkeypatch, http, tool_version="slim2", review_version="25", transport=transport,
+    ) as app:
+        result = await app.respond(_inbound())
+        assert http.authors == 1
+        assert (result.status == "action_authorized") == bool(kinds)
+        for _ in kinds:
+            assert (await app.drain_actions_once()).status == "settled"
+        assert [r["kind"] for r in capture.records] == kinds
+        if kinds == ["reaction"]:
+            assert capture.records[0]["text"] == f"{_inbound().platform_message_id}:like"
+        evidence = app.export_replay_evidence()
+        assert evidence.projection.semantic_hash == evidence.replay.semantic_hash
+        assert http.requests[0]["tool_choice"]["function"]["name"] == "character_inbound_initial_slim2"
+        assert http.requests[0]["messages"][0]["content"].startswith("character-inbound-prompt.11-slim-expressions\n")
+
+    # Reopen the same isolated SQLite state with a fresh transport cache. The
+    # ledger's accepted result, not the provider cache, prevents redelivery.
+    reopened_capture = CaptureDelivery(clock)
+    reopened_transport = QQC2CPlatformTransport(
+        delivery=reopened_capture, recipients_by_target={"user:user.1": "isolated-capture"}, now=clock.now,
+    )
+    async with _application(
+        tmp_path, monkeypatch, http, tool_version="slim2", review_version="25", transport=reopened_transport,
+    ) as app:
+        repeated = await app.respond(_inbound())
+        assert repeated.authorized_action_ids == result.authorized_action_ids
+        await app.drain_actions_once()
+        assert http.authors == 1 and not reopened_capture.records
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("message,extra,capability", [
+    ({"sticker_id": "qq-face:unknown"}, {}, "qq"),
+    ({"reaction_id": "unknown"}, {}, "qq"),
+    ({"text": "hey", "sticker_id": "qq-face:179"}, {}, "qq"),
+    ({"sticker_id": "qq-face:179"}, {"later": 60}, "qq"),
+    ({"sticker_id": "qq-face:179"}, {}, "text_only"),
+    ({"typing": True}, {}, "qq"),
+])
+async def test_slim2_keeps_permission_and_timing_reselection(
+    tmp_path, monkeypatch, message, extra, capability,
+):
+    from companion_daemon.world_v2.expression_draft import TEXT_ONLY_EXPRESSION_CAPABILITIES
+
+    capabilities = TEXT_ONLY_EXPRESSION_CAPABILITIES if capability == "text_only" else None
+    http = _CurrentSlimHTTP(first_payload={**_slim(), "messages": [message], **extra})
+    async with _application(
+        tmp_path, monkeypatch, http, tool_version="slim2", review_version="25", capabilities=capabilities,
+    ) as app:
+        result = await app.respond(_inbound())
+        assert result.status == "action_authorized"
+        assert http.authors == 2, "invalid choice must reach the same role, not be silently fixed"
+        actions = app.export_replay_evidence().projection.actions
+        assert {a.kind for a in actions} <= {"reply", "followup"}
+
+
+def test_legacy_slim_stays_text_only_and_text_compile_is_identical():
+    from companion_daemon.world_v2.character_interior.inbound_tool_contract import expand_atomic_slim_payload
+    from companion_daemon.world_v2.present_prompt import compile_slim_consider_payload
+
+    for messages in ([], ["hi"], [{"text": " hi "}], ["hi", "there"]):
+        payload = {**_slim(), "messages": messages}
+        assert compile_slim_consider_payload(payload) == compile_slim_consider_payload(payload, allow_nontext=True)
+    for item in ({"sticker_id": "qq-face:179"}, {"reaction_id": "like"}, {"typing": True}):
+        wire = {"result_kind": "decision", "payload_json": json.dumps({**_slim(), "messages": [item]})}
+        with pytest.raises(ValueError, match="one slim consider object"):
+            expand_atomic_slim_payload(wire, recall_allowed=True)
+        assert expand_atomic_slim_payload(wire, recall_allowed=True, allow_nontext=True)["expression_draft"]["beats"]
+
+
+@pytest.mark.asyncio
+async def test_slim2_reopens_original_paid_slim_action_without_new_authorship(tmp_path, monkeypatch):
+    http = _CurrentSlimHTTP(first_payload={**_slim(), "messages": ["原来选好的话"]})
+    async with _application(tmp_path, monkeypatch, http, review_version="25") as app:
+        first = await app.respond(_inbound())
+        assert first.status == "action_authorized" and http.authors == 1
+        # Stop before dispatch; the accepted old-wire decision is durable.
+    transport = _DeliveredTransport()
+    async with _application(
+        tmp_path, monkeypatch, http, tool_version="slim2", review_version="25", transport=transport,
+    ) as app:
+        restored = await app.respond(_inbound())
+        assert restored.authorized_action_ids == first.authorized_action_ids
+        assert http.authors == 1
+        assert (await app.drain_actions_once()).status == "settled"
+        assert transport.bodies == ["原来选好的话"]
+        await app.respond(_inbound())
+        await app.drain_actions_once()
+        assert http.authors == 1 and transport.bodies == ["原来选好的话"]
+
+
 def _slim(*, silent=False):
     return {
         "messages": [] if silent else list(BEATS),
@@ -104,8 +217,29 @@ class _SlimHTTP:
         })
 
 
+class _CurrentSlimHTTP(_SlimHTTP):
+    async def __call__(self, request):
+        body = json.loads(request.content)
+        if body.get('tool_choice',{}).get('function',{}).get('name','').startswith('review_grounded'):
+            assert body['tool_choice']['function']['name'] == 'review_grounded_segments_v5'
+            self.requests.append(body)
+            self.reviews += 1
+            value = json.loads(body['messages'][1]['content'])
+            response = {'beat_decisions': [
+                {'beat_index': b['beat_index'],
+                 'segments': [{'text': b['text'], 'rationale': '当前回应',
+                               'assessment': {'kind': 'non_record'}}],
+                 'review_complete': True}
+                for b in value['visible_beats']]}
+            Draft202012Validator(body['tools'][0]['function']['parameters']).validate(response)
+            return _http_result(body, response)
+        return await super().__call__(request)
+
 @asynccontextmanager
-async def _application(tmp_path, monkeypatch, handler):
+async def _application(
+    tmp_path, monkeypatch, handler, *, tool_version="slim", review_version="24",
+    capabilities=None, transport=None,
+):
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
     models = [
         DeepSeekChatModel(
@@ -114,7 +248,7 @@ async def _application(tmp_path, monkeypatch, handler):
         )
         for _ in range(2)
     ]
-    capabilities = QQ_NAPCAT_EXPRESSION_CAPABILITIES.model_copy(
+    capabilities = (capabilities or QQ_NAPCAT_EXPRESSION_CAPABILITIES).model_copy(
         update={"private_turn_state_mode": "required"},
     )
     author = _InboundCharacterAuthor(
@@ -122,20 +256,21 @@ async def _application(tmp_path, monkeypatch, handler):
         expression_capabilities=capabilities,
         require_explicit_authored_decision_fields=True,
         whole_candidate_mode=True,
-        atomic_tool_envelope_version="slim",
+        atomic_tool_envelope_version=tool_version,
         visible_source_review_model=GroundedVisibleReviewer(source_model=models[1]),
-        visible_source_review_version="24",
+        visible_source_review_version=review_version,
     )
     app = build_sqlite_world_v2_test_application(
         path=tmp_path / "slim-atomic.sqlite",
         config=replace(
             _config(), expression_capabilities=capabilities, expression_episode_mode="off",
+            expression_action_kinds=capabilities.action_kinds,
             visible_source_review_required=True,
         ),
         identities=_Identities(),
         router=_Router(),
         character_interior=compose_fixture_character_interior(inbound_author=author),
-        transport=_DeliveredTransport(),
+        transport=transport or _DeliveredTransport(),
         now=NOW,
     )
     try:
@@ -382,7 +517,6 @@ def test_choice_bearing_materials_stay_literal_for_the_role_to_copy_back():
 @pytest.mark.parametrize("context_profile", ["full", "bounded"])
 async def test_current_v25_slim_prompt_is_bound_through_http_acceptance_and_replay(tmp_path, monkeypatch, context_profile):
     import test_slim_atomic_author as fixture
-    from test_world_stimulus_life_intent import _http_result
     from test_whole_candidate_author import _inbound
     from test_launch_visible_source_gate import _audits
     from companion_daemon.world_v2.visible_source_runtime import verify_recorded_candidate
@@ -402,25 +536,8 @@ async def test_current_v25_slim_prompt_is_bound_through_http_acceptance_and_repl
             bounded_inbound_context(value) if 'expression_hard_boundaries' in value else value))
 
 
-    class HTTP(fixture._SlimHTTP):
-        async def __call__(self, request):
-            body = json.loads(request.content)
-            if body.get('tool_choice',{}).get('function',{}).get('name','').startswith('review_grounded'):
-                assert body['tool_choice']['function']['name'] == 'review_grounded_segments_v5'
-                self.requests.append(body)
-                self.reviews += 1
-                value = json.loads(body['messages'][1]['content'])
-                response = {'beat_decisions': [
-                    {'beat_index': b['beat_index'],
-                     'segments': [{'text': b['text'], 'rationale': '当前回应',
-                                   'assessment': {'kind': 'non_record'}}],
-                     'review_complete': True}
-                    for b in value['visible_beats']]}
-                Draft202012Validator(body['tools'][0]['function']['parameters']).validate(response)
-                return _http_result(body, response)
-            return await super().__call__(request)
 
-    http = HTTP()
+    http = _CurrentSlimHTTP()
     async with fixture._application(tmp_path, monkeypatch, http) as app:
         result = await app.respond(_inbound())
         assert result.status == 'action_authorized'

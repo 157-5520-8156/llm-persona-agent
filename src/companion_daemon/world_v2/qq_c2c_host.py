@@ -3217,15 +3217,15 @@ def build_qq_c2c_host(
         # A configured profile fixes one whole-candidate reviewer; the slim
         # carrier keeps that same reviewer and changes only the author envelope,
         # so it must not be silently rewritten back to the strict dual draft.
-        if visible_author_tool_version not in {"1", "3", "slim"} or visible_source_review_version not in {"1", configured_review_version}:
+        if visible_author_tool_version not in {"1", "3", "slim", "slim2"} or visible_source_review_version not in {"1", configured_review_version}:
             raise ValueError("explicit wire versions conflict with configured visible expression profile")
         visible_source_review_required = True
-        visible_author_tool_version = (
-            "slim" if visible_author_tool_version == "slim" or (
-                visible_author_tool_version == "1"
-                and settings.world_v2_visible_expression_profile == "grounded_review_v25"
-            ) else "3"
-        )
+        if visible_author_tool_version == "1":
+            visible_author_tool_version = (
+                ("slim" if settings.world_v2_native_slim_core else "slim2")
+                if settings.world_v2_visible_expression_profile == "grounded_review_v25"
+                else "3"
+            )
         visible_source_review_version = configured_review_version
     auto_whole_reviewer = (
         configured_whole_review and model is None
@@ -3254,7 +3254,7 @@ def build_qq_c2c_host(
         raise TypeError("schema references flag must be a boolean")
     if visible_author_schema_references and visible_author_tool_version != "3":
         raise ValueError("schema references require strict atomic v3")
-    if visible_author_tool_version not in {"1", "2", "3", "slim"}:
+    if visible_author_tool_version not in {"1", "2", "3", "slim", "slim2"}:
         raise ValueError("unsupported visible author tool version")
     if visible_author_tool_version != "1" and not visible_source_review_required:
         raise ValueError("versioned whole author requires explicit visible source review")

@@ -152,6 +152,7 @@ def compact_atomic_slim_system_prompt(
     recall_available: bool,
     private_cognition_scope: bool = False,
     concise_contract: bool = False,
+    nontext_messages: bool = False,
 ) -> str:
     """One identity-carrying prompt for the slim atomic decision object.
 
@@ -170,8 +171,12 @@ def compact_atomic_slim_system_prompt(
     )
     specimen = slim_peer_specimen()
     specimen = {"world_claims": specimen.pop("world_claims"), **specimen}
+    version = (
+        "character-inbound-prompt.11-slim-expressions" if nontext_messages
+        else "character-inbound-prompt.9-slim" if concise_contract else SLIM_PROMPT_VERSION
+    )
     return (
-        f"{'character-inbound-prompt.9-slim' if concise_contract else SLIM_PROMPT_VERSION}\n"
+        f"{version}\n"
         + (_ROLE_AND_REALITY.replace("expression_draft.world_claims", "world_claims").replace(
             "缺少记录表示未知，不证明事情没发生，更不能靠合理的故事补齐。",
             "没有对应经历时无需为接话而补出一个故事。",
@@ -184,6 +189,15 @@ def compact_atomic_slim_system_prompt(
         + "\n\n"
         + _SLIM_LEAD
         + (_CURRENT_SLIM_FIELDS if concise_contract else slim_consider_instruction())
+        + (
+            "\nmessages中的每项可选文字字符串、{sticker_id:<已提供的选项ID>}、"
+            "{reaction_id:<已提供的选项ID>}或{typing:true}，每项只选一种，顺序由你决定。"
+            "仅使用本轮expression_capabilities实际提供的modality和选项ID；"
+            "reaction回应本轮触发消息，typing表示输入中、后面必须有可见内容。标签只描述平台图形，"
+            "不证明任何人的情绪或外部事实。later目前仅支持文字；"
+            "是否使用表情、混合文字或保持沉默由你选择，没有使用频率要求。\n"
+            if nontext_messages else ""
+        )
         + ("\nmaterials中的literal-row-table.1是原信息的表格：每条stable_rows按columns对应字段，"
            "absent_cell标记该字段原本不存在，null仍是null。所有候选和来源值均保留，"
            "复制实际候选/来源格子的值，不复制列名或absent_cell。过期或不可用候选仍不可发送。\n"

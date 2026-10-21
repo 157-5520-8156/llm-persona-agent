@@ -2426,7 +2426,7 @@ class _InboundCharacterAuthor:
             if not callable(getattr(visible_source_review_model, "complete_json_with_usage", None)):
                 raise ValueError("versioned source review requires the explicit metered source reviewer")
         self._visible_source_review_version = visible_source_review_version
-        if atomic_tool_envelope_version not in {"1", "2", "3", "slim"}:
+        if atomic_tool_envelope_version not in {"1", "2", "3", "slim", "slim2"}:
             raise ValueError("unsupported atomic tool envelope version")
         if atomic_tool_envelope_version != "1" and not whole_candidate_mode:
             raise ValueError("versioned atomic envelope requires whole-candidate authoring")
@@ -3455,7 +3455,7 @@ class _InboundCharacterAuthor:
         )
         compact_atomic_prompt = bool(
             self._whole_candidate_mode
-            and self._atomic_tool_envelope_version in {"3", "slim"}
+            and self._atomic_tool_envelope_version in {"3", "slim", "slim2"}
             and transport_provider is None
             and use_forced_tool
         )
@@ -3474,7 +3474,7 @@ class _InboundCharacterAuthor:
             source_ref_aliases=source_ref_aliases,
             activity_status_authority=(
                 self._whole_candidate_mode
-                and self._atomic_tool_envelope_version in {"3", "slim"}
+                and self._atomic_tool_envelope_version in {"3", "slim", "slim2"}
                 and transport_provider is None
             ),
             preserve_legacy_authoring=preserve_legacy_authoring,
@@ -3506,7 +3506,7 @@ class _InboundCharacterAuthor:
                         "缺少记录也不证明事情从没发生。", ""
                     ) + CONVERSATIONAL_GROUNDING,
                 }
-            if self._atomic_tool_envelope_version == "slim":
+            if self._atomic_tool_envelope_version in {"slim", "slim2"}:
                 from .personal_action_evidence import personal_action_evidence
                 expression_user_material["personal_action_evidence"] = personal_action_evidence(
                     expression_user_material.get("inner_life_snapshot"))
@@ -3719,7 +3719,7 @@ class _InboundCharacterAuthor:
                 requirement.get("review_protocol") in PRIVATE_COGNITION_PROTOCOLS
                 or requirement.get("review_protocol") in GROUNDED_REVIEW_PROTOCOLS.values()
             )
-            if self._atomic_tool_envelope_version == "slim":
+            if self._atomic_tool_envelope_version in {"slim", "slim2"}:
                 # The carrier owns two keys; the prompt owns the decision. The
                 # recall clause follows this call's own tool, so a stale table
                 # cannot promise a branch the current enum does not offer.
@@ -3728,6 +3728,7 @@ class _InboundCharacterAuthor:
                     recall_available=bool(cognition_contract.recall_allowed),
                     private_cognition_scope=private_cognition_scope,
                     concise_contract=self._visible_source_review_version == "25",
+                    nontext_messages=self._atomic_tool_envelope_version == "slim2",
                 )
             else:
                 messages[0]["content"] = compact_atomic_system_prompt(
@@ -3822,7 +3823,7 @@ class _InboundCharacterAuthor:
                 "private_turn_state or recall_request still follows its complete schema."
                 + _atomic_branch_instruction(cognition_contract)
             )
-        if self._atomic_tool_envelope_version == "slim" and use_forced_tool:
+        if self._atomic_tool_envelope_version in {"slim", "slim2"} and use_forced_tool:
             messages[0]["content"] += (
                 "\n本轮唯一函数名称：" + cognition_contract.identity.tool_name
                 + "。函数名按原样使用，不根据result_kind另造函数名。")
@@ -3844,7 +3845,7 @@ class _InboundCharacterAuthor:
             if had_correction_trailer:
                 displayed["role_result_correction"] = correction_trailer
             messages[1] = {"role": "user", "content": json.dumps(displayed, ensure_ascii=False, separators=(",", ":"))}
-        if (self._whole_candidate_mode and self._atomic_tool_envelope_version == "slim"
+        if (self._whole_candidate_mode and self._atomic_tool_envelope_version in {"slim", "slim2"}
             and compact_atomic_prompt and use_forced_tool and transport_provider is None
             and self._character_interior_recall_delegate
             and request.visible_source_requirement_json is not None):
@@ -4149,7 +4150,7 @@ class _InboundCharacterAuthor:
                             (
                                 "Use the provided tool with result_kind=decision and the slim "
                                 "decision object; no further recall is available. "
-                                if self._atomic_tool_envelope_version == "slim" else
+                                if self._atomic_tool_envelope_version in {"slim", "slim2"} else
                                 "Use the provided tool's result envelope with result_kind=decision "
                                 "and complete appraisal_draft and expression_draft; no further recall "
                                 "is available. "
@@ -4163,7 +4164,7 @@ class _InboundCharacterAuthor:
                             "Write the complete slim decision with messages, meaning_of_this and my_state. "
                             "Form my_state again from the augmented Context; do not write expression_draft "
                             "or private_turn_state inside the slim payload. "
-                            if self._atomic_tool_envelope_version == "slim" else
+                            if self._atomic_tool_envelope_version in {"slim", "slim2"} else
                             "Form expression_draft's final private_turn_state again from "
                             "the augmented Context and include it in the complete final draft; the "
                             "earlier state explained the recall choice but cannot justify the final "
