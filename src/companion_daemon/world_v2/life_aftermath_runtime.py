@@ -614,6 +614,60 @@ class LifeAftermathRuntime:
         self._commit((event,), commit_id="commit:life-aftermath:activate:" + suffix)
         return committed.occurrence_id
 
+    def _is_external_arrangement_instance(self, occurrence) -> bool:
+        """An announced schedule can happen without the companion attending.
+
+        The World Outlook executor uses the companion as a routing participant
+        for external instances. Only its exact accepted planning lineage, or a
+        timed detail derived from that lineage, closes this personal-appraisal
+        route. Ordinary World events and self-directed attempts retain it.
+        """
+        programme = occurrence.event_detail_program
+        if programme is not None and programme.capability.source_kind == "world_occurrence":
+            source = self._ledger.lookup_event_commit(programme.capability.source_event_ref)
+            if source is None or source[0].event_type != "WorldOccurrenceActivated":
+                raise ValueError("external detail programme source is unavailable")
+            parent = next((item for item in self._ledger.project().world_occurrences
+                           if item.occurrence_id == source[0].payload().get("occurrence_id")), None)
+            if parent is None or parent.occurrence_id == occurrence.occurrence_id:
+                raise ValueError("external detail programme has no parent occurrence")
+            return self._is_external_arrangement_instance(parent)
+        if occurrence.activation_authority != "world_outlook":
+            return False
+        located = self._ledger.lookup_event_commit(occurrence.trigger_ref)
+        if (located is None or located[0].event_type != "ProposalRecorded"
+                or located[0].source != "world-outlook-execution.1"):
+            raise ValueError("external arrangement has no accepted Outlook origin")
+        origin = located[0].payload().get("central_authorship", {})
+        planning = origin.get("planning_instance_origin")
+        if planning is not None:
+            if not isinstance(planning, dict):
+                raise ValueError("external arrangement origin is malformed")
+            publication = self._ledger.lookup_event_commit(planning.get("publication_event_ref", ""))
+            if (publication is None or publication[0].event_type != "WorldOccurrenceSettled"
+                    or publication[0].payload_hash != planning.get("publication_hash")
+                    or publication[0].payload().get("occurrence_id") != planning.get("publication_ref")):
+                raise ValueError("external arrangement publication differs from its source")
+            return True
+        detail = origin.get("event_detail_origin")
+        if detail is None:
+            return False
+        if not isinstance(detail, dict):
+            raise ValueError("external detail origin is malformed")
+        source = self._ledger.lookup_event_commit(detail.get("source_event_ref", ""))
+        if source is None:
+            raise ValueError("external detail source is unavailable")
+        if source[0].event_type != "WorldOccurrenceActivated":
+            return False  # A self-directed ActivityStarted detail is personal.
+        programme = next((item for item in self._ledger.project().world_occurrences
+                          if item.trigger_ref == detail.get("proposal_event_ref")
+                          and item.event_detail_program is not None), None)
+        if (programme is None or programme.occurrence_id == occurrence.occurrence_id
+                or programme.event_detail_program.program_hash != detail.get("program_hash")
+                or programme.event_detail_program.capability.source_event_ref != detail.get("source_event_ref")):
+            raise ValueError("external detail differs from its accepted programme")
+        return self._is_external_arrangement_instance(programme)
+
     async def _settle(
         self, *, occurrence, wake, logical_time: datetime, trace_id: str, correlation_id: str
     ) -> str | None:
@@ -965,7 +1019,8 @@ class LifeAftermathRuntime:
         )
         trigger_id = (
             appraisal_trigger_identity(occurrence.occurrence_id, chosen.result_id)
-            if self._owner_actor_ref in occurrence.participant_refs
+            if (self._owner_actor_ref in occurrence.participant_refs
+                and not self._is_external_arrangement_instance(occurrence))
             else None
         )
         settlement_payload = WorldOccurrenceSettledPayload(
@@ -1666,7 +1721,8 @@ class LifeAftermathRuntime:
                 occurrence.occurrence_id,
                 chosen.result_id,
             )
-            if self._owner_actor_ref in occurrence.participant_refs
+            if (self._owner_actor_ref in occurrence.participant_refs
+                and not self._is_external_arrangement_instance(occurrence))
             else None
         )
         settlement = WorldOccurrenceSettledPayload(

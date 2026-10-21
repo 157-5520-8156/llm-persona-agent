@@ -316,6 +316,15 @@ async def test_new_course_prepares_full_detail_at_activation_and_releases_only_o
                      and o.trigger_ref.startswith("event:world-outlook:execution:")
                      and app._ledger.lookup_event_commit(o.trigger_ref)[0].payload()
                         .get("central_authorship", {}).get("event_detail_origin", {}).get("phase") == 0)
+        from test_world_consequence_aftermath import _aftermath, _NoCharacterCalls
+        aftermath = _aftermath(app._ledger, app._life_content_store, _NoCharacterCalls())
+        published_instance = next(o for o in state.world_occurrences
+                                  if o.status == "active" and o.activation_authority == "world_outlook"
+                                  and app._ledger.lookup_event_commit(o.trigger_ref)[0].payload()
+                                     .get("central_authorship", {}).get("planning_instance_origin"))
+        assert aftermath._is_external_arrangement_instance(published_instance)
+        assert aftermath._is_external_arrangement_instance(active[0])
+        assert aftermath._is_external_arrangement_instance(phase)
         premise = LifeDevelopmentProposalReader(ledger=app._ledger, content_store=app._life_content_store)
         visible = premise.read_active_occurrence(occurrence_id=phase.occurrence_id,
             expected_cursor=ProjectionCursor(**cursor_of(state)), actor_ref="actor:companion",
@@ -345,14 +354,16 @@ async def test_new_course_prepares_full_detail_at_activation_and_releases_only_o
             expected_cursor=ProjectionCursor(**cursor_of(state)), actor_ref="actor:companion",
             viewer_privacy_ceiling="private")
         assert next_visible is not None and next_visible.premise.text == hidden
-        from test_world_consequence_aftermath import _aftermath, _NoCharacterCalls
         from test_world_consequence_producer import _advance as advance_aftermath
         settled_wake = await tick(app, at(19, 14) + timedelta(minutes=3), "course-phase-settled", ecology=False)
-        await advance_aftermath(_aftermath(app._ledger, app._life_content_store, _NoCharacterCalls()),
-                                app._ledger.lookup_event_commit(settled_wake)[0])
+        await advance_aftermath(aftermath, app._ledger.lookup_event_commit(settled_wake)[0])
         state = app._ledger.project()
         first = next(o for o in state.world_occurrences if o.occurrence_id == phase.occurrence_id)
         assert first.status == "settled"
+        assert not any(trigger.process_kind == "npc_world_appraisal"
+                       and trigger.source_evidence_ref == first.settlement_event_ref
+                       for trigger in state.trigger_processes)
+        assert len(state.experiences) == experiences_before
         settled_context = WorldLifeContextCompiler(
             ledger=app._ledger, life_content=LifeContentCompiler(store=app._life_content_store),
         ).compile(projection=state, actor_ref="actor:companion",
