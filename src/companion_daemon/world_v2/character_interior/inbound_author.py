@@ -933,6 +933,68 @@ def _private_turn_state_shape_specimen() -> dict[str, object]:
     return specimen
 
 
+def _compact_event_payload_grammar(
+    *, response_expectation_assessment_required: bool, reply_only: bool,
+) -> dict[str, object]:
+    """One cognition carrier shape; its markers never supply role decisions."""
+    return {
+        "encoding": "one JSON object serialized as the payload_json string",
+        "exact_root_fields": ["protocol", "appraisal_draft", "events"],
+        "additional_root_fields_allowed": False,
+        "root_field_named_contract_allowed": False,
+        "shape_only_nonsemantic_specimen": {
+            "protocol": "character-interior-events.1",
+            "appraisal_draft": {
+                "appraise": True,
+                "affect": "no_change",
+                "brief_rationale": "<role:text>",
+                "behavior_tendency": "<role:text>",
+                "stance": "<role:text>",
+                "display_strategy": "<role:text>",
+                "confidence": "<role:confidence_bp>",
+                "meanings": [
+                    {
+                        "meaning": "<role:text>",
+                        "confidence": "<role:confidence_bp>",
+                    }
+                ],
+                "attribution": "<role:choose:attribution>",
+                "severity": "<role:severity_bp>",
+            },
+            "events": [
+                {
+                    "type": "head",
+                    "private_turn_state": _private_turn_state_shape_specimen(),
+                    "timing_choice": ("<role:choose:reply_only_timing>" if reply_only else "<role:choose:timing_choice>"),
+                    "turn_posture": ("<role:choose:reply_only_turn_posture>" if reply_only else "<role:choose:turn_posture>"),
+                    "cadence": "<role:choose:cadence>",
+                    "beat": {
+                        "modality": ("text" if reply_only else "<role:choose:visible_modality>"),
+                        "text": "<role:visible_text>",
+                    },
+                    "stance": "<role:text>",
+                    "brief_rationale": "<role:text>",
+                    "confidence": "<role:confidence_bp>",
+                    "response_expectation": ("<role:response_expectation_or_null>"),
+                    "revisit": ("<role:revisit_or_null>"),
+                    "response_expectation_assessment": (
+                        {
+                            "status": ("<role:choose:response_expectation_assessment_status>"),
+                            "reason": "<role:text>",
+                        }
+                        if response_expectation_assessment_required
+                        else "<role:response_expectation_assessment_or_null>"
+                    ),
+                    "world_claims": [],
+                    "media_request": "<role:choose:media_request>",
+                    "media_source_refs": [],
+                },
+                {"type": "end"},
+            ],
+        },
+    }
+
+
 def _compact_full_turn_transport_grammar(
     *,
     capabilities: ExpressionDraftCapabilities,
@@ -950,62 +1012,10 @@ def _compact_full_turn_transport_grammar(
         "grammar_id": "compact-full-turn-transport.2",
         "applies_to_result_kind": "full_turn",
         "wrapper_metadata_is_payload": False,
-        "decoded_payload_json": {
-            "encoding": "one JSON object serialized as the payload_json string",
-            "exact_root_fields": ["protocol", "appraisal_draft", "events"],
-            "additional_root_fields_allowed": False,
-            "root_field_named_contract_allowed": False,
-            "shape_only_nonsemantic_specimen": {
-                "protocol": "character-interior-events.1",
-                "appraisal_draft": {
-                    "appraise": True,
-                    "affect": "no_change",
-                    "brief_rationale": "<role:text>",
-                    "behavior_tendency": "<role:text>",
-                    "stance": "<role:text>",
-                    "display_strategy": "<role:text>",
-                    "confidence": "<role:confidence_bp>",
-                    "meanings": [
-                        {
-                            "meaning": "<role:text>",
-                            "confidence": "<role:confidence_bp>",
-                        }
-                    ],
-                    "attribution": "<role:choose:attribution>",
-                    "severity": "<role:severity_bp>",
-                },
-                "events": [
-                    {
-                        "type": "head",
-                        "private_turn_state": _private_turn_state_shape_specimen(),
-                        "timing_choice": "<role:choose:timing_choice>",
-                        "turn_posture": "<role:choose:turn_posture>",
-                        "cadence": "<role:choose:cadence>",
-                        "beat": {
-                            "modality": "<role:choose:visible_modality>",
-                            "text": "<role:visible_text>",
-                        },
-                        "stance": "<role:text>",
-                        "brief_rationale": "<role:text>",
-                        "confidence": "<role:confidence_bp>",
-                        "response_expectation": ("<role:response_expectation_or_null>"),
-                        "revisit": ("<role:revisit_or_null>"),
-                        "response_expectation_assessment": (
-                            {
-                                "status": ("<role:choose:response_expectation_assessment_status>"),
-                                "reason": "<role:text>",
-                            }
-                            if response_expectation_assessment_required
-                            else "<role:response_expectation_assessment_or_null>"
-                        ),
-                        "world_claims": [],
-                        "media_request": "<role:choose:media_request>",
-                        "media_source_refs": [],
-                    },
-                    {"type": "end"},
-                ],
-            },
-        },
+        "decoded_payload_json": _compact_event_payload_grammar(
+            response_expectation_assessment_required=response_expectation_assessment_required,
+            reply_only=False,
+        ),
         "semantic_contract_references": {
             "appraisal_draft": "role-authored; host validates wire",
             "events": "role-authored; host validates wire",
@@ -1070,64 +1080,10 @@ def _compact_reply_only_transport_grammar(
         "grammar_id": "compact-reply-only-transport.1",
         "applies_to_result_kind": "reply_only",
         "wrapper_metadata_is_payload": False,
-        "decoded_payload_json": {
-            "encoding": "one JSON object serialized as the payload_json string",
-            "exact_root_fields": ["protocol", "appraisal_draft", "events"],
-            "additional_root_fields_allowed": False,
-            "root_field_named_contract_allowed": False,
-            "shape_only_nonsemantic_specimen": {
-                "protocol": "character-interior-events.1",
-                "appraisal_draft": {
-                    "appraise": True,
-                    "affect": "no_change",
-                    "brief_rationale": "<role:text>",
-                    "behavior_tendency": "<role:text>",
-                    "stance": "<role:text>",
-                    "display_strategy": "<role:text>",
-                    "confidence": "<role:confidence_bp>",
-                    "meanings": [
-                        {
-                            "meaning": "<role:text>",
-                            "confidence": "<role:confidence_bp>",
-                        }
-                    ],
-                    "attribution": "<role:choose:attribution>",
-                    "severity": "<role:severity_bp>",
-                },
-                "events": [
-                    {
-                        "type": "head",
-                        "private_turn_state": _private_turn_state_shape_specimen(),
-                        "timing_choice": "<role:choose:reply_only_timing>",
-                        "turn_posture": "<role:choose:reply_only_turn_posture>",
-                        "cadence": "<role:choose:cadence>",
-                        "beat": {
-                            "modality": "text",
-                            "text": "<role:visible_text>",
-                        },
-                        "stance": "<role:text>",
-                        "brief_rationale": "<role:text>",
-                        "confidence": "<role:confidence_bp>",
-                        "response_expectation": "<role:response_expectation_or_null>",
-                        "revisit": "<role:revisit_or_null>",
-                        "response_expectation_assessment": (
-                            {
-                                "status": ("<role:choose:response_expectation_assessment_status>"),
-                                "reason": "<role:text>",
-                            }
-                            if response_expectation_assessment_required
-                            else "<role:response_expectation_assessment_or_null>"
-                        ),
-                        "world_claims": [],
-                        "media_request": "<role:choose:media_request>",
-                        # Keep the empty array literal, matching full_turn: she
-                        # replaces media_request and may fill refs when chosen.
-                        "media_source_refs": [],
-                    },
-                    {"type": "end"},
-                ],
-            },
-        },
+        "decoded_payload_json": _compact_event_payload_grammar(
+            response_expectation_assessment_required=response_expectation_assessment_required,
+            reply_only=True,
+        ),
         "semantic_contract_references": {
             "appraisal_draft": "role-authored; host validates wire",
             "events": "role-authored; host validates wire",

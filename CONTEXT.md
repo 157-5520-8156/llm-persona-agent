@@ -1,3 +1,13 @@
+Chat/storage maintenance now uses one shared cognition payload shape for the
+full-turn and reply-only carriers; their exact serialized grammar is unchanged.
+SQLite projection conversion copies the147 declared ReducerState fields through
+normal validation, and prefix rebuilds reuse the existing locator-plan writer.
+Eight carrier byte controls and the actual retained71220-event state conversion
+match exactly (142352128 canonical bytes);229 targeted checks pass. No source,
+privacy, reducer bundle, schema or model-facing protocol was changed.
+Evidence: output/private-audits/autonomous-sequence-20261020. Original v52 remains
+completed at its original horizon; later diagnostic copies do not replace it.
+
 Code maintenance, 2026-10-21: LifeDevelopmentRuntime now shares one durable
 admission/recovery path for general source and focused origin reviews. Each
 purpose retains its own exact messages, provider identity, subject hash,
