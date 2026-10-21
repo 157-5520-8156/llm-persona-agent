@@ -43,7 +43,10 @@ from ..proposal_envelope import (
     TypedChange,
     validate_proposal_envelope,
 )
-from ..schema_core import EvidenceRef, FrozenModel, PrivacyClass, canonicalize_json_value
+from ..schema_core import (
+    EvidenceRef, FrozenModel, PrivacyClass, canonicalize_json_value,
+    canonicalize_utc_json_value,
+)
 from ..schemas import (
     CommitmentFulfillmentContract,
     CommitmentOrigin,
@@ -109,6 +112,18 @@ EXPERIENCE_SETTLEMENT_POLICY_REF = "policy:character-interior-experience-settlem
 def _canonical(value: object) -> str:
     return json.dumps(
         canonicalize_json_value(value),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
+def _canonical_mutation(value: object) -> str:
+    # Typed domain hashes preserve non-UTC offsets. Their embedded proposal
+    # bodies must use the same codec or reducer replay rejects the hash.
+    return json.dumps(
+        canonicalize_utc_json_value(value),
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
@@ -1582,7 +1597,7 @@ class ExperienceTransitionSettlement:
             policy_refs=_THREAD_POLICY_REFS,
             proposed_mutation=ThreadProposedMutation(
                 event_type=event_type,
-                payload_json=_canonical(mutation.model_dump(mode="json")),
+                payload_json=_canonical_mutation(mutation.model_dump(mode="json")),
             ),
         )
         return proposal, mutation, event_type
@@ -1728,7 +1743,7 @@ class ExperienceTransitionSettlement:
             policy_refs=_COMMITMENT_POLICY_REFS,
             proposed_mutation=CommitmentProposedMutation(
                 event_type=event_type,
-                payload_json=_canonical(mutation.model_dump(mode="json")),
+                payload_json=_canonical_mutation(mutation.model_dump(mode="json")),
             ),
         )
         return proposal, mutation, event_type
@@ -1855,7 +1870,7 @@ class ExperienceTransitionSettlement:
             policy_refs=MEMORY_POLICY_REFS,
             proposed_mutation=MemoryCandidateProposedMutation(
                 event_type=event_type,
-                payload_json=_canonical(mutation.model_dump(mode="json")),
+                payload_json=_canonical_mutation(mutation.model_dump(mode="json")),
             ),
         )
         return proposal, mutation, event_type

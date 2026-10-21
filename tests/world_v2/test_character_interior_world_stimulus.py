@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 import json
 from types import SimpleNamespace
 
@@ -2762,7 +2762,10 @@ async def test_abandoned_plan_uses_the_same_character_interior_stimulus_lane() -
 
 
 @pytest.mark.asyncio
-async def test_character_can_open_one_source_bound_thread_in_the_same_experience_turn() -> None:
+@pytest.mark.parametrize("offset_clock", [False, True])
+async def test_character_can_open_one_source_bound_thread_in_the_same_experience_turn(
+    offset_clock: bool,
+) -> None:
     model = _RoleModel(
         decision="no_change",
         experience_transition={
@@ -2781,6 +2784,15 @@ async def test_character_can_open_one_source_bound_thread_in_the_same_experience
         },
     )
     runtime, ledger, _projection = _runtime(model=model)
+    if offset_clock:
+        previous = ledger.project().logical_time
+        assert previous is not None
+        local_time = (previous + timedelta(minutes=1)).astimezone(timezone(timedelta(hours=8)))
+        commit(ledger, [event(
+            "clock-offset-thread", "ClockAdvanced",
+            {"logical_time_from": previous.isoformat(), "logical_time_to": local_time.isoformat()},
+            at=local_time,
+        )])
 
     result = await runtime.drain_one()
 

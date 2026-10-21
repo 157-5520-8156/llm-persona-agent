@@ -8,13 +8,35 @@ from pydantic import TypeAdapter, ValidationError
 from companion_daemon.world_v2.character_interior.experience_transitions import (
     ExperienceTransitionCapability,
     ExperienceTransitionDraft,
+    _canonical_mutation,
     validate_experience_transition_draft,
 )
+from companion_daemon.world_v2.commitment_events import commitment_mutation_hash
+from companion_daemon.world_v2.memory_events import memory_candidate_mutation_hash
+from companion_daemon.world_v2.thread_events import thread_mutation_hash
 
 
 SOURCE = "event:stimulus"
 HEAD = "event:head"
 HASH = "a" * 64
+
+
+@pytest.mark.parametrize(
+    "mutation_hash",
+    (thread_mutation_hash, commitment_mutation_hash, memory_candidate_mutation_hash),
+)
+def test_embedded_mutation_keeps_the_domain_hash_across_non_utc_offsets(
+    mutation_hash,
+) -> None:
+    # The outer proposal may normalize timestamps; its embedded typed mutation
+    # must remain byte-compatible with the domain hash checked by the reducer.
+    mutation = {"opened_at": "2026-10-20T20:58:00+08:00", "accepted_change_hash": "0" * 64}
+    mutation["accepted_change_hash"] = mutation_hash(mutation)
+
+    embedded = _canonical_mutation(mutation)
+
+    assert json.loads(embedded)["opened_at"] == mutation["opened_at"]
+    assert mutation_hash(json.loads(embedded)) == mutation["accepted_change_hash"]
 
 
 def _capability() -> ExperienceTransitionCapability:
