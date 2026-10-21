@@ -13,6 +13,7 @@ from .world_outlook_request import (
     PRESENTATION_GUIDE, RESPONSE_REFERENCE_CONTRACT, decode_outlook_request,
     ERROR_FEEDBACK_CONTRACT, decode_outlook_response, encode_outlook_request,
     ROLLING_REFERENCE_CONTRACT, ROLLING_PRESENTATION_GUIDE,
+    AUTHOR_VIEW_CONTRACT, AUTHOR_VIEW_GUIDE,
 )
 
 from companion_daemon.llm import model_call_scope
@@ -1412,6 +1413,7 @@ class WorldOutlookRuntime:
                 "actor_ref": self.actor_ref,
                 "logical_time": now.isoformat(),
                 "parent_revision": view["revision"],
+                "current_outlook_presentation": AUTHOR_VIEW_CONTRACT,
                 "current_outlook": {k: v for k, v in view.items() if k != "rolling_preparation"},
                 **({"rolling_preparation": view["rolling_preparation"]} if self._rolling_planning else {}),
                 "history_material": history,
@@ -1561,7 +1563,7 @@ class WorldOutlookRuntime:
                     "background cannot undo a closure, changed resources, relationship or other accepted consequence. "
                     "Generation-only constraints still grant no factual evidence.")
             messages = [
-                {"role": "system", "content": system + "\n" + PRESENTATION_GUIDE + ("\n" + ROLLING_PRESENTATION_GUIDE if self._rolling_planning else "")},
+                {"role": "system", "content": system + "\n" + AUTHOR_VIEW_GUIDE + "\n" + PRESENTATION_GUIDE + ("\n" + ROLLING_PRESENTATION_GUIDE if self._rolling_planning else "")},
                 {"role": "user", "content": (_encode_story_request(packet) if self._rolling_planning else
                                              encode_outlook_request(packet, byte_limit=100_000))},
             ]

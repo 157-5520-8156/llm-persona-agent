@@ -18,6 +18,15 @@ RESPONSE_REFERENCE_CONTRACT = "outlook-source-references.1"
 ROLLING_REFERENCE_CONTRACT = "outlook-source-references.3"
 _PRIOR_ROLLING_CONTRACT = "outlook-source-references.2"
 ERROR_FEEDBACK_CONTRACT = "outlook-error-paths.1"
+AUTHOR_VIEW_CONTRACT = "outlook-author-future-view.1"
+AUTHOR_VIEW_GUIDE = (
+    "The current_outlook author view separates authored future objects from runtime status. "
+    "review_required means this pass needs your assessment, not that decision=revise is required. "
+    "Choose keep or revise according to compatibility and the offered response schema. "
+    "opportunity_states is read-only execution progress, keyed by opportunity_id; it is not "
+    "a field of an authored opportunity. Use exact prior-object selectors to retain objects. "
+    "All source, privacy, timing, expiry and planning constraints still apply."
+)
 PRESENTATION_GUIDE = """Request encoding: a shared-string-view.1 wrapper is lossless. Read value,
 resolving each exact prefix token using strings. If condition_sources is an
 outlook-condition-sources-table.1, each row maps positionally to columns.
@@ -56,6 +65,43 @@ def _wire(value):
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
+def outlook_author_view(view):
+    """Keep scheduling diagnostics out of the prior objects offered for authorship.
+
+    The public runtime view and every source/status value stay unchanged. Only
+    fresh author requests use this presentation; saved paid requests are read
+    as recorded, and output validation continues to reject authored ``state``.
+    """
+    presented = deepcopy(view)
+    presented.pop("rolling_preparation", None)  # Already a separate request field.
+    if "needs_revision" in presented:
+        presented["review_required"] = presented.pop("needs_revision")
+    presented["opportunity_states"] = {
+        node["opportunity_id"]: node.pop("state")
+        for node in presented.get("opportunities", ()) if "state" in node
+    }
+    return presented
+
+
+def _runtime_outlook_view(shown):
+    """Decode the presentation back to the one shape all host guards consume."""
+    view = deepcopy(shown)
+    if ("needs_revision" in view or not isinstance(view.get("review_required"), bool)
+            or not isinstance(view.get("opportunity_states"), dict)):
+        raise ValueError("invalid outlook author view status binding")
+    states = view.pop("opportunity_states")
+    nodes = view.get("opportunities", ())
+    ids = [node["opportunity_id"] for node in nodes]
+    if (len(ids) != len(set(ids)) or set(states) != set(ids)
+            or not all(isinstance(value, str) for value in states.values())
+            or any("state" in node for node in nodes)):
+        raise ValueError("outlook author view must bind every exact opportunity state")
+    view["needs_revision"] = view.pop("review_required")
+    for node in nodes:
+        node["state"] = states[node["opportunity_id"]]
+    return view
+
+
 def decode_outlook_request(raw):
     packet = json.loads(raw)
     if packet.get("contract") == SHARED_STRINGS:
@@ -92,6 +138,11 @@ def decode_outlook_request(raw):
                 if set(thread) != {"retain_thread_id"} or not isinstance(identity, str) or identity not in threads:
                     raise ValueError("request thread selector must name an exact current thread without overrides")
                 row["thread"] = deepcopy(threads[identity])
+    presentation = packet.get("current_outlook_presentation")
+    if presentation == AUTHOR_VIEW_CONTRACT:
+        packet["current_outlook"] = _runtime_outlook_view(packet["current_outlook"])
+    elif presentation is not None:
+        raise ValueError("unsupported outlook author view presentation")
     return packet
 
 
@@ -201,12 +252,23 @@ def decode_outlook_response(raw, *, request_raw, response_tools=None):
 
 
 def encode_outlook_request(packet, *, byte_limit):
+    # Presentation changes live only at this existing codec boundary. Host
+    # validators, including retirement/expiry guards, retain their full view.
     plain = _wire(packet)
+    canonical_packet = json.loads(plain)
+    packet = dict(canonical_packet)
+    presentation = packet.get("current_outlook_presentation")
+    if presentation == AUTHOR_VIEW_CONTRACT:
+        packet["current_outlook"] = outlook_author_view(packet["current_outlook"])
+        plain = _wire(packet)
+    elif presentation is not None:
+        raise ValueError("unsupported outlook author view presentation")
     if (packet.get("response_reference_contract") not in {RESPONSE_REFERENCE_CONTRACT, _PRIOR_ROLLING_CONTRACT, ROLLING_REFERENCE_CONTRACT}
             and len(plain.encode()) <= byte_limit):
+        if presentation is not None and decode_outlook_request(plain) != canonical_packet:
+            raise ValueError("outlook presentation changed the request")
         return plain
-    # The original JSON carrier turns tuples into arrays as well.
-    packet = json.loads(plain)
+    # The canonical JSON conversion above also retains the original tuple-to-array wire.
     tabular = dict(packet)
     sources = packet["condition_sources"]
     if sources and all(set(s) == set(_COLUMNS) for s in sources):
@@ -239,6 +301,6 @@ def encode_outlook_request(packet, *, byte_limit):
         # Preserve every already-fitting wire and all original evidence.
         shorter = _wire(pack_shared_strings(tabular, min_value_bytes=8))
         encoded = min((encoded, shorter), key=lambda raw: len(raw.encode()))
-    if decode_outlook_request(encoded) != packet:
+    if decode_outlook_request(encoded) != canonical_packet:
         raise ValueError("outlook presentation changed the request")
     return encoded

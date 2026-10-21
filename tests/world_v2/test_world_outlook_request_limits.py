@@ -20,13 +20,31 @@ from test_world_outlook import (
 from test_life_development_runtime import _manifest, _projection_cursor
 
 
-def test_prior_selectors_restore_only_complete_pinned_objects_and_not_new_prose():
+@pytest.mark.parametrize("author_view", [False, True])
+def test_prior_selectors_restore_only_complete_pinned_objects_and_not_new_prose(author_view):
     from companion_daemon.world_v2.world_outlook_request import ROLLING_REFERENCE_CONTRACT, decode_outlook_response
     from companion_daemon.world_v2.shared_string_view import pack_shared_strings
     node = {"opportunity_id": "prior", "execution": {"text": "完整的原始正文，不能重新措辞。" * 6}, "state": "ready"}
     thread = {"thread_id": "story", "situation": "原先的外部故事", "open_question": "尚未确定"}
+    from copy import deepcopy
+    from companion_daemon.world_v2.world_outlook_request import outlook_author_view
+    original_view = {"opportunities": [node], "threads": [thread], "needs_revision": True,
+                     "unavailable_source_refs": ["event:unavailable"]}
+    before = deepcopy(original_view)
+    shown = outlook_author_view(original_view) if author_view else original_view
+    assert original_view == before
+    if author_view:
+        assert shown["review_required"] is True and "needs_revision" not in shown
+        assert shown["opportunity_states"] == {"prior": "ready"}
+        reconstructed = deepcopy(shown)
+        reconstructed["needs_revision"] = reconstructed.pop("review_required")
+        states = reconstructed.pop("opportunity_states")
+        for item in reconstructed["opportunities"]:
+            item["state"] = states[item["opportunity_id"]]
+        assert reconstructed == original_view
     request = pack_shared_strings({"response_reference_contract": ROLLING_REFERENCE_CONTRACT,
-        "current_outlook": {"opportunities": [node], "threads": [thread]}, "repeat": [node] * 3})
+        "current_outlook": shown, "repeat": [node] * 3,
+        **({"current_outlook_presentation": "outlook-author-future-view.1"} if author_view else {})})
     raw_request = json.dumps(request)
     response = {"draft": {"opportunities": [{"retain_opportunity_id": "prior"}], "threads": [{"retain_thread_id": "story"}]}}
     restored = decode_outlook_response(json.dumps(response), request_raw=raw_request)
@@ -131,6 +149,17 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
         body = json.loads(request.content)
         requests.append(body)
         packet = decode_outlook_request(body["messages"][1]["content"])
+        assert packet["current_outlook_presentation"] == "outlook-author-future-view.1"
+        assert "needs_revision" in packet["current_outlook"]
+        from companion_daemon.world_v2.shared_string_view import unpack_shared_strings
+        physical = json.loads(body["messages"][1]["content"])
+        if physical.get("contract") == "shared-string-view.1":
+            physical = unpack_shared_strings(physical)
+        shown = physical["current_outlook"]
+        assert "needs_revision" not in shown and "review_required" in shown
+        assert all("state" not in node for node in shown["opportunities"])
+        assert shown["opportunity_states"] == {
+            node["opportunity_id"]: node["state"] for node in packet["current_outlook"]["opportunities"]}
         if json_carrier:
             assert body["response_format"]["type"] == text_carrier and "tools" not in body
             assert "Do not return an ordinary text/JSON message" not in body["messages"][0]["content"]
@@ -1240,3 +1269,69 @@ def test_outlook_alias_error_points_to_reason_without_rewriting_keep():
     with pytest.raises(ValueError) as legacy:
         decode_outlook_response(json.dumps(raw), request_raw=json.dumps(packet))
     assert str(legacy.value) == 'dictionary aliases are not new prose; use an exact prior-object selector or author full new text'
+
+
+def test_author_view_does_not_repair_an_authored_runtime_state(tmp_path):
+    from copy import deepcopy
+    from pydantic import ValidationError
+    from companion_daemon.world_v2.world_outlook import WorldOutlookDraft
+    from companion_daemon.world_v2.world_outlook_request import (
+        outlook_author_view, decode_outlook_response, ROLLING_REFERENCE_CONTRACT,
+    )
+
+    _, wake, _, _, runtime = setup(tmp_path, lambda _: [])
+    try:
+        candidate = draft_value(wake)
+        WorldOutlookDraft.model_validate_json(json.dumps(candidate))
+        view = {"opportunities": deepcopy(candidate["opportunities"]), "threads": candidate["threads"],
+                "needs_revision": True}
+        for node in view["opportunities"]:
+            node["state"] = "waiting"
+        packet = {"response_reference_contract": ROLLING_REFERENCE_CONTRACT,
+                  "current_outlook_presentation": "outlook-author-future-view.1",
+                  "current_outlook": outlook_author_view(view)}
+        candidate["opportunities"][0]["state"] = "waiting"
+        decoded = decode_outlook_response(json.dumps({"decision": "revise", "draft": candidate}),
+                                          request_raw=json.dumps(packet))
+        assert decoded["draft"] == candidate
+        with pytest.raises(ValidationError) as failure:
+            WorldOutlookDraft.model_validate_json(json.dumps(decoded["draft"]))
+        assert any(e["loc"] == ("opportunities", 0, "state") and e["type"] == "extra_forbidden"
+                   for e in failure.value.errors())
+    finally:
+        runtime.close()
+
+
+@pytest.mark.parametrize("state", ["considered", "delivery_pending", "retry_wait", "ready", "waiting"])
+def test_author_presentation_keeps_retirement_guard_exact(state):
+    from copy import deepcopy
+    from types import SimpleNamespace
+    from companion_daemon.world_v2.world_outlook_request import (
+        AUTHOR_VIEW_CONTRACT, encode_outlook_request, decode_outlook_request,
+    )
+    from companion_daemon.world_v2.world_outlook_runtime import _future_retired
+    from companion_daemon.world_v2.shared_string_view import unpack_shared_strings
+
+    node = {"opportunity_id": "prior", "state": state, "thread_refs": ["story"],
+            "opens_at": "2026-10-20T08:00:00+08:00", "closes_at": "2026-10-20T09:00:00+08:00",
+            "lane": "world", "execution": {"kind": "environment", "text": "原始外部可能", "duration_minutes": 1}}
+    old = {"condition_sources": [], "logical_time": "2026-10-20T06:00:00+08:00",
+           "current_outlook": {"needs_revision": True, "opportunities": [node],
+                               "threads": [{"thread_id": "story", "status": "open"}]}}
+    current = {**deepcopy(old), "current_outlook_presentation": AUTHOR_VIEW_CONTRACT}
+    raw = encode_outlook_request(current, byte_limit=100000)
+    decoded = decode_outlook_request(raw)
+    assert decoded == current
+    candidate = SimpleNamespace(opportunities=(), threads=(SimpleNamespace(thread_id="story", status="open"),))
+    response = SimpleNamespace(thread_refs=("story",))
+    expected = state not in {"considered", "delivery_pending", "retry_wait"}
+    assert _future_retired(candidate, old, response) is expected
+    assert _future_retired(candidate, decoded, response) is expected
+    physical = json.loads(raw)
+    if physical.get("contract") == "shared-string-view.1":
+        physical = unpack_shared_strings(physical)
+    assert "state" not in physical["current_outlook"]["opportunities"][0]
+    assert physical["current_outlook"]["opportunity_states"] == {"prior": state}
+    del physical["current_outlook"]["opportunity_states"]["prior"]
+    with pytest.raises(ValueError, match="every exact opportunity state"):
+        decode_outlook_request(json.dumps(physical))
