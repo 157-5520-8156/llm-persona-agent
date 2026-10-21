@@ -147,7 +147,7 @@ async def test_pinned_clock_passes_installed_review_and_cold_receipt_without_rea
     assert responses == [text]
     assert len(author.stimulus_requests) == len(reviews.requests) == 1
     result, snapshot, _, _ = _restore_prepared_turn(canonical(checkpoints[0]), purpose='world_stimulus_appraisal')
-    assert result.life_source_review.contract == 'life-source-review.25'
+    assert result.life_source_review.contract == MINTED_CONTRACT
     assert result.life_source_review.verify(result=result, snapshot=snapshot)
 
 
@@ -449,3 +449,33 @@ async def test_fresh_protocol_review_skips_only_bound_hash_and_keeps_all_prose_o
         altered = deepcopy(candidate)
         altered['proposals'][0]['capability_payload_hash'] = '我昨天已经完成这项活动。'
         assert hash_path in {f['path'] for f in prepare(altered)[2]['text_fields']}
+
+
+@pytest.mark.asyncio
+async def test_subject_presence_review_preserves_old_sources_and_adds_only_reviewer_guidance(tmp_path):
+    from test_life_fact_readings import _sources, _fact_view, VALUE
+    from test_character_interior_structured_role import _world_stimulus_no_change_result
+    from companion_daemon.world_v2.character_interior.life_source_review import prepare_review
+
+    candidate = _world_stimulus_no_change_result()
+    async with _sources(tmp_path, retained_value=VALUE) as case:
+        old_view, old_snapshot = await _fact_view(case.capsule, review_contract='life-source-review.25')
+        new_view, new_snapshot = await _fact_view(case.capsule, review_contract=MINTED_CONTRACT)
+        old_prepared, old_readings = prepare_review(candidate_json=candidate, provider_raw=candidate,
+            view=old_view, snapshot=old_snapshot)
+        new_prepared, new_readings = prepare_review(candidate_json=candidate, provider_raw=candidate,
+            view=new_view, snapshot=new_snapshot)
+
+    old = json.loads(old_prepared)['request']
+    new = json.loads(new_prepared)['request']
+    assert new['messages'][0]['content'].startswith(old['messages'][0]['content'])
+    assert '角色第一人称在场、移动或感官经历要另列record_bound_claim' in new['messages'][0]['content']
+    assert new['tools'] == old['tools']
+    assert {k: v for k, v in new_readings.items() if k != 'source_view_sha256'} == {
+        k: v for k, v in old_readings.items() if k != 'source_view_sha256'}
+    old_packet = json.loads(old['messages'][1]['content'])
+    new_packet = json.loads(new['messages'][1]['content'])
+    for key in ('text_fields', 'permission_choices', 'author_snapshot_display'):
+        assert new_packet[key] == old_packet[key]
+    assert {k: v for k, v in new_packet['source_readings'].items() if k != 'source_view_sha256'} == {
+        k: v for k, v in old_packet['source_readings'].items() if k != 'source_view_sha256'}

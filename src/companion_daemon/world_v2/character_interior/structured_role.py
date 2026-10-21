@@ -1638,7 +1638,7 @@ class StructuredCharacterRoleFaculty:
             life_source_view = prepare_life_source_view(
                 request=request, messages=messages, provider_request_hash=request_hash,
                 review_contract=LIFE_REVIEW_CONTRACT if self.requires_life_source_review else None,
-                presentation_contract=None if self.requires_life_source_review else LIFE_REVIEW_CONTRACT,
+                presentation_contract=None if self.requires_life_source_review else 'life-source-review.25',
                 provider_controls={
                     "temperature": self._temperature,
                     "tools": list(tool_contract.provider_tools) if tool_contract is not None else None,

@@ -48,9 +48,10 @@ PLANNING_READING_CONTRACT = 'life-source-review.22'
 PINNED_CONTEXT_CONTRACT = 'life-source-review.23'
 SCOPED_INVENTORY_CONTRACT = 'life-source-review.24'
 HISTORICAL_INTENTION_CONTRACT = 'life-source-review.25'
-MINTED_CONTRACT = HISTORICAL_INTENTION_CONTRACT
+SUBJECT_PRESENCE_CONTRACT = 'life-source-review.26'
+MINTED_CONTRACT = SUBJECT_PRESENCE_CONTRACT
 _BOUND_PERMISSION_CONTRACTS = {BOUND_PERMISSION_CONTRACT, CONTRACT, CLAIM_AUTHORITY_CONTRACT,
-    LEAN_CONTRACT, COMPACT_CONTRACT, INTENT_CONTRACT, NATIVE_REPAIR_CONTRACT, STATE_ALIGNMENT_CONTRACT, RUNTIME_READING_CONTRACT, COMPACT_RUNTIME_CONTRACT, PLANNING_READING_CONTRACT, PINNED_CONTEXT_CONTRACT, SCOPED_INVENTORY_CONTRACT, HISTORICAL_INTENTION_CONTRACT}
+    LEAN_CONTRACT, COMPACT_CONTRACT, INTENT_CONTRACT, NATIVE_REPAIR_CONTRACT, STATE_ALIGNMENT_CONTRACT, RUNTIME_READING_CONTRACT, COMPACT_RUNTIME_CONTRACT, PLANNING_READING_CONTRACT, PINNED_CONTEXT_CONTRACT, SCOPED_INVENTORY_CONTRACT, HISTORICAL_INTENTION_CONTRACT, SUBJECT_PRESENCE_CONTRACT}
 _AUTHORSHIP_CONTRACTS = {AUTHORSHIP_CONTRACT, TEMPORAL_AUTHORSHIP_CONTRACT,
     COVERAGE_AUTHORSHIP_CONTRACT, PERMISSION_AUTHORITY_CONTRACT, EXACT_VALUE_AUTHORITY_CONTRACT, *_BOUND_PERMISSION_CONTRACTS}
 _CHOICE_CONTRACTS = {PERMISSION_CONTRACT, BOUNDED_REASON_CONTRACT, VERDICT_ORDER_CONTRACT, LEGACY_CURRENT_CONTRACT}
@@ -238,7 +239,7 @@ def prepare_review(*, candidate_json, provider_raw, view, snapshot, contract=Non
     if (view.review_contract not in {None, contract}
         or contract in {EXACT_VALUE_AUTHORITY_CONTRACT, *_BOUND_PERMISSION_CONTRACTS} and view.review_contract != contract):
         raise ValueError('Life review contract differs from its source preparation')
-    if contract in {CONTRACT, CLAIM_AUTHORITY_CONTRACT, LEAN_CONTRACT, COMPACT_CONTRACT, INTENT_CONTRACT, NATIVE_REPAIR_CONTRACT, STATE_ALIGNMENT_CONTRACT, RUNTIME_READING_CONTRACT, COMPACT_RUNTIME_CONTRACT, PLANNING_READING_CONTRACT, PINNED_CONTEXT_CONTRACT, SCOPED_INVENTORY_CONTRACT, HISTORICAL_INTENTION_CONTRACT}:
+    if contract in {CONTRACT, CLAIM_AUTHORITY_CONTRACT, LEAN_CONTRACT, COMPACT_CONTRACT, INTENT_CONTRACT, NATIVE_REPAIR_CONTRACT, STATE_ALIGNMENT_CONTRACT, RUNTIME_READING_CONTRACT, COMPACT_RUNTIME_CONTRACT, PLANNING_READING_CONTRACT, PINNED_CONTEXT_CONTRACT, SCOPED_INVENTORY_CONTRACT, HISTORICAL_INTENTION_CONTRACT, SUBJECT_PRESENCE_CONTRACT}:
         from .life_source_review_request import prepare_current_review
 
         return prepare_current_review(candidate_json=candidate_json, provider_raw=provider_raw,
@@ -265,7 +266,7 @@ def inspect_review(*, raw, prepared_json, readings):
     choices = {p['permission_id']: p for p in life_permission_choices(readings)}
     sources = {r['reading_id']: r for r in readings['readings']}
     expected_display = readings
-    if packet['contract'] in {COMPACT_RUNTIME_CONTRACT, PLANNING_READING_CONTRACT, PINNED_CONTEXT_CONTRACT, SCOPED_INVENTORY_CONTRACT, HISTORICAL_INTENTION_CONTRACT}:
+    if packet['contract'] in {COMPACT_RUNTIME_CONTRACT, PLANNING_READING_CONTRACT, PINNED_CONTEXT_CONTRACT, SCOPED_INVENTORY_CONTRACT, HISTORICAL_INTENTION_CONTRACT, SUBJECT_PRESENCE_CONTRACT}:
         from .life_source_review_request import compact_reading_display
         if packet.get('reading_presentation') != 'life-reading-ordinal-display.1':
             raise ValueError('Life reading presentation lacks its exact protocol')
@@ -313,7 +314,7 @@ def inspect_review(*, raw, prepared_json, readings):
 
 
 class LifeSourceReviewReceipt(FrozenModel):
-    contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8', 'life-source-review.9', 'life-source-review.10', 'life-source-review.11', 'life-source-review.12', 'life-source-review.13', 'life-source-review.14', 'life-source-review.15', 'life-source-review.16', 'life-source-review.17', 'life-source-review.18', 'life-source-review.19', 'life-source-review.20', 'life-source-review.21', 'life-source-review.22', 'life-source-review.23', 'life-source-review.24', 'life-source-review.25'] = CONTRACT
+    contract: Literal['life-source-review.1', 'life-source-review.2', 'life-source-review.3', 'life-source-review.4', 'life-source-review.5', 'life-source-review.6', 'life-source-review.7', 'life-source-review.8', 'life-source-review.9', 'life-source-review.10', 'life-source-review.11', 'life-source-review.12', 'life-source-review.13', 'life-source-review.14', 'life-source-review.15', 'life-source-review.16', 'life-source-review.17', 'life-source-review.18', 'life-source-review.19', 'life-source-review.20', 'life-source-review.21', 'life-source-review.22', 'life-source-review.23', 'life-source-review.24', 'life-source-review.25', 'life-source-review.26'] = CONTRACT
     prepared_json: str = Field(max_length=256_000)
     response_json: str = Field(max_length=64_000)
     request_hash: str = Field(pattern=r'^[0-9a-f]{64}$')
@@ -331,7 +332,7 @@ class LifeSourceReviewReceipt(FrozenModel):
         prepared, readings = prepare_review(candidate_json=candidate_body(result),
             provider_raw=pin['provider_raw'], view=result.life_source_view, snapshot=snapshot, contract=checked.contract)
         if pin.get('wire_feedback'):
-            if checked.contract not in {NATIVE_REPAIR_CONTRACT, STATE_ALIGNMENT_CONTRACT, RUNTIME_READING_CONTRACT, COMPACT_RUNTIME_CONTRACT, PLANNING_READING_CONTRACT, PINNED_CONTEXT_CONTRACT, SCOPED_INVENTORY_CONTRACT, HISTORICAL_INTENTION_CONTRACT}:
+            if checked.contract not in {NATIVE_REPAIR_CONTRACT, STATE_ALIGNMENT_CONTRACT, RUNTIME_READING_CONTRACT, COMPACT_RUNTIME_CONTRACT, PLANNING_READING_CONTRACT, PINNED_CONTEXT_CONTRACT, SCOPED_INVENTORY_CONTRACT, HISTORICAL_INTENTION_CONTRACT, SUBJECT_PRESENCE_CONTRACT}:
                 raise ValueError('historical Life review cannot carry wire feedback')
             feedback = pin['wire_feedback']
             try:
@@ -444,7 +445,7 @@ class LifeSourceReviewer:
             try:
                 outcome, failures = inspect_review(raw=raw, prepared_json=prepared, readings=readings)
             except (ValueError, JsonSchemaValidationError) as invalid:
-                if ordinal or review_contract not in {NATIVE_REPAIR_CONTRACT, STATE_ALIGNMENT_CONTRACT, RUNTIME_READING_CONTRACT, COMPACT_RUNTIME_CONTRACT, PLANNING_READING_CONTRACT, PINNED_CONTEXT_CONTRACT, SCOPED_INVENTORY_CONTRACT, HISTORICAL_INTENTION_CONTRACT}:
+                if ordinal or review_contract not in {NATIVE_REPAIR_CONTRACT, STATE_ALIGNMENT_CONTRACT, RUNTIME_READING_CONTRACT, COMPACT_RUNTIME_CONTRACT, PLANNING_READING_CONTRACT, PINNED_CONTEXT_CONTRACT, SCOPED_INVENTORY_CONTRACT, HISTORICAL_INTENTION_CONTRACT, SUBJECT_PRESENCE_CONTRACT}:
                     raise
                 prepared = _repair_request(prepared, raw, _wire_error(invalid))
                 continue
