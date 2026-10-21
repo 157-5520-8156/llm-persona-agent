@@ -131,19 +131,22 @@ class BackgroundGLMModel(_BackgroundTokenBudget, DeepSeekChatModel):
     def __init__(self, *args, reasoning_effort="low", tool_result_carrier="native", **kwargs):
         if reasoning_effort not in {"low", "high", "max"}:
             raise ValueError("GLM-5.3 reasoning effort must be low, high or max")
-        if tool_result_carrier not in {"native", "native_or_json_object", "json_object"}:
+        if tool_result_carrier not in {"native", "native_or_json_object", "json_object", "json_schema"}:
             raise ValueError("unknown GLM tool result carrier")
         self._tool_result_carrier = tool_result_carrier
         super().__init__(*args, thinking_enabled=True, reasoning_effort=reasoning_effort, **kwargs)
         self.model_version = self.model + ":object-tool-root.2"
         if tool_result_carrier == "json_object":
             self.model_version = self.model + ":json-object-schema.2"
+        elif tool_result_carrier == "json_schema":
+            self.model_version = self.model + ":json-schema.1"
         elif tool_result_carrier != "native":
             self.model_version += ":json-object-carrier.1"
 
     @property
     def single_tool_selection_mode(self):
-        return "json_object" if self._tool_result_carrier == "json_object" else super().single_tool_selection_mode
+        return (self._tool_result_carrier if self._tool_result_carrier in {"json_object", "json_schema"}
+                else super().single_tool_selection_mode)
 
     @property
     def single_tool_response_carrier(self):
@@ -177,7 +180,7 @@ class BackgroundGLMModel(_BackgroundTokenBudget, DeepSeekChatModel):
             tools = deepcopy(tools)
             for tool in tools:
                 tool["function"].pop("strict", None)
-        if tools and self._tool_result_carrier == "json_object":
+        if tools and self._tool_result_carrier in {"json_object", "json_schema"}:
             if len(tools) != 1 or self._expected_response_tool(tools, tool_choice) is None:
                 raise ValueError("GLM JSON schema transport requires one exact declared schema")
             # Its JSON root stays in place, so local $defs/$ref keep their
@@ -189,10 +192,20 @@ class BackgroundGLMModel(_BackgroundTokenBudget, DeepSeekChatModel):
                 "response_schema": function["parameters"],
                 "instruction": "Use this schema as the response contract instead of the tool carrier. Return the matching JSON object itself, without an additional wrapper, tool call, fence or explanatory prose. All original evidence and permissions still apply.",
             }
-            return super().request_payload(
+            payload = super().request_payload(
                 [*messages, {"role":"user", "content":json.dumps(schema_message, ensure_ascii=False)}],
                 temperature=temperature, json_object=True, tools=None, tool_choice=None,
             )
+            if self._tool_result_carrier == "json_schema":
+                # Explicit gateway capability: retain the exact original
+                # schema/root and local decoder. Never fall back or rewrite
+                # invalid results when this mode is rejected or ignored.
+                payload["response_format"] = {
+                    "type": "json_schema",
+                    "json_schema": {"name": function["name"], "strict": True,
+                                    "schema": function["parameters"]},
+                }
+            return payload
         if tools and any(self._root_union(tool) for tool in tools):
             if len(tools) != 1:
                 raise ValueError("GLM root-union transport requires one declared tool")
@@ -209,7 +222,7 @@ class BackgroundGLMModel(_BackgroundTokenBudget, DeepSeekChatModel):
                                        tools=tools, tool_choice=tool_choice)
 
     def _response_tool_content(self, message, *, tools, tool_choice, expected_tool_name):
-        if self._tool_result_carrier == "json_object":
+        if self._tool_result_carrier in {"json_object", "json_schema"}:
             if (not isinstance(message, dict) or message.get("tool_calls")
                     or len(tools) != 1 or expected_tool_name is None
                     or tools[0].get("function", {}).get("name") != expected_tool_name

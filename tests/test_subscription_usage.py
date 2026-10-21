@@ -156,13 +156,14 @@ async def test_glm_does_not_guess_a_different_tool_selection(tmp_path, choice, c
 
 
 @pytest.mark.asyncio
-async def test_glm_explicit_json_text_carrier_preserves_raw_object(tmp_path):
+@pytest.mark.parametrize('carrier', ['native_or_json_object', 'json_object', 'json_schema'])
+async def test_glm_explicit_json_text_carrier_preserves_raw_object(tmp_path, carrier):
     raw = '{ "status":"decision", "source_refs":["still-invalid-at-root"] }'
     tools = [{'type':'function','function':{'name':'role_result','parameters':{
         'type':'object','properties':{'status':{'type':'string'}},
         'required':['status'],'additionalProperties':False}}}]
     model = BackgroundGLMModel('fixture','http://localhost:8788','fixture',
-        token_ledger=ledger(tmp_path), tool_result_carrier='native_or_json_object',
+        token_ledger=ledger(tmp_path), tool_result_carrier=carrier,
         transport=httpx.MockTransport(lambda _:httpx.Response(200,json={
             'choices':[{'finish_reason':'stop','message':{'role':'assistant','content':raw}}],
             'usage':{'prompt_tokens':10,'completion_tokens':5,'total_tokens':15}})))
@@ -174,7 +175,9 @@ async def test_glm_explicit_json_text_carrier_preserves_raw_object(tmp_path):
         from jsonschema import Draft202012Validator, ValidationError
         with pytest.raises(ValidationError):
             Draft202012Validator(tools[0]['function']['parameters']).validate(json.loads(result))
-        assert model.model_version.endswith(':json-object-carrier.1')
+        suffix = {'native_or_json_object':':json-object-carrier.1',
+                  'json_object':':json-object-schema.2', 'json_schema':':json-schema.1'}[carrier]
+        assert model.model_version.endswith(suffix)
     finally:
         await model.aclose()
 
@@ -204,7 +207,7 @@ async def test_glm_text_carrier_rejects_ambiguous_or_unconfigured_results(tmp_pa
         await model.aclose()
 
 
-@pytest.mark.parametrize('carrier,version', [('native_or_json_object','2'),('json_object','3')])
+@pytest.mark.parametrize('carrier,version', [('native_or_json_object','2'),('json_object','3'),('json_schema','4')])
 def test_glm_text_identity_declares_carrier_without_changing_schema(tmp_path, carrier, version):
     from companion_daemon.world_v2.character_interior.single_tool_transport import resolve_single_tool_transport
     model=BackgroundGLMModel('fixture','http://localhost:8788','fixture',token_ledger=ledger(tmp_path),
@@ -224,7 +227,8 @@ def test_glm_text_identity_declares_carrier_without_changing_schema(tmp_path, ca
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize('unexpected_tool', [False, True])
-async def test_glm_json_schema_profile_sends_the_same_schema_as_text(tmp_path, unexpected_tool):
+@pytest.mark.parametrize('carrier', ['json_object', 'json_schema'])
+async def test_glm_json_schema_profile_sends_the_same_schema_as_text(tmp_path, unexpected_tool, carrier):
     from copy import deepcopy
     schema={'type':'object','$defs':{'Keep':{'type':'string','const':'keep'}},'anyOf': [
         {'type':'object','properties':{'decision':{'$ref':'#/$defs/Keep'}},'required':['decision'],'additionalProperties':False},
@@ -237,7 +241,9 @@ async def test_glm_json_schema_profile_sends_the_same_schema_as_text(tmp_path, u
         body = json.loads(request.content)
         seen.append(body)
         assert 'tools' not in body and 'tool_choice' not in body
-        assert body['response_format']=={'type':'json_object'}
+        expected_format = ({'type':'json_object'} if carrier=='json_object' else {
+            'type':'json_schema', 'json_schema':{'name':'role_result','strict':True,'schema':schema}})
+        assert body['response_format']==expected_format
         envelope=json.loads(body['messages'][-1]['content'])
         assert envelope['response_schema']==schema
         message = {'content':raw}
@@ -246,7 +252,7 @@ async def test_glm_json_schema_profile_sends_the_same_schema_as_text(tmp_path, u
         return httpx.Response(200,json={'choices':[{'finish_reason':'stop','message':message}],
             'usage':{'prompt_tokens':10,'completion_tokens':5,'total_tokens':15}})
     model=BackgroundGLMModel('fixture','http://localhost:8788','fixture',token_ledger=ledger(tmp_path),
-        tool_result_carrier='json_object',transport=httpx.MockTransport(handler))
+        tool_result_carrier=carrier,transport=httpx.MockTransport(handler))
     try:
         with model_call_scope('activity_lifecycle_choice'):
             if unexpected_tool:
@@ -258,6 +264,28 @@ async def test_glm_json_schema_profile_sends_the_same_schema_as_text(tmp_path, u
                     tool_choice={'type':'function','function':{'name':'role_result'}})
                 assert out==raw
         assert tools==original and len(seen)==1
-        assert model.model_version.endswith(':json-object-schema.2')
+        assert model.model_version.endswith(':json-object-schema.2' if carrier=='json_object' else ':json-schema.1')
+    finally:
+        await model.aclose()
+
+
+@pytest.mark.asyncio
+async def test_glm_strict_schema_rejection_does_not_switch_carrier(tmp_path):
+    seen = []
+
+    def reject(request):
+        seen.append(json.loads(request.content))
+        return httpx.Response(400, json={'error':{'message':'json_schema unsupported'}})
+
+    model = BackgroundGLMModel('fixture', 'https://fixture.invalid/v1', 'GLM-5.3-Flash',
+        token_ledger=ledger(tmp_path), tool_result_carrier='json_schema',
+        transport=httpx.MockTransport(reject))
+    tools = [{'type':'function','function':{'name':'role_result','parameters':{'type':'object'}}}]
+    try:
+        with model_call_scope('activity_lifecycle_choice'), pytest.raises(Exception, match='400|json_schema'):
+            await model.complete_json([{'role':'user','content':'same input'}], tools=tools,
+                tool_choice={'type':'function','function':{'name':'role_result'}})
+        assert len(seen) == 1 and seen[0]['response_format']['type'] == 'json_schema'
+        assert model.token_ledger.snapshot()['requests'] == 1
     finally:
         await model.aclose()
