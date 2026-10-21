@@ -1747,3 +1747,53 @@ async def test_private_outlook_repair_failure_does_not_erase_an_independent_auth
     )
     assert failures and result.technical_failure_code
     assert triggers.completed[-1][2] == ("life_development_no_op" if due else "cooldown")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("lane", ["open_world", "visual_evidence"])
+@pytest.mark.parametrize("adapter", ["sync", "async", "returns_awaitable"])
+@pytest.mark.parametrize("blocks_event_loop", [False, True])
+async def test_optional_followup_preserves_thread_ownership_and_completion_order(
+    lane, adapter, blocks_event_loop,
+):
+    """Blocking adapters yield; awaitable work always resumes on the owning loop."""
+    import threading
+
+    event = _event("optional-followup-dispatch")
+    ledger = _Ledger(event)
+    ledger.blocks_event_loop = blocks_event_loop
+    owner_thread = threading.get_ident()
+    calls = []
+
+    async def asynchronous(**kwargs):
+        assert kwargs["wake_event_ref"] == event.event_id
+        calls.append(("awaited", threading.get_ident()))
+        return SimpleNamespace(status="no_op")
+
+    def synchronous(**kwargs):
+        assert kwargs["wake_event_ref"] == event.event_id
+        calls.append(("sync", threading.get_ident()))
+        return asynchronous(**kwargs) if adapter == "returns_awaitable" else SimpleNamespace(status="no_op")
+
+    def media(**kwargs):
+        calls.append(("media", threading.get_ident()))
+        return SimpleNamespace(status="no_op")
+
+    triggers = _TriggerStore()
+    runtime = LifeEcologyRuntime(
+        ledger=ledger, trigger_store=triggers,
+        media_followup=SimpleNamespace(drain_once=media),
+        availability=LifeEcologyAvailability(state="installed_and_active"),
+        **{f"{lane}_followup": SimpleNamespace(
+            advance_once=asynchronous if adapter == "async" else synchronous,
+        )},
+    )
+    result = await runtime.advance_once(
+        wake_event_ref=event.event_id,
+        trace_id="trace:optional-followup", correlation_id="correlation:optional-followup",
+    )
+    assert getattr(result, f"{lane}_followup_status") == "no_op"
+    assert result.status == "idle" and len(triggers.completed) == 1
+    assert calls[-1][0] == "media"
+    for operation, thread_id in calls[:-1]:
+        assert (thread_id != owner_thread) == (operation == "sync" and blocks_event_loop)

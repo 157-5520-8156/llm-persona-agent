@@ -70,6 +70,18 @@ def _is_quiet_lane_skip(failure_code: str) -> bool:
     return failure_code.rsplit(".", 1)[-1] in _QUIET_LANE_SKIP_TAILS
 
 
+# Durable progress statuses shared by scheduling, receipts and reporting.
+_AFTERMATH_PROGRESS = frozenset({
+    "occurrence_opened", "settled", "recovered_experience", "recovered_memory",
+})
+_NPC_PROGRESS = frozenset({
+    "committed", "plan_committed", "plan_completed", "occurrence_committed", "recovered",
+})
+_DEVELOPMENT_PROGRESS = frozenset({
+    "npc_activity_started", "npc_effect_committed", "plan_committed",
+    "plan_completed", "occurrence_committed", "recovered",
+})
+
 LifeEcologyAvailabilityState = Literal[
     "installed_and_active",
     "installed_but_scheduler_disabled",
@@ -863,7 +875,7 @@ class LifeEcologyRuntime:
                         and completion_ref is None and active_attempt_ref is None and event_detail_ref is None
                         and not (npc_has_due_work or npc_has_stimulus)
                         and activity_status != "transitioned"
-                        and aftermath_status not in {"occurrence_opened", "settled", "recovered_experience", "recovered_memory"}):
+                        and aftermath_status not in _AFTERMATH_PROGRESS):
                     # Executing an already paid script is not a fresh author
                     # consideration. Keep the original due flag/deadline; a
                     # due author sees the newly committed scene in its Context.
@@ -970,7 +982,7 @@ class LifeEcologyRuntime:
                 development_due and not (npc_has_due_work or npc_has_stimulus)
                 and activity_status != "transitioned"
                 and aftermath_status
-                not in {"occurrence_opened", "settled", "recovered_experience", "recovered_memory"}
+                not in _AFTERMATH_PROGRESS
             ))
         ):
             early = await advance_due_development()
@@ -1110,7 +1122,7 @@ class LifeEcologyRuntime:
             and (npc_has_due_work or npc_has_stimulus)
             and npc_initiative_status in {"no_op", "already_considered", "rejected", "not_due", "no_npcs", "state_advanced"}
             and activity_status != "transitioned"
-            and aftermath_status not in {"occurrence_opened", "settled", "recovered_experience", "recovered_memory"}
+            and aftermath_status not in _AFTERMATH_PROGRESS
         ):
             early = await advance_due_development()
             if early is not None:
@@ -1123,18 +1135,13 @@ class LifeEcologyRuntime:
             self._life_development_followup is None
             and self._open_world_followup is not None
             and npc_initiative_status
-            not in {
-                "committed",
-                "plan_committed",
-                "plan_completed",
-                "occurrence_committed",
-                "recovered",
-            }
+            not in _NPC_PROGRESS
             and aftermath_status
-            not in {"occurrence_opened", "settled", "recovered_experience", "recovered_memory"}
+            not in _AFTERMATH_PROGRESS
         ):
             try:
-                open_world_result = await self._advance_open_world_once(
+                open_world_result = await self._advance_followup_once(
+                    self._open_world_followup,
                     wake_event_ref=wake_event_ref,
                     trace_id=trace_id,
                     correlation_id=correlation_id,
@@ -1173,7 +1180,8 @@ class LifeEcologyRuntime:
         # is texture — it never claims the wake as a main life family.
         if self._visual_evidence_followup is not None:
             try:
-                visual_result = await self._advance_visual_evidence_once(
+                visual_result = await self._advance_followup_once(
+                    self._visual_evidence_followup,
                     wake_event_ref=wake_event_ref,
                     trace_id=trace_id,
                     correlation_id=correlation_id,
@@ -1245,21 +1253,10 @@ class LifeEcologyRuntime:
                     and life_development_failure_code is not None
                     else f"aftermath_{aftermath_status}"
                     if aftermath_status
-                    in {
-                        "occurrence_opened",
-                        "settled",
-                        "recovered_experience",
-                        "recovered_memory",
-                    }
+                    in _AFTERMATH_PROGRESS
                     else "npc_initiative_committed"
                     if npc_initiative_status
-                    in {
-                        "committed",
-                        "plan_committed",
-                        "plan_completed",
-                        "occurrence_committed",
-                        "recovered",
-                    }
+                    in _NPC_PROGRESS
                     else "activity_transitioned"
                     if activity_status == "transitioned"
                     else "biographical_transitioned"
@@ -1301,32 +1298,13 @@ class LifeEcologyRuntime:
                 # Reporting retirement does not spend the Life/NPC cadence.
                 or aftermath_status == "cancelled"
                 or biographical_status == "transitioned"
-                or prepaid_outlook_status in {"npc_activity_started", "npc_effect_committed", "plan_committed",
-                                             "plan_completed", "occurrence_committed", "recovered"}
+                or prepaid_outlook_status in _DEVELOPMENT_PROGRESS
                 or life_development_status
-                in {
-                    "npc_activity_started",
-                    "npc_effect_committed",
-                    "plan_committed",
-                    "plan_completed",
-                    "occurrence_committed",
-                    "recovered",
-                }
+                in _DEVELOPMENT_PROGRESS
                 or aftermath_status
-                in {
-                    "occurrence_opened",
-                    "settled",
-                    "recovered_experience",
-                    "recovered_memory",
-                }
+                in _AFTERMATH_PROGRESS
                 or npc_initiative_status
-                in {
-                    "committed",
-                    "plan_committed",
-                    "plan_completed",
-                    "occurrence_committed",
-                    "recovered",
-                }
+                in _NPC_PROGRESS
                 or open_world_status in {"committed", "recovered"}
                 else "idle"
             ),
@@ -1621,36 +1599,17 @@ class LifeEcologyRuntime:
             kwargs["consideration_epoch"] = consideration_epoch
         return await self._activity_followup.advance_once(**kwargs)
 
-    async def _advance_visual_evidence_once(
-        self, *, wake_event_ref: str, trace_id: str, correlation_id: str
+    async def _advance_followup_once(
+        self, followup: VisualEvidenceFollowup | OpenWorldEventFollowup,
+        *, wake_event_ref: str, trace_id: str, correlation_id: str,
     ) -> object:
-        assert self._visual_evidence_followup is not None
+        """Run either installed follow-up on its original sync/async seam."""
         kwargs = {
             "wake_event_ref": wake_event_ref,
             "trace_id": trace_id,
             "correlation_id": correlation_id,
         }
-        method = self._visual_evidence_followup.advance_once
-        if inspect.iscoroutinefunction(method):
-            result = method(**kwargs)
-        elif getattr(self._ledger, "blocks_event_loop", False):
-            result = await asyncio.to_thread(method, **kwargs)
-        else:
-            result = method(**kwargs)
-        if inspect.isawaitable(result):
-            return await result
-        return result
-
-    async def _advance_open_world_once(
-        self, *, wake_event_ref: str, trace_id: str, correlation_id: str
-    ) -> object:
-        assert self._open_world_followup is not None
-        kwargs = {
-            "wake_event_ref": wake_event_ref,
-            "trace_id": trace_id,
-            "correlation_id": correlation_id,
-        }
-        method = self._open_world_followup.advance_once
+        method = followup.advance_once
         if inspect.iscoroutinefunction(method):
             result = method(**kwargs)
         elif getattr(self._ledger, "blocks_event_loop", False):

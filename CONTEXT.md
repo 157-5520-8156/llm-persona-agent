@@ -1,3 +1,23 @@
+Code maintenance, 2026-10-21: LifeDevelopmentRuntime now shares one durable
+admission/recovery path for general source and focused origin reviews. Each
+purpose retains its own exact messages, provider identity, subject hash,
+historical decoder, failure codes and audit record. Both reviews still run;
+no role choice or source/privacy obligation was removed. The always-true
+review selector is gone. Failed review chains group matching audit records
+once per lookup instead of rescanning all history for each candidate chain;
+this is an ephemeral index, not cached factual authority.
+
+LifeEcologyRuntime shares the identical sync/async dispatch for its two
+optional external/visual follow-ups, and uses one set of durable progress
+statuses across scheduling and reporting. Existing cadence, ordering,
+prepaid work, failure records and original recovery contracts remain.
+Eight old/new SQLite controls compare exact requests, audits, effects and
+cold recovery; evidence lives under output/private-audits/complexity-cleanup-20261021.
+This maintenance is not deployed to QQ or the preserved qualification World.
+The original v52 window ended at its fixed horizon; its engineering terminal
+checks passed, while natural story/major-fork qualification remains incomplete.
+Older chronological notes below are historical, not current process status.
+
 Fresh marked Fate NPC Root validation now runs on the existing asyncio.to_thread boundary,
 with identical arguments/source checks. A deterministic event-loop gate reproduced synchronous
 blocking (1fail6.24s), then passed1.38s;183 related source/Outlook checks pass. Unmarked legacy

@@ -4198,17 +4198,17 @@ class LifeDevelopmentRuntime:
         )
         if succeeded:
             terminals = terminals[-1:]
+        attempts_by_result = {item.deliberation_result_id: [] for item in terminals}
+        if not attempts_by_result:
+            return None
+        for item in projection.model_result_audits:
+            if item.deliberation_result_id in attempts_by_result:
+                attempts_by_result[item.deliberation_result_id].append(item)
         for terminal in reversed(terminals):
-            attempt_projections = tuple(
-                sorted(
-                    (
-                        item
-                        for item in projection.model_result_audits
-                        if item.deliberation_result_id == terminal.deliberation_result_id
-                    ),
-                    key=lambda item: item.attempt_index,
-                )
-            )
+            attempt_projections = tuple(sorted(
+                attempts_by_result[terminal.deliberation_result_id],
+                key=lambda item: item.attempt_index,
+            ))
             if len(attempt_projections) != terminal.attempt_count or tuple(
                 item.attempt_index for item in attempt_projections
             ) != tuple(range(terminal.attempt_count)):
@@ -4942,23 +4942,23 @@ class LifeDevelopmentRuntime:
         novel_origin_review: LifeDevelopmentNovelOriginReview | None = None
         novel_origin_deliberation: _RecordedDeliberation | None = None
         if review.decision == "supported":
-            if self._requires_novel_origin_review(draft):
-                focused = await self._review_novel_origin_candidate(
-                    proposal_id=proposal_id,
-                    wake=wake,
-                    capsule=capsule,
-                    context=context,
-                    context_cursor=context_cursor,
-                    manifest=manifest,
-                    draft=draft,
-                    raw=raw,
-                    execution_authority=execution_authority,
-                    trace_id=trace_id,
-                    correlation_id=correlation_id,
-                )
-                if isinstance(focused, LifeDevelopmentResult):
-                    return focused
-                novel_origin_review, novel_origin_deliberation = focused
+            focused = await self._review_world_author_candidate(
+                kind="novel_origin",
+                proposal_id=proposal_id,
+                wake=wake,
+                capsule=capsule,
+                context=context,
+                context_cursor=context_cursor,
+                manifest=manifest,
+                draft=draft,
+                raw=raw,
+                execution_authority=execution_authority,
+                trace_id=trace_id,
+                correlation_id=correlation_id,
+            )
+            if isinstance(focused, LifeDevelopmentResult):
+                return focused
+            novel_origin_review, novel_origin_deliberation = focused
             if novel_origin_review is None or novel_origin_review.decision == "supported":
                 return _SourceClosedWorldAuthorResult(
                     draft=draft,
@@ -5130,32 +5130,32 @@ class LifeDevelopmentRuntime:
             )
         corrected_novel_review: LifeDevelopmentNovelOriginReview | None = None
         corrected_novel_deliberation: _RecordedDeliberation | None = None
-        if self._requires_novel_origin_review(rewritten_draft):
-            corrected_focused = await self._review_novel_origin_candidate(
-                proposal_id=proposal_id,
-                wake=wake,
-                capsule=capsule,
-                context=context,
-                context_cursor=context_cursor,
-                manifest=manifest,
-                draft=rewritten_draft,
-                raw=rewritten_raw,
-                execution_authority=execution_authority,
-                trace_id=trace_id,
-                correlation_id=correlation_id,
+        corrected_focused = await self._review_world_author_candidate(
+            kind="novel_origin",
+            proposal_id=proposal_id,
+            wake=wake,
+            capsule=capsule,
+            context=context,
+            context_cursor=context_cursor,
+            manifest=manifest,
+            draft=rewritten_draft,
+            raw=rewritten_raw,
+            execution_authority=execution_authority,
+            trace_id=trace_id,
+            correlation_id=correlation_id,
+        )
+        if isinstance(corrected_focused, LifeDevelopmentResult):
+            return corrected_focused
+        corrected_novel_review, corrected_novel_deliberation = corrected_focused
+        if corrected_novel_review.decision != "supported":
+            _LOG.warning(
+                "World Author source rewrite retained invalid novel origin decision=%s",
+                corrected_novel_review.decision,
             )
-            if isinstance(corrected_focused, LifeDevelopmentResult):
-                return corrected_focused
-            corrected_novel_review, corrected_novel_deliberation = corrected_focused
-            if corrected_novel_review.decision != "supported":
-                _LOG.warning(
-                    "World Author source rewrite retained invalid novel origin decision=%s",
-                    corrected_novel_review.decision,
-                )
-                return LifeDevelopmentResult(
-                    status="technical_failure",
-                    reason_code="life_development.world_author_source_closure_rejected",
-                )
+            return LifeDevelopmentResult(
+                status="technical_failure",
+                reason_code="life_development.world_author_source_closure_rejected",
+            )
         return _SourceClosedWorldAuthorResult(
             draft=rewritten_draft,
             raw=rewritten_raw,
@@ -5181,46 +5181,90 @@ class LifeDevelopmentRuntime:
         execution_authority: dict[str, object] | None = None,
         trace_id: str,
         correlation_id: str,
-    ) -> tuple[LifeDevelopmentSourceClosureReview, _RecordedDeliberation] | LifeDevelopmentResult:
-        if self._source_closure_reviewer is None:
-            return LifeDevelopmentResult(
-                status="technical_failure",
-                reason_code="life_development.source_closure_reviewer_not_configured",
-            )
+        kind: Literal["source_closure", "novel_origin"] = "source_closure",
+    ) -> tuple[
+        LifeDevelopmentSourceClosureReview | LifeDevelopmentNovelOriginReview,
+        _RecordedDeliberation,
+    ] | LifeDevelopmentResult:
+        """Admit/recover either review through one durable audit lifecycle.
+
+        Evidence compilation, model identity and historical decoders remain
+        purpose-specific. Recovery, failure recording and CAS use one path.
+        """
+        novel = kind == "novel_origin"
+        if novel:
+            reviewer = self._novel_origin_critic
+            role = "world_author_novel_origin_critic"
+            suffix = ":novel-origin-review:"
+            hash_subject = _novel_origin_subject_hash
+            decode_review = decode_historical_focused_origin
+            review_type = LifeDevelopmentNovelOriginReview
+            label = "novel-origin"
+            missing_code = "life_development.world_consequence_critic_not_configured"
+            evidence_code = "life_development.novel_origin_context_unavailable"
+            stale_code = "life_development.novel_origin_context_stale"
+            invalid_code = "life_development.novel_origin_critic_invalid_contract"
+            unavailable_code = "life_development.novel_origin_critic_unavailable"
+        else:
+            reviewer = self._source_closure_reviewer
+            role = "world_author_source_reviewer"
+            suffix = ":source-review:"
+            hash_subject = _source_closure_subject_hash
+            decode_review = decode_historical_general_closure
+            review_type = LifeDevelopmentSourceClosureReview
+            label = "source-closure"
+            missing_code = "life_development.source_closure_reviewer_not_configured"
+            evidence_code = "life_development.source_closure_evidence_unavailable"
+            stale_code = "life_development.source_closure_context_stale"
+            invalid_code = "life_development.source_closure_reviewer_invalid_contract"
+            unavailable_code = "life_development.source_closure_reviewer_unavailable"
+        if reviewer is None:
+            return LifeDevelopmentResult(status="technical_failure", reason_code=missing_code)
+        review_context = context
+        if novel and (
+            manifest.version == SOURCE_BOUND_LIFE_REVIEW_MANIFEST_VERSION
+            and manifest.outcome_contract == "world-consequence.2"
+        ):
+            try:
+                review_context = {**context, **compile_life_review_context(capsule)}
+            except (TypeError, ValueError):
+                return LifeDevelopmentResult(status="technical_failure", reason_code=evidence_code)
+        from .world_consequence_authoring_context import read_registered_npc_identity_sources
+        cited_pinned_materials = ()
         try:
-            cited_events, cited_pinned_materials = self._source_closure_cited_sources(
-                draft=draft,
-                context=context,
-                manifest=manifest,
-            )
-            from .world_consequence_authoring_context import read_registered_npc_identity_sources
+            if not novel:
+                cited_events, cited_pinned_materials = self._source_closure_cited_sources(
+                    draft=draft, context=context, manifest=manifest,
+                )
             npc_identities = await self._read_background_source(
                 read_registered_npc_identity_sources, ledger=self._ledger,
                 content_store=self._store, manifest=manifest,
             )
         except ValueError as exc:
-            _LOG.warning(
-                "Life Development source evidence unavailable error_type=%s detail=%s",
-                type(exc).__name__,
-                str(exc)[:300],
+            if not novel:
+                _LOG.warning(
+                    "Life Development source evidence unavailable error_type=%s detail=%s",
+                    type(exc).__name__, str(exc)[:300],
+                )
+            return LifeDevelopmentResult(status="technical_failure", reason_code=evidence_code)
+        if novel:
+            messages = life_development_novel_origin_messages(
+                registered_npc_identities=npc_identities,
+                context=review_context, manifest=manifest, draft=draft,
+                execution_authority=execution_authority,
+                reviewer_is_independent=self._novel_origin_critic_is_independent,
             )
-            return LifeDevelopmentResult(
-                status="technical_failure",
-                reason_code="life_development.source_closure_evidence_unavailable",
+        else:
+            messages = life_development_source_closure_messages(
+                registered_npc_identities=npc_identities,
+                context=context, manifest=manifest, draft=draft,
+                cited_events=cited_events, cited_pinned_materials=cited_pinned_materials,
+                execution_authority=execution_authority,
+                reviewer_is_independent=self._source_closure_reviewer_is_independent,
             )
-        messages = life_development_source_closure_messages(
-            registered_npc_identities=npc_identities,
-            context=context,
-            manifest=manifest,
-            draft=draft,
-            cited_events=cited_events,
-            cited_pinned_materials=cited_pinned_materials,
-            execution_authority=execution_authority,
-            reviewer_is_independent=self._source_closure_reviewer_is_independent,
-        )
         packet_contract, _packet_hash = life_development_review_packet_identity(messages)
         initial_request_hash = _messages_hash(messages)
-        review_family_hash = _source_closure_subject_hash(
+        review_family_hash = hash_subject(
             raw=raw,
             manifest=manifest,
             packet_contract=packet_contract,
@@ -5229,42 +5273,19 @@ class LifeDevelopmentRuntime:
             wake=wake,
         )
         review_proposal_id = (
-            proposal_id + ":source-review:" + _digest({"review_family_hash": review_family_hash})
+            proposal_id + suffix + _digest({"review_family_hash": review_family_hash})
         )
         projection = self._ledger.project()
         if projection.world_revision != context_cursor.world_revision:
             return LifeDevelopmentResult(
                 status="stale_prefix",
-                reason_code="life_development.source_closure_context_stale",
+                reason_code=stale_code,
             )
-        recovered_subject_hash = self._recoverable_review_subject_hash(
-            proposal_id=review_proposal_id,
-            role="world_author_source_reviewer",
-            current_world_revision=projection.world_revision,
-            wake_event_ref=wake.event_id,
-            initial_messages=messages,
-            draft=draft,
-            raw=raw,
-            manifest=manifest,
-            packet_contract=packet_contract,
-            context_cursor=context_cursor,
-            wake=wake,
-            succeeded=True,
-        )
-        recovered = (
-            self._recover_successful_model_run(
+        recovered = None
+        for succeeded in (True, False):
+            subject_hash = self._recoverable_review_subject_hash(
                 proposal_id=review_proposal_id,
-                role="world_author_source_reviewer",
-                current_world_revision=projection.world_revision,
-                expected_subject_hash=recovered_subject_hash,
-            )
-            if recovered_subject_hash is not None
-            else None
-        )
-        recovered_failure_subject_hash = (
-            self._recoverable_review_subject_hash(
-                proposal_id=review_proposal_id,
-                role="world_author_source_reviewer",
+                role=role,
                 current_world_revision=projection.world_revision,
                 wake_event_ref=wake.event_id,
                 initial_messages=messages,
@@ -5274,35 +5295,38 @@ class LifeDevelopmentRuntime:
                 packet_contract=packet_contract,
                 context_cursor=context_cursor,
                 wake=wake,
-                succeeded=False,
+                succeeded=succeeded,
             )
-            if recovered is None
-            else None
-        )
-        recovered_failure_code = (
-            self._recover_terminal_model_failure_code(
-                proposal_id=review_proposal_id,
-                role="world_author_source_reviewer",
-                wake_event_ref=wake.event_id,
-                current_world_revision=projection.world_revision,
-                expected_subject_hash=recovered_failure_subject_hash,
-            )
-            if recovered_failure_subject_hash is not None
-            else None
-        )
-        if recovered_failure_code is not None:
-            return LifeDevelopmentResult(
-                status="technical_failure",
-                reason_code=_review_terminal_reason_code(
-                    failure_code=recovered_failure_code,
-                    invalid_contract=("life_development.source_closure_reviewer_invalid_contract"),
-                    unavailable=("life_development.source_closure_reviewer_unavailable"),
-                ),
-            )
+            if subject_hash is None:
+                continue
+            if succeeded:
+                recovered = self._recover_successful_model_run(
+                    proposal_id=review_proposal_id, role=role,
+                    current_world_revision=projection.world_revision,
+                    expected_subject_hash=subject_hash,
+                )
+                if recovered is not None:
+                    break
+            else:
+                failure_code = self._recover_terminal_model_failure_code(
+                    proposal_id=review_proposal_id, role=role,
+                    wake_event_ref=wake.event_id,
+                    current_world_revision=projection.world_revision,
+                    expected_subject_hash=subject_hash,
+                )
+                if failure_code is not None:
+                    return LifeDevelopmentResult(
+                        status="technical_failure",
+                        reason_code=_review_terminal_reason_code(
+                            failure_code=failure_code,
+                            invalid_contract=invalid_code,
+                            unavailable=unavailable_code,
+                        ),
+                    )
         # Historical bytes may be recompiled to identify an audit, but an
         # unfinished request cannot promote material rejected by today's hard
         # source boundary. Already committed proposals replay above unchanged.
-        if any(
+        if not novel and any(
             resolve_cited_pinned_material(
                 context=context, manifest=manifest, ref=material["source_ref"],
                 version=manifest.pinned_source_materials_version or "2",
@@ -5315,9 +5339,9 @@ class LifeDevelopmentRuntime:
             )
         if recovered is None:
             review_run = await self._review_world_source(
-                messages=messages, draft=draft, kind="source_closure",
+                messages=messages, draft=draft, kind=kind,
             )
-            subject_hash = _source_closure_subject_hash(
+            subject_hash = hash_subject(
                 raw=raw,
                 manifest=manifest,
                 packet_contract=packet_contract,
@@ -5330,7 +5354,7 @@ class LifeDevelopmentRuntime:
             try:
                 review_deliberation = self._record_model_run(
                     proposal_id=review_proposal_id,
-                    role="world_author_source_reviewer",
+                    role=role,
                     run=review_run,
                     wake=wake,
                     capsule=capsule,
@@ -5351,10 +5375,8 @@ class LifeDevelopmentRuntime:
                     status="technical_failure",
                     reason_code=_review_terminal_reason_code(
                         failure_code=review_run.attempts[-1].failure_code,
-                        invalid_contract=(
-                            "life_development.source_closure_reviewer_invalid_contract"
-                        ),
-                        unavailable=("life_development.source_closure_reviewer_unavailable"),
+                        invalid_contract=invalid_code,
+                        unavailable=unavailable_code,
                     ),
                 )
             parsed = review_run.parsed
@@ -5366,214 +5388,12 @@ class LifeDevelopmentRuntime:
                 _review_capsule,
                 _review_manifest,
             ) = recovered
-            parsed = decode_historical_general_closure(
+            parsed = decode_review(
                 raw=review_raw,
                 draft=draft,
             )
-        if not isinstance(parsed, LifeDevelopmentSourceClosureReview):
-            raise ValueError("validated source-closure run has no usable review")
-        return parsed, review_deliberation
-
-    @staticmethod
-    def _requires_novel_origin_review(
-        draft: LifeDevelopmentPossibilityDraft,
-    ) -> bool:
-        del draft
-        # The focused lane also owns imported current/prior prerequisites in
-        # outcome prose, which can exist even without a novel declaration.
-        return True
-
-    async def _review_novel_origin_candidate(
-        self,
-        *,
-        proposal_id: str,
-        wake: WorldEvent,
-        capsule,
-        context: dict[str, object],
-        context_cursor: ProjectionCursor,
-        manifest: LifeDevelopmentCapabilityManifest,
-        draft: LifeDevelopmentPossibilityDraft,
-        raw: str,
-        execution_authority: dict[str, object] | None = None,
-        trace_id: str,
-        correlation_id: str,
-    ) -> tuple[LifeDevelopmentNovelOriginReview, _RecordedDeliberation] | LifeDevelopmentResult:
-        if self._novel_origin_critic is None:
-            return LifeDevelopmentResult(
-                status="technical_failure",
-                reason_code="life_development.world_consequence_critic_not_configured",
-            )
-        review_context = context
-        if (
-            manifest.version == SOURCE_BOUND_LIFE_REVIEW_MANIFEST_VERSION
-            and manifest.outcome_contract == "world-consequence.2"
-        ):
-            try:
-                review_context = {**context, **compile_life_review_context(capsule)}
-            except (TypeError, ValueError):
-                return LifeDevelopmentResult(
-                    status="technical_failure",
-                    reason_code="life_development.novel_origin_context_unavailable",
-                )
-        from .world_consequence_authoring_context import read_registered_npc_identity_sources
-        try:
-            npc_identities = await self._read_background_source(
-                read_registered_npc_identity_sources, ledger=self._ledger,
-                content_store=self._store, manifest=manifest,
-            )
-        except ValueError:
-            return LifeDevelopmentResult(
-                status="technical_failure",
-                reason_code="life_development.novel_origin_context_unavailable",
-            )
-        messages = life_development_novel_origin_messages(
-            registered_npc_identities=npc_identities,
-            context=review_context,
-            manifest=manifest,
-            draft=draft,
-            execution_authority=execution_authority,
-            reviewer_is_independent=self._novel_origin_critic_is_independent,
-        )
-        packet_contract, _packet_hash = life_development_review_packet_identity(messages)
-        initial_request_hash = _messages_hash(messages)
-        review_family_hash = _novel_origin_subject_hash(
-            raw=raw,
-            manifest=manifest,
-            packet_contract=packet_contract,
-            review_request_hashes=(initial_request_hash,),
-            context_cursor=context_cursor,
-            wake=wake,
-        )
-        review_proposal_id = (
-            proposal_id
-            + ":novel-origin-review:"
-            + _digest({"review_family_hash": review_family_hash})
-        )
-        projection = self._ledger.project()
-        if projection.world_revision != context_cursor.world_revision:
-            return LifeDevelopmentResult(
-                status="stale_prefix",
-                reason_code="life_development.novel_origin_context_stale",
-            )
-        recovered_subject_hash = self._recoverable_review_subject_hash(
-            proposal_id=review_proposal_id,
-            role="world_author_novel_origin_critic",
-            current_world_revision=projection.world_revision,
-            wake_event_ref=wake.event_id,
-            initial_messages=messages,
-            draft=draft,
-            raw=raw,
-            manifest=manifest,
-            packet_contract=packet_contract,
-            context_cursor=context_cursor,
-            wake=wake,
-            succeeded=True,
-        )
-        recovered = (
-            self._recover_successful_model_run(
-                proposal_id=review_proposal_id,
-                role="world_author_novel_origin_critic",
-                current_world_revision=projection.world_revision,
-                expected_subject_hash=recovered_subject_hash,
-            )
-            if recovered_subject_hash is not None
-            else None
-        )
-        recovered_failure_subject_hash = (
-            self._recoverable_review_subject_hash(
-                proposal_id=review_proposal_id,
-                role="world_author_novel_origin_critic",
-                current_world_revision=projection.world_revision,
-                wake_event_ref=wake.event_id,
-                initial_messages=messages,
-                draft=draft,
-                raw=raw,
-                manifest=manifest,
-                packet_contract=packet_contract,
-                context_cursor=context_cursor,
-                wake=wake,
-                succeeded=False,
-            )
-            if recovered is None
-            else None
-        )
-        recovered_failure_code = (
-            self._recover_terminal_model_failure_code(
-                proposal_id=review_proposal_id,
-                role="world_author_novel_origin_critic",
-                wake_event_ref=wake.event_id,
-                current_world_revision=projection.world_revision,
-                expected_subject_hash=recovered_failure_subject_hash,
-            )
-            if recovered_failure_subject_hash is not None
-            else None
-        )
-        if recovered_failure_code is not None:
-            return LifeDevelopmentResult(
-                status="technical_failure",
-                reason_code=_review_terminal_reason_code(
-                    failure_code=recovered_failure_code,
-                    invalid_contract=("life_development.novel_origin_critic_invalid_contract"),
-                    unavailable="life_development.novel_origin_critic_unavailable",
-                ),
-            )
-        if recovered is None:
-            review_run = await self._review_world_source(
-                messages=messages, draft=draft, kind="novel_origin",
-            )
-            subject_hash = _novel_origin_subject_hash(
-                raw=raw,
-                manifest=manifest,
-                packet_contract=packet_contract,
-                review_request_hashes=tuple(
-                    attempt.request_hash for attempt in review_run.attempts
-                ),
-                context_cursor=context_cursor,
-                wake=wake,
-            )
-            try:
-                review_deliberation = self._record_model_run(
-                    proposal_id=review_proposal_id,
-                    role="world_author_novel_origin_critic",
-                    run=review_run,
-                    wake=wake,
-                    capsule=capsule,
-                    manifest=manifest,
-                    decision_subject_hash=subject_hash,
-                    expected_cursor=context_cursor,
-                    commit_cursor=_cursor(self._ledger.project()),
-                    trace_id=trace_id,
-                    correlation_id=correlation_id,
-                )
-            except ConcurrencyConflict:
-                return LifeDevelopmentResult(
-                    status="stale_prefix",
-                    reason_code="life_development.model_result_prefix_stale",
-                )
-            if not review_run.succeeded:
-                return LifeDevelopmentResult(
-                    status="technical_failure",
-                    reason_code=_review_terminal_reason_code(
-                        failure_code=review_run.attempts[-1].failure_code,
-                        invalid_contract=("life_development.novel_origin_critic_invalid_contract"),
-                        unavailable=("life_development.novel_origin_critic_unavailable"),
-                    ),
-                )
-            parsed = review_run.parsed
-        else:
-            (
-                review_raw,
-                _review_repair_ordinal,
-                review_deliberation,
-                _review_capsule,
-                _review_manifest,
-            ) = recovered
-            parsed = decode_historical_focused_origin(
-                raw=review_raw,
-                draft=draft,
-            )
-        if not isinstance(parsed, LifeDevelopmentNovelOriginReview):
-            raise ValueError("validated novel-origin run has no usable review")
+        if not isinstance(parsed, review_type):
+            raise ValueError(f"validated {label} run has no usable review")
         return parsed, review_deliberation
 
     def _source_closure_cited_events(
@@ -7020,7 +6840,7 @@ class LifeDevelopmentRuntime:
                 or source_closure_review.typed_location_conflicts
             ):
                 raise ValueError("life development possibility has no supported source closure")
-            if self._requires_novel_origin_review(draft) and (
+            if (
                 novel_origin_review is None
                 or novel_origin_deliberation is None
                 or novel_origin_review.decision != "supported"
