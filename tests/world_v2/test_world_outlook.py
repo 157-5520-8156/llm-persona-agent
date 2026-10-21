@@ -94,6 +94,142 @@ class Author:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("phase", ["_history_material", "story_history"])
+async def test_fresh_outlook_request_preparation_yields_to_foreground(tmp_path, monkeypatch, phase):
+    import asyncio
+    from contextvars import ContextVar
+    import threading
+
+    ledger, wake, _, author, runtime = setup(tmp_path, lambda w: [
+        {"decision": "revise", "draft": draft_value(w)}])
+    monkeypatch.setattr(type(ledger), "blocks_event_loop", property(lambda self: True))
+    started, finished = threading.Event(), threading.Event()
+    authority = ContextVar("outlook_test_request_authority", default=None)
+    authority.set(wake.event_id)
+    original = getattr(runtime, phase)
+
+    def delayed(*args, **kwargs):
+        assert authority.get() == wake.event_id
+        started.set()
+        threading.Event().wait(.25)
+        value = original(*args, **kwargs)
+        finished.set()
+        return value
+
+    monkeypatch.setattr(runtime, phase, delayed)
+
+    async def foreground():
+        while not started.is_set():
+            await asyncio.sleep(.001)
+        return not finished.is_set()
+
+    ping = asyncio.create_task(foreground())
+    try:
+        before = ledger.project()
+        result = await runtime.refresh(projection=before, context={},
+            manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger)))
+        assert result["status"] == "ready" and len(author.calls) == 1
+        assert ledger.project() == before
+        assert await asyncio.wait_for(ping, 1), "Fresh Outlook preparation blocked the foreground loop"
+    finally:
+        if not ping.done():
+            ping.cancel()
+        await asyncio.gather(ping, return_exceptions=True)
+        runtime.close()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel_count,fail_read", [(1, False), (2, False), (1, True)])
+async def test_cancelled_outlook_preparation_joins_and_records_no_paid_call(tmp_path, monkeypatch, cancel_count, fail_read):
+    import asyncio
+    import threading
+
+    ledger, wake, store, author, runtime = setup(tmp_path, lambda w: [])
+    monkeypatch.setattr(type(ledger), "blocks_event_loop", property(lambda self: True))
+    started, release, finished = threading.Event(), threading.Event(), threading.Event()
+    original = runtime._history_material
+
+    def delayed(*args, **kwargs):
+        started.set()
+        assert release.wait(3)
+        finished.set()
+        if fail_read:
+            raise ValueError("immutable history unavailable during cancellation")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(runtime, "_history_material", delayed)
+    before = ledger.project()
+    job = asyncio.create_task(runtime.refresh(projection=before, context={},
+        manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger))))
+    try:
+        async def wait_started():
+            while not started.is_set():
+                await asyncio.sleep(.001)
+
+        await asyncio.wait_for(wait_started(), 1)
+        for _ in range(cancel_count):
+            job.cancel()
+            await asyncio.sleep(0)
+        assert not job.done(), "Store shutdown must wait until the source reader finishes"
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await job
+        assert finished.is_set() and not author.calls and ledger.project() == before
+        assert runtime.health()["failure_code"] == "outlook_preparation_cancelled"
+        operations = store._db.execute("SELECT operation_id FROM world_outlook_operations").fetchall()
+        assert len(operations) == 1
+        operation_id = operations[0][0]
+        saved = store.operation(operation_id)
+        assert saved["state"] == "technical_failure"
+        assert saved["payload"]["code"] == "outlook_preparation_cancelled"
+        assert not store.attempts(operation_id)
+    finally:
+        release.set()
+        await asyncio.gather(job, return_exceptions=True)
+        runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_fresh_outlook_pin_changed_during_preparation_does_not_buy_author(tmp_path, monkeypatch):
+    import asyncio
+    import threading
+
+    ledger, wake, store, author, runtime = setup(tmp_path, lambda w: [
+        {"decision": "revise", "draft": draft_value(w)}])
+    monkeypatch.setattr(type(ledger), "blocks_event_loop", property(lambda self: True))
+    original = runtime._history_material
+    started, release = threading.Event(), threading.Event()
+
+    def gated(*args, **kwargs):
+        started.set()
+        assert release.wait(3)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(runtime, "_history_material", gated)
+    state = ledger.project()
+    task = asyncio.create_task(runtime.refresh(projection=state, context={},
+        manifest=_manifest(wake, pinned_cursor=_projection_cursor(ledger))))
+    try:
+        async def wait_started():
+            while not started.is_set():
+                await asyncio.sleep(.001)
+
+        await asyncio.wait_for(wait_started(), 1)
+        _seed_clock(ledger, event_id="clock:foreground:while-preparing",
+            logical_time=state.logical_time + timedelta(seconds=1), logical_time_from=state.logical_time)
+        fresh = ledger.project()
+        release.set()
+        assert (await asyncio.wait_for(task, 3))["status"] == "stale"
+        assert not author.calls
+        assert store._db.execute("SELECT COUNT(*) FROM world_outlook_operations WHERE kind='author_call'").fetchone()[0] == 0
+        assert ledger.project() == fresh and store.head() is None
+    finally:
+        release.set()
+        await asyncio.gather(task, return_exceptions=True)
+        runtime.close()
+
+
+@pytest.mark.asyncio
 async def test_unqualified_keep_reselects_with_the_same_author_before_origin_review(tmp_path):
     ledger, wake, store, author, runtime = setup(tmp_path, lambda w: [
         {"decision": "revise", "draft": draft_value(w)}])

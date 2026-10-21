@@ -172,8 +172,8 @@ async def test_background_source_preparation_yields_to_foreground(tmp_path, phas
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("cancel_count,fail_read", [(1, False), (2, False), (1, True)])
-async def test_cancelled_background_source_finishes_before_store_close(tmp_path, caplog, cancel_count, fail_read):
+@pytest.mark.parametrize("cancel_count,fail_read,cancel_all", [(1, False, False), (2, False, False), (1, True, False), (1, False, True)])
+async def test_cancelled_background_source_finishes_before_store_close(tmp_path, caplog, cancel_count, fail_read, cancel_all):
     path = tmp_path / "cancel-source.sqlite"
     ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID)
     store = SQLiteImmutableLifeContentStore(path=path, world_id=WORLD_ID)
@@ -197,6 +197,7 @@ async def test_cancelled_background_source_finishes_before_store_close(tmp_path,
                            _SequenceModel(model="unused:general", outputs=()),
                            _SequenceModel(model="unused:focused", outputs=()))
         runtime._world_outlook = Outlook()
+        prior_tasks = asyncio.all_tasks()
         job = asyncio.create_task(runtime.prepare_outlook_once(wake_event_ref=wake.event_id))
 
         async def wait_started():
@@ -205,8 +206,10 @@ async def test_cancelled_background_source_finishes_before_store_close(tmp_path,
 
         await asyncio.wait_for(wait_started(), 1)
         for _ in range(cancel_count):
-            job.cancel()
+            for task in asyncio.all_tasks() - prior_tasks if cancel_all else (job,):
+                task.cancel()
             await asyncio.sleep(0)
+        await asyncio.sleep(.01)
         assert not job.done(), "cancellation must join the read before closing its stores"
         release.set()
         with pytest.raises(asyncio.CancelledError):

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections import Counter
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from threading import RLock
+from .life_context import read_life_source
 from .lived_story import StoryAnchor, anchor_catalog, navigation_privacy_floors
 from .world_outlook_request import (
     PRESENTATION_GUIDE, RESPONSE_REFERENCE_CONTRACT, decode_outlook_request,
@@ -1315,6 +1317,200 @@ class WorldOutlookRuntime:
             self.store.finish(op, state="technical_failure", payload={"code": code})
         self._health = {"status": "technical_failure", "failure_code": code}
 
+    def _prepare_author_request(self, *, projection, context, manifest, view, prior_head,
+                                npc_refs, input_key, history_trigger_ref, native_result):
+        """Compile the exact fresh request; local source reads only, no model or acceptance."""
+        now = projection.logical_time
+        response_tools = None
+        history = self._history_material(projection, context, view, history_trigger_ref)
+        npc_privacy_floors = [
+            {"npc_ref": "npc:" + npc.npc_id, "privacy_class": npc.privacy_class}
+            for npc in projection.npcs if "npc:" + npc.npc_id in npc_refs
+        ]
+        history_offer = prepare_history_offer(
+            projection=projection, actor_ref=self.actor_ref, context=context,
+            history_material=history, current_outlook=view,
+        )
+        story = self.story_history(projection=projection, planning=True)
+        world_changes = self._world_changes(projection, view.get("changed_source_refs", ())) if self._rolling_planning else []
+        required_refs = _planning_source_refs(
+            view, context, history_offer, story, projection=projection, manifest=manifest,
+        )
+        working_sources = self._catalog(projection, npc_refs, required_refs=required_refs,
+                                        only_referenced=True)
+        basis_refs = (_planning_basis_refs(projection, context, manifest, required_refs,
+            history_offer, story, history_trigger_ref)
+            if _WORKING_SOURCES in _CURSOR_SOURCE_SCOPES
+            else manifest.anchor_refs)
+        new_ids = tuple(f"outlook:{input_key}:{i}" for i in range(24)) if native_result else None
+        packet = {
+            "contract": "world-outlook-request.1",
+            "error_feedback_contract": ERROR_FEEDBACK_CONTRACT,
+            "response_reference_contract": ROLLING_REFERENCE_CONTRACT if self._rolling_planning else RESPONSE_REFERENCE_CONTRACT,
+            **({"response_tool_contract": _NATIVE_RESULT} if native_result else {}),
+            **({"new_opportunity_ids": list(new_ids)} if new_ids is not None else {}),
+            **({"response_carrier": getattr(getattr(self.author, "authority_origin", self.author),
+                "single_tool_response_carrier", "native")} if native_result and _NATIVE_RESULT in {"world-outlook-native.8", "world-outlook-native.9", "world-outlook-native.10"} else {}),
+            "world_id": projection.world_id,
+            "actor_ref": self.actor_ref,
+            "logical_time": now.isoformat(),
+            "parent_revision": view["revision"],
+            "current_outlook_presentation": AUTHOR_VIEW_CONTRACT,
+            "current_outlook": {k: v for k, v in view.items() if k != "rolling_preparation"},
+            **({"rolling_preparation": view["rolling_preparation"]} if self._rolling_planning else {}),
+            "history_material": history,
+            "history_offer": history_offer.model_dump(mode="json"),
+            "realized_story_history": story,
+            **({"world_changes": world_changes}
+               if self._rolling_planning else {}),
+            "world_context": _outlook_presentation_context(context) if self._rolling_planning else context,
+            **({"authoring_constraints": {
+                "authority": "generation_constraints_only",
+                "stable_identity_facts": list(self._authoring_constraints),
+                "digest": self._authoring_constraints_hash,
+            }} if self._authoring_constraints else {}),
+            "basis_refs": list(basis_refs),
+            "condition_source_scope": _WORKING_SOURCES,
+            **({"execution_origin_review": _EXECUTION_ORIGIN_REVIEW} if self._source_critic is not None else {}),
+            **({"private_origin_review": {"contract": _ORIGIN_AUTHOR_MENU,
+                "publication_contract": _ORIGIN_PUBLICATION,
+                "npc_identity_source_contract": "pinned-world-npc-identities.1",
+                "prior_future_qualified": self._origin_head_is_current(prior_head),
+                "keep_offered": self._origin_head_is_current(prior_head),
+                "authority": "technical_review_status_not_world_fact"}} if self._source_critic is not None else {}),
+            **({"configured_companion_identity": self._identity_source} if self._identity_source else {}),
+            "condition_sources": [v.model_dump(mode="json") for v in working_sources.values()],
+            "available_npc_refs": list(npc_refs),
+            "npc_privacy_floors": npc_privacy_floors,
+            "npc_capabilities": [
+                c.model_dump(mode="json")
+                for c in manifest.npc_capabilities
+                if c.npc_ref in npc_refs
+            ],
+            "plan_schedules": [
+                p.model_dump(
+                    mode="json",
+                    include={
+                        "plan_id",
+                        "owner_actor_ref",
+                        "status",
+                        "activity_kind",
+                        "scheduled_window",
+                        "location_ref",
+                        "participant_refs",
+                    },
+                )
+                for p in projection.plans
+                if p.plan_id in working_sources and p.status in {"planned", "active", "paused"}
+            ],
+            "location_refs": [
+                c.location_ref for c in getattr(manifest, "location_capabilities", ())
+            ],
+            "npc_activity_location_capabilities": [
+                c.model_dump(mode="json", exclude={"capability_ref"})
+                for c in getattr(manifest, "location_capabilities", ())
+                if c.availability_kind == "reviewed_schedule"
+            ],
+            "draft_schema_contract": "world-outlook-author-schema.9" if self._rolling_planning else "world-outlook-author-schema.5",
+            "draft_schema": outlook_author_schema(
+                basis_refs=basis_refs, npc_privacy_floors=npc_privacy_floors,
+                prior_opportunities=prior_head[1].opportunities if prior_head else (),
+                now=now,
+                rolling_planning=self._rolling_planning,
+                story_planning=self._rolling_planning,
+                structural_retirements=self._rolling_planning,
+                world_changes=world_changes,
+                prior_threads=prior_head[1].threads if prior_head else (),
+                identity={"world_id": projection.world_id, "actor_ref": self.actor_ref, "parent_revision": view["revision"]} if native_result else None,
+                preparation=view.get("rolling_preparation") if native_result else None,
+                history_offer=history_offer if self._rolling_planning else None,
+                new_opportunity_ids=new_ids,
+            ),
+        }
+        if native_result:
+            allow_keep = not (packet["rolling_preparation"]["due"] or packet["rolling_preparation"]["outline_due"]
+                              or (packet.get("world_changes") and packet["response_tool_contract"] != "world-outlook-native.10"))
+            if allow_keep:
+                allow_keep = self._keep_is_offered(packet=packet, projection=projection, manifest=manifest,
+                    prior_head=prior_head, npc_refs=npc_refs, sources=working_sources, history_offer=history_offer)
+            if "private_origin_review" in packet:
+                packet["private_origin_review"]["keep_offered"] = allow_keep
+            response_tools = [outlook_result_tool(packet["draft_schema"], allow_keep=allow_keep,
+                retained_changes=bool(packet.get("world_changes")) and packet["response_tool_contract"] == "world-outlook-native.10",
+                keep_review_deadline=min(now + timedelta(days=7), prior_head[1].horizon_end).isoformat()
+                    if allow_keep else None,
+                **({"json_object": True} if packet["response_tool_contract"] in {"world-outlook-native.9", "world-outlook-native.10"}
+                   and packet.get("response_carrier") in {"json_object", "json_schema"} else {}))]
+            if packet["response_tool_contract"] in {"world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9", "world-outlook-native.10"}:
+                # The exact schema is already pinned in response_tools and supplied
+                # by the provider carrier. Do not duplicate it in the evidence body.
+                packet.pop("draft_schema")
+                packet["draft_schema_carrier"] = "response_tools.world_outlook_v6"
+        system = _ROLLING_SYSTEM if self._rolling_planning else _SYSTEM
+        if native_result:
+            before, _, after = system.partition("Return a JSON object, exactly")
+            if packet['response_tool_contract'] == 'world-outlook-native.10':
+                after = after.replace('Keep cannot acknowledge a nonempty change list.',
+                    'If every offered change leaves the future compatible and no coverage work is due, '
+                    'keep may acknowledge each one with an explicit retain response. '
+                    'A revise response still requires a changed, source-linked future structure.')
+                after += ('\nA net retirement of unrealized opportunities, a linked thread status change, '
+                    'or an actual NPC routing change is a future structural change. '
+                    'Do not create extra events to justify a refusal or closure. '
+                    'Renaming equivalent opportunities or cleaning expired/executed entries is not retirement. '
+                    'Keep is offered only when its exact future still passes authority and expiry checks; '
+                    'a draft revision may retain change responses while refreshing compatible technical bindings.\n')
+                before += ('\nA story thread is an ongoing external situation with possible consequences. '
+                    'Use the event detail programme to elaborate one situation; small changes of sound, '
+                    'light or object placement alone need not become new story threads or overlapping '
+                    'independent opportunities. Do not fill the opportunity limit for its own sake. '
+                    'Quiet life is valid; choose the situations and their development yourself. '
+                    'Let long-term situations shape published arrangements and concrete opportunities, '
+                    'and reconsider their branches when actual outcomes change the conditions.\n')
+            if packet.get("response_carrier") in {"json_object", "json_schema"}:
+                instruction = ("Return exactly one JSON object matching the declared response schema. "
+                    "If validation rejects it, return a corrected JSON object. Do not call a tool.")
+                if not allow_keep:
+                    instruction += ' This request requires exactly {"decision":"revise","draft":<schema>}; keep, root review_at and root reason are not offered.'
+                elif packet["response_tool_contract"] in {"world-outlook-native.9", "world-outlook-native.10"}:
+                    instruction += ' Return exactly {"decision":"keep","review_at":"future ISO timestamp","reason":"why keep"} OR {"decision":"revise","draft":<schema>}. Never add request metadata or notes to either object.'
+                    if packet['response_tool_contract'] == 'world-outlook-native.10' and packet.get('world_changes'):
+                        instruction = ('Return exactly one JSON object matching the declared schema: '
+                            '{"decision":"keep","review_at":"future ISO timestamp","reason":"why compatible",'
+                            '"change_responses":[one explicit retain response per world_changes source]} '
+                            'OR {"decision":"revise","draft":<schema>}. '
+                            'Keep copies the entire exact prior future and cannot revise a thread, stage, opportunity or planning key.')
+                if packet["response_tool_contract"] in {"world-outlook-native.9", "world-outlook-native.10"}:
+                    instruction += ' A condition unchanged_token copies condition_sources.token for that source_ref; history anchor authority_hash is a different namespace.'
+            else:
+                instruction = "For each response, call world_outlook_v6 once with your complete candidate. If validation rejects a candidate, your next response must be a corrected function call. Do not return an ordinary text/JSON message."
+            system = before + instruction + after[after.index("\n"): ]
+        if "private_origin_review" in packet:
+            system += ("\nprivate_origin_review is technical status, not new World evidence. An unqualified "
+                "private future requires a revise candidate for source review, not keep. Retain selectors "
+                "copy old private prose; they never establish a missing prior event or character action. "
+                "Correct unsupported descriptions or omit unexecuted prospects; do not invent protagonist "
+                "behavior to repair them. Executable environment text becomes available at opens_at; "
+                "planning prose is available at publication, recurring slot text at its instance start. "
+                "Duration does not authorize completed facts from later in that interval. Put later "
+                "progression in timed details; explicit future arrangements remain arrangements.")
+        if "configured_companion_identity" in packet:
+            system = system.replace("World facts are the only factual authority.",
+                "World facts govern current changing circumstances; the exact configured identity source supplies only its standing baseline.")
+            system += ("\nconfigured_companion_identity is the exact scoped deployment identity source: "
+                "its named stable_identity_facts may ground the standing fictional background, not a new "
+                "episode, attendance, action, perception, consent or current location. Its identity-frame "
+                "token is not an event basis ref, condition source, history anchor or NPC ref; never copy "
+                "it into those namespaces. Newer source-bound World consequences govern evolving circumstances; "
+                "background cannot undo a closure, changed resources, relationship or other accepted consequence. "
+                "Generation-only constraints still grant no factual evidence.")
+        messages = [
+            {"role": "system", "content": system + "\n" + AUTHOR_VIEW_GUIDE + "\n" + PRESENTATION_GUIDE + ("\n" + ROLLING_PRESENTATION_GUIDE if self._rolling_planning else "")},
+            {"role": "user", "content": (_encode_story_request(packet) if self._rolling_planning else
+                                         encode_outlook_request(packet, byte_limit=100_000))},
+        ]
+        return messages, response_tools, history
+
     async def refresh(self, *, projection, context, manifest, history_trigger_ref=None):
         generation_reader = getattr(self.ledger, "verified_history_generation", None)
         source_generation = generation_reader() if callable(generation_reader) else None
@@ -1335,7 +1531,6 @@ class WorldOutlookRuntime:
             self._health = {"status": "ready", "revision": view["revision"]}
             return {"status": "unchanged", "revision": view["revision"]}
         sources, running, input_key = self._refresh_identity(projection, view, npc_refs, prior_head)
-        now = projection.logical_time
         op = running["operation_ref"] if running else "refresh:" + input_key
         configured_model = str(getattr(self.author, "model", type(self.author).__name__))
         cached_attempts = {}
@@ -1380,193 +1575,34 @@ class WorldOutlookRuntime:
                 required_refs=frozenset(s["source_ref"] for s in pinned["condition_sources"]),
                 legacy_fact_status=pinned.get("condition_source_scope") not in _WORKING_SOURCE_SCOPES)
         else:
-            history = self._history_material(projection, context, view, history_trigger_ref)
-            npc_privacy_floors = [
-                {"npc_ref": "npc:" + npc.npc_id, "privacy_class": npc.privacy_class}
-                for npc in projection.npcs if "npc:" + npc.npc_id in npc_refs
-            ]
-            history_offer = prepare_history_offer(
-                projection=projection, actor_ref=self.actor_ref, context=context,
-                history_material=history, current_outlook=view,
-            )
-            story = self.story_history(projection=projection, planning=True)
-            world_changes = self._world_changes(projection, view.get("changed_source_refs", ())) if self._rolling_planning else []
-            required_refs = _planning_source_refs(
-                view, context, history_offer, story, projection=projection, manifest=manifest,
-            )
-            working_sources = self._catalog(projection, npc_refs, required_refs=required_refs,
-                                            only_referenced=True)
-            basis_refs = (_planning_basis_refs(projection, context, manifest, required_refs,
-                history_offer, story, history_trigger_ref)
-                if _WORKING_SOURCES in _CURSOR_SOURCE_SCOPES
-                else manifest.anchor_refs)
-            new_ids = tuple(f"outlook:{input_key}:{i}" for i in range(24)) if native_result else None
-            packet = {
-                "contract": "world-outlook-request.1",
-                "error_feedback_contract": ERROR_FEEDBACK_CONTRACT,
-                "response_reference_contract": ROLLING_REFERENCE_CONTRACT if self._rolling_planning else RESPONSE_REFERENCE_CONTRACT,
-                **({"response_tool_contract": _NATIVE_RESULT} if native_result else {}),
-                **({"new_opportunity_ids": list(new_ids)} if new_ids is not None else {}),
-                **({"response_carrier": getattr(getattr(self.author, "authority_origin", self.author),
-                    "single_tool_response_carrier", "native")} if native_result and _NATIVE_RESULT in {"world-outlook-native.8", "world-outlook-native.9", "world-outlook-native.10"} else {}),
-                "world_id": projection.world_id,
-                "actor_ref": self.actor_ref,
-                "logical_time": now.isoformat(),
-                "parent_revision": view["revision"],
-                "current_outlook_presentation": AUTHOR_VIEW_CONTRACT,
-                "current_outlook": {k: v for k, v in view.items() if k != "rolling_preparation"},
-                **({"rolling_preparation": view["rolling_preparation"]} if self._rolling_planning else {}),
-                "history_material": history,
-                "history_offer": history_offer.model_dump(mode="json"),
-                "realized_story_history": story,
-                **({"world_changes": world_changes}
-                   if self._rolling_planning else {}),
-                "world_context": _outlook_presentation_context(context) if self._rolling_planning else context,
-                **({"authoring_constraints": {
-                    "authority": "generation_constraints_only",
-                    "stable_identity_facts": list(self._authoring_constraints),
-                    "digest": self._authoring_constraints_hash,
-                }} if self._authoring_constraints else {}),
-                "basis_refs": list(basis_refs),
-                "condition_source_scope": _WORKING_SOURCES,
-                **({"execution_origin_review": _EXECUTION_ORIGIN_REVIEW} if self._source_critic is not None else {}),
-                **({"private_origin_review": {"contract": _ORIGIN_AUTHOR_MENU,
-                    "publication_contract": _ORIGIN_PUBLICATION,
-                    "npc_identity_source_contract": "pinned-world-npc-identities.1",
-                    "prior_future_qualified": self._origin_head_is_current(prior_head),
-                    "keep_offered": self._origin_head_is_current(prior_head),
-                    "authority": "technical_review_status_not_world_fact"}} if self._source_critic is not None else {}),
-                **({"configured_companion_identity": self._identity_source} if self._identity_source else {}),
-                "condition_sources": [v.model_dump(mode="json") for v in working_sources.values()],
-                "available_npc_refs": list(npc_refs),
-                "npc_privacy_floors": npc_privacy_floors,
-                "npc_capabilities": [
-                    c.model_dump(mode="json")
-                    for c in manifest.npc_capabilities
-                    if c.npc_ref in npc_refs
-                ],
-                "plan_schedules": [
-                    p.model_dump(
-                        mode="json",
-                        include={
-                            "plan_id",
-                            "owner_actor_ref",
-                            "status",
-                            "activity_kind",
-                            "scheduled_window",
-                            "location_ref",
-                            "participant_refs",
-                        },
-                    )
-                    for p in projection.plans
-                    if p.plan_id in working_sources and p.status in {"planned", "active", "paused"}
-                ],
-                "location_refs": [
-                    c.location_ref for c in getattr(manifest, "location_capabilities", ())
-                ],
-                "npc_activity_location_capabilities": [
-                    c.model_dump(mode="json", exclude={"capability_ref"})
-                    for c in getattr(manifest, "location_capabilities", ())
-                    if c.availability_kind == "reviewed_schedule"
-                ],
-                "draft_schema_contract": "world-outlook-author-schema.9" if self._rolling_planning else "world-outlook-author-schema.5",
-                "draft_schema": outlook_author_schema(
-                    basis_refs=basis_refs, npc_privacy_floors=npc_privacy_floors,
-                    prior_opportunities=prior_head[1].opportunities if prior_head else (),
-                    now=now,
-                    rolling_planning=self._rolling_planning,
-                    story_planning=self._rolling_planning,
-                    structural_retirements=self._rolling_planning,
-                    world_changes=world_changes,
-                    prior_threads=prior_head[1].threads if prior_head else (),
-                    identity={"world_id": projection.world_id, "actor_ref": self.actor_ref, "parent_revision": view["revision"]} if native_result else None,
-                    preparation=view.get("rolling_preparation") if native_result else None,
-                    history_offer=history_offer if self._rolling_planning else None,
-                    new_opportunity_ids=new_ids,
-                ),
-            }
-            if native_result:
-                allow_keep = not (packet["rolling_preparation"]["due"] or packet["rolling_preparation"]["outline_due"]
-                                  or (packet.get("world_changes") and packet["response_tool_contract"] != "world-outlook-native.10"))
-                if allow_keep:
-                    allow_keep = self._keep_is_offered(packet=packet, projection=projection, manifest=manifest,
-                        prior_head=prior_head, npc_refs=npc_refs, sources=working_sources, history_offer=history_offer)
-                if "private_origin_review" in packet:
-                    packet["private_origin_review"]["keep_offered"] = allow_keep
-                response_tools = [outlook_result_tool(packet["draft_schema"], allow_keep=allow_keep,
-                    retained_changes=bool(packet.get("world_changes")) and packet["response_tool_contract"] == "world-outlook-native.10",
-                    keep_review_deadline=min(now + timedelta(days=7), prior_head[1].horizon_end).isoformat()
-                        if allow_keep else None,
-                    **({"json_object": True} if packet["response_tool_contract"] in {"world-outlook-native.9", "world-outlook-native.10"}
-                       and packet.get("response_carrier") in {"json_object", "json_schema"} else {}))]
-                if packet["response_tool_contract"] in {"world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9", "world-outlook-native.10"}:
-                    # The exact schema is already pinned in response_tools and supplied
-                    # by the provider carrier. Do not duplicate it in the evidence body.
-                    packet.pop("draft_schema")
-                    packet["draft_schema_carrier"] = "response_tools.world_outlook_v6"
-            system = _ROLLING_SYSTEM if self._rolling_planning else _SYSTEM
-            if native_result:
-                before, _, after = system.partition("Return a JSON object, exactly")
-                if packet['response_tool_contract'] == 'world-outlook-native.10':
-                    after = after.replace('Keep cannot acknowledge a nonempty change list.',
-                        'If every offered change leaves the future compatible and no coverage work is due, '
-                        'keep may acknowledge each one with an explicit retain response. '
-                        'A revise response still requires a changed, source-linked future structure.')
-                    after += ('\nA net retirement of unrealized opportunities, a linked thread status change, '
-                        'or an actual NPC routing change is a future structural change. '
-                        'Do not create extra events to justify a refusal or closure. '
-                        'Renaming equivalent opportunities or cleaning expired/executed entries is not retirement. '
-                        'Keep is offered only when its exact future still passes authority and expiry checks; '
-                        'a draft revision may retain change responses while refreshing compatible technical bindings.\n')
-                    before += ('\nA story thread is an ongoing external situation with possible consequences. '
-                        'Use the event detail programme to elaborate one situation; small changes of sound, '
-                        'light or object placement alone need not become new story threads or overlapping '
-                        'independent opportunities. Do not fill the opportunity limit for its own sake. '
-                        'Quiet life is valid; choose the situations and their development yourself. '
-                        'Let long-term situations shape published arrangements and concrete opportunities, '
-                        'and reconsider their branches when actual outcomes change the conditions.\n')
-                if packet.get("response_carrier") in {"json_object", "json_schema"}:
-                    instruction = ("Return exactly one JSON object matching the declared response schema. "
-                        "If validation rejects it, return a corrected JSON object. Do not call a tool.")
-                    if not allow_keep:
-                        instruction += ' This request requires exactly {"decision":"revise","draft":<schema>}; keep, root review_at and root reason are not offered.'
-                    elif packet["response_tool_contract"] in {"world-outlook-native.9", "world-outlook-native.10"}:
-                        instruction += ' Return exactly {"decision":"keep","review_at":"future ISO timestamp","reason":"why keep"} OR {"decision":"revise","draft":<schema>}. Never add request metadata or notes to either object.'
-                        if packet['response_tool_contract'] == 'world-outlook-native.10' and packet.get('world_changes'):
-                            instruction = ('Return exactly one JSON object matching the declared schema: '
-                                '{"decision":"keep","review_at":"future ISO timestamp","reason":"why compatible",'
-                                '"change_responses":[one explicit retain response per world_changes source]} '
-                                'OR {"decision":"revise","draft":<schema>}. '
-                                'Keep copies the entire exact prior future and cannot revise a thread, stage, opportunity or planning key.')
-                    if packet["response_tool_contract"] in {"world-outlook-native.9", "world-outlook-native.10"}:
-                        instruction += ' A condition unchanged_token copies condition_sources.token for that source_ref; history anchor authority_hash is a different namespace.'
-                else:
-                    instruction = "For each response, call world_outlook_v6 once with your complete candidate. If validation rejects a candidate, your next response must be a corrected function call. Do not return an ordinary text/JSON message."
-                system = before + instruction + after[after.index("\n"): ]
-            if "private_origin_review" in packet:
-                system += ("\nprivate_origin_review is technical status, not new World evidence. An unqualified "
-                    "private future requires a revise candidate for source review, not keep. Retain selectors "
-                    "copy old private prose; they never establish a missing prior event or character action. "
-                    "Correct unsupported descriptions or omit unexecuted prospects; do not invent protagonist "
-                    "behavior to repair them. Executable environment text becomes available at opens_at; "
-                    "planning prose is available at publication, recurring slot text at its instance start. "
-                    "Duration does not authorize completed facts from later in that interval. Put later "
-                    "progression in timed details; explicit future arrangements remain arrangements.")
-            if "configured_companion_identity" in packet:
-                system = system.replace("World facts are the only factual authority.",
-                    "World facts govern current changing circumstances; the exact configured identity source supplies only its standing baseline.")
-                system += ("\nconfigured_companion_identity is the exact scoped deployment identity source: "
-                    "its named stable_identity_facts may ground the standing fictional background, not a new "
-                    "episode, attendance, action, perception, consent or current location. Its identity-frame "
-                    "token is not an event basis ref, condition source, history anchor or NPC ref; never copy "
-                    "it into those namespaces. Newer source-bound World consequences govern evolving circumstances; "
-                    "background cannot undo a closure, changed resources, relationship or other accepted consequence. "
-                    "Generation-only constraints still grant no factual evidence.")
-            messages = [
-                {"role": "system", "content": system + "\n" + AUTHOR_VIEW_GUIDE + "\n" + PRESENTATION_GUIDE + ("\n" + ROLLING_PRESENTATION_GUIDE if self._rolling_planning else "")},
-                {"role": "user", "content": (_encode_story_request(packet) if self._rolling_planning else
-                                             encode_outlook_request(packet, byte_limit=100_000))},
-            ]
+            try:
+                messages, response_tools, history = await read_life_source(
+                    self.ledger, self._prepare_author_request, projection=projection,
+                    context=context, manifest=manifest, view=view, prior_head=prior_head,
+                    npc_refs=npc_refs, input_key=input_key, history_trigger_ref=history_trigger_ref,
+                    native_result=native_result,
+                )
+            except asyncio.CancelledError:
+                # The shared reader has joined before returning cancellation.
+                # No author call exists yet, so this is a technical preparation
+                # failure, not an unknown paid outcome or a character refusal.
+                self.store.finish(op, state="technical_failure",
+                                  payload={"code": "outlook_preparation_cancelled"})
+                self._health = {"status": "technical_failure", "failure_code": "outlook_preparation_cancelled"}
+                raise
+            # Preparation now yields to the foreground. Do not buy an author
+            # call when that foreground has already invalidated the pinned
+            # request. The original post-model acceptance checks remain below.
+            with self.ledger.serialized_commit_sequence():
+                current = self.ledger.project()
+                if cursor_of(current) != cursor_of(projection):
+                    self.store.finish(op, state="stale", payload={"cursor": cursor_of(projection)})
+                    self._health = {"status": "stale"}
+                    return self.health()
+                if current.semantic_hash != projection.semantic_hash:
+                    self.store.finish(op, state="technical_failure", payload={"code": "ValueError"})
+                    self._health = {"status": "technical_failure", "failure_code": "outlook_admission_failed"}
+                    return self.health()
             if len(messages[1]["content"].encode()) > 100_000:
                 self.store.finish(
                     op, state="technical_failure", payload={"code": "outlook_input_too_large"}

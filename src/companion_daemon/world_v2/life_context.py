@@ -7,12 +7,49 @@ compiler-issued capsule view that a current authority may consume.
 from __future__ import annotations
 
 from datetime import datetime
+import asyncio
+from contextvars import copy_context
+from functools import partial
+import logging
 import hashlib
 import json
 from typing import TYPE_CHECKING, Protocol
 
 if TYPE_CHECKING:
     from .context_capsule import ContextCapsule
+
+
+_LOG = logging.getLogger(__name__)
+
+
+async def read_life_source(ledger, reader, /, **kwargs):
+    """Run the same pinned read off the loop for a blocking backend.
+
+    No model call or domain acceptance moves here. Join an uncancellable
+    thread read before propagating cancellation so stores can close safely.
+    """
+    if not getattr(ledger, "blocks_event_loop", False):
+        return reader(**kwargs)
+    # A Task wrapping to_thread can be cancelled by event-loop shutdown while
+    # its real thread is still reading stores. Keep the executor Future itself
+    # shielded, preserving the same contextvars as to_thread.
+    work = asyncio.get_running_loop().run_in_executor(
+        None, copy_context().run, partial(reader, **kwargs),
+    )
+    try:
+        return await asyncio.shield(work)
+    except asyncio.CancelledError:
+        while not work.done():
+            try:
+                await asyncio.shield(work)
+            except asyncio.CancelledError:
+                continue
+            except Exception:
+                break
+        if not work.cancelled() and (error := work.exception()) is not None:
+            _LOG.warning("Life source read failed during cancellation",
+                         exc_info=(type(error), error, error.__traceback__))
+        raise
 
 
 LIFE_REVIEW_PROJECTION_CONTRACT = "life-review-selected-source-proof.1"
