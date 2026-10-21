@@ -218,23 +218,25 @@ def _located_visual_branches(propose: dict[str, object]) -> list[dict[str, objec
 
 def bind_world_consequence_author_tool(
     *, messages: list[dict[str, str]], tool_contract: dict[str, object],
+    response_carrier: str | None = None,
 ) -> list[dict[str, str]]:
     """Make a new request identity without rewriting any historical compiler."""
 
     user = json.loads(messages[1]["content"])
     if "world_author_wire" in user:
         raise ValueError("World author wire is already bound")
-    user["world_author_wire"] = _wire_identity(tool_contract)
+    user["world_author_wire"] = _wire_identity(tool_contract, response_carrier=response_carrier)
     if user["world_author_wire"]["contract"] in {"world-consequence-author-tool.4", CONTRACT, EVENT_CONTRACT, REQUIRED_EVENT_CONTRACT}:
         output = user.get("output_contract")
         if isinstance(output, dict) and isinstance(output.get("propose"), dict):
-            # Native parameters already carry every shape, enum and description.
+            # The declared result schema carries every shape, enum and description.
             # Retain the constraints omitted by the provider's strict subset;
             # canonical parsing and semantic source review still run afterward.
             user["output_contract"] = {
                 "no_op": {"decision": "no_op"},
                 "propose": {
-                    "schema_source": "complete_forced_tool_parameters",
+                    "schema_source": ("declared_response_schema" if response_carrier
+                                      else "complete_forced_tool_parameters"),
                     "tool_name": user["world_author_wire"]["tool_name"],
                     "host_constraints": _host_constraints(output["propose"]),
                 },
@@ -300,24 +302,38 @@ def recover_world_consequence_author_tool(
             if contract_id in {REQUIRED_EVENT_CONTRACT, COURSE_EVENT_CONTRACT} else None),
         event_detail_privacy_class=(required_detail.get("privacy_class")
             if contract_id == COURSE_EVENT_CONTRACT else None))
-    if user["world_author_wire"] != _wire_identity(contract):
+    if user["world_author_wire"] != _wire_identity(
+        contract, response_carrier=marker.get("response_carrier"),
+    ):
         raise ValueError("original World author tool transport identity changed")
     return contract
 
 
-def _wire_identity(tool_contract: dict[str, object]) -> dict[str, object]:
+def _wire_identity(
+    tool_contract: dict[str, object], *, response_carrier: str | None = None,
+) -> dict[str, object]:
+    if response_carrier is not None and (
+        not isinstance(response_carrier, str) or response_carrier not in {"json_object", "json_schema"}
+    ):
+        raise ValueError("unknown World author text response carrier")
     tool_name = tool_contract["tools"][0]["function"]["name"]
     contract_id = next((key for key, name in _CONTRACTS.items() if name == tool_name), None)
     if contract_id is None:
         raise ValueError("unknown World author tool transport")
     encoded = json.dumps(tool_contract, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    arguments_contract = (
+        "exact_replacement_envelope_of_native_tool_schema"
+        if contract_id in {"world-consequence-author-tool.4", CONTRACT, EVENT_CONTRACT, REQUIRED_EVENT_CONTRACT}
+        else "exact_replacement_envelope_of_output_contract"
+    )
+    if response_carrier is not None:
+        arguments_contract = "exact_replacement_envelope_of_response_schema"
     return {
         "contract": contract_id,
         "tool_name": tool_name,
         "tool_choice": tool_contract["tool_choice"],
         "tool_contract_sha256": hashlib.sha256(encoded.encode("utf-8")).hexdigest(),
-        "arguments_contract": (
-            "exact_replacement_envelope_of_native_tool_schema"
-            if contract_id in {"world-consequence-author-tool.4", CONTRACT, EVENT_CONTRACT, REQUIRED_EVENT_CONTRACT} else "exact_replacement_envelope_of_output_contract"
-        ),
+        "arguments_contract": arguments_contract,
+        # Omission retains the original paid wire and correction grammar.
+        **({"response_carrier": response_carrier} if response_carrier else {}),
     }

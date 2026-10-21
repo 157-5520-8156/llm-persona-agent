@@ -90,13 +90,15 @@ def test_schema_once_history_selector_requires_exact_separately_pinned_schema(co
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(("original_contract", "original_working_scope"), [
-    *((contract, "outlook-working-sources.3") for contract in [
+@pytest.mark.parametrize(("original_contract", "original_working_scope", "text_carrier"), [
+    *((contract, "outlook-working-sources.3", "json_object") for contract in [
         "world-outlook-native.1", "world-outlook-native.2", "world-outlook-native.3", "world-outlook-native.4",
         "world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9", "world-outlook-native.10"]),
-    ("world-outlook-native.10", "outlook-working-sources.2"),
+    ("world-outlook-native.10", "outlook-working-sources.2", "json_object"),
+    *((contract, "outlook-working-sources.3", "json_schema") for contract in [
+        "world-outlook-native.8", "world-outlook-native.9", "world-outlook-native.10"]),
 ])
-async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contract(tmp_path, monkeypatch, original_contract, original_working_scope):
+async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contract(tmp_path, monkeypatch, original_contract, original_working_scope, text_carrier):
     from companion_daemon.subscription_usage import BackgroundGLMModel, SubscriptionTokenLedger
     from companion_daemon.world_v2.world_outlook_request import decode_outlook_request
     from companion_daemon.world_v2.world_outlook_runtime import WorldOutlookRuntime, _outlook_request_hash
@@ -128,10 +130,13 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
         requests.append(body)
         packet = decode_outlook_request(body["messages"][1]["content"])
         if json_carrier:
-            assert body["response_format"] == {"type": "json_object"} and "tools" not in body
+            assert body["response_format"]["type"] == text_carrier and "tools" not in body
             assert "Do not return an ordinary text/JSON message" not in body["messages"][0]["content"]
             assert 'This request requires exactly {"decision":"revise","draft":<schema>}' in body["messages"][0]["content"]
             envelope = json.loads(body["messages"][-1]["content"])
+            if text_carrier == "json_schema":
+                assert body["response_format"]["json_schema"] == {
+                    "name": envelope["schema_name"], "strict": True, "schema": envelope["response_schema"]}
             tool = {"function": {"parameters": envelope["response_schema"]}}
         else:
             assert body["tool_choice"] == "auto" and "response_format" not in body
@@ -195,7 +200,7 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
             "usage": {"prompt_tokens": 10, "completion_tokens": 10, "total_tokens": 20}})
 
     model = BackgroundGLMModel("test", "https://fixture.invalid/v1", "GLM-5.3-Flash",
-        tool_result_carrier="json_object" if json_carrier else "native",
+        tool_result_carrier=text_carrier if json_carrier else "native",
         token_ledger=SubscriptionTokenLedger(tmp_path / "tokens.sqlite"), transport=httpx.MockTransport(provider))
     runtime.author = model
     class Crash(BaseException):
@@ -220,6 +225,13 @@ async def test_rolling_native_http_and_cold_recovery_keep_exact_paid_tool_contra
         monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime._NATIVE_RESULT", "world-outlook-native.4")
         monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime._ROLLING_PLANNING", "rolling-world-planning.4")
         reopened = SQLiteWorldOutlookStore(path=tmp_path / "outlook.sqlite", world_id=WORLD_ID, actor_ref=OWNER)
+        if json_carrier:
+            # Installing the old paid result cannot trigger a new request when
+            # the next fresh author uses the stricter JSON carrier.
+            await model.aclose()
+            model = BackgroundGLMModel("test", "https://fixture.invalid/v1", "GLM-5.3-Flash",
+                tool_result_carrier="json_schema", token_ledger=SubscriptionTokenLedger(tmp_path / "tokens.sqlite"),
+                transport=httpx.MockTransport(lambda _: pytest.fail("paid recovery must not rebill")))
         runtime = WorldOutlookRuntime(ledger=ledger, store=reopened, author=model, actor_ref=OWNER, rolling_planning=False)
         monkeypatch.setattr("companion_daemon.world_v2.world_outlook_runtime.outlook_result_tool", lambda *_: pytest.fail("paid tools must not be regenerated"))
         monkeypatch.setattr(runtime, "_prepaid_detail_refs", lambda *_: pytest.fail("paid key must not use a fresh trigger classifier"))

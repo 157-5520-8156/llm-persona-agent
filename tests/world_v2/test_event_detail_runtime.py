@@ -451,23 +451,44 @@ async def test_explicit_source_token_change_invalidates_detail_even_while_activi
         assert not ctx.details._source_live(cap, changed)
 
 
-def test_detail_native_schema_and_correction_keep_world_authority_and_original_failed_body():
-    from companion_daemon.world_v2.world_consequence_author_tool import EVENT_CONTRACT, world_consequence_author_tool_contract, bind_world_consequence_author_tool
+@pytest.mark.parametrize("contract_id", ["world-consequence-author-tool.6", "world-consequence-author-tool.7", "world-consequence-author-tool.8"])
+@pytest.mark.parametrize("carrier", [None, "json_object", "json_schema"])
+def test_detail_schema_and_correction_keep_world_authority_and_original_failed_body(contract_id, carrier):
+    from types import SimpleNamespace
+    from companion_daemon.world_v2.world_consequence_author_tool import world_consequence_author_tool_contract, bind_world_consequence_author_tool
     from companion_daemon.world_v2.life_development_output_schema import life_possibility_output_schema
     from companion_daemon.world_v2.life_development_runtime import _world_consequence_structure_correction_messages
-    schema = life_possibility_output_schema(outcome_contract="world-consequence.2",event_details=True)
+    schema = life_possibility_output_schema(outcome_contract="world-consequence.2", event_details=True)
     assert schema["properties"]["causal_authority"]["const"] == "world_contingency"
     assert schema["properties"]["outcome_resolution_authority"]["const"] == "world_contingency"
     assert schema["$defs"]["LifeDevelopmentTimingDraft"]["properties"]["mode"]["const"] == "now"
-    contract = world_consequence_author_tool_contract(provider="anthropic",contract_id=EVENT_CONTRACT)
-    messages = bind_world_consequence_author_tool(messages=[{"role":"system","content":"test"},{"role":"user","content":"{}"}],tool_contract=contract)
-    fixed = _world_consequence_structure_correction_messages(original_messages=messages,rejected_raw='{"invalid":"exact original"}',correction={"validation_failure":{"code":"test"}})
+    required = contract_id.endswith((".7", ".8"))
+    detail = {"required_program": required, "closing_offset_seconds": 600, "privacy_class": "private"}
+    provider = SimpleNamespace(single_tool_response_carrier=carrier or "native", single_tool_selection_mode=carrier or "forced")
+    contract = world_consequence_author_tool_contract(provider=provider, contract_id=contract_id,
+        closing_offset_seconds=600 if required else None,
+        event_detail_privacy_class="private" if contract_id.endswith(".8") else None)
+    messages = bind_world_consequence_author_tool(messages=[{"role": "system", "content": "test"},
+        {"role": "user", "content": json.dumps({"capability_manifest": {"event_detail_capability": detail}})}],
+        tool_contract=contract, response_carrier=carrier)
+    raw = '{"invalid":"exact original"}'
+    fixed = _world_consequence_structure_correction_messages(original_messages=messages,
+        rejected_raw=raw, correction={"validation_failure": {"code": "test"},
+                                     "instruction": "Return one complete replacement."})
     assert fixed[:-2] == messages
-    call = fixed[-2]["tool_calls"][0]
-    assert call["function"] == {"name": "author_world_consequence_v6", "arguments": '{"invalid":"exact original"}'}
-    assert fixed[-2]["content"] is None
-    assert fixed[-1]["role"] == "tool" and fixed[-1]["tool_call_id"] == call["id"]
-    assert json.loads(fixed[-1]["content"])["correction"]["validation_failure"] == {"code": "test"}
+    if carrier:
+        assert fixed[-2] == {"role": "assistant", "content": raw}
+        assert fixed[-1]["role"] == "user"
+        correction = json.loads(fixed[-1]["content"])
+        assert correction["validation_failure"] == {"code": "test"}
+        assert "rejected_draft" in correction
+        assert correction["instruction"] == "Return one complete replacement."
+    else:
+        call = fixed[-2]["tool_calls"][0]
+        assert call["function"] == {"name": contract["tools"][0]["function"]["name"], "arguments": raw}
+        assert fixed[-2]["content"] is None
+        assert fixed[-1]["role"] == "tool" and fixed[-1]["tool_call_id"] == call["id"]
+        assert json.loads(fixed[-1]["content"])["correction"]["validation_failure"] == {"code": "test"}
 
 
 @pytest.mark.asyncio

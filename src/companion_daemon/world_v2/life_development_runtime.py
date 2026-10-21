@@ -5651,11 +5651,18 @@ class LifeDevelopmentRuntime:
             content_store=self._store, binding=original_binding,
             expected_request_hash=author_deliberation.request_hashes[-1],
         )
+        origin = getattr(self._world_author, "authority_origin", self._world_author)
+        carrier = getattr(origin, "single_tool_response_carrier", None)
+        # A paid legacy draft keeps its exact request. Only this as-yet unpaid
+        # correction may declare the actual text carrier in an appended message.
+        text_transition = carrier if (
+            carrier in {"json_object", "json_schema"} and _native_rejection_wire(messages)
+        ) else None
         correction = _world_consequence_source_correction_message(
             original_messages=messages, rejected_raw=rejected_raw,
-            manifest_hash=manifest.manifest_hash, review=review,
+            manifest_hash=manifest.manifest_hash, review=review, response_carrier=text_transition,
         )
-        if _native_rejection_wire(messages):
+        if text_transition is None and _native_rejection_wire(messages):
             messages = _world_consequence_native_rejection_messages(messages, rejected_raw, correction)
         else:
             messages = [*messages, {"role": "assistant", "content": rejected_raw}, correction]
@@ -6088,8 +6095,11 @@ class LifeDevelopmentRuntime:
                                          if ordinary_course else None))
                                  if manifest.event_detail_capability is not None
                                  else world_consequence_author_tool_contract(provider=self._world_author))
+                origin = getattr(self._world_author, "authority_origin", self._world_author)
+                carrier = getattr(origin, "single_tool_response_carrier", None)
                 messages = bind_world_consequence_author_tool(
                     messages=messages, tool_contract=tool_contract,
+                    response_carrier=carrier if carrier in {"json_object", "json_schema"} else None,
                 )
         attempts: list[_LifeDevelopmentAttempt] = []
         for ordinal in range(2):
@@ -8018,7 +8028,8 @@ def _world_consequence_structure_correction_messages(
             _world_consequence_reselection_message(original_messages=original_messages, correction=correction),
         )
     include_raw = (
-        wire.get("contract") in {
+        wire.get("response_carrier") in {"json_object", "json_schema"}
+        or wire.get("contract") in {
             "world-consequence-author-tool.3", "world-consequence-author-tool.4",
             CURRENT_WORLD_AUTHOR_TOOL_CONTRACT, EVENT_WORLD_AUTHOR_TOOL_CONTRACT,
         }
@@ -8049,7 +8060,10 @@ def _required_detail_request(messages: list[dict[str, str]]) -> bool:
 
 def _native_rejection_wire(messages: list[dict[str, str]]) -> bool:
     source = json.loads(messages[1]["content"])
-    contract = (source.get("world_author_wire") or {}).get("contract")
+    wire = source.get("world_author_wire") or {}
+    if wire.get("response_carrier") in {"json_object", "json_schema"}:
+        return False
+    contract = wire.get("contract")
     return (contract in {CURRENT_WORLD_AUTHOR_TOOL_CONTRACT, EVENT_WORLD_AUTHOR_TOOL_CONTRACT}
             or _required_detail_request(messages) and contract in {
                 REQUIRED_EVENT_WORLD_AUTHOR_TOOL_CONTRACT, COURSE_EVENT_WORLD_AUTHOR_TOOL_CONTRACT,
@@ -8072,6 +8086,7 @@ def _world_consequence_native_rejection_messages(original_messages, rejected_raw
 
 def _world_consequence_reselection_message(
     *, original_messages: list[dict[str, str]], correction: dict[str, object],
+    response_carrier: str | None = None,
 ) -> dict[str, str]:
     """Keep the original readable authority in place, without another full copy."""
     fields = {
@@ -8086,7 +8101,17 @@ def _world_consequence_reselection_message(
         "request_hash": _messages_hash(original_messages[:2]),
         "fields": fields,
     }
-    if _native_rejection_wire(original_messages):
+    if response_carrier is not None:
+        if response_carrier not in {"json_object", "json_schema"}:
+            raise ValueError("unknown World author correction carrier")
+        payload["instruction"] = (
+            payload.get("instruction", "")
+            + " Return exactly one JSON object using the declared response schema. "
+            "For this correction only, this text carrier replaces the earlier native-tool "
+            "submission instruction; do not call a tool. All original evidence, schema "
+            "and authority constraints remain unchanged."
+        ).strip()
+    elif _native_rejection_wire(original_messages):
         tool_name = json.loads(original_messages[1]["content"])["world_author_wire"]["tool_name"]
         payload["instruction"] = (
             payload.get("instruction", "")
@@ -8099,13 +8124,23 @@ def _world_consequence_reselection_message(
 def _world_consequence_source_correction_message(
     *, original_messages: list[dict[str, str]], rejected_raw: str, manifest_hash: str,
     review: LifeDevelopmentSourceClosureReview | LifeDevelopmentNovelOriginReview,
+    response_carrier: str | None = None,
 ) -> dict[str, str]:
     required_detail = _required_detail_request(original_messages)
     manifest = (json.loads(original_messages[1]["content"]).get("capability_manifest") or {})
     ordinary_course = (manifest.get("event_detail_capability") or {}).get("contract") == "event-detail-capability.2"
     return _world_consequence_reselection_message(
         original_messages=original_messages,
+        response_carrier=response_carrier,
         correction={
+            **({"correction_transport": {
+                "contract": "world-author-correction-carrier.1",
+                "response_carrier": response_carrier,
+                "original_request_hash": _messages_hash(original_messages),
+                "original_tool_contract_sha256": json.loads(original_messages[1]["content"])[
+                    "world_author_wire"]["tool_contract_sha256"],
+                "rejected_raw_sha256": hashlib.sha256(rejected_raw.encode("utf-8")).hexdigest(),
+            }} if response_carrier else {}),
             "source_closure_failure": _world_author_rejection_coordinates(review),
             "rejected_draft_hash": _digest(rejected_raw),
             "capability_manifest_hash": manifest_hash,

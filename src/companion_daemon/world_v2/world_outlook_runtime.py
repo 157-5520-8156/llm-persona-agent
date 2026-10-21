@@ -1496,7 +1496,7 @@ class WorldOutlookRuntime:
                     keep_review_deadline=min(now + timedelta(days=7), prior_head[1].horizon_end).isoformat()
                         if allow_keep else None,
                     **({"json_object": True} if packet["response_tool_contract"] in {"world-outlook-native.9", "world-outlook-native.10"}
-                       and packet.get("response_carrier") == "json_object" else {}))]
+                       and packet.get("response_carrier") in {"json_object", "json_schema"} else {}))]
                 if packet["response_tool_contract"] in {"world-outlook-native.7", "world-outlook-native.8", "world-outlook-native.9", "world-outlook-native.10"}:
                     # The exact schema is already pinned in response_tools and supplied
                     # by the provider carrier. Do not duplicate it in the evidence body.
@@ -1523,7 +1523,7 @@ class WorldOutlookRuntime:
                         'Quiet life is valid; choose the situations and their development yourself. '
                         'Let long-term situations shape published arrangements and concrete opportunities, '
                         'and reconsider their branches when actual outcomes change the conditions.\n')
-                if packet.get("response_carrier") == "json_object":
+                if packet.get("response_carrier") in {"json_object", "json_schema"}:
                     instruction = ("Return exactly one JSON object matching the declared response schema. "
                         "If validation rejects it, return a corrected JSON object. Do not call a tool.")
                     if not allow_keep:
@@ -1732,7 +1732,7 @@ class WorldOutlookRuntime:
                         if reference_errors:
                             error += " Independent reference errors (do not confuse authority_hash with a state token): " + json.dumps(reference_errors, ensure_ascii=False)
                     if (pinned_request.get("response_tool_contract") in _NATIVE_RESULTS - {"world-outlook-native.1", "world-outlook-native.2"}
-                            and pinned_request.get("response_carrier") != "json_object"):
+                            and pinned_request.get("response_carrier") not in {"json_object", "json_schema"}):
                         # These are the real, identity-checked native arguments.
                         # The local call id only pairs the validation feedback;
                         # no World effect or successful submission is invented.
