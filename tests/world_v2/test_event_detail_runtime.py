@@ -95,6 +95,51 @@ def test_ordinary_course_profile_keeps_complete_steps_without_unrelated_effect_s
         EventDetailCapability.model_validate_json(json.dumps({**cap.model_dump(mode="json"), "privacy_class": "withhold"}))
 
 
+def test_new_course_cannot_author_timed_steps_conditioned_on_its_later_outcome():
+    """A class resolved at closure cannot release an outcome-gated mid-class scene."""
+    from companion_daemon.world_v2.life_development_output_schema import life_possibility_output_schema
+    from companion_daemon.world_v2.life_development_draft import LifeDevelopmentPossibilityDraft
+    from test_world_consequence_producer import _draft
+    from jsonschema import Draft202012Validator
+
+    now = datetime.fromisoformat("2026-10-20T10:00:00+08:00")
+    old = EventDetailCapability(contract="event-detail-capability.2", source_kind="world_occurrence",
+        source_event_ref="event:activate:class", source_payload_hash="a" * 64,
+        source_world_revision=1, entity_ref="occurrence:class", entity_revision=2,
+        starts_at=now, ends_at=now + timedelta(minutes=100), privacy_class="private",
+        required_program=True, closing_offset_seconds=99 * 60)
+    new = old.model_copy(update={"timed_release_contract": "course-outcome-after-window.1"})
+    assert "timed_release_contract" not in old.model_dump(mode="json")
+    value = _draft(SimpleNamespace(event_id="event:clock", world_id="world:test", logical_time=now))
+    value.update(location_ref=None, location_capability_ref=None, entity_refs=[], privacy_class="private")
+    for outcome in value["outcomes"]:
+        outcome.update(privacy_class="private", visual_evidence=None, provisional_npcs=[],
+                       provisional_places=[], objective_biographical_transition=None,
+                       dynamic_life_direction=None)
+    claim = value["claim_declarations"][0]["claim_id"]
+    value["event_details"] = [
+        {"after_seconds": 0, "text": "课程开场。", "claim_refs": [claim]},
+        {"after_seconds": 1800, "text": "讨论推进。", "claim_refs": [claim], "outcome_index": 0},
+        {"after_seconds": 5940, "text": "课程收束。", "claim_refs": [claim]},
+    ]
+    draft = LifeDevelopmentPossibilityDraft.model_validate_json(json.dumps(value))
+    validate_event_details(draft, old, logical_time=now)  # Paid v2 remains readable.
+    new_schema = life_possibility_output_schema(outcome_contract="world-consequence.2",
+        event_details=True, required_event_details=True, closing_offset_seconds=5940,
+        ordinary_course_detail=True, unconditional_course_steps=True,
+        event_detail_privacy_class="private")
+    old_schema = life_possibility_output_schema(outcome_contract="world-consequence.2",
+        event_details=True, required_event_details=True, closing_offset_seconds=5940,
+        ordinary_course_detail=True, event_detail_privacy_class="private")
+    assert Draft202012Validator(old_schema).is_valid(value)
+    assert not Draft202012Validator(new_schema).is_valid(value)
+    with pytest.raises(ValueError, match="outcome.*course.*closes"):
+        validate_event_details(draft, new, logical_time=now)
+    value["event_details"][1].pop("outcome_index")
+    validate_event_details(LifeDevelopmentPossibilityDraft.model_validate_json(json.dumps(value)), new, logical_time=now)
+    assert Draft202012Validator(new_schema).is_valid(value)
+
+
 def test_settled_course_keeps_accepted_detail_authority_until_original_window_ends():
     now = datetime.fromisoformat("2026-10-19T08:15:00+08:00")
     cap = EventDetailCapability(contract="event-detail-capability.2", source_kind="world_occurrence",
@@ -451,7 +496,7 @@ async def test_explicit_source_token_change_invalidates_detail_even_while_activi
         assert not ctx.details._source_live(cap, changed)
 
 
-@pytest.mark.parametrize("contract_id", ["world-consequence-author-tool.6", "world-consequence-author-tool.7", "world-consequence-author-tool.8"])
+@pytest.mark.parametrize("contract_id", ["world-consequence-author-tool.6", "world-consequence-author-tool.7", "world-consequence-author-tool.8", "world-consequence-author-tool.9"])
 @pytest.mark.parametrize("carrier", [None, "json_object", "json_schema"])
 def test_detail_schema_and_correction_keep_world_authority_and_original_failed_body(contract_id, carrier):
     from types import SimpleNamespace
@@ -462,12 +507,14 @@ def test_detail_schema_and_correction_keep_world_authority_and_original_failed_b
     assert schema["properties"]["causal_authority"]["const"] == "world_contingency"
     assert schema["properties"]["outcome_resolution_authority"]["const"] == "world_contingency"
     assert schema["$defs"]["LifeDevelopmentTimingDraft"]["properties"]["mode"]["const"] == "now"
-    required = contract_id.endswith((".7", ".8"))
+    required = contract_id.endswith((".7", ".8", ".9"))
     detail = {"required_program": required, "closing_offset_seconds": 600, "privacy_class": "private"}
+    if contract_id.endswith(".9"):
+        detail["timed_release_contract"] = "course-outcome-after-window.1"
     provider = SimpleNamespace(single_tool_response_carrier=carrier or "native", single_tool_selection_mode=carrier or "forced")
     contract = world_consequence_author_tool_contract(provider=provider, contract_id=contract_id,
         closing_offset_seconds=600 if required else None,
-        event_detail_privacy_class="private" if contract_id.endswith(".8") else None)
+        event_detail_privacy_class="private" if contract_id.endswith((".8", ".9")) else None)
     messages = bind_world_consequence_author_tool(messages=[{"role": "system", "content": "test"},
         {"role": "user", "content": json.dumps({"capability_manifest": {"event_detail_capability": detail}})}],
         tool_contract=contract, response_carrier=carrier)

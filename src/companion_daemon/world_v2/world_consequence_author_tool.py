@@ -27,6 +27,8 @@ TOOL_NAME = "author_world_consequence_v5"
 EVENT_CONTRACT = "world-consequence-author-tool.6"
 REQUIRED_EVENT_CONTRACT = "world-consequence-author-tool.7"
 COURSE_EVENT_CONTRACT = "world-consequence-author-tool.8"
+RELEASABLE_COURSE_EVENT_CONTRACT = "world-consequence-author-tool.9"
+_COURSE_EVENT_CONTRACTS = frozenset({COURSE_EVENT_CONTRACT, RELEASABLE_COURSE_EVENT_CONTRACT})
 _CONTRACTS = {
     "world-consequence-author-tool.1": "author_world_consequence_v1",
     "world-consequence-author-tool.2": "author_world_consequence_v2",
@@ -36,6 +38,7 @@ _CONTRACTS = {
     EVENT_CONTRACT: "author_world_consequence_v6",
     REQUIRED_EVENT_CONTRACT: "author_world_consequence_v7",
     COURSE_EVENT_CONTRACT: "author_world_consequence_v8",
+    RELEASABLE_COURSE_EVENT_CONTRACT: "author_world_consequence_v9",
 }
 
 
@@ -57,12 +60,12 @@ def world_consequence_author_tool_contract(
 ) -> dict[str, object]:
     if not isinstance(contract_id, str) or contract_id not in _CONTRACTS:
         raise ValueError("unknown World author tool contract")
-    if contract_id in {REQUIRED_EVENT_CONTRACT, COURSE_EVENT_CONTRACT}:
+    if contract_id in {REQUIRED_EVENT_CONTRACT, *_COURSE_EVENT_CONTRACTS}:
         if type(closing_offset_seconds) is not int or not 60 <= closing_offset_seconds <= 86340:
             raise ValueError("required event detail tool needs its final release offset")
     elif closing_offset_seconds is not None:
         raise ValueError("only the required event detail tool takes a final release offset")
-    if contract_id == COURSE_EVENT_CONTRACT:
+    if contract_id in _COURSE_EVENT_CONTRACTS:
         if event_detail_privacy_class not in {"public", "shareable", "personal", "private"}:
             raise ValueError("ordinary course tool needs exact role-visible source privacy")
     elif event_detail_privacy_class is not None:
@@ -84,12 +87,13 @@ def world_consequence_author_tool_contract(
 def _static_author_tools(contract_id: str, closing_offset_seconds: int | None = None,
                          event_detail_privacy_class: str | None = None) -> list[dict[str, object]]:
     tool_name = _CONTRACTS[contract_id]
-    event_detail_tool = contract_id in {EVENT_CONTRACT, REQUIRED_EVENT_CONTRACT, COURSE_EVENT_CONTRACT}
+    event_detail_tool = contract_id in {EVENT_CONTRACT, REQUIRED_EVENT_CONTRACT, *_COURSE_EVENT_CONTRACTS}
     propose = life_possibility_output_schema(outcome_contract="world-consequence.2",
-        authorized_attempt_claims=contract_id in {CONTRACT, EVENT_CONTRACT, REQUIRED_EVENT_CONTRACT, COURSE_EVENT_CONTRACT},
-        event_details=event_detail_tool, required_event_details=contract_id in {REQUIRED_EVENT_CONTRACT, COURSE_EVENT_CONTRACT},
+        authorized_attempt_claims=contract_id in {CONTRACT, EVENT_CONTRACT, REQUIRED_EVENT_CONTRACT, *_COURSE_EVENT_CONTRACTS},
+        event_details=event_detail_tool, required_event_details=contract_id in {REQUIRED_EVENT_CONTRACT, *_COURSE_EVENT_CONTRACTS},
         closing_offset_seconds=closing_offset_seconds,
-        ordinary_course_detail=contract_id == COURSE_EVENT_CONTRACT,
+        ordinary_course_detail=contract_id in _COURSE_EVENT_CONTRACTS,
+        unconditional_course_steps=contract_id == RELEASABLE_COURSE_EVENT_CONTRACT,
         event_detail_privacy_class=event_detail_privacy_class)
     if contract_id in {"world-consequence-author-tool.3", "world-consequence-author-tool.4", CONTRACT, EVENT_CONTRACT, REQUIRED_EVENT_CONTRACT}:
         _bind_nonempty_visual_environment(propose)
@@ -104,7 +108,7 @@ def _static_author_tools(contract_id: str, closing_offset_seconds: int | None = 
     binding.pop("discriminator")
     propose = _inline_refs(propose, propose["$defs"])
     proposals = (
-        [propose] if contract_id in {"world-consequence-author-tool.1", COURSE_EVENT_CONTRACT}
+        [propose] if contract_id in {"world-consequence-author-tool.1", *_COURSE_EVENT_CONTRACTS}
         else _located_visual_branches(propose)
     )
     schema = {
@@ -112,7 +116,7 @@ def _static_author_tools(contract_id: str, closing_offset_seconds: int | None = 
         "properties": {
             "replacement": {
                 "anyOf": [
-                    *([] if contract_id in {REQUIRED_EVENT_CONTRACT, COURSE_EVENT_CONTRACT} else [LifeDevelopmentNoOpDraft.model_json_schema(mode="validation")]),
+                    *([] if contract_id in {REQUIRED_EVENT_CONTRACT, *_COURSE_EVENT_CONTRACTS} else [LifeDevelopmentNoOpDraft.model_json_schema(mode="validation")]),
                     *proposals,
                 ]
             }
@@ -131,7 +135,7 @@ def _static_author_tools(contract_id: str, closing_offset_seconds: int | None = 
             "name": tool_name,
             "description": (f"Return two external course outcomes and complete timed steps at privacy "
                             f"{event_detail_privacy_class}: opening at 0 seconds, closing at {closing_offset_seconds} seconds."
-                            if contract_id == COURSE_EVENT_CONTRACT else
+                            if contract_id in _COURSE_EVENT_CONTRACTS else
                             f"Return a complete reviewed event detail proposal: opening at 0 seconds, "
                             f"closing at {closing_offset_seconds} seconds."
                             if contract_id == REQUIRED_EVENT_CONTRACT
@@ -297,11 +301,14 @@ def recover_world_consequence_author_tool(
     if not isinstance(contract_id, str) or contract_id not in _CONTRACTS:
         raise ValueError("original World author tool transport identity changed")
     required_detail = (user.get("capability_manifest") or {}).get("event_detail_capability") or {}
+    if (contract_id == RELEASABLE_COURSE_EVENT_CONTRACT
+            and required_detail.get("timed_release_contract") != "course-outcome-after-window.1"):
+        raise ValueError("original World author course release contract changed")
     contract = world_consequence_author_tool_contract(provider=provider, contract_id=contract_id,
         closing_offset_seconds=(required_detail.get("closing_offset_seconds")
-            if contract_id in {REQUIRED_EVENT_CONTRACT, COURSE_EVENT_CONTRACT} else None),
+            if contract_id in {REQUIRED_EVENT_CONTRACT, *_COURSE_EVENT_CONTRACTS} else None),
         event_detail_privacy_class=(required_detail.get("privacy_class")
-            if contract_id == COURSE_EVENT_CONTRACT else None))
+            if contract_id in _COURSE_EVENT_CONTRACTS else None))
     if user["world_author_wire"] != _wire_identity(
         contract, response_carrier=marker.get("response_carrier"),
     ):

@@ -461,6 +461,37 @@ def test_invalid_pinned_contract_id_is_an_explicit_identity_failure(contract_id)
         recover_world_consequence_author_tool(messages=messages, provider=provider)
 
 
+def test_new_course_tool_binds_releasable_steps_without_upgrading_old_wire():
+    from companion_daemon.world_v2.world_consequence_author_tool import (
+        COURSE_EVENT_CONTRACT, RELEASABLE_COURSE_EVENT_CONTRACT,
+    )
+
+    provider = SimpleNamespace(supports_strict_tool_choice=True, single_tool_selection_mode="forced")
+    old = world_consequence_author_tool_contract(provider=provider,
+        contract_id=COURSE_EVENT_CONTRACT, closing_offset_seconds=5940,
+        event_detail_privacy_class="private")
+    new = world_consequence_author_tool_contract(provider=provider,
+        contract_id=RELEASABLE_COURSE_EVENT_CONTRACT, closing_offset_seconds=5940,
+        event_detail_privacy_class="private")
+    assert old["tools"][0]["function"]["name"] == "author_world_consequence_v8"
+    assert new["tools"][0]["function"]["name"] == "author_world_consequence_v9"
+    assert old["tools"][0]["function"]["parameters"] != new["tools"][0]["function"]["parameters"]
+    Draft202012Validator.check_schema(new["tools"][0]["function"]["parameters"])
+    original = [{"role": "system", "content": "unchanged"}, {"role": "user", "content": _json({
+        "capability_manifest": {"event_detail_capability": {
+            "contract": "event-detail-capability.2", "closing_offset_seconds": 5940,
+            "privacy_class": "private", "timed_release_contract": "course-outcome-after-window.1"}},
+    })}]
+    bound = bind_world_consequence_author_tool(messages=original, tool_contract=new)
+    assert recover_world_consequence_author_tool(messages=bound, provider=provider) == new
+    changed = copy.deepcopy(bound)
+    body = json.loads(changed[1]["content"])
+    body["capability_manifest"]["event_detail_capability"].pop("timed_release_contract")
+    changed[1]["content"] = _json(body)
+    with pytest.raises(ValueError, match="release contract changed"):
+        recover_world_consequence_author_tool(messages=changed, provider=provider)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("strict_original", [False, True, "legacy", "glm-json", "glm-schema"])
 @pytest.mark.parametrize("rewrite_decision", ["no_op", "propose"])

@@ -59,6 +59,10 @@ class EventDetailCapability(FrozenModel):
     required_program: bool = Field(default=False, exclude_if=lambda value: not value)
     closing_offset_seconds: int | None = Field(default=None, ge=60, le=86340,
                                                 exclude_if=lambda value: value is None)
+    # Absent on paid and accepted historical programmes. A new ordinary course
+    # selects its World outcome only at closure, after every timed step is due.
+    timed_release_contract: Literal["course-outcome-after-window.1"] | None = Field(
+        default=None, exclude_if=lambda value: value is None)
 
     @model_validator(mode="after")
     def bounded_window(self):
@@ -75,6 +79,8 @@ class EventDetailCapability(FrozenModel):
             or self.privacy_class == "withhold"
         ):
             raise ValueError("ordinary course detail needs a role-visible active world event")
+        if self.timed_release_contract is not None and self.contract != "event-detail-capability.2":
+            raise ValueError("course timed release belongs to an ordinary course")
         return self
 
 
@@ -231,6 +237,9 @@ def validate_event_details(draft, capability, *, logical_time):
     if capability.required_program and (len(steps) < 2 or offsets[0] != 0
                                         or offsets[-1] != capability.closing_offset_seconds):
         raise ValueError("required event detail must include opening and final-minute scenes")
+    if (capability.timed_release_contract == "course-outcome-after-window.1"
+            and any(step.outcome_index is not None for step in steps)):
+        raise ValueError("course outcome resolves when the course closes; timed details cannot depend on it")
     if offsets[-1] + 60 > (capability.ends_at - capability.starts_at).total_seconds():
         raise ValueError("each detail must leave its publication window inside the event")
     claims = {c.claim_id: c for c in draft.claim_declarations}

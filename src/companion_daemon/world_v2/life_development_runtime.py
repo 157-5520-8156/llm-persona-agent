@@ -53,6 +53,7 @@ from .world_consequence_author_tool import (
     EVENT_CONTRACT as EVENT_WORLD_AUTHOR_TOOL_CONTRACT,
     REQUIRED_EVENT_CONTRACT as REQUIRED_EVENT_WORLD_AUTHOR_TOOL_CONTRACT,
     COURSE_EVENT_CONTRACT as COURSE_EVENT_WORLD_AUTHOR_TOOL_CONTRACT,
+    RELEASABLE_COURSE_EVENT_CONTRACT as RELEASABLE_COURSE_WORLD_AUTHOR_TOOL_CONTRACT,
     bind_world_consequence_author_tool,
     recover_world_consequence_author_tool,
     world_consequence_author_tool_contract,
@@ -3273,6 +3274,7 @@ class LifeDevelopmentRuntime:
                     entity_ref=occurrence.occurrence_id, entity_revision=occurrence.entity_revision,
                     starts_at=occurrence.activated_at, ends_at=occurrence.time_window.closes_at, privacy_class=occurrence.visibility,
                     source_tokens=tuple(source_tokens), required_program=required_course_detail,
+                    **({"timed_release_contract": "course-outcome-after-window.1"} if required_course_detail else {}),
                     **({"closing_offset_seconds": int((occurrence.time_window.closes_at - occurrence.activated_at).total_seconds()) - 60}
                        if required_course_detail else {}))
                 if not self._world_outlook.event_details._source_live(capability, projection):
@@ -6061,10 +6063,13 @@ class LifeDevelopmentRuntime:
                 from .world_consequence_author_tool import EVENT_CONTRACT
                 from .world_consequence_author_tool import REQUIRED_EVENT_CONTRACT
                 from .world_consequence_author_tool import COURSE_EVENT_CONTRACT
+                from .world_consequence_author_tool import RELEASABLE_COURSE_EVENT_CONTRACT
                 required_detail = manifest.event_detail_capability is not None and manifest.event_detail_capability.required_program
                 ordinary_course = required_detail and manifest.event_detail_capability.contract == "event-detail-capability.2"
+                releasable_course = ordinary_course and manifest.event_detail_capability.timed_release_contract == "course-outcome-after-window.1"
                 tool_contract = (world_consequence_author_tool_contract(provider=self._world_author,
-                                     contract_id=COURSE_EVENT_CONTRACT if ordinary_course else
+                                     contract_id=RELEASABLE_COURSE_EVENT_CONTRACT if releasable_course else
+                                                 COURSE_EVENT_CONTRACT if ordinary_course else
                                                  REQUIRED_EVENT_CONTRACT if required_detail else EVENT_CONTRACT,
                                      closing_offset_seconds=manifest.event_detail_capability.closing_offset_seconds if required_detail else None,
                                      event_detail_privacy_class=(manifest.event_detail_capability.privacy_class
@@ -6230,6 +6235,8 @@ class LifeDevelopmentRuntime:
                                                 if manifest.event_detail_capability else None),
                                             ordinary_course_detail=bool(manifest.event_detail_capability and
                                                 manifest.event_detail_capability.contract == "event-detail-capability.2"),
+                                            unconditional_course_steps=bool(manifest.event_detail_capability and
+                                                manifest.event_detail_capability.timed_release_contract == "course-outcome-after-window.1"),
                                             event_detail_privacy_class=(manifest.event_detail_capability.privacy_class
                                                 if manifest.event_detail_capability and
                                                 manifest.event_detail_capability.contract == "event-detail-capability.2"
@@ -6714,10 +6721,19 @@ class LifeDevelopmentRuntime:
                             "user_authority": "context_only",
                         },
                         "output_contract": {
-                            "no_op": {"decision": "no_op"},
+                            **({} if manifest.event_detail_capability is not None
+                               and manifest.event_detail_capability.timed_release_contract == "course-outcome-after-window.1"
+                               else {"no_op": {"decision": "no_op"}}),
                             "propose": life_possibility_output_schema(
                                 outcome_contract=manifest.outcome_contract,
                                 event_details=manifest.event_detail_capability is not None,
+                                **({"required_event_details": True,
+                                    "closing_offset_seconds": manifest.event_detail_capability.closing_offset_seconds,
+                                    "ordinary_course_detail": True,
+                                    "unconditional_course_steps": True,
+                                    "event_detail_privacy_class": manifest.event_detail_capability.privacy_class}
+                                   if manifest.event_detail_capability is not None
+                                   and manifest.event_detail_capability.timed_release_contract == "course-outcome-after-window.1" else {}),
                             ),
                         },
                         # Pydantic's generated JSON Schema cannot express the
@@ -7462,7 +7478,10 @@ def _world_author_source_rewrite_output_contract() -> dict[str, object]:
 
 def _world_author_source_rewrite_propose_repair_output_contract(*, event_detail_capability=None) -> dict[str, object]:
     return {
-        "contract": ("world-author-source-rewrite.4"
+        "contract": ("world-author-source-rewrite.5"
+                     if event_detail_capability is not None
+                     and event_detail_capability.timed_release_contract == "course-outcome-after-window.1"
+                     else "world-author-source-rewrite.4"
                      if event_detail_capability is not None
                      and event_detail_capability.contract == "event-detail-capability.2"
                      else "world-author-source-rewrite.3" if event_detail_capability is not None
@@ -7474,6 +7493,7 @@ def _world_author_source_rewrite_propose_repair_output_contract(*, event_detail_
             event_details=True, required_event_details=True,
             closing_offset_seconds=event_detail_capability.closing_offset_seconds,
             ordinary_course_detail=event_detail_capability.contract == "event-detail-capability.2",
+            unconditional_course_steps=event_detail_capability.timed_release_contract == "course-outcome-after-window.1",
             event_detail_privacy_class=(event_detail_capability.privacy_class
                 if event_detail_capability.contract == "event-detail-capability.2" else None))
             if event_detail_capability is not None else life_possibility_output_schema()),
@@ -7841,6 +7861,8 @@ def _world_author_hard_boundary_contract(
             "output_scope": "two_external_outcomes_and_complete_timed_environment_only",
             "typed_location_people_places_visual_biography_direction": "absent",
             "character_attendance_and_response": "not_authored_by_world",
+            **({"timed_release": "each detail step is independent of the course outcome, which settles only after the course closes; keep both objective outcome branches for aftermath"}
+               if manifest.event_detail_capability.timed_release_contract == "course-outcome-after-window.1" else {}),
         }
     return boundary
 
@@ -8043,6 +8065,7 @@ def _native_rejection_wire(messages: list[dict[str, str]]) -> bool:
     return (contract in {CURRENT_WORLD_AUTHOR_TOOL_CONTRACT, EVENT_WORLD_AUTHOR_TOOL_CONTRACT}
             or _required_detail_request(messages) and contract in {
                 REQUIRED_EVENT_WORLD_AUTHOR_TOOL_CONTRACT, COURSE_EVENT_WORLD_AUTHOR_TOOL_CONTRACT,
+                RELEASABLE_COURSE_WORLD_AUTHOR_TOOL_CONTRACT,
             })
 
 

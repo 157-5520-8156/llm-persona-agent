@@ -22,6 +22,7 @@ def life_possibility_output_schema(*, outcome_contract: str | None = None,
                                   required_event_details: bool = False,
                                   closing_offset_seconds: int | None = None,
                                   ordinary_course_detail: bool = False,
+                                  unconditional_course_steps: bool = False,
                                   event_detail_privacy_class: str | None = None) -> dict[str, object]:
     schema = LifeDevelopmentPossibilityDraft.model_json_schema(mode="validation")
     definitions = schema["$defs"]
@@ -92,4 +93,11 @@ def life_possibility_output_schema(*, outcome_contract: str | None = None,
                                        "items": outcome_properties[key]["items"]}
         for key in ("objective_biographical_transition", "dynamic_life_direction", "visual_evidence"):
             outcome_properties[key] = {"type": "null"}
+        if unconditional_course_steps:
+            # The World outcome is not selected until the course ends. Future
+            # branches remain in the outcomes, while every timed step can
+            # actually be released during the class.
+            definitions["EventDetailStep"]["properties"]["outcome_index"] = {"type": "null"}
+    elif unconditional_course_steps:
+        raise ValueError("unconditional course steps require the ordinary course schema")
     return schema
