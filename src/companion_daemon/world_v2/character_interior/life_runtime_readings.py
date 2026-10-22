@@ -73,7 +73,7 @@ def _pinned_context_readings(*, view, snapshot):
 
     snapshot.life_source_origin.verify_snapshot(snapshot)
     capsule = snapshot.life_source_origin.capsule()
-    rendered = view.author_payload()['inner_life_snapshot']
+    rendered = view.host_inner_life(snapshot)
     readings = []
 
     def add(family, item_ref, pointer, value, permissions, scope, identity, owner=None):

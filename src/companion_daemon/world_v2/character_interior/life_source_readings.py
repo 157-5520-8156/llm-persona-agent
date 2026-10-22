@@ -227,7 +227,7 @@ class PreparedLifeSourceReadings:
 def prepare_life_source_readings(*, view: LifeSourceView, snapshot) -> PreparedLifeSourceReadings:
     view = view.verify_snapshot(snapshot)
     table = json.loads(view.source_table_json)
-    rendered = view.author_payload()['inner_life_snapshot']
+    rendered = view.host_inner_life(snapshot)
     visible = {(item['source_ref'], item['scope']) for item in rendered.get('source_inventory', ())}
     readings, excluded, identities = [], [], {}
     exact_value_display = view.profile_contract in EXACT_VALUE_REVIEW_CONTRACTS

@@ -109,7 +109,7 @@ class LifeSourceView(FrozenModel):
             include_lifecycle_states=checked.profile_contract in STATE_REVIEW_CONTRACTS)
         if checked.source_table_json != table.payload_json:
             raise ValueError("Life source catalogue differs from its original Capsule selection")
-        if checked.unmatched_visible_source_refs != _unmatched(payload, table.as_dict()):
+        if checked.unmatched_visible_source_refs != _unmatched(payload, table.as_dict(), snapshot, checked.profile_contract):
             raise ValueError("Life source view omitted unmatched visible sources")
         return checked
 
@@ -132,6 +132,10 @@ class LifeSourceView(FrozenModel):
         """Read the original displayed values using its pinned local bindings."""
         return _payload(json.loads(self.messages_json), json.loads(self.provider_controls_json))
 
+    def host_inner_life(self, snapshot) -> dict:
+        """The full inner-life view host readings parse (see host_inner_life_view)."""
+        return host_inner_life_view(self.author_payload(), snapshot, self.profile_contract)
+
 
 def _payload(messages, controls=None):
     if (not isinstance(messages, list) or len(messages) != 2
@@ -146,10 +150,28 @@ def _payload(messages, controls=None):
     return value
 
 
-def _unmatched(payload, table):
+def _unmatched(payload, table, snapshot=None, profile_contract=None):
     # Exact reference overlap is diagnostic only, not evidence eligibility.
     represented = {row['source_ref'] for row in table['source_references']}
-    return tuple(sorted(set(payload['inner_life_snapshot'].get('source_refs', ())) - represented))
+    view = host_inner_life_view(payload, snapshot, profile_contract)
+    return tuple(sorted(set(view.get('source_refs', ())) - represented))
+
+
+def host_inner_life_view(payload, snapshot, profile_contract):
+    """The full presentation host readers parse.
+
+    A lean (mind renderer) author view shows the model content plus short
+    citation ids only; verify_snapshot proves it is the lean rendering of
+    exactly this full view, so host readings read the full one.  A view sent
+    without the lean marker is returned unchanged.
+    """
+    from ..present_prompt import LEAN_PRESENTATION_MARKER
+
+    if payload.get("presentation") != LEAN_PRESENTATION_MARKER:
+        return payload["inner_life_snapshot"]
+    if snapshot is None:
+        raise ValueError("A lean Life source view needs its snapshot for host readings")
+    return _expected_view(snapshot, profile_contract)
 
 
 def prepare_life_source_view(*, request, messages, provider_controls: dict, provider_request_hash: str, review_contract=None, presentation_contract='life-source-review.25') -> LifeSourceView:
@@ -173,6 +195,8 @@ def prepare_life_source_view(*, request, messages, provider_controls: dict, prov
         provider_request_hash=provider_request_hash,
         messages_json=canonical(messages), provider_controls_json=canonical(provider_controls),
         source_table_json=table.payload_json,
-        unmatched_visible_source_refs=_unmatched(_payload(messages, provider_controls), table.as_dict()),
+        unmatched_visible_source_refs=_unmatched(
+            _payload(messages, provider_controls), table.as_dict(), request.snapshot,
+            presentation_contract or review_contract),
     )
     return prepared.verify_request(request)

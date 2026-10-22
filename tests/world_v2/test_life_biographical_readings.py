@@ -17,7 +17,8 @@ async def biography(tmp_path, monkeypatch):
     payload, _, provider = await _prepared(tmp_path, monkeypatch, ecology=True)
     result, snapshot, _, _ = _restore_prepared_turn(canonical(payload), purpose='world_stimulus_appraisal')
     view = result.life_source_view
-    rendered = json.loads(provider.stimulus_requests[-1]['messages'][1]['content'])['inner_life_snapshot']
+    # Host readings parse the full view the lean author view was rendered from.
+    rendered = view.host_inner_life(snapshot)
     table = json.loads(view.source_table_json)
     rows = [{**row, 'review_material': table['source_materials'][row['material_index']]['material']}
             for row in table['source_references'] if row['kind'] == 'biographical_coordinate']

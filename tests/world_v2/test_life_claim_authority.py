@@ -36,6 +36,8 @@ def new_fixture_view(view, snapshot, contract=CONTRACT):
     messages = json.loads(view.messages_json)
     body = json.loads(messages[1]["content"])
     body["inner_life_snapshot"] = _expected_view(snapshot, contract)
+    # A fixture recompiles the full author view, not the lean mind rendering.
+    body.pop("presentation", None)
     body["background_context_profile"] = profile_audit_record(life_source_profile(contract))
     messages[1]["content"] = canonical(body)
     controls = json.loads(view.provider_controls_json)
