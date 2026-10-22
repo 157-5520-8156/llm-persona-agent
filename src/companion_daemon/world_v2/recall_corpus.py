@@ -9,7 +9,7 @@ interpretation and can never become factual authority through retrieval.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import hashlib
 import json
 from collections.abc import Iterable
@@ -142,6 +142,19 @@ def select_recall_authority_bindings(
     return _canonical_bindings(tuple(binding for binding in candidates if binding.ref in required))
 
 
+# Conversation episodes (2026-10-22): one sitting, in order, bounded.
+_EPISODE_REF_PREFIX = "dialogue-episode:"
+_EPISODE_SESSION_GAP = timedelta(minutes=45)
+_EPISODE_MAX_LINES = 8
+_EPISODE_MAX_BINDINGS = 16
+_EPISODE_LINE_CHARACTERS = 160
+_EPISODE_PRIVACY_RANK = {"public": 0, "shareable": 1, "personal": 2, "private": 3, "withhold": 4}
+
+
+def is_conversation_episode(document) -> bool:
+    return str(getattr(document, "source_item_ref", "")).startswith(_EPISODE_REF_PREFIX)
+
+
 def _document_id(*parts: str) -> str:
     encoded = json.dumps(parts, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return f"recall:{hashlib.sha256(encoded.encode()).hexdigest()}"
@@ -178,7 +191,7 @@ def _subjects(*values: str) -> tuple[str, ...]:
 class RecallCorpusCompiler:
     """Deep compiler for a source-closed hybrid recall corpus."""
 
-    VERSION = "world-v2-recall-corpus.12"
+    VERSION = "world-v2-recall-corpus.14"
 
     def __init__(self, *, prehistory_parent_context: bool = False) -> None:
         if type(prehistory_parent_context) is not bool:
@@ -186,7 +199,7 @@ class RecallCorpusCompiler:
         self._prehistory_parent_context = prehistory_parent_context
         self._materials = RecallMaterialPool()
         if prehistory_parent_context:
-            self.VERSION = "world-v2-recall-corpus.13-parent-context"
+            self.VERSION = "world-v2-recall-corpus.14-parent-context"
 
     def compile(
         self,
@@ -200,6 +213,7 @@ class RecallCorpusCompiler:
             raise ValueError("recall corpus subjects must be canonical and include its actor")
         authority = {item.ref: item for item in _canonical_bindings(sources.authority_bindings)}
         documents: list[RecallDocument] = []
+        episode_lines: list[tuple[RecentDialogueItem, str, tuple[RecallSourceBinding, ...]]] = []
 
         for item in sources.recent_dialogue:
             if item.speaker == "companion":
@@ -263,6 +277,11 @@ class RecallCorpusCompiler:
                     speaker_ref=speaker_ref,
                 )
             )
+            episode_lines.append((item, speaker_ref, bindings))
+
+        documents.extend(
+            self._conversation_episode_documents(episode_lines, actor_ref=actor_ref)
+        )
 
         facts_by_id = {item.fact_id: item for item in sources.relevant_facts}
         fact_memory_links: dict[str, set[str]] = {}
@@ -947,6 +966,85 @@ class RecallCorpusCompiler:
         ):
             raise ValueError("recall source has the wrong authority type")
         return binding
+
+    def _conversation_episode_documents(
+        self,
+        lines: list[tuple[RecentDialogueItem, str, tuple[RecallSourceBinding, ...]]],
+        *,
+        actor_ref: str,
+    ) -> list[RecallDocument]:
+        """Keep a conversation together as one remembered exchange.
+
+        Single utterances stay indexed for deliberate search, but a person
+        remembers "that evening he told me his friends stood him up on Qixi and
+        I said ..." as one episode, not "哈哈哈" on its own.  Lines from one
+        sitting (gaps under 45 minutes) are grouped in order into windows of up
+        to eight lines and sixteen source bindings.  The text is the exact
+        exchange; nothing is summarised, interpreted or invented.
+        """
+
+        ordered = sorted(lines, key=lambda row: (row[0].occurred_at, row[0].sequence, row[0].dialogue_id))
+        windows: list[list[tuple[RecentDialogueItem, str, tuple[RecallSourceBinding, ...]]]] = []
+        current: list[tuple[RecentDialogueItem, str, tuple[RecallSourceBinding, ...]]] = []
+        bound: set[tuple[str, str]] = set()
+        for row in ordered:
+            item, _speaker_ref, row_bindings = row
+            identities = {(binding.source_kind, binding.ref) for binding in row_bindings}
+            gap = (
+                item.occurred_at - current[-1][0].occurred_at
+                if current else _EPISODE_SESSION_GAP
+            )
+            if current and (
+                gap >= _EPISODE_SESSION_GAP
+                or len(current) >= _EPISODE_MAX_LINES
+                or len(bound | identities) > _EPISODE_MAX_BINDINGS
+            ):
+                windows.append(current)
+                current, bound = [], set()
+            current.append(row)
+            bound |= identities
+        if current:
+            windows.append(current)
+
+        documents: list[RecallDocument] = []
+        for window in windows:
+            if len(window) < 2 or not any(item.speaker == "counterpart" for item, _r, _b in window):
+                # Her own consecutive bubbles stay single-line records.
+                continue
+            rendered = []
+            for item, _speaker_ref, _bindings in window:
+                text = " ".join(item.text.split())
+                if len(text) > _EPISODE_LINE_CHARACTERS:
+                    text = text[: _EPISODE_LINE_CHARACTERS - 1] + "…"
+                rendered.append(("我：" if item.speaker == "companion" else "他：") + text)
+            body = "一段聊天：\n" + "\n".join(rendered)
+            first, last = window[0][0], window[-1][0]
+            privacy = max(
+                (item.privacy_class for item, _ref, _b in window),
+                key=lambda value: _EPISODE_PRIVACY_RANK.get(value, 3),
+            )
+            documents.append(
+                self._document(
+                    memory_kind="episodic",
+                    source_item_ref=_EPISODE_REF_PREFIX + first.dialogue_id[:200],
+                    source_slice="recent_dialogue",
+                    bindings=tuple(binding for _i, _r, row_bindings in window for binding in row_bindings),
+                    text=body[:4_096],
+                    actor_ref=actor_ref,
+                    subject_refs=_subjects(*(speaker_ref for _i, speaker_ref, _b in window)),
+                    link_refs=tuple(dict.fromkeys(
+                        claim.authority_event_ref
+                        for item, _r, _b in window
+                        for claim in item.source_claims
+                    ))[:32],
+                    occurred_from=first.occurred_at,
+                    occurred_to=last.occurred_at,
+                    privacy_class=privacy,
+                    authority="dialogue_record",
+                    epistemic_scope="counterpart_report_only",
+                )
+            )
+        return documents
 
     def _document(
         self, *,

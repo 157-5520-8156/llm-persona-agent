@@ -123,7 +123,12 @@ def test_unbidden_attention_skips_setting_prose_and_contentless_fragments() -> N
     )
     assert not _automatic_attention_eligible(_doc("哈哈哈哈哈", slice_name="recent_dialogue"))
     assert not _automatic_attention_eligible(_doc("在干嘛？", slice_name="recent_dialogue"))
-    assert _automatic_attention_eligible(_doc("今天七夕，本来约好打游戏结果被放鸽子了", slice_name="recent_dialogue"))
+    # A contentful single line stays searchable on purpose, but unbidden
+    # attention offers the whole remembered exchange instead.
+    assert not _automatic_attention_eligible(_doc("今天七夕，本来约好打游戏结果被放鸽子了", slice_name="recent_dialogue"))
+    episode = _doc("一段聊天：\n他：今天七夕……\n我：……", slice_name="recent_dialogue")
+    episode.source_item_ref = "dialogue-episode:dialogue:1"
+    assert _automatic_attention_eligible(episode)
     assert _automatic_attention_eligible(_doc("页边周明远的字迹又出现了，我想顺着这条线再走一步。"))
 
 

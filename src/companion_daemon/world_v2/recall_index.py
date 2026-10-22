@@ -274,14 +274,22 @@ class RecallDocument(FrozenModel):
                 "companion_expression_record",
             }:
                 raise ValueError("dialogue recall must retain its epistemic scope")
-            if self.speaker_ref is None:
+            if self.speaker_ref is None and self.source_item_ref.startswith("dialogue-episode:"):
+                # A remembered exchange has two speakers, each labelled inside
+                # its exact text ("他："/"我："); both must stay in scope, and
+                # his part stays a report only.
+                if self.actor_ref not in self.subject_refs or len(self.subject_refs) < 2:
+                    raise ValueError("conversation episode must keep both speakers in scope")
+                if self.epistemic_scope != "counterpart_report_only":
+                    raise ValueError("conversation episode keeps counterpart statements report-only")
+            elif self.speaker_ref is None:
                 raise ValueError("dialogue recall must retain its speaker")
-            if self.speaker_ref not in self.subject_refs:
+            elif self.speaker_ref not in self.subject_refs:
                 raise ValueError("dialogue recall speaker must remain in subject scope")
-            if (
+            if self.speaker_ref is not None and (
                 self.epistemic_scope == "counterpart_report_only"
                 and self.speaker_ref == self.actor_ref
-            ) or (
+            ) or self.speaker_ref is not None and (
                 self.epistemic_scope == "companion_expression_record"
                 and self.speaker_ref != self.actor_ref
             ):

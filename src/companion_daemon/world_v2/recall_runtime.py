@@ -54,6 +54,9 @@ logger = logging.getLogger(__name__)
 # Recall; only the unbidden prefetch skips them.  Nothing is reranked or
 # rewritten: eligible hits keep their order and scores.
 _AUTOMATIC_ATTENTION_MIN_DIALOGUE_CHARACTERS = 6
+# Corpus .13 indexes whole conversation episodes, so unbidden attention offers
+# those instead of isolated lines.
+_UNBIDDEN_EPISODES_ONLY = True
 
 
 def _automatic_attention_eligible(document) -> bool:
@@ -63,9 +66,16 @@ def _automatic_attention_eligible(document) -> bool:
     if text.startswith("environment;"):
         return False
     if document.source_slice == "recent_dialogue":
+        # A remembered exchange surfaces as one conversation episode; its single
+        # lines stay searchable on purpose but do not pop up on their own.
+        from .recall_corpus import is_conversation_episode
+
+        if is_conversation_episode(document):
+            return True
         content = re.sub(r"[\W_]+", "", text)
         if len(content) < _AUTOMATIC_ATTENTION_MIN_DIALOGUE_CHARACTERS:
             return False
+        return not _UNBIDDEN_EPISODES_ONLY
     return True
 
 
