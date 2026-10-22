@@ -277,6 +277,110 @@ def _bounded_recall_texts(values: object) -> tuple[str, ...]:
     )
 
 
+# Triggers where nobody spoke but she just lived something: a life event
+# settled, an activity changed, a feeling or impression formed.  These are the
+# moments a person is reminded of something unbidden ("this reminds me of...").
+# Memory-maintenance, retention and pure clock triggers are deliberately absent.
+_LIVED_MOMENT_RECALL_TRIGGER_PREFIXES = (
+    "event:life-aftermath:settlement:",
+    "event:outcome-settlement:",
+    "event:activity-lifecycle-effect:",
+    "event:life-development:activated:",
+    "event:private-impression:accepted:",
+    "event:affect-mutation:",
+    "event:relationship-mutation:",
+    "event:appraisal-mutation:",
+)
+_LIVED_MOMENT_CUE_CHARACTERS = 600
+
+
+def _lived_moment_recall_trigger(trigger_ref: str) -> bool:
+    return trigger_ref.startswith(_LIVED_MOMENT_RECALL_TRIGGER_PREFIXES)
+
+
+def _readable_strings(value: object) -> list[str]:
+    """Human prose leaves of a typed life reading (never ids or refs)."""
+
+    found: list[str] = []
+    if isinstance(value, str):
+        text = value.strip()
+        has_cjk = any("\u4e00" <= ch <= "\u9fff" for ch in text)
+        identifier = not has_cjk and (
+            (":" in text and " " not in text)
+            or all(ch.isascii() and (ch.isalnum() or ch in "_-.") for ch in text)
+        )
+        if len(text) >= 6 and not identifier:
+            found.append(text)
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            if key.endswith(("_ref", "_refs", "_hash", "_id", "_at", "contract")):
+                continue
+            found.extend(_readable_strings(item))
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            found.extend(_readable_strings(item))
+    return found
+
+
+def _excerpt_cue_text(excerpt: object) -> str:
+    text = getattr(excerpt, "text", None)
+    if isinstance(text, str) and text.strip():
+        return text.strip()
+    parts: list[str] = []
+    response = getattr(excerpt, "character_response", None)
+    if response is not None and getattr(response, "response_text", None):
+        parts.append(str(response.response_text).strip())
+    consequence = getattr(excerpt, "world_consequence", None)
+    if consequence is not None:
+        parts.extend(_readable_strings(consequence.model_dump(mode="json")))
+    return "\n".join(dict.fromkeys(part for part in parts if part))
+
+
+def lived_moment_recall_cue(
+    *,
+    trigger_ref: str,
+    settled_items: tuple[object, ...],
+    experience_items: tuple[object, ...],
+) -> str | None:
+    """What she just lived, as an association cue, from already-bound content.
+
+    Prefer the Experience and settled result that the trigger names; when the
+    trigger is a feeling or impression that names neither, use her latest
+    lived moment.  Read-only selection over the pinned life excerpt; it never
+    interprets the text or decides that anything should be remembered.
+    """
+
+    def names_trigger(*refs: object) -> bool:
+        return any(isinstance(ref, str) and ref and (ref == trigger_ref or ref in trigger_ref)
+                   for ref in refs)
+
+    experiences = [
+        item for item in experience_items
+        if names_trigger(item.content.authority_event_ref, item.experience_id,
+                         item.origin.accepted_event_ref)
+    ]
+    settled = [
+        item for item in settled_items
+        if names_trigger(item.authority_event_ref, item.descriptor_event_ref,
+                         item.source_entity_id)
+    ]
+    if not experiences and not settled:
+        latest_experience = max(
+            experience_items, key=lambda item: item.content.authority_world_revision, default=None,
+        )
+        latest_settled = max(
+            settled_items, key=lambda item: item.authority_world_revision, default=None,
+        )
+        experiences = [latest_experience] if latest_experience is not None else []
+        settled = [latest_settled] if latest_settled is not None else []
+    parts = [
+        *(_excerpt_cue_text(item.content) for item in experiences),
+        *(_excerpt_cue_text(item) for item in settled),
+    ]
+    cue = "\n".join(dict.fromkeys(part for part in parts if part)).strip()
+    return cue[:_LIVED_MOMENT_CUE_CHARACTERS] or None
+
+
 def _automatic_recall_link_refs(
     *,
     projection: LedgerProjection,
@@ -2795,6 +2899,83 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                             query.ledger_sequence,
                             type(exc).__name__,
                         )
+                elif _lived_moment_recall_trigger(query.trigger_ref):
+                    # Nobody spoke: she just lived something.  Let what
+                    # happened cue the same automatic association a message
+                    # would, so an old memory can surface on its own and she
+                    # may (or may not) think of it or bring it up.
+                    lived_cue = lived_moment_recall_cue(
+                        trigger_ref=query.trigger_ref,
+                        settled_items=recall_life.settled_items,
+                        experience_items=recall_experiences,
+                    )
+                    if lived_cue:
+                        lived_request = build_automatic_recall_request(
+                            observation_text=lived_cue,
+                            observation_label="她刚经历",
+                            recent_dialogue_values=select_recent_dialogue_for_automatic_recall(
+                                tuple(
+                                    item.model_dump(mode="json")
+                                    for item in sorted(
+                                        dialogue_candidates,
+                                        key=lambda candidate: (
+                                            candidate.sequence,
+                                            candidate.occurred_at,
+                                            candidate.dialogue_id,
+                                        ),
+                                    )
+                                )
+                            ),
+                            affect_values=tuple(
+                                item.model_dump(mode="json") for item in scoped_affect or ()
+                            ),
+                            appraisal_values=tuple(
+                                item.model_dump(mode="json") for item in scoped_appraisals
+                            ),
+                            relationship_values=tuple(
+                                item.model_dump(mode="json") for item in scoped_relationships
+                            ),
+                            situation_value=situation.model_dump(mode="json"),
+                            open_thread_values=tuple(
+                                item.values.model_dump(mode="json")
+                                for item in open_threads_for_continuity
+                            ),
+                            priority_link_refs=_relevant_prehistory_memory_link_refs(
+                                memory_retrievals.items,
+                                actor_ref=query.actor_ref,
+                                logical_time=query.logical_time,
+                                query_text=lived_cue,
+                            ),
+                            # Search wider, present at most four after the
+                            # unbidden-attention filter in the coordinator.
+                            limit=8,
+                        )
+                        try:
+                            self._recall.schedule_prefetch(
+                                expected_cursor=recall_cursor,
+                                query_text=lived_request.query_text,
+                                lexical_text=lived_request.lexical_text,
+                                occurred_from=lived_request.occurred_from,
+                                occurred_to=lived_request.occurred_to,
+                                link_refs=lived_request.link_refs,
+                                memory_kinds=lived_request.memory_kinds,
+                                accessibility_seed=(
+                                    f"recall-prefetch:{query.trigger_ref}:{query.ledger_sequence}"
+                                ),
+                                trigger_ref=query.trigger_ref,
+                                limit=lived_request.limit,
+                            )
+                        except Exception as exc:
+                            self._recall.discard_scheduled_prefetch(
+                                recall_cursor,
+                                trigger_ref=query.trigger_ref,
+                            )
+                            _LOG.warning(
+                                "world v2 lived-moment recall prefetch unavailable world=%s cursor=%s failure=%s",
+                                query.world_id,
+                                query.ledger_sequence,
+                                type(exc).__name__,
+                            )
             except Exception as exc:
                 self._recall.discard(
                     recall_cursor,

@@ -2069,17 +2069,19 @@ class CharacterInterior:
             return snapshot
         entry.prefetch_attempted = True
         self._metrics["prefetch_attempt"] += 1
-        request = _PrefetchRequest(
-            inner_turn_id=turn_id,
-            world_id=subject.world_id,
-            actor_ref=subject.actor_ref,
-            cursor=subject.cursor,
-            trigger_ref=subject.trigger_ref,
-            subject_source_refs=subject.source_refs,
-            snapshot=snapshot,
-            join_seconds=float(raw_join),
-        )
         try:
+            # Built inside the guard: an optional association that cannot be
+            # requested must leave the pinned snapshot usable, never fail the turn.
+            request = _PrefetchRequest(
+                inner_turn_id=turn_id,
+                world_id=subject.world_id,
+                actor_ref=subject.actor_ref,
+                cursor=subject.cursor,
+                trigger_ref=subject.trigger_ref,
+                subject_source_refs=subject.source_refs,
+                snapshot=snapshot,
+                join_seconds=float(raw_join),
+            )
             raw = await _resolve(operation(request))
             if raw is None:
                 self._metrics["prefetch_empty"] += 1

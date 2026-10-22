@@ -37,11 +37,55 @@ from .recall_index import (
     RecallIndexSnapshot,
     RecallQuery,
     RecallResult,
+    recall_result_hash,
 )
 from .schema_core import FrozenModel
 
 
 logger = logging.getLogger(__name__)
+
+# Automatic attention is what surfaces unbidden, not what can be found on
+# purpose.  Two document shapes measurably crowd it out without being things a
+# person "is reminded of": the World Author's external-setting prose (rows that
+# begin ``environment;`` - a return box was emptied, a notice was re-pinned)
+# and one-line dialogue fragments with no content ("哈哈哈", "在干嘛").
+# Probe on the production corpus 2026-10-21: those rows took 2-5 of the top 5
+# for ordinary life cues.  Both stay fully searchable by a character-chosen
+# Recall; only the unbidden prefetch skips them.  Nothing is reranked or
+# rewritten: eligible hits keep their order and scores.
+_AUTOMATIC_ATTENTION_PRESENTED = 4
+_AUTOMATIC_ATTENTION_MIN_DIALOGUE_CHARACTERS = 6
+
+
+def _automatic_attention_eligible(document) -> bool:
+    import re
+
+    text = (getattr(document, "retrieval_text", None) or document.text or "").strip()
+    if text.startswith("environment;"):
+        return False
+    if document.source_slice == "recent_dialogue":
+        content = re.sub(r"[\W_]+", "", text)
+        if len(content) < _AUTOMATIC_ATTENTION_MIN_DIALOGUE_CHARACTERS:
+            return False
+    return True
+
+
+def automatic_attention_result(result: RecallResult) -> RecallResult:
+    """Keep the hits a person could plausibly be reminded of, in rank order."""
+
+    hits = tuple(
+        hit for hit in result.hits if _automatic_attention_eligible(hit.document)
+    )[:_AUTOMATIC_ATTENTION_PRESENTED]
+    if hits == result.hits:
+        return result
+    return result.model_copy(update={
+        "hits": hits,
+        "result_hash": recall_result_hash(
+            query_hash=result.query_hash,
+            cursor=result.index_cursor,
+            hit_values=[hit.model_dump(mode="json") for hit in hits],
+        ),
+    })
 
 _TRACE_AUTHORITY_KEY = secrets.token_bytes(32)
 
@@ -724,12 +768,12 @@ class RecallCoordinator:
             mode="prefetch",
             trigger_ref=trigger_ref,
             request=request,
-            result=self._search(
+            result=automatic_attention_result(self._search(
                 context=context,
                 request=request,
                 accessibility_seed=accessibility_seed,
                 semantic=False,
-            ),
+            )),
             evaluated_cursor=expected_cursor,
         )
         with self._context_guard:
@@ -1362,13 +1406,13 @@ class RecallCoordinator:
         # the bounded deadline above, so an embedding outage cannot hold the
         # visible reply hostage. The result is still only source-bound
         # attention material; it does not choose a response or behavior.
-        result = self._search(
+        result = automatic_attention_result(self._search(
             context=context,
             request=request,
             accessibility_seed=accessibility_seed,
             semantic=self._semantic_embedding is not None,
             focused_attention=True,
-        )
+        ))
         return self._issue_trace(
             mode="prefetch",
             trigger_ref=trigger_ref,

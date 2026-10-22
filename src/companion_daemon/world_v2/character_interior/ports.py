@@ -104,7 +104,9 @@ class _PrefetchRequest(FrozenModel):
     trigger_ref: str = Field(min_length=1)
     subject_source_refs: tuple[str, ...] = Field(min_length=1)
     snapshot: InnerLifeSnapshot
-    join_seconds: float = Field(ge=0, le=1)
+    # Chat faculties join for at most about one second; background cognition
+    # has no visible latency and may wait longer for an unbidden association.
+    join_seconds: float = Field(ge=0, le=30)
 
 
 class _PrefetchResult(FrozenModel):

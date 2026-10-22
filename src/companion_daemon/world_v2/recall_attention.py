@@ -236,20 +236,23 @@ def build_automatic_recall_request(
     occurred_to: datetime | None = None,
     memory_kinds: Sequence[Literal["episodic", "semantic", "reflective"]] = (),
     limit: int = 4,
+    observation_label: Literal["用户刚说", "她刚经历"] = "用户刚说",
 ) -> CharacterRecallRequest:
     """Build the canonical bounded request used by automatic prefetch.
 
     Values must already come from the pinned projection.  This function only
     selects human-readable semantic fields and enforces the downstream schema
-    budget before Pydantic construction.
+    budget before Pydantic construction.  ``observation_label`` names whose
+    present moment cues the association: his inbound words, or a moment she
+    just lived (a settled life event, an activity result) when no one spoke.
     """
 
     lexical = observation_text.strip()
     if not lexical:
-        raise ValueError("automatic recall requires inbound observation text")
+        raise ValueError("automatic recall requires present observation text")
     lexical = lexical[:_MAX_LEXICAL_CHARACTERS]
     parts: list[str] = []
-    _append_bounded(parts, f"用户刚说：{lexical[:_MAX_DENSE_OBSERVATION_CHARACTERS]}")
+    _append_bounded(parts, f"{observation_label}：{lexical[:_MAX_DENSE_OBSERVATION_CHARACTERS]}")
     dialogue = _dialogue_summary(recent_dialogue_values)
     if dialogue:
         _append_bounded(parts, "最近对话：" + _compact_json(dialogue))

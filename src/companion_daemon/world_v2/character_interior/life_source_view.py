@@ -25,7 +25,9 @@ def _expected_view(snapshot, review_contract=None):
 
     from .life_source_review_request import LEAN_REVIEW_CONTRACTS
 
-    profile = life_source_profile(review_contract)
+    from .continuity_view import with_automatic_prefetch
+
+    profile = with_automatic_prefetch(life_source_profile(review_contract), snapshot.materials)
     return present_inner_life(slice_background_inner_life_snapshot(
         snapshot.model_view(include_lifecycle_states=review_contract in STATE_REVIEW_CONTRACTS),
         profile,
@@ -88,7 +90,9 @@ class LifeSourceView(FrozenModel):
         payload = _payload(messages, controls)
         from .life_source_state_readings import STATE_REVIEW_CONTRACTS, life_source_profile
 
-        profile = life_source_profile(checked.profile_contract)
+        from .continuity_view import with_automatic_prefetch
+
+        profile = with_automatic_prefetch(life_source_profile(checked.profile_contract), snapshot.materials)
         if (
             payload.get("inner_life_snapshot") != _expected_view(snapshot, checked.profile_contract)
             or payload.get("background_context_profile") != profile_audit_record(profile)

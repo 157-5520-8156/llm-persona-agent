@@ -1539,6 +1539,18 @@ def _compact_story_prefetch(snapshot: Mapping[str, object]) -> bool:
     return isinstance(version, str) and version in COMPACT_STORY_PREFETCH_COMPILER_VERSIONS
 
 
+# Presentation-only framing for unbidden memories.  It tells her what these
+# items are, never what to do with them; ``_expand_automatic_prefetch`` removes
+# it so the canonical snapshot round-trips unchanged.
+AUTOMATIC_PREFETCH_FRAMING_KEY = "how_this_came_to_mind"
+AUTOMATIC_PREFETCH_FRAMING = (
+    "这些是此刻被眼前的话或刚经历的事自然勾起的旧记忆，可能相关，也可能只是一闪而过的联想。"
+    "它们是你过去的记忆，不是现在新发生的事，提起时按它原本的时间和细节。"
+    "像平常人一样，有时会顺口说一句「这让我想起…」，有时只在心里过一下，也可以完全不理会；"
+    "要不要想、要不要说、跟谁说、怎么说，都由你决定。"
+)
+
+
 def _present_automatic_prefetch(value: object, *, constants=_AUTOMATIC_PREFETCH_CONSTANTS,
                                 compact_stories: bool = False) -> object:
     """Elide only the constants allowed by the original snapshot version."""
@@ -1548,6 +1560,8 @@ def _present_automatic_prefetch(value: object, *, constants=_AUTOMATIC_PREFETCH_
     items = value.get("items")
     if not isinstance(items, list):
         return value
+    if items:
+        value = {AUTOMATIC_PREFETCH_FRAMING_KEY: AUTOMATIC_PREFETCH_FRAMING, **value}
     presented: list[object] = []
     for item in items:
         if not isinstance(item, dict):
@@ -1581,6 +1595,8 @@ def _expand_automatic_prefetch(value: object, *, constants=_AUTOMATIC_PREFETCH_C
                                compact_stories: bool = False) -> object:
     if not isinstance(value, Mapping):
         return value
+    if value.get(AUTOMATIC_PREFETCH_FRAMING_KEY) == AUTOMATIC_PREFETCH_FRAMING:
+        value = {k: v for k, v in value.items() if k != AUTOMATIC_PREFETCH_FRAMING_KEY}
     items = value.get("items")
     if not isinstance(items, list):
         return value

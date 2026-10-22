@@ -1621,12 +1621,20 @@ class StructuredCharacterRoleFaculty:
         reference_wire: bool = False,
         character_disposition: Mapping[str, object] | None = None,
         host_clerical_binding: bool = True,
+        automatic_prefetch_join_seconds: float | None = 8.0,
     ) -> None:
         if not callable(getattr(model, "complete", None)):
             raise TypeError("structured character role needs one completion model")
         # Host-owned bookkeeping (see _bind_host_owned_source_lists). False keeps
         # the previous strict rejection for comparison runs and old fixtures.
         self._host_clerical_binding = bool(host_clerical_binding)
+        # Background cognition may wait for an association that surfaced from
+        # what she just lived; a turn with nothing scheduled returns at once.
+        # None keeps the earlier behavior (no automatic association).
+        if automatic_prefetch_join_seconds is not None:
+            if not 0 <= float(automatic_prefetch_join_seconds) <= 30:
+                raise ValueError("automatic prefetch join must be between 0 and 30 seconds")
+            self.automatic_prefetch_join_seconds = float(automatic_prefetch_join_seconds)
         if not model_id or len(model_id) > 256:
             raise ValueError("structured character role model id is invalid")
         if not 0 <= temperature <= 2:
@@ -2114,7 +2122,7 @@ class StructuredCharacterRoleFaculty:
         # Appraisal always returns its result proposal, including no_change.
         # Other experience purposes retain their own empty/no-change shapes.
         typed_proposal_only = request.purpose == "world_stimulus_appraisal" and "decision" not in allowed_statuses
-        from .continuity_view import CHOICE_PURPOSES, continuity_profile
+        from .continuity_view import CHOICE_PURPOSES, LIVED_RECALL_PURPOSES, continuity_profile, with_automatic_prefetch
 
         current_choice = self._living_frame_json is not None and request.purpose in CHOICE_PURPOSES
         full_snapshot = (
@@ -2144,6 +2152,10 @@ class StructuredCharacterRoleFaculty:
                 # A purpose whitelist must not discard the very pull the role
                 # requested. Pinned Life reviewer views retain their own contract.
                 background_profile = continuity_profile(background_profile, lifecycle_states=False)
+            if request.purpose in LIVED_RECALL_PURPOSES:
+                background_profile = with_automatic_prefetch(
+                    background_profile, full_snapshot.get("materials"),
+                )
             snapshot = slice_background_inner_life_snapshot(full_snapshot, background_profile)
         else:
             background_profile = None
