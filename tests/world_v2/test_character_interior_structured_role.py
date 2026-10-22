@@ -2126,7 +2126,7 @@ async def test_private_impression_unknown_attention_token_still_fails_closed() -
     raw_result = json.loads(_private_impression_result())
     raw_result["attended_source_refs"] = ["s9"]
     model = _RequiredToolQueueModel(json.dumps(raw_result, ensure_ascii=False))
-    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-v4-flash")
+    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-v4-flash", host_clerical_binding=False)
 
     with pytest.raises(StructuredRoleResultError) as raised:
         await role.experience(
@@ -5162,7 +5162,7 @@ async def test_ambiguous_beat_index_fails_closed_with_precise_chinese_detail() -
     ]
     payload["decision"]["source_refs"] = ["source:private_self"]
     model = _RequiredToolQueueModel(json.dumps(payload, ensure_ascii=False))
-    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-v4-flash")
+    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-v4-flash", host_clerical_binding=False)
 
     with pytest.raises(StructuredRoleResultError) as raised:
         await role.consider(await _pinned_dialogue_request((beat_one, beat_two)))
@@ -5414,7 +5414,7 @@ async def test_recall_checkpoint_pins_source_contract_without_changing_legacy_by
 
 @pytest.mark.asyncio
 async def test_fresh_source_error_names_the_submitted_field_index_and_keeps_legacy_feedback():
-    role = StructuredCharacterRoleFaculty(model=_RequiredToolQueueModel(), model_id='source-feedback')
+    role = StructuredCharacterRoleFaculty(model=_RequiredToolQueueModel(), model_id='source-feedback', host_clerical_binding=False)
     legacy = await _request(phase='experience', purpose='world_stimulus_appraisal',
                             capability_manifest=_world_stimulus_manifest())
     raw = json.loads(_world_stimulus_no_change_result())
@@ -5448,3 +5448,88 @@ def test_ineligible_decision_source_feedback_keeps_original_short_token_position
     assert detail['invalid_indices'] == [1, 2]
     assert [item['path'] for item in detail['errors']] == ['/decision/source_refs/1', '/decision/source_refs/2']
     assert all(item['value'] == 's1' for item in detail['errors'])
+
+
+@pytest.mark.asyncio
+async def test_host_drops_unoffered_attention_instead_of_rejecting_the_turn():
+    role = StructuredCharacterRoleFaculty(model=_RequiredToolQueueModel(), model_id='host-clerical')
+    request = await _request(phase='experience', purpose='world_stimulus_appraisal',
+                             capability_manifest=_world_stimulus_manifest())
+    raw = json.loads(_world_stimulus_no_change_result())
+    raw['attended_source_refs'] = ['source:private_self', 'plan:unoffered', 'source:private_self']
+    result, _hash = role._parse_and_validate(
+        json.dumps(raw), request=request, contract=role._resolve_contract(request),
+    )
+    # Her status and summary are unchanged; only clerical noise is removed.
+    assert result.status == json.loads(_world_stimulus_no_change_result())['status']
+    assert result.summary == raw['summary']
+    assert list(result.attended_source_refs) == ['source:private_self']
+
+
+def test_host_clerical_binding_caps_attention_and_binds_host_owned_fields():
+    from types import SimpleNamespace
+
+    from companion_daemon.world_v2.character_interior.structured_role import (
+        _bind_host_owned_source_lists,
+    )
+
+    offered = frozenset(f"source:{index}" for index in range(12))
+    decoded = {"attended_source_refs": [f"source:{index}" for index in range(12)] + ["x:unknown"]}
+    _bind_host_owned_source_lists(
+        decoded,
+        request=SimpleNamespace(purpose="world_stimulus_appraisal", capability_manifest=None),
+        offered_attention=offered,
+        max_attention=8,
+    )
+    assert decoded["attended_source_refs"] == [f"source:{index}" for index in range(8)]
+
+    manifest = SimpleNamespace(source_refs=("event:a", "event:b"))
+    memory = {"decision": {"source_refs": ["event:b"], "payload": {"keep": ["m1"]}}}
+    _bind_host_owned_source_lists(
+        memory,
+        request=SimpleNamespace(purpose="memory_consolidation", capability_manifest=manifest),
+        offered_attention=frozenset(),
+        max_attention=8,
+    )
+    assert memory["decision"] == {"source_refs": ["event:a", "event:b"], "payload": {"keep": ["m1"]}}
+
+    noticed = {"decision": {"payload": {"decision": "select", "selected_token": "t1", "noticed": "雨停了"}}}
+    _bind_host_owned_source_lists(
+        noticed,
+        request=SimpleNamespace(purpose="activity_lifecycle_choice", capability_manifest=manifest),
+        offered_attention=frozenset(),
+        max_attention=8,
+    )
+    assert noticed["decision"]["payload"]["user_channel_completion"] == "none"
+    assert noticed["decision"]["payload"]["noticed"] == "雨停了"
+    assert noticed["decision"]["source_refs"] == ["event:a", "event:b"]
+
+    quiet = {"decision": {"payload": {"decision": "no_op", "user_channel_completion": "none"}}}
+    _bind_host_owned_source_lists(
+        quiet,
+        request=SimpleNamespace(purpose="activity_lifecycle_choice", capability_manifest=None),
+        offered_attention=frozenset(),
+        max_attention=8,
+    )
+    assert "user_channel_completion" not in quiet["decision"]["payload"]
+    assert quiet["decision"]["payload"]["decision"] == "no_op"
+
+
+@pytest.mark.asyncio
+async def test_host_repairs_an_unescaped_inner_quote_instead_of_rejecting_the_turn():
+    role = StructuredCharacterRoleFaculty(model=_RequiredToolQueueModel(), model_id='host-json')
+    strict = StructuredCharacterRoleFaculty(
+        model=_RequiredToolQueueModel(), model_id='host-json-strict', host_clerical_binding=False,
+    )
+    request = await _request(phase='experience', purpose='world_stimulus_appraisal',
+                             capability_manifest=_world_stimulus_manifest())
+    raw = json.loads(_world_stimulus_no_change_result())
+    raw['summary'] = 'QUOTE_SLOT'
+    text = json.dumps(raw, ensure_ascii=False).replace('"QUOTE_SLOT"', '"她说"算了"，就没再想"')
+    with pytest.raises(StructuredRoleResultError) as rejected:
+        strict._parse_and_validate(text, request=request, contract=strict._resolve_contract(request))
+    assert rejected.value.code == 'role_result_not_json'
+    result, _hash = role._parse_and_validate(
+        text, request=request, contract=role._resolve_contract(request),
+    )
+    assert result.summary == '她说"算了"，就没再想'

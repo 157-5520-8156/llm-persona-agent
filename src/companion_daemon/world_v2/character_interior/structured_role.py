@@ -217,6 +217,58 @@ def _bound_proactive_attended_source_refs(decoded: dict[str, object]) -> None:
     decoded["attended_source_refs"] = bounded
 
 
+def _bind_host_owned_source_lists(
+    decoded: dict[str, object],
+    *,
+    request: "_InteriorRoleRequest",
+    offered_attention: frozenset[str],
+    max_attention: int,
+) -> None:
+    """Do the clerical work the host already knows, before strict validation.
+
+    Production logs (2026-09..10) showed most first-draft rejections were
+    bookkeeping, not meaning: attention lists one item too long, an attended
+    ref that was not offered this turn, a host-bound decision whose
+    ``source_refs`` were not a verbatim copy of the manifest, or the one-valued
+    ``user_channel_completion`` flag.  None of those carry her choice:
+
+    * ``attended_source_refs`` records what she noticed.  Refs that cannot be
+      resolved to an offered source are dropped (never replaced), duplicates
+      collapse, and her order is kept up to the wire cap.
+    * For host-bound purposes the host owns ``decision.source_refs`` and writes
+      the exact manifest binding; her ``payload`` is untouched.
+    * ``activity_lifecycle_choice``: ``user_channel_completion`` has one legal
+      value and follows ``noticed``; it is derived, not authored.
+
+    Semantic fields, payload choices, statuses and proposals are never changed.
+    """
+
+    attention = decoded.get("attended_source_refs")
+    if isinstance(attention, list) and all(isinstance(ref, str) for ref in attention):
+        kept = [ref for ref in _unique_refs_in_order(attention) if ref in offered_attention]
+        decoded["attended_source_refs"] = kept[:max_attention]
+    decision = decoded.get("decision")
+    manifest = request.capability_manifest
+    if not isinstance(decision, dict):
+        return
+    if (
+        manifest is not None
+        and request.purpose in _HOST_BOUND_DECISION_PURPOSES
+        and "payload" in decision
+    ):
+        decision = {**decision, "source_refs": list(manifest.source_refs)}
+        decoded["decision"] = decision
+    payload = decision.get("payload")
+    if request.purpose == "activity_lifecycle_choice" and isinstance(payload, dict):
+        noticed = payload.get("noticed")
+        payload = dict(payload)
+        if isinstance(noticed, str) and noticed.strip():
+            payload["user_channel_completion"] = "none"
+        elif noticed is None:
+            payload.pop("user_channel_completion", None)
+        decoded["decision"] = {**decision, "payload": payload}
+
+
 def _citeable_catalog_for_request(request: _InteriorRoleRequest) -> PinnedSourceCatalog:
     # The attention result has eight slots; that is not a limit on the
     # evidence she may read or cite. Keep the complete pinned catalog and
@@ -1568,9 +1620,13 @@ class StructuredCharacterRoleFaculty:
         life_source_reviewer=None,
         reference_wire: bool = False,
         character_disposition: Mapping[str, object] | None = None,
+        host_clerical_binding: bool = True,
     ) -> None:
         if not callable(getattr(model, "complete", None)):
             raise TypeError("structured character role needs one completion model")
+        # Host-owned bookkeeping (see _bind_host_owned_source_lists). False keeps
+        # the previous strict rejection for comparison runs and old fixtures.
+        self._host_clerical_binding = bool(host_clerical_binding)
         if not model_id or len(model_id) > 256:
             raise ValueError("structured character role model id is invalid")
         if not 0 <= temperature <= 2:
@@ -2454,10 +2510,25 @@ class StructuredCharacterRoleFaculty:
                     raise ValueError(f"duplicate JSON member in memory role result: {key[:80]}")
                 value[key] = item
             return value
+        pairs_hook = unique_memory_members if request.purpose == "memory_consolidation" else None
         try:
-            decoded = json.loads(raw, object_pairs_hook=(
-                unique_memory_members if request.purpose == "memory_consolidation" else None
-            ))
+            try:
+                decoded = json.loads(raw, object_pairs_hook=pairs_hook)
+            except json.JSONDecodeError:
+                if not self._host_clerical_binding:
+                    raise
+                # Same shared transport repair the inbound/tool wires use
+                # (fence, unescaped inner quote, missing closer, trailing data).
+                # It never changes a value; anything else stays fail-closed.
+                from ..json_wire_repair import loads_one_json_object
+
+                try:
+                    decoded = loads_one_json_object(raw, object_pairs_hook=pairs_hook)
+                except ValueError as repair_error:
+                    cause = repair_error.__cause__
+                    if isinstance(cause, json.JSONDecodeError):
+                        raise cause from None
+                    raise
         except json.JSONDecodeError as exc:
             raise StructuredRoleResultError(
                 "role_result_not_json",
@@ -2525,6 +2596,15 @@ class StructuredCharacterRoleFaculty:
                 if (self._reference_wire and request.purpose == "world_stimulus_appraisal") or memory_host_bound
                 else _WireRoleResult
             )
+            if self._host_clerical_binding:
+                _bind_host_owned_source_lists(
+                    decoded,
+                    request=request,
+                    offered_attention=frozenset(
+                        _citeable_catalog_for_request(request).token_to_ref.values()
+                    ),
+                    max_attention=(32 if wire_model is _ExpandedAttentionWireRoleResult else 8),
+                )
             result = wire_model.model_validate(decoded)
         except ValidationError as exc:
             detail = exc.json(include_url=False)
