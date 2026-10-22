@@ -17,7 +17,7 @@ from .life_source_origin import canonical, digest
 MAX_VIEW_BYTES = 1_048_576
 
 
-def _expected_view(snapshot, review_contract=None):
+def _expected_view(snapshot, review_contract=None, *, lean_ref_aliases=None):
     from ..background_context_profile import slice_background_inner_life_snapshot
     from ..present_prompt import present_inner_life
 
@@ -28,7 +28,7 @@ def _expected_view(snapshot, review_contract=None):
     from .continuity_view import with_automatic_prefetch
 
     profile = with_automatic_prefetch(life_source_profile(review_contract), snapshot.materials)
-    return present_inner_life(slice_background_inner_life_snapshot(
+    return present_inner_life(lean_ref_aliases=lean_ref_aliases, snapshot=slice_background_inner_life_snapshot(
         snapshot.model_view(include_lifecycle_states=review_contract in STATE_REVIEW_CONTRACTS),
         profile,
         # The lean wire carries only the inventory columns anything reads.
@@ -91,10 +91,17 @@ class LifeSourceView(FrozenModel):
         from .life_source_state_readings import STATE_REVIEW_CONTRACTS, life_source_profile
 
         from .continuity_view import with_automatic_prefetch
+        from ..present_prompt import LEAN_PRESENTATION_MARKER, lean_aliases_from_citeable
 
         profile = with_automatic_prefetch(life_source_profile(checked.profile_contract), snapshot.materials)
         if (
-            payload.get("inner_life_snapshot") != _expected_view(snapshot, checked.profile_contract)
+            payload.get("inner_life_snapshot") != _expected_view(
+                snapshot, checked.profile_contract,
+                lean_ref_aliases=(
+                    lean_aliases_from_citeable(payload.get("citeable_sources"))
+                    if payload.get("presentation") == LEAN_PRESENTATION_MARKER else None
+                ),
+            )
             or payload.get("background_context_profile") != profile_audit_record(profile)
         ):
             raise ValueError("Life source view differs from the actual purpose-filtered snapshot")

@@ -2434,7 +2434,23 @@ class StructuredCharacterRoleFaculty:
             user_payload["wire_contract"]["source_reference_contract"] = request.source_reference_contract
         snapshot = user_payload.get("inner_life_snapshot")
         if isinstance(snapshot, dict):
-            user_payload["inner_life_snapshot"] = present_inner_life(snapshot)
+            from ..present_prompt import lean_aliases_from_citeable
+
+            # Mind renderer: background cognition reads content plus the
+            # citation ids it can use; proofs stay with the host.  A semantic
+            # Life reviewer reads the full author view, so it keeps that.
+            from ..present_prompt import LEAN_PRESENTATION_MARKER, lean_presentation_enabled
+
+            lean_aliases = (
+                lean_aliases_from_citeable(user_payload.get("citeable_sources"))
+                if not self.requires_life_source_review and lean_presentation_enabled(snapshot)
+                else None
+            )
+            user_payload["inner_life_snapshot"] = present_inner_life(
+                snapshot, lean_ref_aliases=lean_aliases,
+            )
+            if lean_aliases is not None:
+                user_payload["presentation"] = LEAN_PRESENTATION_MARKER
         if self._reference_wire:
             from .inbound_context_presentation import cache_ordered_background_material
 

@@ -1641,9 +1641,134 @@ def _present_duplicate_trigger_message(
     return {**prepared, "request": rewritten}
 
 
-def present_inner_life(
-    snapshot: dict[str, object], *, source_ref_aliases: object = None
+# ---------------------------------------------------------------------------
+# Mind renderer (lean presentation), 2026-10-22.
+#
+# Measured on a production stimulus-appraisal snapshot: 41% of its characters
+# were opaque reference strings, ~13K characters were hex digests, and fewer
+# than 5% were Chinese content.  A fact of 13 characters travelled inside 762.
+# The ledger keeps every proof; the model needs the content, its time, and a
+# short id it can cite.  This presentation keeps exactly that:
+#
+# * a ref the request lets her cite becomes its catalog id (s0, s1, ...) - the
+#   same ids ``citeable_sources`` already lists and the host already restores;
+# * a ref she cannot cite carries nothing for her and is omitted;
+# * digests, revisions, carrier contracts and duplicate identity fields are
+#   omitted; content, times, speakers, scopes and authority labels stay.
+#
+# It is used only for background cognition, only for snapshots compiled at a
+# lean compiler version (persisted older snapshots keep their exact bytes),
+# and only with the request's own citation catalog, so the sent view can be
+# re-derived exactly from the snapshot plus the sent ``citeable_sources``.
+# ---------------------------------------------------------------------------
+LEAN_PRESENTATION_MARKER = "lean-mind.1"
+_LEAN_DROP_KEYS = frozenset({
+    "content_id", "content_ref", "descriptor_event_ref", "display_contract",
+    "contract", "sequence", "source_entity_id", "source_entity_revision",
+    "fact_context", "snapshot_hash", "snapshot_id", "updated_at",
+})
+_LEAN_DROP_SUFFIXES = ("_hash", "_world_revision", "_entity_revision")
+_OPAQUE_REF = re.compile(r"[0-9a-f]{16,}")
+
+
+def _lean_uncitable_ref(value: str) -> bool:
+    return (
+        ":" in value
+        and not any(ch.isspace() for ch in value)
+        and _OPAQUE_REF.search(value) is not None
+        and not any("\u4e00" <= ch <= "\u9fff" for ch in value)
+    )
+
+
+_LEAN_OMIT = object()
+
+
+def _lean_value(value: object, aliases: Mapping[str, str]) -> object:
+    if isinstance(value, str):
+        if value in aliases:
+            return aliases[value]
+        return _LEAN_OMIT if _lean_uncitable_ref(value) else value
+    if isinstance(value, list):
+        kept = [_lean_value(item, aliases) for item in value]
+        return [item for item in kept if item is not _LEAN_OMIT]
+    if isinstance(value, dict):
+        own_ref = value.get("source_ref")
+        result: dict[str, object] = {}
+        for key, item in value.items():
+            if key in _LEAN_DROP_KEYS or key.endswith(_LEAN_DROP_SUFFIXES):
+                continue
+            if key == "truncated" and item is False:
+                continue
+            if key != "source_ref" and isinstance(item, str) and item == own_ref:
+                continue
+            lean = _lean_value(item, aliases)
+            # Absence and emptiness read the same to her; omit both.
+            if lean is _LEAN_OMIT or lean is None or lean == [] or lean == {}:
+                continue
+            result[key] = lean
+        return result
+    return value
+
+
+def lean_present_snapshot(
+    snapshot: Mapping[str, object], *, ref_aliases: Mapping[str, str],
 ) -> dict[str, object]:
+    """Lean view of an already ordered snapshot presentation (see above)."""
+
+    result = dict(snapshot)
+    materials = result.get("materials")
+    if isinstance(materials, dict):
+        result["materials"] = {
+            key: _lean_value(value, ref_aliases) for key, value in materials.items()
+        }
+    inventory = result.get("source_inventory")
+    if isinstance(inventory, list):
+        lean_inventory = []
+        for item in inventory:
+            lean = _lean_value(item, ref_aliases)
+            if isinstance(lean, dict) and lean.get("source_ref") in ref_aliases.values():
+                lean_inventory.append(lean)
+        result["source_inventory"] = lean_inventory
+    refs = result.get("source_refs")
+    if isinstance(refs, list):
+        result["source_refs"] = [ref_aliases[ref] for ref in refs if ref in ref_aliases]
+    for key in ("snapshot_hash", "snapshot_id"):
+        result.pop(key, None)
+    return result
+
+
+def lean_aliases_from_citeable(view: object) -> dict[str, str] | None:
+    """The request's own citation catalog as ref -> id, or None when absent."""
+
+    if not isinstance(view, Mapping):
+        return None
+    items = view.get("items")
+    if not isinstance(items, list):
+        return None
+    aliases: dict[str, str] = {}
+    for item in items:
+        if isinstance(item, Mapping) and isinstance(item.get("ref"), str) and isinstance(item.get("id"), str):
+            aliases.setdefault(item["ref"], item["id"])
+    return aliases or None
+
+
+def lean_presentation_enabled(snapshot: Mapping[str, object]) -> bool:
+    from .character_interior.life_context_presentation import LEAN_PRESENTATION_COMPILER_VERSIONS
+
+    compiler = snapshot.get("snapshot_compiler")
+    version = compiler.get("value") if isinstance(compiler, Mapping) else compiler
+    return isinstance(version, str) and version in LEAN_PRESENTATION_COMPILER_VERSIONS
+
+
+def present_inner_life(
+    snapshot: dict[str, object], *, source_ref_aliases: object = None,
+    lean_ref_aliases: Mapping[str, str] | None = None,
+) -> dict[str, object]:
+    if lean_ref_aliases is not None and lean_presentation_enabled(snapshot):
+        return lean_present_snapshot(
+            present_inner_life(snapshot, source_ref_aliases=source_ref_aliases),
+            ref_aliases=lean_ref_aliases,
+        )
     materials = snapshot.get("materials")
     ordered_snapshot = dict(snapshot)
     if isinstance(materials, dict):
