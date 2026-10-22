@@ -34,6 +34,7 @@ from .character_interior import CharacterInterior
 from .character_interior.production import compose_production_character_interior
 from .character_interior.turn_store import _CharacterInteriorTurnStore
 from .companion_identity import CompanionIdentityFrame
+from .life_structural_review import is_structural_life_review
 from .expression_draft import (
     ExpressionDraftCapabilities,
     PRODUCTION_TEXT_ONLY_EXPRESSION_CAPABILITIES,
@@ -730,6 +731,9 @@ class SemanticChatComposition:
         if reviewer is None:
             status = "unavailable"
             warning_reasons.append("life_source_authority.reviewer_unavailable")
+        elif runtime_isolation == "structural":
+            # Operator-chosen: no semantic Life review, nothing to isolate.
+            status = "structural"
         elif runtime_isolation == "caller_provided_distinct_unverified":
             status = (
                 "operational_isolation_unverified" if all_qualified else "operational_unqualified"
@@ -1304,6 +1308,15 @@ def build_semantic_chat_composition(
     if (
         resolved_life_source_closure_model is None
         and settings.world_v2_life_source_review_enabled
+        and settings.world_v2_life_review_mode == "structural"
+    ):
+        # Keep the review lifecycle; retire the semantic judge (no provider call).
+        from .life_structural_review import StructuralLifeReviewModel
+
+        resolved_life_source_closure_model = StructuralLifeReviewModel()
+    if (
+        resolved_life_source_closure_model is None
+        and settings.world_v2_life_source_review_enabled
         and settings.world_v2_life_self_review_allowed
     ):
         resolved_life_source_closure_model = background_model
@@ -1320,7 +1333,9 @@ def build_semantic_chat_composition(
         proactive_source_closure_model=None,
         life_source_closure_model=resolved_life_source_closure_model,
         life_source_runtime_isolation=(
-            "self_review_operator_approved"
+            "structural"
+            if is_structural_life_review(resolved_life_source_closure_model)
+            else "self_review_operator_approved"
             if resolved_life_source_closure_model is background_model
             and resolved_life_source_closure_model is not None
             else "independent"

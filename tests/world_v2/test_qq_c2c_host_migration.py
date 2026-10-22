@@ -5081,7 +5081,9 @@ def test_qq_health_reports_a_running_scheduler_even_when_the_world_is_starved(
                 "runtime": None,
             },
         }
-    assert scheduler["life_source_authority"]["status"] == "unavailable"
+    # Default Life review is structural (provider-free), reported plainly.
+    assert scheduler["life_source_authority"]["status"] == "structural"
+    assert scheduler["life_source_authority"]["warning"] is False
     assert scheduler["life_source_authority"]["last_transport_winner"] is None
     if scheduler["recall_semantic"]["enabled"]:
         assert scheduler["recall_semantic"]["embedding_version"].startswith("openai-compatible:")
@@ -5583,6 +5585,7 @@ def test_qq_fake_composition_keeps_open_life_fact_effects_fail_closed(
             DEEPSEEK_API_KEY=None,
             OPENAI_API_KEY=None,
             WORLD_V2_LIFE_SELF_REVIEW_ALLOWED=False,
+            WORLD_V2_LIFE_REVIEW_MODE="model",
             database_path=tmp_path / "qq-open-life-wiring.sqlite",
         ),
         recipient_id="10001",

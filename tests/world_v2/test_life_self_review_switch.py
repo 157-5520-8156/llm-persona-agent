@@ -1,15 +1,16 @@
-"""Life source review must be present, and weakening it must be explicit.
+"""Life review topology switches.
 
-Life Development fails closed without a source reviewer, but the composition
-used to discard the reviewer argument outright, which left the whole event
-machine dark. Letting the World Author audit its own draft is the operator's
-2026-08-14 trade; it stays off by default so the weaker boundary is visible.
+Default (2026-10-21): ``structural`` -- the review lifecycle stays, but no model
+judges Life prose. ``model`` keeps the earlier semantic topology, where Life
+Development fails closed without a reviewer and World Author self-review is the
+operator's explicit 2026-08-14 trade.
 """
 
 from __future__ import annotations
 
 from companion_daemon.config import Settings
 from companion_daemon.llm import FakeCompanionModel
+from companion_daemon.world_v2.life_structural_review import StructuralLifeReviewModel
 from companion_daemon.world_v2.semantic_chat_composition import (
     build_semantic_chat_composition,
 )
@@ -33,8 +34,41 @@ def _composition(settings: Settings):  # type: ignore[no-untyped-def]
     )
 
 
+def test_structural_review_is_the_default_and_calls_no_provider() -> None:
+    composition = _composition(_settings())
+
+    assert isinstance(composition.life_source_closure_model, StructuralLifeReviewModel)
+    assert composition.life_source_closure_model is not composition.world_support_model
+    assert composition.life_source_runtime_isolation == "structural"
+    health = composition.life_source_authority_health()
+    assert health["status"] == "structural"
+    assert health["warning"] is False
+
+
+def test_structural_review_respects_the_life_review_master_switch() -> None:
+    composition = _composition(_settings(WORLD_V2_LIFE_SOURCE_REVIEW_ENABLED=False))
+
+    assert composition.life_source_closure_model is None
+    assert composition.life_source_runtime_isolation == "unavailable"
+
+
+def test_structural_review_does_not_replace_an_injected_reviewer() -> None:
+    independent = FakeCompanionModel()
+    composition = build_semantic_chat_composition(
+        settings=_settings(),
+        flash_model=FakeCompanionModel(),
+        world_support_model=FakeCompanionModel(),
+        life_source_closure_model=independent,
+        model_id_prefix="test",
+    )
+
+    assert composition.life_source_closure_model is independent
+
+
 def test_self_review_is_off_by_default() -> None:
-    composition = _composition(_settings(WORLD_V2_LIFE_SELF_REVIEW_ALLOWED=False))
+    composition = _composition(_settings(
+        WORLD_V2_LIFE_SELF_REVIEW_ALLOWED=False, WORLD_V2_LIFE_REVIEW_MODE="model",
+    ))
 
     assert composition.life_source_closure_model is None
     assert composition.life_source_runtime_isolation == "unavailable"
@@ -42,7 +76,7 @@ def test_self_review_is_off_by_default() -> None:
 
 def test_operator_approved_self_review_installs_the_world_author() -> None:
     composition = _composition(
-        _settings(WORLD_V2_LIFE_SELF_REVIEW_ALLOWED=True),
+        _settings(WORLD_V2_LIFE_SELF_REVIEW_ALLOWED=True, WORLD_V2_LIFE_REVIEW_MODE="model"),
     )
 
     assert composition.life_source_closure_model is composition.world_support_model

@@ -666,6 +666,15 @@ class Settings(BaseSettings):
         default=False,
         alias="WORLD_V2_LIFE_SELF_REVIEW_ALLOWED",
     )
+    # 2026-10-21 operator decision: Life Development keeps its review lifecycle
+    # (audit records, hashes, replay) but no longer asks a model to judge prose.
+    # "structural" installs the provider-free reviewer in
+    # life_structural_review.py; "model" restores the semantic reviewer
+    # topology above (independent / self-review) for comparison runs.
+    world_v2_life_review_mode: Literal["structural", "model"] = Field(
+        default="structural",
+        alias="WORLD_V2_LIFE_REVIEW_MODE",
+    )
     world_v2_source_review_base_url: str | None = Field(
         default=None,
         alias="WORLD_V2_SOURCE_REVIEW_BASE_URL",

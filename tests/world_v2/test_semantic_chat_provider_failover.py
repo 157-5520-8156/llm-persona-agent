@@ -9,6 +9,7 @@ from companion_daemon.llm import (
     OpenAICompatibleChatModel,
     ProviderCapacityGate,
 )
+from companion_daemon.world_v2.life_structural_review import StructuralLifeReviewModel
 from companion_daemon.world_v2.semantic_chat_composition import (
     build_semantic_chat_composition,
 )
@@ -53,7 +54,9 @@ async def test_composition_does_not_construct_model_review_lanes() -> None:
 
     assert composition.source_closure_model is None
     assert composition.proactive_source_closure_model is None
-    assert composition.life_source_closure_model is None
+    # Life keeps its review lifecycle, but the default reviewer is structural:
+    # it is not a model lane and never calls a provider.
+    assert isinstance(composition.life_source_closure_model, StructuralLifeReviewModel)
     health = composition.proactive_source_authority_health()
     assert health["status"] == "fact_effects_fail_closed"
     assert health["warning_reasons"] == ["one_shot.model_review_lanes_removed"]

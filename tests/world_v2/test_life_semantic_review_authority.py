@@ -82,6 +82,7 @@ async def test_clock_cannot_authorize_existing_history_even_with_configured_focu
         _env_file=None, database_path=tmp_path / "world.sqlite",
         WORLD_V2_LIFE_SOURCE_REVIEW_ENABLED=self_review,
         WORLD_V2_LIFE_SELF_REVIEW_ALLOWED=self_review,
+        WORLD_V2_LIFE_REVIEW_MODE="model",
     )
     host = build_qq_c2c_host(
         settings=settings, recipient_id="10001", bootstrap_at=NOW,
