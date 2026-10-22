@@ -373,7 +373,7 @@ class ScenarioVerificationError(AssertionError):
 # control reproduces .112; only npc_world_impact.01's replay identity changes,
 # with every behavioral manifest field unchanged.
 # The withdrawn .113 audit remains intact. See the dated .114 audit.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.117"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.118"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -714,7 +714,13 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.117
 # Corpus, predicates and calls unchanged; see the dated .116 audit.
 # .117: pinned source grammar changes only the same case's replay identity;
 # all120 business rows match, with351 consistent digest renames. See .117 audit.
-FROZEN_OFFLINE_SUITE_MANIFEST_HASH = "337c8683333fd26adeae2841730dcd8a9532fb9745ed0791976bcf944e3a4062"
+# .118 (2026-10-22): lived-moment automatic recall. A settled life event now
+# schedules the same unbidden association a message does. Old (.117 code at
+# codex b8eac32d) and new runs keep all 120 business rows identical (outputs,
+# actions, calls, event types, predicates); only npc_world_impact.01's
+# replay_hash changes, from the added prefetch trace identity. See
+# docs/audits/scenario-baseline-118-2026-10-22.json.
+FROZEN_OFFLINE_SUITE_MANIFEST_HASH = "65cd3ce6f7541a850d6e07b639fda6ec51eb2da31be65bfbc2ec2ae40a3a75ef"
 
 
 class _FixedScenarioRouter:

@@ -1,0 +1,18 @@
+{
+  "baseline": "world-v2-offline-mechanism-baseline.118",
+  "previous": "world-v2-offline-mechanism-baseline.117",
+  "date": "2026-10-22",
+  "reason": "lived-moment automatic recall: settled life events schedule unbidden association",
+  "compared": "codex/reference-contract-repair b8eac32d vs claude/review-removal",
+  "cases": 120,
+  "business_rows_identical": true,
+  "changed": {
+    "npc_world_impact.01": {
+      "replay_hash": {
+        "before": "9d7abb794e79b339d2d35ec7e8a3157b47ab521125ab5525e3f5b636739cc917",
+        "after": "b0c2930550cd4e46e040946ca6590285d52777202579b236ff87155c5343f41d"
+      }
+    }
+  },
+  "new_manifest_hash": "65cd3ce6f7541a850d6e07b639fda6ec51eb2da31be65bfbc2ec2ae40a3a75ef"
+}
