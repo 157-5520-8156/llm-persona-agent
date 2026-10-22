@@ -65,7 +65,7 @@ def _automatic_attention_eligible(document) -> bool:
     text = (getattr(document, "retrieval_text", None) or document.text or "").strip()
     if text.startswith("environment;"):
         return False
-    if document.source_slice == "recent_dialogue":
+    if document.source_slice == "recent_dialogue" and document.authority == "dialogue_record":
         # A remembered exchange surfaces as one conversation episode; its single
         # lines stay searchable on purpose but do not pop up on their own.
         from .recall_corpus import is_conversation_episode

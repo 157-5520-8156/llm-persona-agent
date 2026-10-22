@@ -84,8 +84,11 @@ def test_separate_sittings_and_long_talks_are_split_and_lone_lines_are_not_episo
     ]
     lone = [_line(40, "晚安", speaker="counterpart", minutes=60 * 12)]
     episodes = [doc for doc in _compile([*QIXI, *long_talk, *lone]) if is_conversation_episode(doc)]
-    # Qixi sitting; eleven-line talk split into 8 + 3; the lone goodnight is not an episode.
-    assert sorted(len(doc.text.splitlines()) - 1 for doc in episodes) == [3, 5, 8]
+    # Qixi sitting; eleven-line talk split into 8 + 3; his lone goodnight is
+    # still an episode so it can surface in that form.
+    assert sorted(len(doc.text.splitlines()) - 1 for doc in episodes) == [1, 3, 5, 8]
+    mine_alone = [_line(50, "我先睡啦", speaker="companion", minutes=60 * 20)]
+    assert not [doc for doc in _compile(mine_alone) if is_conversation_episode(doc)]
     assert all(len(doc.source_bindings) <= 16 for doc in episodes)
 
 

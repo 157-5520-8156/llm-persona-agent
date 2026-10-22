@@ -114,7 +114,10 @@ def test_lived_moment_query_names_her_moment_not_his_words() -> None:
 
 
 def _doc(text, *, slice_name="recent_experiences", retrieval=None):
-    return SimpleNamespace(text=text, retrieval_text=retrieval, source_slice=slice_name)
+    return SimpleNamespace(
+        text=text, retrieval_text=retrieval, source_slice=slice_name, source_item_ref="item:1",
+        authority="dialogue_record" if slice_name == "recent_dialogue" else "world_fact",
+    )
 
 
 def test_unbidden_attention_skips_setting_prose_and_contentless_fragments() -> None:

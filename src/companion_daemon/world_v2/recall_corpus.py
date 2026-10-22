@@ -1008,8 +1008,10 @@ class RecallCorpusCompiler:
 
         documents: list[RecallDocument] = []
         for window in windows:
-            if len(window) < 2 or not any(item.speaker == "counterpart" for item, _r, _b in window):
-                # Her own consecutive bubbles stay single-line records.
+            if not any(item.speaker == "counterpart" for item, _r, _b in window):
+                # Her own bubbles alone stay single-line records.  A lone line
+                # from him is still an episode, so every exchange he took part
+                # in can surface unbidden in its episode form.
                 continue
             rendered = []
             for item, _speaker_ref, _bindings in window:
@@ -1031,7 +1033,8 @@ class RecallCorpusCompiler:
                     bindings=tuple(binding for _i, _r, row_bindings in window for binding in row_bindings),
                     text=body[:4_096],
                     actor_ref=actor_ref,
-                    subject_refs=_subjects(*(speaker_ref for _i, speaker_ref, _b in window)),
+                    # She was party to every exchange she remembers.
+                    subject_refs=_subjects(actor_ref, *(speaker_ref for _i, speaker_ref, _b in window)),
                     link_refs=tuple(dict.fromkeys(
                         claim.authority_event_ref
                         for item, _r, _b in window
