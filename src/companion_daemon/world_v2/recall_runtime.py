@@ -53,7 +53,6 @@ logger = logging.getLogger(__name__)
 # for ordinary life cues.  Both stay fully searchable by a character-chosen
 # Recall; only the unbidden prefetch skips them.  Nothing is reranked or
 # rewritten: eligible hits keep their order and scores.
-_AUTOMATIC_ATTENTION_PRESENTED = 4
 _AUTOMATIC_ATTENTION_MIN_DIALOGUE_CHARACTERS = 6
 
 
@@ -73,9 +72,11 @@ def _automatic_attention_eligible(document) -> bool:
 def automatic_attention_result(result: RecallResult) -> RecallResult:
     """Keep the hits a person could plausibly be reminded of, in rank order."""
 
+    # No extra cap: a linked story reading may legitimately exceed the
+    # request limit, and its members must stay together.
     hits = tuple(
         hit for hit in result.hits if _automatic_attention_eligible(hit.document)
-    )[:_AUTOMATIC_ATTENTION_PRESENTED]
+    )
     if hits == result.hits:
         return result
     return result.model_copy(update={

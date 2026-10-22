@@ -2946,9 +2946,9 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                                 logical_time=query.logical_time,
                                 query_text=lived_cue,
                             ),
-                            # Search wider, present at most four after the
-                            # unbidden-attention filter in the coordinator.
-                            limit=8,
+                            # Slightly wider than chat: the coordinator's
+                            # unbidden-attention filter may drop setting prose.
+                            limit=6,
                         )
                         try:
                             self._recall.schedule_prefetch(
