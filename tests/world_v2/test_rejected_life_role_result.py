@@ -28,7 +28,9 @@ async def _rejected():
     invalid["summary"] = "原稿里的全部内心，不是新的世界证据。"
     raw = json.dumps(invalid, ensure_ascii=False, indent=2)
     model = _RequiredToolQueueModel(raw, valid)
-    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-v4-flash")
+    # An unoffered attention ref is only the rejection trigger here; the strict
+    # path keeps it a rejection so the correction lifecycle can be exercised.
+    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-v4-flash", host_clerical_binding=False)
     request = await _request(phase="experience", purpose="world_stimulus_appraisal", capability_manifest=_world_stimulus_manifest())
     with pytest.raises(StructuredRoleResultError) as raised:
         await role.experience(request)

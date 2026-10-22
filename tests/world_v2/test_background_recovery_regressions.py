@@ -60,7 +60,9 @@ async def test_memory_correction_describes_provider_fields_without_requesting_ho
         }[failure]
     raw = json.dumps(bad)
     model = _RequiredToolQueueModel(raw, good)
-    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-flash")
+    # Strict path: the default role now binds host-owned sources itself (see
+    # test_memory_host_binds_sources_without_a_correction_call).
+    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-flash", host_clerical_binding=False)
     request = await _request(purpose="memory_consolidation", capability_manifest=offered)
     with pytest.raises(StructuredRoleResultError) as raised:
         await role.consider(request)
@@ -143,8 +145,33 @@ async def test_memory_host_binding_never_repairs_semantic_choices_or_explicit_ba
     elif invalid == "missing_choice":
         payload["choices"].pop()
     role = StructuredCharacterRoleFaculty(model=_RequiredToolQueueModel(_result(status="decision", decision=decision)), model_id="deepseek-flash")
+    request = await _request(purpose="memory_consolidation", capability_manifest=offered)
+    if invalid in {"sources", "legacy"}:
+        # Host-owned binding: the host writes the exact manifest sources; her
+        # choices are returned byte-for-byte unchanged.
+        result = await role.consider(request)
+        assert tuple(result["decision"]["source_refs"]) == offered.source_refs
+        assert result["decision"]["payload"]["choices"] == choices()["choices"]
+        return
     with pytest.raises(StructuredRoleResultError):
-        await role.consider(await _request(purpose="memory_consolidation", capability_manifest=offered))
+        await role.consider(request)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["partial_binding", "unknown", "empty", "null"])
+async def test_memory_host_binds_sources_without_a_correction_call(failure):
+    offered = manifest()
+    bad = json.loads(_result(status="decision", decision={"payload": choices()}))
+    bad["decision"]["source_refs"] = {
+        "partial_binding": list(offered.source_refs[:1]), "unknown": ["source:unknown"],
+        "empty": [], "null": None,
+    }[failure]
+    model = _RequiredToolQueueModel(json.dumps(bad))
+    role = StructuredCharacterRoleFaculty(model=model, model_id="deepseek-flash")
+    result = await role.consider(await _request(purpose="memory_consolidation", capability_manifest=offered))
+    assert tuple(result["decision"]["source_refs"]) == offered.source_refs
+    assert result["decision"]["payload"]["choices"] == choices()["choices"]
+    assert len(model.calls) == 1
 
 
 def test_memory_v1_retains_its_explicit_reference_schema_and_v2_pins_sources_in_identity():

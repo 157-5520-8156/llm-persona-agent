@@ -113,7 +113,9 @@ async def test_completed_activity_offers_one_new_self_directed_choice(
         assert any(x.event.event_type == ("ActivityCompleted" if terminal_kind == "completed" else "ActivityAbandoned") for x in evidence.events), [
             (p.status, p.scheduled_window) for p in evidence.projection.plans
         ]
-        assert len(provider.day_requests) == 2 + int(repair_sources), "completion never reached the character as a new choice"
+        # repair_sources used to cost one correction call; the host now binds
+        # the exact sources, so the day choice is reached in two requests.
+        assert len(provider.day_requests) == 2, "completion never reached the character as a new choice"
         assert len(evidence.projection.plans) == (2 if choose_next else 1)
         assert evidence.projection.actions == ()
         if choose_next:
@@ -158,7 +160,7 @@ async def test_completed_activity_offers_one_new_self_directed_choice(
             causation_id="clock:continuity-restart", correlation_id="life-continuation",
             reason="test_clock",
         )
-        assert len(provider.day_requests) == 2 + int(repair_sources), "the same completion was offered again after restart"
+        assert len(provider.day_requests) == 2, "the same completion was offered again after restart"
         assert len(app.export_replay_evidence().projection.plans) == (2 if choose_next else 1)
         from companion_daemon.world_v2.replay_evaluator import ReplayEvaluator
 
@@ -182,7 +184,7 @@ async def test_completed_activity_offers_one_new_self_directed_choice(
                 causation_id="clock:third-choice", correlation_id="life-continuation",
                 reason="test_clock",
             )
-            assert len(provider.day_requests) == 3 + int(repair_sources)
+            assert len(provider.day_requests) == 3
             assert len(app.export_replay_evidence().projection.plans) == 3
     finally:
         app.close()
@@ -1020,7 +1022,9 @@ async def test_agenda_activity_extra_decision_sources_are_corrected_by_same_role
                            correlation_id="source-repair", reason="test_clock")
             previous = at
         assert provider.repaired_lifecycle
-        assert len(provider.lifecycle_requests) == 2
+        # Host-owned decision sources: the extra ref is replaced by the exact
+        # manifest binding without a second provider call.
+        assert len(provider.lifecycle_requests) == 1
         state = app.export_replay_evidence().projection
         assert state.plans[0].status == "active"
         assert state.chat_life_plan_considerations[0].status == "selected"

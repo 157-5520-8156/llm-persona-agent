@@ -152,7 +152,9 @@ async def test_live_schema_refuses_extra_reference_allowed_by_generic_wire():
 async def test_json_syntax_failure_reports_bounded_position_without_repair():
     raw = '{"status":"transition","summary":"I said "hello"."}'
     model = _RequiredToolQueueModel(raw)
-    role = StructuredCharacterRoleFaculty(model=model, model_id="offline-codec-test")
+    # Strict path; the default role first tries the shared transport repair
+    # (test_host_repairs_an_unescaped_inner_quote_instead_of_rejecting_the_turn).
+    role = StructuredCharacterRoleFaculty(model=model, model_id="offline-codec-test", host_clerical_binding=False)
     with pytest.raises(StructuredRoleResultError) as failure:
         await role.experience(
             await _request(
@@ -470,7 +472,9 @@ async def test_core_keeps_one_same_pin_json_correction_then_technical_failure():
     model = _RequiredToolQueueModel(invalid, invalid)
     interior = CharacterInterior(
         projection=_Projection(),
-        role=StructuredCharacterRoleFaculty(model=model, model_id="offline-codec-test"),
+        role=StructuredCharacterRoleFaculty(
+            model=model, model_id="offline-codec-test", host_clerical_binding=False,
+        ),
     )
     stimulus = InteriorStimulus(
         inner_turn_ref="turn:codec-json",

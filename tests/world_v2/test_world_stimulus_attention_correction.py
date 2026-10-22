@@ -1,4 +1,4 @@
-"""The one same-role correction reports the existing appraisal wire bound."""
+"""Appraisal attention overflow is host bookkeeping, not a correction trigger."""
 
 from __future__ import annotations
 
@@ -55,9 +55,13 @@ def _model_validation_payload(evidence):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("correction_valid", [True, False])
-async def test_world_stimulus_attention_overflow_gets_one_bounded_same_role_correction(
+async def test_world_stimulus_attention_overflow_is_cleared_by_the_host_without_a_correction_call(
     tmp_path, monkeypatch, correction_valid
 ):
+    """Attention noise is clerical: the host drops unoffered refs and caps the
+    list, so the first appraisal stands and no second provider call is paid.
+    (Before 2026-10-21 this cost one full same-role correction call.)"""
+
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")
     provider = _AttentionResponseHTTP(correction_valid=correction_valid)
     model = _model(provider)
@@ -66,13 +70,8 @@ async def test_world_stimulus_attention_overflow_gets_one_bounded_same_role_corr
         await _settled(app)
         await app.drain_background_once()
 
-        assert len(provider.stimulus_requests) == 2
-        first, second = [
-            json.loads(request["messages"][-1]["content"])
-            for request in provider.stimulus_requests
-        ]
-        # The active reference_wire=false role carrier keeps its existing
-        # eight-ref maximum; this repair does not replace or widen it.
+        assert len(provider.stimulus_requests) == 1
+        assert "correction" not in json.loads(provider.stimulus_requests[0]["messages"][-1]["content"])
         assert (
             _WireRoleResult.model_json_schema()["properties"]["attended_source_refs"][
                 "maxItems"
@@ -80,25 +79,10 @@ async def test_world_stimulus_attention_overflow_gets_one_bounded_same_role_corr
             == 8
         )
 
-        correction = second["correction"]
-        assert correction["failure_code"] == "role_result_schema_invalid"
-        assert "上限是 8 条" in correction["failure_detail"]
-        assert "本次确实注意过" in correction["failure_detail"]
-        assert "不要让宿主按顺序截断" in correction["failure_detail"]
-        assert "source:attention:" not in correction["failure_detail"]
-        assert correction["rejected_role_result"]["authority"] == (
-            "rejected_candidate_not_world_evidence"
-        )
-
         evidence = app.export_replay_evidence()
         audits = _model_validation_payload(evidence)
-        failures = [item for item in audits if item.get("status") == "main_exception"]
-        if correction_valid:
-            assert not failures
-            assert any(item.get("status") == "proposal_validated" for item in audits)
-        else:
-            assert len(failures) == 1
-            assert failures[0]["failure_code"] == "invalid_role_result_after_correction"
+        assert not [item for item in audits if item.get("status") == "main_exception"]
+        assert any(item.get("status") == "proposal_validated" for item in audits)
 
         # This appraisal path cannot authorize or deliver a user-facing Action.
         event_types = {row.event.event_type for row in evidence.events}

@@ -216,16 +216,18 @@ async def test_production_role_corrects_partial_sources_before_terminal_is_saved
     try:
         result = await runtime.advance_once(allow_model_call=True)
         assert result["status"] == "no_change", result
-        assert len(model.calls) == 2
+        # The host writes the exact manifest binding, so the partial first
+        # draft stands without a correction call; her retain choice is kept.
+        assert len(model.calls) == 1
         assert all(choice[1]["function"]["name"] == "character_role_fact_memory_retention_v1" for choice in model.tool_calls)
         recorded = runtime._recorded(source)
-        assert recorded.result.author_lineage.attempt_ordinal == 1
-        assert recorded.result.author_lineage.parent_model_call_id is not None
+        assert recorded.result.author_lineage.attempt_ordinal == 0
         assert recorded.result.decision["source_refs"] == refs
+        assert recorded.result.decision["payload"]["retain"] is False
         assert len(character.completed_considerations_for_source(world_id=WORLD_ID, actor_ref=ACTOR,
             purpose="fact_memory_retention", source_ref=source.authority_event_ref)) == 1
         assert (await runtime.advance_once(allow_model_call=True))["status"] == "idle"
-        assert len(model.calls) == 2 and not ledger.project().memory_candidates
+        assert len(model.calls) == 1 and not ledger.project().memory_candidates
     finally:
         character._turn_store.close()
         ledger.close()
