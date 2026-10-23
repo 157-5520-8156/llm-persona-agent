@@ -1592,7 +1592,7 @@ def _prefetch_item_constants(item: Mapping[str, object], constants):
 
 
 def _expand_automatic_prefetch(value: object, *, constants=_AUTOMATIC_PREFETCH_CONSTANTS,
-                               compact_stories: bool = False, lived_framing: bool = True) -> object:
+                               compact_stories: bool = False) -> object:
     if not isinstance(value, Mapping):
         return value
     if value.get(AUTOMATIC_PREFETCH_FRAMING_KEY) == AUTOMATIC_PREFETCH_FRAMING:
@@ -1904,7 +1904,6 @@ def expand_present_world_context(view: Mapping[str, object]) -> dict[str, object
             materials["automatic_prefetch"] = _expand_automatic_prefetch(
                 materials["automatic_prefetch"], constants=_prefetch_constants(snapshot),
                 compact_stories=_compact_story_prefetch(snapshot),
-                lived_framing=lean_presentation_enabled(snapshot),
             )
     expanded["inner_life_snapshot"] = _expand_availability_wrappers(snapshot)
     return expanded
