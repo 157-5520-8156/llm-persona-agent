@@ -16,9 +16,19 @@
 
 ## 验证与限制
 
-回归通过情况和短链路结果在本次完成后填写；证据保存在
-`output/private-audits/claude-handoff-completion-20261023/`。
-之前的审查、反例及历史测试结果保留在
-`output/private-audits/claude-branch-review-20261022/`，不能将它们算作修复后的全量通过。
+最终 Python 源码冻结 `c602d8c8c734dbfe3021db9fbd8d4de8ad56dceb`，1,728 个文件与 Git archive 逐项一致。全部 11,376 个用例按文件分四组完整覆盖：**11,355 passed / 19 skipped / 2 xfailed**。来源清单、分组清单、各组原始日志及 SHA、最终选用结果见 `output/private-audits/claude-handoff-completion-20261023/full-final/qualification-result.json`。
+
+- 373 项相关回归通过；清理多余参数后 22 项呈现回归通过；Ruff、Python 编译和 diff 检查通过。Standards 复查 0 个硬错误，1 个多余参数已移除；Spec 复查及基线增量复查均 0 项发现。
+- 旧 `.29/.25` 原始反例现在直接验证通过；提供样本的 `.30` 原精简 wire 与 Claude HEAD 字节相等。
+- 初次串行全量保留为 11,346 passed / 1 failed / 8 fixture errors。8 项是旧夹具通过自动联想索取环境记录，改为主动 Recall 后原正负断言全部保留；另 1 项为预期回放身份漂移。独立运行原 Claude 与修复版的全部 120 个冻结场景，所有业务行相同，仅一个 NPC 场景的 replay_hash 改变；据此升级 `.119` 基线，原漂移检查继续启用，见 `scenario-baseline-119-2026-10-23.json`。
+- 最终分组执行中，私有启动脚本把测试目录放在仓库内，触发两项“必须使用系统临时目录”的检查。源码和测试未变，完整重跑该组后 2,825 passed / 19 skipped；其他三组结果直接保留。初次失败日志仍在 `full-final/result.json`，未将其改写为成功。
+
+真实短链路使用新建隔离 SQLite 夹具、GLM-5.3-Flash low/json_object，世界初始雨事件和过去记忆由夹具提供，角色回应自主生成。两次真实调用首稿接受，没有纠错或语义审核调用；实际产生生活回应、Experience、Appraisal 和 Affect。旧雨天记忆进入实际请求并影响了角色联想，原 LifeSourceView 验证、逐事件重放、独立冷重开均通过。作者快照 7,102 字符，宿主完整视图 9,930 字符。两次 HTTP 等待约 4.120/6.848 秒，总过程 11.972 秒；供应商报告 16,671 tokens，未知/待计费 0，CNY 未知。
+
+真实调用使用 `6fa6de0b`；其运行代码与最终源码的差异仅为两个离线场景基线常量，已通过文件差异及 AST 对照核实。完整请求、原始响应、计费记录和语义审读见同审计目录的 `live-chain/`、`live-input-proof.json`、`live-final-runtime-equivalence.json` 和 `SHORT-CHAIN-READOUT.md`。
+
+**语义限制仍保留：** 模型在私有 summary 将来源的“高中”具体化成“高三”，另一条 meaning 把“放学”补成“下午”。没有形成新的客观 World Fact，但此样本不能算严格事实保真通过。未用重试、关键词纠正或恢复已取消的语义审核掩盖它。
+
+之前的审查和反例保留在 `output/private-audits/claude-branch-review-20261022/`。本次未切换生产 QQ、主候选或原保留世界；`glm` 定时检查仍为 PAUSED。
 
 本分支修复的是实际输入与记忆传递。即使短链路与离线回归通过，也不直接证明长期剧情丰富度、重大分叉、持续后果到命运/规划/课表的完整闭环，或真实 QQ 发布资格。

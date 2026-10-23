@@ -1210,6 +1210,17 @@ independently; it does not restore the retired general topology. The
 2026-09-08 real-dialogue audit still records both undeclared chat facts and a
 focused-critic false acceptance. Those are open limitations, not qualification
 success: `docs/audits/adaptive-companionship-2026-09-08.md`.
+
+As explicitly authorized on 2026-10-22, the default Life composition now uses
+`WORLD_V2_LIFE_REVIEW_MODE=structural`; the separate Character Life semantic
+candidate gate remains disabled by default. Host clerical binding handles
+reference bookkeeping, while character meaning and choices remain model-owned.
+Explicitly configured model reviewers remain separate optional lanes. Structural
+acceptance does not establish semantic truth. The versioned lean author view
+retains full host provenance and legacy paid-view reconstruction; implementation
+and bounded verification are recorded in
+`docs/audits/claude-handoff-completion-2026-10-23.md`.
+
 _Avoid_: Configuration as evidence, timeout as schema success, local checks as
 complete semantic coverage, retired reviewer topology reported as active
 
