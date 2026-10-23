@@ -1,0 +1,24 @@
+{
+  "baseline": "world-v2-offline-mechanism-baseline.119",
+  "previous": "world-v2-offline-mechanism-baseline.118",
+  "date": "2026-10-23",
+  "reason": "versioned lean table alignment and automatic recall eligibility query identity",
+  "compared": "Claude54ea7ecf vs repair6fa6de0b",
+  "cases": 120,
+  "business_rows_identical": true,
+  "changed": [
+    {
+      "case": "npc_world_impact.01",
+      "changes": {
+        "replay_hash": {
+          "before": "b0c2930550cd4e46e040946ca6590285d52777202579b236ff87155c5343f41d",
+          "after": "2427dfe6fdcfc6af5ab7377fe5b87a43cf44a7fe347144909eb929afb2a5e6bb"
+        }
+      }
+    }
+  ],
+  "old_manifest_hash": "65cd3ce6f7541a850d6e07b639fda6ec51eb2da31be65bfbc2ec2ae40a3a75ef",
+  "current_old_version_hash": "c136870382b430e9537d88bfb1048aa56b44d5f9599adf38d0ae8f2fb6ed76b4",
+  "new_manifest_hash": "efac2a5a1b5e0eb69c51b903ef6f20c8a23bfb73d92cdc33ab8af5cd4f940b89",
+  "scope": "all fixed fake case predicates pass; changed replay identity only; not real narrative quality"
+}

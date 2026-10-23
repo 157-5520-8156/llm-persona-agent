@@ -373,7 +373,7 @@ class ScenarioVerificationError(AssertionError):
 # control reproduces .112; only npc_world_impact.01's replay identity changes,
 # with every behavioral manifest field unchanged.
 # The withdrawn .113 audit remains intact. See the dated .114 audit.
-FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.118"
+FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.119"
 
 # Filled only after the complete, fixed fake suite has been run. A change to
 # this value requires the corresponding baseline-version rationale; it must
@@ -720,7 +720,10 @@ FROZEN_OFFLINE_SUITE_BASELINE_VERSION = "world-v2-offline-mechanism-baseline.118
 # actions, calls, event types, predicates); only npc_world_impact.01's
 # replay_hash changes, from the added prefetch trace identity. See
 # docs/audits/scenario-baseline-118-2026-10-22.json.
-FROZEN_OFFLINE_SUITE_MANIFEST_HASH = "65cd3ce6f7541a850d6e07b639fda6ec51eb2da31be65bfbc2ec2ae40a3a75ef"
+# .119: compare all120 cases against Claude54ea7ecf after versioned lean-table
+# and pre-ranking attention repairs. Business rows unchanged; only the same
+# NPC case replay identity changes. See scenario-baseline-119-2026-10-23.json.
+FROZEN_OFFLINE_SUITE_MANIFEST_HASH = "efac2a5a1b5e0eb69c51b903ef6f20c8a23bfb73d92cdc33ab8af5cd4f940b89"
 
 
 class _FixedScenarioRouter:

@@ -1,4 +1,8 @@
-"""A settled source omitted from display still reaches recall and review."""
+"""A deliberately requested settled source still reaches recall and review.
+
+Setting-only records remain searchable even though automatic association does
+not select them. All source closure and negative-carrier assertions stay intact.
+"""
 import json
 
 import pytest
@@ -9,6 +13,7 @@ from companion_daemon.world_v2.context_resolver import query_from_projection
 from companion_daemon.world_v2.ledger_context_resolver import context_capsule_compiler_from_ledger
 from companion_daemon.world_v2.life_content_store import SQLiteImmutableLifeContentStore
 from companion_daemon.world_v2.model_facing_context import compact_model_facing_context
+from companion_daemon.world_v2.recall_audit import CharacterRecallRequest
 from companion_daemon.world_v2.recall_index import FeatureHashRecallEmbedding, InMemoryRecallIndex, RecallDocument, RecallCursor
 from companion_daemon.world_v2.recall_model_reading import interior_recall_item
 from companion_daemon.world_v2.recall_runtime import RecallCoordinator, verify_trusted_recall_trace
@@ -49,7 +54,7 @@ async def recalled(tmp_path, monkeypatch):
         assert '一阵短雨已经停了' not in table.payload_json
         cursor = RecallCursor(world_revision=state.world_revision, deliberation_revision=state.deliberation_revision,
                               ledger_sequence=state.ledger_sequence)
-        trace = recall.prefetch(expected_cursor=cursor, query_text='一阵短雨已经停了',
+        trace = recall.recall(request=CharacterRecallRequest(query_text='一阵短雨已经停了'), expected_cursor=cursor,
                                 accessibility_seed='life-test', trigger_ref=source.event_id)
         audit = verify_trusted_recall_trace(trace)
         assert audit.hits
@@ -58,7 +63,7 @@ async def recalled(tmp_path, monkeypatch):
         view = json.loads(compact_model_facing_context(json.dumps(canonicalize_json_value({
             'slices': {}, 'inner_life_snapshot': {'materials': {'reading': reading}},
         }), ensure_ascii=False)))['inner_life_snapshot']['materials']['reading']
-        user = {'inner_life_snapshot': {'materials': {'automatic_prefetch': {'items': [view]}}}}
+        user = {'inner_life_snapshot': {'materials': {'selected_recall': {'content': {'items': [view]}}}}}
         author = json.dumps({'messages': [{'role': 'system', 'content': 'fixture'},
                                          {'role': 'user', 'content': json.dumps(user, ensure_ascii=False)}]})
         yield table, audit, doc, author
