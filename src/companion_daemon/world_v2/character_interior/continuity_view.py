@@ -2,6 +2,8 @@
 
 from dataclasses import replace
 
+from .life_context_presentation import LIFE_CONTEXT_COMPILER_VERSION, LIVED_PREFETCH_COMPILER_VERSIONS
+
 
 CONTRACT = "private-choice-continuity.1"
 CHOICE_PURPOSES = frozenset({"activity_lifecycle_choice", "life_development_choice", "outcome_selection"})
@@ -23,7 +25,7 @@ LIVED_RECALL_PURPOSES = frozenset({
 })
 
 
-def with_automatic_prefetch(profile, materials):
+def with_automatic_prefetch(profile, materials, *, compiler_version=LIFE_CONTEXT_COMPILER_VERSION):
     """Keep an automatic association the CharacterInterior already bound.
 
     Purpose whitelists bound cost; they must not silently discard the memory
@@ -31,6 +33,8 @@ def with_automatic_prefetch(profile, materials):
     so the sent view and every later re-derivation of it agree.
     """
 
+    if compiler_version not in LIVED_PREFETCH_COMPILER_VERSIONS:
+        return profile
     if not profile.snapshot_material_keys or "automatic_prefetch" not in (materials or {}):
         return profile
     if "automatic_prefetch" in profile.snapshot_material_keys:

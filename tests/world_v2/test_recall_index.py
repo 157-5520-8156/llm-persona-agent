@@ -44,6 +44,49 @@ CURSOR = RecallCursor(
 )
 
 
+@pytest.mark.parametrize("semantic", [False, True])
+@pytest.mark.asyncio
+async def test_automatic_recall_filters_before_top_k_and_keeps_deliberate_search(semantic):
+    base = _documents()[0]
+    documents = tuple(base.model_copy(update={
+        "document_id": f"recall:environment:{i}", "source_item_ref": f"environment:{i}",
+        "text": "environment; 乌龙茶", "retrieval_text": "environment; 乌龙茶",
+    }) for i in range(6)) + (base.model_copy(update={
+        "document_id": "recall:remembered", "source_item_ref": "memory:remembered",
+        "text": "茶馆里聊过乌龙茶", "link_refs": (),
+    }),)
+    index = InMemoryRecallIndex(embedding=FeatureHashRecallEmbedding())
+    index.rebuild(cursor=CURSOR, documents=documents)
+    coordinator = RecallCoordinator.from_built_index(
+        index=index, cursor=CURSOR, actor_ref=base.actor_ref,
+        subject_refs=("agent:companion", "user:primary"), logical_time=NOW,
+        trigger_ref="trigger:eligibility", semantic_embedding=FeatureHashRecallEmbedding() if semantic else None,
+    )
+    arguments = dict(expected_cursor=CURSOR, trigger_ref="trigger:eligibility",
+                     accessibility_seed="draw:eligibility")
+    request = CharacterRecallRequest(query_text="乌龙茶", link_refs=("topic:tea",), limit=6)
+    try:
+        deliberate = verify_trusted_recall_trace(coordinator.recall(request=request, **arguments))
+        assert len(deliberate.hits) == 6
+        assert all(h.document.source_item_ref.startswith("environment:") for h in deliberate.hits)
+        token = coordinator.schedule_prefetch(query_text=request.query_text, link_refs=request.link_refs, limit=6, **arguments)
+        # Check both the synchronous fallback and the semantic worker path.
+        fallback = await coordinator.await_scheduled_prefetch(
+            expected_cursor=CURSOR, trigger_ref="trigger:eligibility", job_token=token, timeout_seconds=0,
+        )
+        automatic = coordinator.prefetch(query_text=request.query_text, link_refs=request.link_refs, limit=6, **arguments)
+        for result in (fallback, automatic):
+            audit = verify_trusted_recall_trace(result)
+            assert [h.document.document_id for h in audit.hits] == ["recall:remembered"]
+            assert RecallAuditTrace.model_validate_json(audit.model_dump_json()) == audit
+            assert audit.query_hash != deliberate.query_hash
+        # An explicit pull and legacy query keep the original identity/wire.
+        assert "automatic_attention" not in deliberate.query.model_dump()
+        assert verify_trusted_recall_trace(coordinator.recall(request=request, **arguments)) == deliberate
+    finally:
+        coordinator.close()
+
+
 class _SemanticFixtureEmbedding:
     version = "fixture-semantic.1"
     dimensions = 3

@@ -93,6 +93,41 @@ def test_aliases_come_from_the_requests_own_citation_catalog() -> None:
     assert lean_aliases_from_citeable({"items": []}) is None
 
 
+def test_old_prefetch_presentation_does_not_gain_new_framing() -> None:
+    snapshot = _snapshot("inner-life-snapshot-compiler.29")
+    snapshot["materials"]["automatic_prefetch"] = {"items": [{"text": "过去的记忆"}]}
+    assert present_inner_life(snapshot)["materials"]["automatic_prefetch"] == {
+        "items": [{"text": "过去的记忆"}],
+    }
+
+
+@pytest.mark.parametrize("split_cache", [False, True])
+def test_lean_tables_keep_column_alignment_and_field_removal(split_cache):
+    from test_affect_reference_presentation import _refs
+    from companion_daemon.world_v2.affect_reference_view import pack_appraisal_references
+
+    table = pack_appraisal_references(_refs())
+    columns = table["columns"][:]
+    rows = table["rows"][:]
+    if split_cache:
+        table = {"columns": columns, "stable_rows": rows[:-1], "volatile_last_row": rows[-1]}
+    snapshot = _snapshot("inner-life-snapshot-compiler.31")
+    snapshot["materials"]["table"] = table
+    lean = lean_present_snapshot(snapshot, ref_aliases={_refs()[0]["appraisal_id"]: "s9"})["materials"]["table"]
+    actual_rows = (lean["stable_rows"] + [lean["volatile_last_row"]]) if split_cache else lean["rows"]
+    assert len(actual_rows) == len(rows)
+    for original, row in zip(rows, actual_rows, strict=True):
+        assert len(row) == len(lean["columns"])
+        record = dict(zip(lean["columns"], row, strict=True))
+        assert record["source_cluster_ref"] == "source-cluster:shared-stimulus"
+        assert "accepted_entity_revision" not in record
+        assert record["appraisal_id"] == ("s9" if original[0] == _refs()[0]["appraisal_id"] else None)
+    # Kept .30 pins retain the old bytes, even though their table is flawed.
+    snapshot["snapshot_compiler"]["value"] = "inner-life-snapshot-compiler.30"
+    legacy = lean_present_snapshot(snapshot, ref_aliases={})["materials"]["table"]
+    assert legacy["columns"] == columns
+
+
 @pytest.mark.asyncio
 async def test_a_real_appraisal_reads_the_lean_view_and_is_still_accepted(tmp_path, monkeypatch):
     monkeypatch.setenv("COMPANION_DISABLE_DEBUG_USAGE_LEDGER", "1")

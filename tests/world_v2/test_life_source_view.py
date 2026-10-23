@@ -86,6 +86,51 @@ async def test_actual_life_request_and_original_capsule_survive_close_and_restor
 
 
 @pytest.mark.asyncio
+async def test_legacy_29_view_keeps_its_original_profile_even_with_bound_prefetch(tmp_path, monkeypatch):
+    from companion_daemon.llm import provider_invocation_request_hash
+    from companion_daemon.world_v2.background_context_profile import (
+        profile_audit_record, slice_background_inner_life_snapshot,
+    )
+    from companion_daemon.world_v2.character_interior.core import CharacterInterior
+    from companion_daemon.world_v2.character_interior.life_source_origin import digest
+    from companion_daemon.world_v2.character_interior.life_source_state_readings import life_source_profile
+    from companion_daemon.world_v2.character_interior.ports import _PrefetchResult
+    from companion_daemon.world_v2.present_prompt import present_inner_life
+
+    payload, request, _ = await _prepared(tmp_path, monkeypatch)
+    snapshot = request.snapshot
+    snapshot = CharacterInterior._merge_prefetch(snapshot, _PrefetchResult(
+        world_id=snapshot.world_id, actor_ref=snapshot.actor_ref, cursor=snapshot.cursor,
+        content={'items': [{'source_ref': 'memory:bound', 'text': 'A retained candidate.'}]},
+        source_refs=('memory:bound',),
+    ))
+    snapshot = snapshot.model_copy(update={
+        'snapshot_compiler': type(snapshot.snapshot_compiler).available('inner-life-snapshot-compiler.29'),
+    })
+    sha = digest(canonical(snapshot._identity_material()))
+    snapshot = snapshot.model_copy(update={'snapshot_id': 'inner-life-snapshot:sha256:' + sha, 'snapshot_hash': sha})
+    request = request.model_copy(update={'snapshot': snapshot})
+    saved = payload['result']['life_source_view']
+    messages, controls = json.loads(saved['messages_json']), json.loads(saved['provider_controls_json'])
+    data = json.loads(messages[1]['content'])
+    data.pop('presentation', None)
+    # The .29/.25 wire excluded bound prefetch. It must not be retrofitted
+    # with the new profile when restoring an already-paid author request.
+    profile = life_source_profile('life-source-review.25')
+    data['inner_life_snapshot'] = present_inner_life(slice_background_inner_life_snapshot(
+        snapshot.model_view(include_lifecycle_states=True), profile, lean_source_inventory=True,
+    ))
+    assert 'automatic_prefetch' not in data['inner_life_snapshot']['materials']
+    data['background_context_profile'] = profile_audit_record(profile)
+    messages[1]['content'] = canonical(data)
+    view = prepare_life_source_view(
+        request=request, messages=messages, provider_controls=controls,
+        provider_request_hash='sha256:' + provider_invocation_request_hash(messages=messages, **controls),
+    )
+    assert LifeSourceView.model_validate_json(view.model_dump_json()).verify_request(request) == view
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize('fault', ['drop_view', 'system_message', 'rendered_material', 'tools', 'source_table', 'unmatched_refs', 'origin', 'author_hash', 'presentation_contract', 'review_contract'])
 async def test_durable_source_preparation_rejects_substitution(tmp_path, monkeypatch, fault):
     payload, _, _ = await _prepared(tmp_path, monkeypatch)

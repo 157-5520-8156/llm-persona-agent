@@ -173,6 +173,10 @@ class RecallAuditTrace(FrozenModel):
             )
             if self.paired_transition_hash != expected_transition:
                 raise ValueError("paired recall transition proof is absent or invalid")
+        if self.query.automatic_attention is not None:
+            from .recall_index import automatic_attention_eligible
+            if self.mode != "prefetch" or any(not automatic_attention_eligible(hit.document) for hit in self.hits):
+                raise ValueError("automatic attention scope differs from recorded mode or hits")
         if self.query.cursor != self.index_cursor:
             raise ValueError("recall query and result cursors differ")
         if (self.embedding_status == "degraded") != (self.embedding_failure_code is not None):

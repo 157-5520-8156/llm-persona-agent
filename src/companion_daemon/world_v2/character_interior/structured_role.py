@@ -2155,6 +2155,7 @@ class StructuredCharacterRoleFaculty:
             if request.purpose in LIVED_RECALL_PURPOSES:
                 background_profile = with_automatic_prefetch(
                     background_profile, full_snapshot.get("materials"),
+                    compiler_version=request.snapshot.snapshot_compiler.value,
                 )
             snapshot = slice_background_inner_life_snapshot(full_snapshot, background_profile)
         else:

@@ -27,7 +27,10 @@ def _expected_view(snapshot, review_contract=None, *, lean_ref_aliases=None):
 
     from .continuity_view import with_automatic_prefetch
 
-    profile = with_automatic_prefetch(life_source_profile(review_contract), snapshot.materials)
+    profile = with_automatic_prefetch(
+        life_source_profile(review_contract), snapshot.materials,
+        compiler_version=snapshot.snapshot_compiler.value,
+    )
     return present_inner_life(lean_ref_aliases=lean_ref_aliases, snapshot=slice_background_inner_life_snapshot(
         snapshot.model_view(include_lifecycle_states=review_contract in STATE_REVIEW_CONTRACTS),
         profile,
@@ -93,7 +96,10 @@ class LifeSourceView(FrozenModel):
         from .continuity_view import with_automatic_prefetch
         from ..present_prompt import LEAN_PRESENTATION_MARKER, lean_aliases_from_citeable
 
-        profile = with_automatic_prefetch(life_source_profile(checked.profile_contract), snapshot.materials)
+        profile = with_automatic_prefetch(
+            life_source_profile(checked.profile_contract), snapshot.materials,
+            compiler_version=snapshot.snapshot_compiler.value,
+        )
         if (
             payload.get("inner_life_snapshot") != _expected_view(
                 snapshot, checked.profile_contract,

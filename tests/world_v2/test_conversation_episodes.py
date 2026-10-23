@@ -84,17 +84,42 @@ def test_separate_sittings_and_long_talks_are_split_and_lone_lines_are_not_episo
     ]
     lone = [_line(40, "晚安", speaker="counterpart", minutes=60 * 12)]
     episodes = [doc for doc in _compile([*QIXI, *long_talk, *lone]) if is_conversation_episode(doc)]
-    # Qixi sitting; eleven-line talk split into 8 + 3; his lone goodnight is
+    # Qixi sitting; eleven-line talk split into 8 + 3 plus one context line; his lone goodnight is
     # still an episode so it can surface in that form.
-    assert sorted(len(doc.text.splitlines()) - 1 for doc in episodes) == [1, 3, 5, 8]
+    assert sorted(len(doc.text.splitlines()) - 1 for doc in episodes) == [1, 4, 5, 8]
     mine_alone = [_line(50, "我先睡啦", speaker="companion", minutes=60 * 20)]
     assert not [doc for doc in _compile(mine_alone) if is_conversation_episode(doc)]
     assert all(len(doc.source_bindings) <= 16 for doc in episodes)
 
 
 def test_unbidden_attention_offers_the_exchange_not_its_fragments() -> None:
-    from companion_daemon.world_v2.recall_runtime import _automatic_attention_eligible
+    from companion_daemon.world_v2.recall_index import automatic_attention_eligible as _automatic_attention_eligible
 
     documents = _compile(QIXI)
     eligible = [doc for doc in documents if _automatic_attention_eligible(doc)]
     assert len(eligible) == 1 and is_conversation_episode(eligible[0])
+
+
+def test_long_exchange_splits_before_the_final_excerpt_budget_and_keeps_tail():
+    lines = [
+        _line(i + 1, str(i) + "长" * 159, speaker="counterpart" if i % 2 else "companion", minutes=i)
+        for i in range(7)
+    ] + [_line(8, "最后约好周末去青羊宫见面", speaker="counterpart", minutes=7)]
+    episodes = [doc for doc in _compile(lines) if is_conversation_episode(doc)]
+    assert all(len(doc.text) <= 1024 for doc in episodes)
+    rendered = [line[2:] for doc in sorted(episodes, key=lambda d: d.occurred_from) for line in doc.text.splitlines()[1:]]
+    assert rendered == [line.text for line in lines[:6]] + [lines[5].text] + [line.text for line in lines[6:]]
+    assert {ref for doc in episodes for ref in doc.source_refs} == {f"event:dialogue:{i}" for i in range(1, 9)}
+
+
+def test_split_does_not_make_the_characters_tail_replies_disappear():
+    lines = [_line(1, "说说你最近的安排", speaker="counterpart", minutes=0)] + [
+        _line(i, str(i) + "长" * 159, speaker="companion", minutes=i) for i in range(2, 11)
+    ]
+    episodes = sorted((doc for doc in _compile(lines) if is_conversation_episode(doc)), key=lambda d: int(d.source_item_ref.rsplit(":", 1)[1]))
+    assert len(episodes) > 1
+    assert all("他：说说你最近的安排" in doc.text for doc in episodes)
+    own_lines = [line[2:] for doc in episodes for line in doc.text.splitlines()[1:] if line.startswith("我：")]
+    assert own_lines == [line.text[:159] + "…" if len(line.text) > 160 else line.text for line in lines[1:]]
+    assert all(len(doc.text) <= 1024 and len(doc.source_bindings) <= 16 for doc in episodes)
+    assert len({doc.source_item_ref for doc in episodes}) == len(episodes)

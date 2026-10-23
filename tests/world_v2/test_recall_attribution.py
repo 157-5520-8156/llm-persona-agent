@@ -9,7 +9,7 @@ import pytest
 from companion_daemon.llm import DeepSeekChatModel
 from companion_daemon.world_v2.character_interior import CharacterInterior
 from companion_daemon.world_v2.character_interior.inbound_author import _InboundCharacterAuthor
-from companion_daemon.world_v2.character_interior.ports import _PrefetchResult, _RecallResult
+from companion_daemon.world_v2.character_interior.ports import _RecallResult
 from companion_daemon.world_v2.character_interior.production import _CoordinatorRecallPort
 from companion_daemon.world_v2.character_interior.snapshot_compiler import compile_inner_life_snapshot
 from companion_daemon.world_v2.recall_corpus import RecallCorpusCompiler
@@ -118,9 +118,9 @@ async def test_coordinator_core_reading_keeps_fact_subject_and_dialogue_speaker_
         thinking_enabled=False, transport=httpx.MockTransport(capture),
     )
     try:
-        trace = coordinator.prefetch(
-            expected_cursor=CURSOR, query_text="盖碗泡凤凰单丛", accessibility_seed="attribution",
-            trigger_ref="event:observation:1", limit=4,
+        trace = coordinator.recall(
+            request=CharacterRecallRequest(query_text="盖碗泡凤凰单丛", limit=4),
+            expected_cursor=CURSOR, accessibility_seed="attribution", trigger_ref="event:observation:1",
         )
         context = {
             "world_id": "world:test", "actor_ref": "agent:companion",
@@ -128,13 +128,13 @@ async def test_coordinator_core_reading_keeps_fact_subject_and_dialogue_speaker_
             **CURSOR.model_dump(), "slices": {},
         }
         snapshot = compile_inner_life_snapshot(context)
-        prefetched = _PrefetchResult.model_validate(_CoordinatorRecallPort._trace_result(
+        prefetched = _RecallResult.model_validate(_CoordinatorRecallPort._trace_result(
             trace, request=SimpleNamespace(
                 world_id="world:test", actor_ref="agent:companion",
                 cursor=ProjectionCursor(**CURSOR.model_dump()),
-            ), trace_field="prefetch_trace_json",
+            ), trace_field="recall_trace_json",
         ))
-        merged = CharacterInterior._merge_prefetch(snapshot, prefetched)
+        merged = CharacterInterior._merge_recall(snapshot, prefetched)
         context["inner_life_snapshot"] = merged.model_view()
         author = _InboundCharacterAuthor(flash_model=model, whole_candidate_mode=True)
         request = _request(revision=CURSOR.world_revision, call="call:attribution").model_copy(
@@ -146,7 +146,7 @@ async def test_coordinator_core_reading_keeps_fact_subject_and_dialogue_speaker_
             await author._propose_appraisal(request)
         assert len(calls) == 1
         shown = json.loads(calls[0]["messages"][1]["content"])
-        items = shown["inner_life_snapshot"]["materials"]["automatic_prefetch"]["items"]
+        items = shown["inner_life_snapshot"]["materials"]["selected_recall"]["content"]["items"]
         by_ref = {item["source_ref"]: item for item in items}
         assert set(by_ref) == {document.source_item_ref for document in documents}
         for document in documents:

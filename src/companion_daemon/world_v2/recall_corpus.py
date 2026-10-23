@@ -23,6 +23,7 @@ from .memory_retrieval import MemoryRetrievalItem
 from .memory_understanding import UnderstandingVersion
 from .prehistory_memory_source import PrehistoryMemoryReading
 from .recall_index import (
+    is_conversation_episode as is_conversation_episode,
     RecallCursor,
     RecallDocument,
     RecallSourceBinding, recall_source_binding, canonical_recall_document,
@@ -148,11 +149,15 @@ _EPISODE_SESSION_GAP = timedelta(minutes=45)
 _EPISODE_MAX_LINES = 8
 _EPISODE_MAX_BINDINGS = 16
 _EPISODE_LINE_CHARACTERS = 160
+_RECALL_EXCERPT_CHARACTERS = 1024
 _EPISODE_PRIVACY_RANK = {"public": 0, "shareable": 1, "personal": 2, "private": 3, "withhold": 4}
 
 
-def is_conversation_episode(document) -> bool:
-    return str(getattr(document, "source_item_ref", "")).startswith(_EPISODE_REF_PREFIX)
+def _episode_line(item: RecentDialogueItem) -> str:
+    text = " ".join(item.text.split())
+    if len(text) > _EPISODE_LINE_CHARACTERS:
+        text = text[:_EPISODE_LINE_CHARACTERS - 1] + "…"
+    return ("我：" if item.speaker == "companion" else "他：") + text
 
 
 def _document_id(*parts: str) -> str:
@@ -979,14 +984,17 @@ class RecallCorpusCompiler:
         remembers "that evening he told me his friends stood him up on Qixi and
         I said ..." as one episode, not "哈哈哈" on its own.  Lines from one
         sitting (gaps under 45 minutes) are grouped in order into windows of up
-        to eight lines and sixteen source bindings.  The text is the exact
-        exchange; nothing is summarised, interpreted or invented.
+        to eight lines, sixteen source bindings and the final excerpt budget.
+        The text is the exact exchange; nothing is summarised, interpreted or invented.
         """
 
         ordered = sorted(lines, key=lambda row: (row[0].occurred_at, row[0].sequence, row[0].dialogue_id))
-        windows: list[list[tuple[RecentDialogueItem, str, tuple[RecallSourceBinding, ...]]]] = []
+        windows: list[tuple[str, list[tuple[RecentDialogueItem, str, tuple[RecallSourceBinding, ...]]]]] = []
+        first_new_id = ""
+        last_counterpart = None
         current: list[tuple[RecentDialogueItem, str, tuple[RecallSourceBinding, ...]]] = []
         bound: set[tuple[str, str]] = set()
+        characters = len("一段聊天：")
         for row in ordered:
             item, _speaker_ref, row_bindings = row
             identities = {(binding.source_kind, binding.ref) for binding in row_bindings}
@@ -998,28 +1006,35 @@ class RecallCorpusCompiler:
                 gap >= _EPISODE_SESSION_GAP
                 or len(current) >= _EPISODE_MAX_LINES
                 or len(bound | identities) > _EPISODE_MAX_BINDINGS
+                or characters + 1 + len(_episode_line(item)) > _RECALL_EXCERPT_CHARACTERS
             ):
-                windows.append(current)
-                current, bound = [], set()
+                windows.append((first_new_id, current))
+                if gap >= _EPISODE_SESSION_GAP:
+                    last_counterpart = None
+                # Carry one actual counterpart line when her replies continue
+                # into another window, retaining both context and source proof.
+                carry = last_counterpart if item.speaker != "counterpart" else None
+                current = [carry] if carry is not None else []
+                bound = {(b.source_kind, b.ref) for _i, _r, bindings in current for b in bindings}
+                characters = len("一段聊天：") + sum(1 + len(_episode_line(i)) for i, _r, _b in current)
+                first_new_id = item.dialogue_id
+            if not current:
+                first_new_id = item.dialogue_id
             current.append(row)
+            if item.speaker == "counterpart":
+                last_counterpart = row
+            characters += 1 + len(_episode_line(item))
             bound |= identities
         if current:
-            windows.append(current)
+            windows.append((first_new_id, current))
 
         documents: list[RecallDocument] = []
-        for window in windows:
+        for first_new_id, window in windows:
             if not any(item.speaker == "counterpart" for item, _r, _b in window):
-                # Her own bubbles alone stay single-line records.  A lone line
-                # from him is still an episode, so every exchange he took part
-                # in can surface unbidden in its episode form.
+                # Her solitary session stays single records; a lone counterpart
+                # message remains an episode.
                 continue
-            rendered = []
-            for item, _speaker_ref, _bindings in window:
-                text = " ".join(item.text.split())
-                if len(text) > _EPISODE_LINE_CHARACTERS:
-                    text = text[: _EPISODE_LINE_CHARACTERS - 1] + "…"
-                rendered.append(("我：" if item.speaker == "companion" else "他：") + text)
-            body = "一段聊天：\n" + "\n".join(rendered)
+            body = "一段聊天：\n" + "\n".join(_episode_line(item) for item, _ref, _bindings in window)
             first, last = window[0][0], window[-1][0]
             privacy = max(
                 (item.privacy_class for item, _ref, _b in window),
@@ -1028,10 +1043,10 @@ class RecallCorpusCompiler:
             documents.append(
                 self._document(
                     memory_kind="episodic",
-                    source_item_ref=_EPISODE_REF_PREFIX + first.dialogue_id[:200],
+                    source_item_ref=_EPISODE_REF_PREFIX + first_new_id[:200],
                     source_slice="recent_dialogue",
                     bindings=tuple(binding for _i, _r, row_bindings in window for binding in row_bindings),
-                    text=body[:4_096],
+                    text=body,
                     actor_ref=actor_ref,
                     # She was party to every exchange she remembers.
                     subject_refs=_subjects(actor_ref, *(speaker_ref for _i, speaker_ref, _b in window)),
@@ -1110,7 +1125,7 @@ class RecallCorpusCompiler:
             # Recall exposes a source-bound excerpt, not an unbounded payload
             # archive.  The immutable binding still points to the complete
             # authority while this prefix keeps the replay audit compact.
-            text=text[:1_024],
+            text=text[:_RECALL_EXCERPT_CHARACTERS],
             # Parent records never enter search or embedding. Retaining a
             # second copy of their full text needlessly fills receipt budgets.
             retrieval_text=(retrieval_text[:4_096] if retrieval_text is not None and not context_only else None),

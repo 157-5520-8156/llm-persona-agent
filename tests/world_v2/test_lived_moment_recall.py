@@ -10,7 +10,6 @@ her what to do with it.
 from __future__ import annotations
 
 import json
-from datetime import timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -34,7 +33,7 @@ from companion_daemon.world_v2.present_prompt import (
     _present_automatic_prefetch,
 )
 from companion_daemon.world_v2.recall_attention import build_automatic_recall_request
-from companion_daemon.world_v2.recall_runtime import _automatic_attention_eligible
+from companion_daemon.world_v2.recall_index import automatic_attention_eligible as _automatic_attention_eligible
 
 
 def _excerpt(text, *, authority, entity, revision):

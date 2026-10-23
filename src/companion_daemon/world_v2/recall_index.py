@@ -458,7 +458,29 @@ class RecallDocument(FrozenModel):
         )
 
 
+
+def is_conversation_episode(document) -> bool:
+    return str(getattr(document, "source_item_ref", "")).startswith("dialogue-episode:")
+
+
+def automatic_attention_eligible(document) -> bool:
+    """Exclude setting-only records and single bubbles from automatic attention.
+
+    These are corpus record forms, not semantic topic/behavior filters. Every
+    document remains available to an explicit character-owned Recall.
+    """
+    text = (getattr(document, "retrieval_text", None) or document.text or "").strip()
+    if text.startswith("environment;"):
+        return False
+    return not (document.source_slice == "recent_dialogue" and document.authority == "dialogue_record"
+                and not is_conversation_episode(document))
+
 class RecallQuery(FrozenModel):
+    # Host-selected attention scope is part of the query/cache/audit identity.
+    # Absence preserves historical queries and deliberate character searches.
+    automatic_attention: Literal["lived-moment-recall.1"] | None = Field(
+        default=None, exclude_if=lambda value: value is None,
+    )
     # ``query_text`` is the compact semantic attention cue used by the dense
     # lane. ``lexical_text`` optionally retains the exact inbound wording for
     # lexical matching; historical traces omit it and therefore keep the
@@ -1373,6 +1395,8 @@ class _RecallIndexCore:
 
     @staticmethod
     def _eligible(document: RecallDocument, query: RecallQuery) -> bool:
+        if query.automatic_attention is not None and not automatic_attention_eligible(document):
+            return False
         if document.actor_ref != query.actor_ref:
             return False
         if query.episode_window is not None and (document.prehistory is None or not any(

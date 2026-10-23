@@ -8,6 +8,10 @@ operator's explicit 2026-08-14 trade.
 
 from __future__ import annotations
 
+import json
+
+import pytest
+
 from companion_daemon.config import Settings
 from companion_daemon.llm import FakeCompanionModel
 from companion_daemon.world_v2.life_structural_review import StructuralLifeReviewModel
@@ -43,6 +47,26 @@ def test_structural_review_is_the_default_and_calls_no_provider() -> None:
     health = composition.life_source_authority_health()
     assert health["status"] == "structural"
     assert health["warning"] is False
+
+
+@pytest.mark.asyncio
+async def test_default_composition_keeps_lean_author_without_life_semantic_reviewer(tmp_path, monkeypatch):
+    from companion_daemon.world_v2.present_prompt import LEAN_PRESENTATION_MARKER
+    from test_life_source_view import _prepared
+
+    _, request, _ = await _prepared(tmp_path, monkeypatch)
+    settings = _settings()
+    assert settings.world_v2_life_candidate_review_enabled is False
+    composition = _composition(settings)
+    try:
+        faculty = composition.character_interior._registry.for_purpose("world_stimulus_appraisal")
+        assert not faculty.requires_life_source_review
+        assert faculty._host_clerical_binding
+        messages, _tool, _bindings = faculty._prepare_request(request, contract=faculty._resolve_contract(request))
+        assert json.loads(messages[-1]["content"])["presentation"] == LEAN_PRESENTATION_MARKER
+        assert isinstance(composition.life_source_closure_model, StructuralLifeReviewModel)
+    finally:
+        await composition.aclose()
 
 
 def test_structural_review_respects_the_life_review_master_switch() -> None:

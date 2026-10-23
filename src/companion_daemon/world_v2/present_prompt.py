@@ -1552,7 +1552,7 @@ AUTOMATIC_PREFETCH_FRAMING = (
 
 
 def _present_automatic_prefetch(value: object, *, constants=_AUTOMATIC_PREFETCH_CONSTANTS,
-                                compact_stories: bool = False) -> object:
+                                compact_stories: bool = False, lived_framing: bool = True) -> object:
     """Elide only the constants allowed by the original snapshot version."""
 
     if not isinstance(value, Mapping):
@@ -1560,7 +1560,7 @@ def _present_automatic_prefetch(value: object, *, constants=_AUTOMATIC_PREFETCH_
     items = value.get("items")
     if not isinstance(items, list):
         return value
-    if items:
+    if items and lived_framing:
         value = {AUTOMATIC_PREFETCH_FRAMING_KEY: AUTOMATIC_PREFETCH_FRAMING, **value}
     presented: list[object] = []
     for item in items:
@@ -1592,7 +1592,7 @@ def _prefetch_item_constants(item: Mapping[str, object], constants):
 
 
 def _expand_automatic_prefetch(value: object, *, constants=_AUTOMATIC_PREFETCH_CONSTANTS,
-                               compact_stories: bool = False) -> object:
+                               compact_stories: bool = False, lived_framing: bool = True) -> object:
     if not isinstance(value, Mapping):
         return value
     if value.get(AUTOMATIC_PREFETCH_FRAMING_KEY) == AUTOMATIC_PREFETCH_FRAMING:
@@ -1683,15 +1683,19 @@ def _lean_uncitable_ref(value: str) -> bool:
 _LEAN_OMIT = object()
 
 
-def _lean_value(value: object, aliases: Mapping[str, str]) -> object:
+def _lean_value(value: object, aliases: Mapping[str, str], *, aligned_tables: bool = False) -> object:
     if isinstance(value, str):
         if value in aliases:
             return aliases[value]
         return _LEAN_OMIT if _lean_uncitable_ref(value) else value
     if isinstance(value, list):
-        kept = [_lean_value(item, aliases) for item in value]
+        kept = [_lean_value(item, aliases, aligned_tables=aligned_tables) for item in value]
         return [item for item in kept if item is not _LEAN_OMIT]
     if isinstance(value, dict):
+        if aligned_tables and isinstance(value.get("columns"), list):
+            table = _lean_table(value, aliases)
+            if table is not None:
+                return table
         own_ref = value.get("source_ref")
         result: dict[str, object] = {}
         for key, item in value.items():
@@ -1701,7 +1705,7 @@ def _lean_value(value: object, aliases: Mapping[str, str]) -> object:
                 continue
             if key != "source_ref" and isinstance(item, str) and item == own_ref:
                 continue
-            lean = _lean_value(item, aliases)
+            lean = _lean_value(item, aliases, aligned_tables=aligned_tables)
             # Absence and emptiness read the same to her; omit both.
             if lean is _LEAN_OMIT or lean is None or lean == [] or lean == {}:
                 continue
@@ -1710,22 +1714,54 @@ def _lean_value(value: object, aliases: Mapping[str, str]) -> object:
     return value
 
 
+
+def _lean_table(value: dict, aliases: Mapping[str, str]) -> dict | None:
+    """Project column names and values together, including cache-split rows."""
+    columns = value["columns"]
+    if not columns or not all(isinstance(c, str) for c in columns) or len(set(columns)) != len(columns):
+        return None
+    groups = {key: value[key] for key in ("rows", "stable_rows") if key in value}
+    if "volatile_last_row" in value:
+        groups["volatile_last_row"] = [value["volatile_last_row"]]
+    if not groups or any(not isinstance(rows, list) or any(
+        not isinstance(row, list) or len(row) != len(columns) for row in rows
+    ) for rows in groups.values()):
+        return None
+    records = {
+        key: [_lean_value(dict(zip(columns, row, strict=True)), aliases, aligned_tables=True) for row in rows]
+        for key, rows in groups.items()
+    }
+    kept = [column for column in columns if any(column in record for rows in records.values() for record in rows)]
+    result = _lean_value({k: v for k, v in value.items() if k not in {*groups, "columns"}},
+                         aliases, aligned_tables=True)
+    result["columns"] = kept
+    for key, rows in records.items():
+        projected = [[record.get(column) for column in kept] for record in rows]
+        result[key] = projected[0] if key == "volatile_last_row" else projected
+    return result
+
+
 def lean_present_snapshot(
     snapshot: Mapping[str, object], *, ref_aliases: Mapping[str, str],
 ) -> dict[str, object]:
     """Lean view of an already ordered snapshot presentation (see above)."""
 
+    from .character_interior.life_context_presentation import ALIGNED_LEAN_TABLE_COMPILER_VERSIONS
+
+    compiler = snapshot.get("snapshot_compiler")
+    version = compiler.get("value") if isinstance(compiler, Mapping) else compiler
+    aligned_tables = version in ALIGNED_LEAN_TABLE_COMPILER_VERSIONS
     result = dict(snapshot)
     materials = result.get("materials")
     if isinstance(materials, dict):
         result["materials"] = {
-            key: _lean_value(value, ref_aliases) for key, value in materials.items()
+            key: _lean_value(value, ref_aliases, aligned_tables=aligned_tables) for key, value in materials.items()
         }
     inventory = result.get("source_inventory")
     if isinstance(inventory, list):
         lean_inventory = []
         for item in inventory:
-            lean = _lean_value(item, ref_aliases)
+            lean = _lean_value(item, ref_aliases, aligned_tables=aligned_tables)
             if isinstance(lean, dict) and lean.get("source_ref") in ref_aliases.values():
                 lean_inventory.append(lean)
         result["source_inventory"] = lean_inventory
@@ -1794,6 +1830,7 @@ def present_inner_life(
             ordered_materials["automatic_prefetch"] = _present_automatic_prefetch(
                 ordered_materials["automatic_prefetch"], constants=_prefetch_constants(snapshot),
                 compact_stories=_compact_story_prefetch(snapshot),
+                lived_framing=lean_presentation_enabled(snapshot),
             )
         # ``production._bind_capability_evidence`` is the only writer and no
         # module in src/ reads it back (its refs are already carried by
@@ -1867,6 +1904,7 @@ def expand_present_world_context(view: Mapping[str, object]) -> dict[str, object
             materials["automatic_prefetch"] = _expand_automatic_prefetch(
                 materials["automatic_prefetch"], constants=_prefetch_constants(snapshot),
                 compact_stories=_compact_story_prefetch(snapshot),
+                lived_framing=lean_presentation_enabled(snapshot),
             )
     expanded["inner_life_snapshot"] = _expand_availability_wrappers(snapshot)
     return expanded
