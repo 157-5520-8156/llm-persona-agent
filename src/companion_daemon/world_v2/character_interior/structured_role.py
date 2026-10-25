@@ -2408,6 +2408,15 @@ class StructuredCharacterRoleFaculty:
                 for field in ("behavior_tendency", "stance", "display_strategy"):
                     schema[field] = "your own optional explanation; null is allowed for brief"
 
+        if request.purpose == "external_perception_attention":
+            user_payload["purpose_instruction"] = (
+                "对 external_perception_attention：从 candidates 里挑出真正吸引你点开看或留意的条目（也可以全都不选 []）。"
+                "当候选的 licensed_summary 里包含「字幕原文实读」「故事板抽帧实看」「时间轴弹幕」「高赞神评」时，代表你已经点进视频看到了这些具体台词、抽帧画面（含秒数）、弹幕梗和热评；"
+                "请在 subjective_summary 里用一句人话判断加上一个只有看了这条视频才说得出的具体细节（某秒的画面、某句台词、弹幕里的梗或高赞评论），"
+                "不要写“本期视频……”之类八股，也不要在已经提供了实读/实看内容时还写成“只看了标题没点进去”。"
+                "反之，若某条候选只有标题和简介、没有字幕或抽帧实看，则如实按只滑过封面标题处理，绝不根据标题脑补画面细节。"
+                "epistemic_notes 简短注明这是刷到的公开视频/网友评论即可。"
+            )
         if request.purpose == "proactive_contact":
             user_payload["purpose_instruction"] = (
                 "对 proactive_contact：私人状态只写在外层 summary 和 attended_source_refs；"

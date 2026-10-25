@@ -324,3 +324,54 @@ def test_external_perception_influence_preserves_url_and_authorizes_world_claims
         and ev.evidence_kind == "committed_world_event"
         for ev in proposal.evidence_refs
     )
+
+
+def test_bilibili_vision_and_funnel_helpers_match_dsh_bili_scroll_invariants() -> None:
+    import io
+    import struct
+    from PIL import Image
+    from companion_daemon.world_v2.external_world_perception.bilibili import (
+        _cover_url,
+        _crop_tile,
+        _https,
+        _image_headers,
+        _should_inspect_frames,
+        _snapshot_entries,
+        _unpack_pvdata_entries,
+    )
+
+    assert _https("http://i0.hdslb.com/a.jpg") == "https://i0.hdslb.com/a.jpg"
+    assert _https("//i0.hdslb.com/b.jpg") == "https://i0.hdslb.com/b.jpg"
+    assert _cover_url("http://i0.hdslb.com/d.jpg@1c.png") == "https://i0.hdslb.com/d.jpg@512w.jpg"
+    assert sorted(k.lower() for k in _image_headers()) == ["referer", "user-agent"]
+
+    # 6-hour video seconds must not be mistaken for milliseconds
+    sec = {"index": [0, 0, 5, 10, 5538, 22163]}
+    assert [t for t, _ in _snapshot_entries(sec, 22164.0)] == [0.0, 0.0, 5.0, 10.0, 5538.0, 22163.0]
+    ms = {"index": [0, 5000, 22163000]}
+    assert [t for t, _ in _snapshot_entries(ms, 22164.0)] == [0.0, 5.0, 22163.0]
+
+    pv_raw = struct.pack(">3H", 0, 12, 48)
+    assert _unpack_pvdata_entries(pv_raw) == [(0.0, 0), (12.0, 1), (48.0, 2)]
+
+    # 2x1 sprite sheet: tile 1 should crop the right half (480x270 blue tile)
+    sheet = Image.new("RGB", (960, 270), (255, 0, 0))
+    sheet.paste(Image.new("RGB", (480, 270), (0, 0, 255)), (480, 0))
+    buf = io.BytesIO()
+    sheet.save(buf, format="PNG")
+    tile_bytes = _crop_tile(buf.getvalue(), 1, 480, 270)
+    cropped = Image.open(io.BytesIO(tile_bytes)).convert("RGB")
+    assert cropped.size == (480, 270)
+    r, _g, b = cropped.getpixel((240, 135))
+    assert r < 40 and b > 200
+
+    # Subtitle-first gating: rich talk subtitle skips vision; missing subtitle or visual category triggers vision
+    long_talk_sub = (
+        "[0s]今天跟大家聊聊我们组上周重构数据库遇到的一个奇葩死锁问题 "
+        "[15s]当时线上告警突然响了，我们排查了整整三个小时才发现是事务隔离级别配错了 "
+        "[40s]最后把索引顺序调过来之后延迟立刻降到了两毫秒以内，真的太刺激了"
+    )
+    assert _should_inspect_frames(entry={"tname": "社科·法律·心理"}, subtitle_excerpt=long_talk_sub) is False
+    assert _should_inspect_frames(entry={"tname": "美食制作"}, subtitle_excerpt=long_talk_sub) is True
+    assert _should_inspect_frames(entry={"tname": "日常"}, subtitle_excerpt="") is True
+
