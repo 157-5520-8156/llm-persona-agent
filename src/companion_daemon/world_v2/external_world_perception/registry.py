@@ -19,6 +19,7 @@ import httpx
 from pydantic import Field, model_validator
 
 from ..schema_core import FrozenModel
+from .bilibili import BilibiliPopularAdapter
 from .contracts import SourcePolicyRevision, SourceProfile
 from .nws import NwsAlertsAdapter
 from .rss import RssAtomSourceAdapter, RssHubPullAdapter
@@ -26,7 +27,7 @@ from .usgs import UsgsEarthquakeGeoJsonAdapter
 
 
 DeploymentMode = Literal["off", "shadow", "live"]
-AdapterKind = Literal["usgs_geojson", "nws_alerts", "rss_atom", "rsshub"]
+AdapterKind = Literal["usgs_geojson", "nws_alerts", "rss_atom", "rsshub", "bilibili_popular"]
 FactoryStatus = Literal["disabled", "ready"]
 FactoryReason = Literal["mode_off", "registry_not_configured", "no_enabled_sources", "ready"]
 
@@ -126,6 +127,20 @@ class ExternalPerceptionSourceRegistration(FrozenModel):
                 raise ValueError("publisher RSS allowed_item_hosts must contain at least 1 item")
             if any(not _is_plain_hostname(host) for host in self.allowed_item_hosts):
                 raise ValueError("publisher RSS item hosts must be exact hostnames")
+        elif self.adapter_kind == "bilibili_popular":
+            if (
+                endpoint.scheme != "https"
+                or (endpoint.hostname or "").casefold() != "api.bilibili.com"
+                or endpoint.path != "/x/web-interface/popular"
+                or endpoint.username is not None
+                or endpoint.password is not None
+                or endpoint.fragment
+            ):
+                raise ValueError("Bilibili popular endpoint must be credential-free HTTPS on api.bilibili.com")
+            if self.route is not None:
+                raise ValueError("Bilibili popular adapter cannot declare an RSSHub route")
+            if not self.signal_kind or not self.upstream_publisher_ref:
+                raise ValueError("Bilibili popular source identity is incomplete")
         elif (
             endpoint.scheme != "https"
             or endpoint.username is not None
@@ -391,7 +406,13 @@ def _build_adapter(
     registration: ExternalPerceptionSourceRegistration,
     *,
     http_client: httpx.AsyncClient,
-) -> UsgsEarthquakeGeoJsonAdapter | NwsAlertsAdapter | RssAtomSourceAdapter | RssHubPullAdapter:
+) -> (
+    UsgsEarthquakeGeoJsonAdapter
+    | NwsAlertsAdapter
+    | RssAtomSourceAdapter
+    | RssHubPullAdapter
+    | BilibiliPopularAdapter
+):
     if registration.adapter_kind == "usgs_geojson":
         return UsgsEarthquakeGeoJsonAdapter(
             http_client=http_client,
@@ -401,6 +422,16 @@ def _build_adapter(
         return NwsAlertsAdapter(
             http_client=http_client,
             feed_url=registration.endpoint,
+        )
+    if registration.adapter_kind == "bilibili_popular":
+        assert registration.signal_kind is not None
+        assert registration.upstream_publisher_ref is not None
+        return BilibiliPopularAdapter(
+            http_client=http_client,
+            source_id=registration.source_id,
+            feed_url=registration.endpoint,
+            signal_kind=registration.signal_kind,
+            upstream_publisher_ref=registration.upstream_publisher_ref,
         )
     if registration.adapter_kind == "rsshub":
         assert registration.route is not None

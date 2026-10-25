@@ -1692,7 +1692,7 @@ def compile_inner_life_snapshot(
         materials["week_diary"] = week_diary
 
     facet_keys = {
-        "private_self": ("stable_self", "biographical_context", "week_diary", "situation", "private_impressions", "remembered_understandings", "memory_understandings", "recent_self_experiences"),
+        "private_self": ("stable_self", "biographical_context", "week_diary", "situation", "private_impressions", "remembered_understandings", "memory_understandings", "recent_self_experiences", "perception"),
         "selective_memory": (
             "folded_dialogue",
             "recent_dialogue",
@@ -1752,6 +1752,7 @@ def compile_inner_life_snapshot(
             "appraisals",
             "affect",
             "private_impressions",
+            "perception",
             "folded_dialogue",
             "recent_dialogue",
             "relevant_facts",

@@ -304,6 +304,66 @@ def _bind_host_owned_source_lists(
         elif noticed is None:
             payload.pop("user_channel_completion", None)
         decoded["decision"] = {**decision, "payload": payload}
+    if (
+        request.purpose == "external_perception_attention"
+        and manifest is not None
+        and isinstance(payload, dict)
+    ):
+        allowed_decision_refs = set(request.snapshot.source_refs) | set(manifest.source_refs)
+        allowed_attention_refs = set(request.attention_source_refs) | allowed_decision_refs
+        raw_attended = decoded.get("attended_source_refs")
+        if isinstance(raw_attended, list):
+            filtered_attended = [
+                ref
+                for ref in raw_attended
+                if isinstance(ref, str) and ref in allowed_attention_refs
+            ]
+            decoded["attended_source_refs"] = (
+                filtered_attended[:8] if filtered_attended else list(manifest.source_refs[:8])
+            )
+        existing_refs = (
+            decision.get("source_refs")
+            if isinstance(decision.get("source_refs"), list)
+            else []
+        )
+        merged_refs = list(
+            dict.fromkeys(
+                [
+                    *manifest.source_refs,
+                    *(
+                        ref
+                        for ref in existing_refs
+                        if isinstance(ref, str) and ref in allowed_decision_refs
+                    ),
+                ]
+            )
+        )
+        payload = dict(payload)
+        allowed_ctx = manifest.payload.get("allowed_context_refs")
+        if isinstance(allowed_ctx, list) and isinstance(payload.get("selections"), list):
+            allowed_ctx_set = {
+                ref for ref in allowed_ctx if isinstance(ref, str)
+            } & set(request.snapshot.source_refs)
+            normalized_selections: list[object] = []
+            for item in payload["selections"]:
+                if isinstance(item, dict) and isinstance(
+                    item.get("attended_context_refs"), list
+                ):
+                    item = {
+                        **item,
+                        "attended_context_refs": [
+                            ref
+                            for ref in item["attended_context_refs"]
+                            if isinstance(ref, str) and ref in allowed_ctx_set
+                        ],
+                    }
+                normalized_selections.append(item)
+            payload = {"selections": normalized_selections}
+        decoded["decision"] = {
+            **decision,
+            "source_refs": merged_refs,
+            "payload": payload,
+        }
 
 
 def _citeable_catalog_for_request(request: _InteriorRoleRequest) -> PinnedSourceCatalog:
@@ -430,6 +490,22 @@ def _restore_unique_pinned_source_refs(
                 media_refs,
                 catalog=catalog,
             )
+        selections = payload.get("selections")
+        if isinstance(selections, list):
+            restored_selections: list[object] = []
+            for selection in selections:
+                if isinstance(selection, dict) and isinstance(
+                    selection.get("attended_context_refs"), list
+                ):
+                    selection = {
+                        **selection,
+                        "attended_context_refs": _rewrite_unique_source_refs(
+                            selection.get("attended_context_refs"),
+                            catalog=catalog,
+                        ),
+                    }
+                restored_selections.append(selection)
+            payload["selections"] = restored_selections
         updated["payload"] = payload
     if isinstance(updated.get("world_claims"), list):
         updated["world_claims"] = _rewrite_claim_source_refs(

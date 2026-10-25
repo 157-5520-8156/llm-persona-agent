@@ -997,11 +997,17 @@ class SQLiteShadowAttentionCoordinator:
     ) -> tuple[str, ...]:
         dossiers = {item.candidate_ref: item for item in window.candidates}
         context_refs = {
-            item.context_ref
+            ref
             for item in (
                 *context.situation,
                 *context.relevant_context,
             )
+            for ref in (
+                item.context_ref,
+                item.context_ref.removeprefix(f"context:{item.context_kind}:"),
+                *item.source_refs,
+            )
+            if ref
         }
         failures: list[str] = []
         seen_candidates: set[str] = set()

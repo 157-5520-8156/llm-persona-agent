@@ -646,7 +646,7 @@ class ContextCapsuleBudgetPolicy(_FrozenModel):
         )
     )
     perception_results: SliceBudget = Field(
-        default_factory=lambda: SliceBudget(max_items=4, max_fields=72, max_characters=4_000)
+        default_factory=lambda: SliceBudget(max_items=4, max_fields=96, max_characters=8_000)
     )
     active_memory_candidates: SliceBudget = Field(
         # Two compact source excerpts are the minimum useful cross-turn recall
@@ -2675,6 +2675,7 @@ def _compile_resolved_context(
         # the same utterance.  The compiler already caps the slice and the
         # global envelope remains the final safety bound.
         "advisories": len(slices["advisories"].items),
+        "perception_results": 2,
         "media_deliveries": 1,
         "pending_outbound": 1,
     }
@@ -2698,6 +2699,11 @@ def _compile_resolved_context(
         # compaction. Required head previews may shrink, but accepted history
         # is not silently replaced by an empty provider view.
         "recent_experiences": 1 if slices["recent_experiences"].items else 0,
+        "perception_results": (
+            1
+            if slices.get("perception_results") is not None and slices["perception_results"].items
+            else 0
+        ),
     }
     # Character-truncation state for the mandatory head slices (final tier).
     # ``None`` means the head still shows its ordinary whole-item view; a

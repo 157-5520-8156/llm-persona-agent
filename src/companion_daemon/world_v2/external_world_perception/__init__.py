@@ -52,6 +52,7 @@ from .authorized_search import (
     AcceptedWebSearchResultAdapter,
     LedgerAcceptedToolResultProjectionReader,
 )
+from .bilibili import BILIBILI_POPULAR_URL, BilibiliPopularAdapter
 from .deployment import (
     ExternalPerceptionDeployment,
     build_external_world_perception_deployment,
@@ -84,6 +85,8 @@ from .usgs import UsgsEarthquakeGeoJsonAdapter
 __all__ = [
     "AuditedLiveCharacterAttentionResult",
     "AcceptedWebSearchResultAdapter",
+    "BILIBILI_POPULAR_URL",
+    "BilibiliPopularAdapter",
     "CapsuleBackedLiveAttentionContextPort",
     "CapsuleBackedShadowAttentionContextPort",
     "CharacterAttentionContext",

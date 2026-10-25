@@ -72,6 +72,7 @@ _EVENT_EVIDENCE_KIND = {
     "ActivityPaused": "committed_world_event",
     "ActivityResumed": "committed_world_event",
     "ActivityCompleted": "committed_world_event",
+    "ExternalPerceptionRecorded": "committed_world_event",
 }
 
 
@@ -880,6 +881,39 @@ def _biographical_coordinate_source_tokens(
     }
 
 
+def _external_perception_influence_source_tokens(context: dict[str, object]) -> set[str]:
+    """Return claim authority for accepted ExternalPerceptionLifeInfluenceView items.
+
+    Provider media observations (``PerceptionResultContextItem``) remain
+    excluded because their epistemic status is not World fact. Accepted
+    external perceptions (such as Bilibili videos or public signals she
+    genuinely browsed and recorded via ``ExternalPerceptionRecorded``) are
+    durable World events that she may cite when sharing what she saw.
+    """
+
+    slices = context.get("slices")
+    lane = slices.get("perception_results") if isinstance(slices, dict) else None
+    if not isinstance(lane, dict) or lane.get("availability") != "available":
+        return set()
+    items = lane.get("items")
+    if not isinstance(items, list):
+        return set()
+    tokens: set[str] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        value = item.get("value")
+        if not isinstance(value, dict):
+            continue
+        if (
+            isinstance(value.get("influence_id"), str)
+            and isinstance(value.get("perception_id"), str)
+            and value.get("epistemic_status") != "provider_observation_not_world_fact"
+        ):
+            tokens.update(_context_item_source_tokens(item))
+    return tokens - _context_entity_identity_tokens(context)
+
+
 def _active_activity_source_tokens(context: dict[str, object]) -> set[str]:
     slices = context.get("slices")
     lane = slices.get("world_life") if isinstance(slices, dict) else None
@@ -1481,6 +1515,7 @@ def _world_claim_source_refs_by_scope(
             include_active=True,
         )
         | _biographical_coordinate_source_tokens(context, scope="current_world")
+        | _external_perception_influence_source_tokens(context)
     )
     past_world = (
         _world_life_occurrence_source_tokens(
@@ -1488,6 +1523,7 @@ def _world_claim_source_refs_by_scope(
             include_active=False,
         )
         | _slice_claim_authority_tokens(context, "recent_experiences")
+        | _external_perception_influence_source_tokens(context)
         | (
             set(prehistory_claim_bindings(
                 request,
@@ -2078,6 +2114,29 @@ def _bound_context_event_evidence(
                 continue
             parent_ref = item.get("item_ref") or item.get("source_ref")
             if parent_ref not in parent_refs:
+                continue
+            bindings = item.get("source_bindings")
+            if not isinstance(bindings, list):
+                continue
+            expanded_cited.update(
+                ref
+                for binding in bindings
+                if isinstance(binding, dict)
+                for ref in (binding.get("ref"),)
+                if isinstance(ref, str) and ref
+            )
+    perception_lane = slices.get("perception_results")
+    perception_items = (
+        perception_lane.get("items")
+        if isinstance(perception_lane, dict) and perception_lane.get("availability") == "available"
+        else None
+    )
+    if isinstance(perception_items, list):
+        for item in perception_items:
+            if not isinstance(item, dict):
+                continue
+            item_tokens = _context_item_source_tokens(item)
+            if not (cited & item_tokens):
                 continue
             bindings = item.get("source_bindings")
             if not isinstance(bindings, list):

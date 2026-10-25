@@ -104,6 +104,21 @@ def _capability_source_refs(request: _AttentionRequest) -> tuple[str, ...]:
 
 
 def _manifest(request: _AttentionRequest) -> _InteriorCapabilityManifest:
+    allowed_context_refs = sorted(
+        {
+            ref
+            for item in (
+                *request.current_context.situation,
+                *request.current_context.relevant_context,
+            )
+            for ref in (
+                item.context_ref,
+                item.context_ref.removeprefix(f"context:{item.context_kind}:"),
+                *item.source_refs,
+            )
+            if ref
+        }
+    )
     payload = {
         "contract": _CAPABILITY_CONTRACT,
         "deployment_mode": request.window.deployment_mode,
@@ -117,6 +132,11 @@ def _manifest(request: _AttentionRequest) -> _InteriorCapabilityManifest:
         "expires_at": request.window.expires_at.isoformat(),
         "candidate_set_hash": request.window.candidate_set_hash,
         "exposure_draw_ref": request.window.exposure_draw_ref,
+        **(
+            {"allowed_context_refs": allowed_context_refs}
+            if allowed_context_refs
+            else {}
+        ),
         "candidates": [
             {
                 "candidate_token": item.candidate_ref,

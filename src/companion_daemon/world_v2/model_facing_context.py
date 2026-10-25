@@ -42,6 +42,7 @@ _CHAT_ITEM_LIMITS = {
     # after the trusted Capsule had already preserved the full matrix.
     "advisories": 12,
     "media_deliveries": PRESENT_SHARED_MEDIA_ITEM_LIMIT,
+    "perception_results": 4,
 }
 _SHAREABLE_PHOTO_SLICE = "shareable_photos"
 # Stable-first root and slice ordering for DeepSeek prefix cache. Volatile cursor
@@ -420,7 +421,7 @@ def compact_model_facing_context(raw: str) -> str:
                     material["privacy_class"] = privacy
                 if item.get("recall_injected") is True:
                     material["recall_injected"] = True
-                if name in {_SHAREABLE_PHOTO_SLICE, "world_life"}:
+                if name in {_SHAREABLE_PHOTO_SLICE, "world_life", "perception_results"}:
                     bindings = _copy_event_source_bindings(item)
                     if bindings is not None:
                         material["source_bindings"] = bindings
@@ -517,7 +518,7 @@ def compact_chat_model_facing_context(raw: str) -> str:
                 retained_attention_refs = [ref for ref in attention_refs if isinstance(ref, str)]
                 if retained_attention_refs:
                     material["attention_source_refs"] = retained_attention_refs
-            if name in {_SHAREABLE_PHOTO_SLICE, "world_life"}:
+            if name in {_SHAREABLE_PHOTO_SLICE, "world_life", "perception_results"}:
                 bindings = _copy_event_source_bindings(item)
                 if bindings is not None:
                     material["source_bindings"] = bindings

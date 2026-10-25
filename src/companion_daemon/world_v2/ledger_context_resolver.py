@@ -1128,6 +1128,8 @@ def _rank(
             return 9_925
         if isinstance(item, PlannedActivityContextItem):
             return 9_900
+    if slice_name == "perception_results" and isinstance(item, ExternalPerceptionLifeInfluenceView):
+        return min(9_900, 8_500 + min(1_400, item.source_world_revision % 1_400))
     if slice_name in _READ_SCORE_SLICES:
         recency_bp = _recency_bp(item, logical_time)
         if slice_name == "relevant_facts" and isinstance(item, FactRecallItem):

@@ -133,7 +133,14 @@ def reference_bindings_hash(dictionary):
 
 
 def _reference_field(key):
-    return key in {"ref", "id", "token_map", "source_ref_aliases"} or key.endswith(
+    return key in {
+        "ref",
+        "id",
+        "token_map",
+        "source_ref_aliases",
+        "candidate_token",
+        "exact_signal_revisions",
+    } or key.endswith(
         ("_ref", "_refs", "_id", "_ids")
     )
 

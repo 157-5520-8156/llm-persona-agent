@@ -253,7 +253,7 @@ class SourceBoundAttentionContextItem(FrozenModel):
 
     context_ref: str = Field(min_length=1, max_length=1_024)
     context_kind: str = Field(min_length=1, max_length=128)
-    text: str = Field(min_length=1, max_length=4_096)
+    text: str = Field(min_length=1, max_length=32_768)
     source_refs: tuple[BoundedSignalText, ...] = Field(min_length=1, max_length=32)
 
 

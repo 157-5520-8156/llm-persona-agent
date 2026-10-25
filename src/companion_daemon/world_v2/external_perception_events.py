@@ -233,6 +233,7 @@ class ExternalPerceptionLifeInfluenceView(FrozenModel):
     source_id: str = Field(min_length=1, max_length=512)
     headline: str = Field(default="", max_length=1_000)
     licensed_summary: str = Field(default="", max_length=8_000)
+    canonical_url: str | None = Field(default=None, max_length=4_096)
     may_quote: bool
     source_uncertainty: str = Field(min_length=1, max_length=2_000)
     correction_lineage_refs: tuple[str, ...]
@@ -269,6 +270,7 @@ def compile_external_perception_life_influences(
                 source_id=snapshot.source_id,
                 headline=(snapshot.headline if snapshot.may_quote else ""),
                 licensed_summary=(snapshot.licensed_summary if snapshot.may_quote else ""),
+                canonical_url=(snapshot.canonical_url if snapshot.may_quote else None),
                 may_quote=snapshot.may_quote,
                 source_uncertainty=perception.epistemic_notes,
                 correction_lineage_refs=snapshot.correction_lineage_refs,

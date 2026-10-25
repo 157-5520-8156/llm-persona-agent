@@ -4262,8 +4262,11 @@ class Deliberation:
                 "action_budget",
                 "private_impressions",
                 "advisories",
+                "perception_results",
             )
-            for item in getattr(capsule, name).items
+            for slice_obj in (getattr(capsule, name, None),)
+            if slice_obj is not None
+            for item in slice_obj.items
             for binding in item.source_bindings
         ):
             bindings_by_ref.setdefault(binding.ref, set()).add(

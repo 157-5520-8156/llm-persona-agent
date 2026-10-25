@@ -2723,16 +2723,31 @@ def _perception_media_summaries(
                 ),
             )
         )
+    snapshots_by_ref = {
+        snap.snapshot_ref: snap for snap in projection.external_signal_snapshots
+    }
     for item in projection.external_perceptions:
+        snap = snapshots_by_ref.get(item.snapshot_ref)
+        title_text = (
+            _short_text(snap.headline)
+            if snap is not None and snap.headline
+            else _short_text(getattr(item.channel, "access_summary", "")) or "已注意的外部感知"
+        )
+        perc_values = []
+        if snap is not None and snap.canonical_url:
+            perc_values.append(_value("canonical_url", "链接", snap.canonical_url))
+        if item.epistemic_notes:
+            perc_values.append(_value("epistemic_notes", "认知备注", _short_text(item.epistemic_notes)))
         summaries.append(
             _summary(
                 kind="external_perception",
                 kind_label="已注意的外部感知",
                 entity_id=item.perception_id,
-                title=_label(item.channel, {}),
+                title=title_text,
                 detail=_short_text(item.subjective_summary),
                 occurred_at=item.encountered_world_time,
                 privacy_class=item.privacy_class,
+                values=tuple(perc_values),
             )
         )
     for item in projection.photo_candidates:
