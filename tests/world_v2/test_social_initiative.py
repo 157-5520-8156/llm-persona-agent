@@ -2486,3 +2486,43 @@ async def test_consecutive_silents_add_extra_cooldown() -> None:
     # After min interval (6h) + silent extra (24h) = 30h from last shared source.
     far = day1.logical_time + timedelta(hours=31)
     assert compiler._shared_outreach_budget_allows(projection, far) is True  # noqa: SLF001
+
+
+@pytest.mark.asyncio
+async def test_shared_outreach_technical_failures_do_not_consume_daily_budget() -> None:
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    clock = _advance_past_ambient(compiler, projection, hours=20)
+    projection.trigger_processes = (
+        SimpleNamespace(
+            process_kind="proactive_action_deliberation",
+            trigger_ref="proactive-consideration:consideration:social-initiative:situation-independent:"
+            + "a" * 64,
+            source_evidence_ref=clock.event_id,
+            state="terminal",
+            runtime_outcome_ref="proactive:deliberation-failed:model-result:1",
+        ),
+        SimpleNamespace(
+            process_kind="proactive_action_deliberation",
+            trigger_ref="proactive-consideration:consideration:social-initiative:situation-independent:"
+            + "a" * 64,
+            source_evidence_ref=clock.event_id,
+            state="terminal",
+            runtime_outcome_ref="proactive:deliberation-failed:model-result:2",
+        ),
+        SimpleNamespace(
+            process_kind="proactive_action_deliberation",
+            trigger_ref="proactive-consideration:consideration:social-initiative:situation-independent:"
+            + "b" * 64,
+            source_evidence_ref=clock.event_id,
+            state="terminal",
+            runtime_outcome_ref="proactive:grounding-rejected",
+        ),
+    )
+
+    assert compiler._shared_outreach_uses_on_local_day(  # noqa: SLF001
+        projection, clock.logical_time
+    ) == 0
+    assert compiler._shared_outreach_budget_allows(  # noqa: SLF001
+        projection, clock.logical_time
+    ) is True
+

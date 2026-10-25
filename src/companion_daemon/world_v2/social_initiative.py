@@ -723,7 +723,7 @@ class SocialInitiativeCompiler:
         retry = await self._failed_consideration_retry(projection)
         if (
             retry is not None
-            and retry.source_kind in {"thread", "commitment"}
+            and retry.source_kind in {"thread", "commitment", "revisit_intention"}
             and retry.consideration_id in excluded_consideration_ids
         ):
             # Independent intentions keep independent backoffs. Cadence
@@ -1666,10 +1666,25 @@ class SocialInitiativeCompiler:
             if source_id is None:
                 return None
         elif source_kind == "revisit_intention":
-            source_id = (
-                revisit_source_plan_id(projection, consideration_id)
-                or f"retry:{source_ref.event_id}"
+            active_revisit = next(
+                (
+                    item
+                    for item in unfinished_revisits(projection, due_only=False)
+                    if due_revisit_consideration_id(item.plan_id) == consideration_id
+                ),
+                None,
             )
+            if active_revisit is not None:
+                source_id = active_revisit.plan_id
+            elif any(
+                due_revisit_consideration_id(manifest.plan_id) == consideration_id
+                for manifest in getattr(projection, "expression_plan_manifests", ())
+            ):
+                return None
+            elif latest_message_revision > failed_audit.evaluated_world_revision:
+                return None
+            else:
+                source_id = f"retry:{source_ref.event_id}"
         elif source_kind == "private_impression":
             impression = living_private_impression(projection)
             if (
@@ -2122,16 +2137,26 @@ class SocialInitiativeCompiler:
         )
 
     def _shared_outreach_processes(self, projection):
+        seen_considerations: set[str] = set()
         for process in getattr(projection, "trigger_processes", ()):
             if process.process_kind != "proactive_action_deliberation":
                 continue
             if not process.trigger_ref.startswith("proactive-consideration:"):
+                continue
+            outcome = str(getattr(process, "runtime_outcome_ref", "") or "")
+            if getattr(process, "state", None) == "terminal" and (
+                outcome.startswith("proactive:deliberation-failed:")
+                or outcome == "proactive:grounding-rejected"
+            ):
                 continue
             consideration_id = process.trigger_ref.removeprefix(
                 "proactive-consideration:"
             )
             if not is_shared_outreach_consideration_id(consideration_id):
                 continue
+            if consideration_id in seen_considerations:
+                continue
+            seen_considerations.add(consideration_id)
             yield process, consideration_id
 
     def _shared_outreach_uses_on_local_day(
