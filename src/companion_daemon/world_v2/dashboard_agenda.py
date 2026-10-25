@@ -31,6 +31,72 @@ class DashboardAgendaEntry(FrozenModel):
     related: tuple[int, ...] = ()
 
 
+class DashboardWorldlineThread(FrozenModel):
+    title: str = Field(max_length=120)
+    status: str
+    situation: str = Field(max_length=600)
+    open_question: str = Field(max_length=600)
+    developments: tuple[str, ...] = ()
+
+
+class DashboardWorldlineStage(FrozenModel):
+    title: str = Field(max_length=120)
+    starts_on: date
+    ends_on: date
+    situation: str = Field(max_length=600)
+    status: str
+
+
+class DashboardWorldlineOpportunity(FrozenModel):
+    title: str = Field(max_length=300)
+    detail: str = Field(max_length=2400)
+    lane_label: str
+    thread_titles: tuple[str, ...] = ()
+    opens_at: datetime
+    closes_at: datetime
+    status: str
+
+
+class DashboardWorldlineConvergence(FrozenModel):
+    decision_label: str
+    thread_titles: tuple[str, ...] = ()
+    reason: str = Field(max_length=600)
+
+
+class DashboardWorldline(FrozenModel):
+    review_at: datetime
+    horizon_end: datetime
+    threads: tuple[DashboardWorldlineThread, ...] = ()
+    stages: tuple[DashboardWorldlineStage, ...] = ()
+    opportunities: tuple[DashboardWorldlineOpportunity, ...] = ()
+    convergences: tuple[DashboardWorldlineConvergence, ...] = ()
+
+
+_THREAD_TITLES: dict[str, str] = {
+    "campus-reading-life": "校园读书与周末旧书市场",
+    "dorm-quiet-life": "宿舍楼与换季日常运转",
+    "jiaxing-bookstore": "嘉兴家里的小书店经营季",
+}
+
+_STAGE_TITLES: dict[str, str] = {
+    "late-autumn-2026": "秋学期后半段",
+    "finals-2026": "期末与考试季",
+    "winter-break-2027": "寒假与春节",
+    "spring-term-2027": "春学期与店庆月",
+    "early-summer-2027": "初夏至暑期",
+    "autumn-2027": "新学年秋季",
+}
+
+
+def _clause_title(text: str, fallback: str) -> str:
+    for sep in ("：", "；", "，", "。"):
+        if sep in text:
+            head = text.split(sep, 1)[0].strip()
+            if 2 <= len(head) <= 28:
+                return head
+    return text[:24].strip() or fallback
+
+
 class DashboardAgenda(FrozenModel):
     week_start: date
     timezone: Literal["Asia/Shanghai"] = TIMEZONE
@@ -44,6 +110,7 @@ class DashboardAgenda(FrozenModel):
     # Omit absent pagination in legacy snapshots so their visible hash is unchanged.
     page: int | None = Field(default=None, ge=0, exclude_if=lambda value: value is None)
     page_count: int | None = Field(default=None, ge=0, exclude_if=lambda value: value is None)
+    worldline: DashboardWorldline | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 def week_start_date(value: date) -> date:
@@ -167,6 +234,7 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
             if intention is not None:
                 add(kind, item.plan_id, intention.not_before, intention.expires_at,
                     "withhold" if any(b.privacy_class == "withhold" for b in item.beats) else "private", item)
+    worldline = None
     if outlook_head is not None:
         _, draft, evidence = outlook_head
         if (draft.world_id != projection.world_id or draft.actor_ref != actor_ref
@@ -174,6 +242,7 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
             outlook_state = "unavailable"
         else:
             from .world_outlook import OutlookStage
+            from .world_outlook_execution import occurrence_ref
             for stage in draft.long_term:
                 add("outlook", "stage:" + stage.stage_id,
                     datetime.combine(stage.starts_on, time(), zone),
@@ -183,6 +252,80 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
                     "withhold" if {"public": 0, "shareable": 1, "personal": 2, "private": 3, "withhold": 4}[item.execution.privacy_class]
                     > {"public": 0, "shareable": 1, "personal": 2, "private": 3}[privacy_ceiling]
                     else item.execution.privacy_class, item)
+            if privacy_ceiling == "private":
+                today_local = (now.astimezone(zone).date() if now is not None else week_start)
+                thread_map = {
+                    t.thread_id: _THREAD_TITLES.get(t.thread_id, _clause_title(t.situation, "生活主线"))
+                    for t in draft.threads
+                }
+                wl_threads = tuple(
+                    DashboardWorldlineThread(
+                        title=thread_map[t.thread_id],
+                        status={"open": "展开中", "paused": "暂缓", "closed": "已收束"}.get(t.status, "展开中"),
+                        situation=t.situation,
+                        open_question=t.open_question,
+                        developments=tuple(t.developments),
+                    )
+                    for t in draft.threads
+                )
+                wl_stages = tuple(
+                    DashboardWorldlineStage(
+                        title=_STAGE_TITLES.get(s.stage_id, _clause_title(s.situation, "远期阶段")),
+                        starts_on=s.starts_on,
+                        ends_on=s.ends_on,
+                        situation=s.situation,
+                        status=(
+                            "当前章节" if s.starts_on <= today_local <= s.ends_on
+                            else "已走过" if s.ends_on < today_local
+                            else "远期章节"
+                        ),
+                    )
+                    for s in draft.long_term
+                )
+                wl_opps = []
+                for opp in draft.opportunities:
+                    if opp.execution.privacy_class == "withhold":
+                        continue
+                    r_ref = occurrence_ref(projection.world_id, actor_ref, opp.opportunity_id)
+                    realized = next(
+                        (o for o in projection.world_occurrences if o.occurrence_id == r_ref and o.status in {"active", "settled"}),
+                        None,
+                    )
+                    if realized is not None:
+                        opp_status = "已落实为世界事件"
+                    elif now is not None and opp.closes_at <= now:
+                        opp_status = "候选窗口已结束"
+                    elif now is not None and opp.opens_at <= now < opp.closes_at:
+                        opp_status = "窗口开启中 · 待触发"
+                    else:
+                        opp_status = "待进入窗口"
+                    wl_opps.append(
+                        DashboardWorldlineOpportunity(
+                            title=opp.external_possibility[:300],
+                            detail=opp.execution.text[:2400],
+                            lane_label="人物机缘" if opp.lane == "npc" else "环境机缘",
+                            thread_titles=tuple(thread_map.get(tid, "生活主线") for tid in opp.thread_refs),
+                            opens_at=opp.opens_at,
+                            closes_at=opp.closes_at,
+                            status=opp_status,
+                        )
+                    )
+                wl_convs = tuple(
+                    DashboardWorldlineConvergence(
+                        decision_label="延续原世界线" if c.decision == "retain" else "触发世界线改写",
+                        thread_titles=tuple(thread_map.get(tid, "生活主线") for tid in c.thread_refs),
+                        reason=c.reason[:600],
+                    )
+                    for c in getattr(draft, "change_responses", ())
+                )
+                worldline = DashboardWorldline(
+                    review_at=draft.review_at,
+                    horizon_end=draft.horizon_end,
+                    threads=wl_threads,
+                    stages=wl_stages,
+                    opportunities=tuple(wl_opps),
+                    convergences=wl_convs,
+                )
     rows.sort(key=lambda row: (row[0], row[2], row[3]))
     page_count = max(1, (len(rows) + ENTRY_LIMIT - 1) // ENTRY_LIMIT)
     if page is None:
@@ -327,5 +470,5 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
         week_start=week_start, state="ready" if entries else "empty" if now else "unavailable",
         outlook_state=outlook_state, known_count=len(rows), withheld_count=withheld,
         truncated=len(rows) > ENTRY_LIMIT or planning_truncated, entries=entries, planning_state=planning_state,
-        page=page, page_count=page_count,
+        page=page, page_count=page_count, worldline=worldline,
     )

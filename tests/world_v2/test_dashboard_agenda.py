@@ -36,6 +36,7 @@ async def test_week_reads_original_agenda_and_outlook_and_separates_truth(tmp_pa
     assert {e.detail for e in agenda.entries if e.kind == "plan"} == {INTENT["intention"], "晚一点整理照片。"}
     candidates = [e for e in agenda.entries if e.kind == "outlook"]
     assert len(candidates) == 3 and all("未定" in e.status for e in candidates)
+    assert agenda.worldline is not None and len(agenda.worldline.threads) == 3 and len(agenda.worldline.opportunities) == 3
     assert any(e.related for e in candidates)
     assert not any(e.kind == "world" for e in agenda.entries)
     encoded = agenda.model_dump_json()
