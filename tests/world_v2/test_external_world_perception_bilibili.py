@@ -515,3 +515,69 @@ async def test_inbound_qq_bilibili_json_card_and_shortlink_enrichment() -> None:
     assert "高赞神评：路人甲：42秒向红烧肉屈服那段演我本人(赞1314)" in enriched.text
 
 
+def test_bilibili_popular_signal_deduplicates_across_stat_revisions() -> None:
+    import sqlite3
+    from threading import RLock
+    from types import SimpleNamespace
+    from companion_daemon.world_v2.external_world_perception.attention import (
+        SQLiteShadowAttentionCoordinator,
+    )
+
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    conn.executescript(
+        """
+        CREATE TABLE external_signal_revisions (
+            signal_revision_ref TEXT PRIMARY KEY,
+            signal_id TEXT NOT NULL,
+            source_id TEXT NOT NULL,
+            observed_at TEXT NOT NULL
+        );
+        CREATE TABLE external_signal_observation_state (
+            signal_id TEXT PRIMARY KEY,
+            latest_signal_revision_ref TEXT NOT NULL,
+            effective_expires_at TEXT NOT NULL
+        );
+        """
+    )
+    runtime = SimpleNamespace(
+        world_id="world:test",
+        actor_ref="character:shen_zhizhi",
+        attention_policy_revision="policy:1",
+        deployment_mode_revision="deploy:1",
+        model=SimpleNamespace(model_id="deepseek-chat"),
+        merge_wait_seconds=10,
+        window_ttl_seconds=300,
+        lease_seconds=60,
+        model_timeout_seconds=30,
+        max_candidate_dossiers=6,
+        attempt_retention_seconds=3600,
+    )
+    lock = RLock()
+    now = datetime(2026, 10, 25, 13, 0, tzinfo=UTC)
+    coord = SQLiteShadowAttentionCoordinator(
+        connection=conn,
+        lock=lock,
+        database_write_lock=lock,
+        runtime=runtime,  # type: ignore[arg-type]
+        exposable_source_ids=("cn.social.bilibili.popular.v1",),
+        wall_clock=lambda: now,
+    )
+    conn.execute(
+        "INSERT INTO external_signal_revisions VALUES ('rev:bili:1', 'sig:bili:BV1w2Hw6KE1j', 'cn.social.bilibili.popular.v1', '2026-10-25T09:00:00Z')"
+    )
+    conn.execute(
+        "INSERT INTO external_signal_revisions VALUES ('rev:bili:2', 'sig:bili:BV1w2Hw6KE1j', 'cn.social.bilibili.popular.v1', '2026-10-25T13:09:00Z')"
+    )
+    conn.execute(
+        "INSERT INTO external_signal_observation_state VALUES ('sig:bili:BV1w2Hw6KE1j', 'rev:bili:2', '2026-10-25T19:09:00Z')"
+    )
+    assert [r["signal_revision_ref"] for r in coord._eligible_signal_rows(observed_at=now)] == ["rev:bili:2"]
+
+    conn.execute(
+        "INSERT INTO external_perception_attention_exposures VALUES ('rev:bili:1', 'policy:1', 'deploy:1', 'attempt:1', 'selected', '2026-10-25T09:01:00Z')"
+    )
+    assert coord._eligible_signal_rows(observed_at=now) == ()
+
+
+

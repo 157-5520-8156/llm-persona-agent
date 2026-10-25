@@ -406,7 +406,15 @@ class SQLiteShadowAttentionCoordinator:
               AND revision.source_id IN ({placeholders})
               AND NOT EXISTS (
                   SELECT 1 FROM external_perception_attention_exposures AS exposure
-                  WHERE exposure.signal_revision_ref = revision.signal_revision_ref
+                  LEFT JOIN external_signal_revisions AS exposed_revision
+                    ON exposed_revision.signal_revision_ref = exposure.signal_revision_ref
+                  WHERE (
+                      exposure.signal_revision_ref = revision.signal_revision_ref
+                      OR (
+                          revision.source_id = 'cn.social.bilibili.popular.v1'
+                          AND exposed_revision.signal_id = revision.signal_id
+                      )
+                  )
                     AND exposure.attention_policy_revision = ?
                     AND exposure.deployment_mode_revision = ?
               )
@@ -415,7 +423,15 @@ class SQLiteShadowAttentionCoordinator:
                   FROM external_perception_opportunity_membership AS pending_membership
                   JOIN external_perception_attention_opportunities AS pending_opportunity
                     ON pending_opportunity.opportunity_id = pending_membership.opportunity_id
-                  WHERE pending_membership.signal_revision_ref = revision.signal_revision_ref
+                  LEFT JOIN external_signal_revisions AS pending_revision
+                    ON pending_revision.signal_revision_ref = pending_membership.signal_revision_ref
+                  WHERE (
+                      pending_membership.signal_revision_ref = revision.signal_revision_ref
+                      OR (
+                          revision.source_id = 'cn.social.bilibili.popular.v1'
+                          AND pending_revision.signal_id = revision.signal_id
+                      )
+                  )
                     AND pending_opportunity.status IN ('waiting', 'attempting')
               )
             ORDER BY revision.observed_at, revision.signal_revision_ref

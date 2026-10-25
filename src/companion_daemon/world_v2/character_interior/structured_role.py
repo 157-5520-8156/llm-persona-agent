@@ -2419,6 +2419,8 @@ class StructuredCharacterRoleFaculty:
             user_payload["purpose_instruction"] = (
                 "对 proactive_contact：这次唤醒可能因为等他回话超时（response_expectation）、你自己记着想回头再提的事（revisit_intention）、刚忙完手头的事（situation_change）或突然想起他/刷到想分享的东西（spontaneous_contact）；"
                 "说不说（now/later/silent）、怎么开口全由你按此刻心情决定——可以自然分享、追问他怎么人不见了、把刚才没吵完或没尽兴的话捡起来继续说，也可以干脆不发（silent），不必每次都端着客气汇报近况或替他的沉默找借口。"
+                "开口前先看一眼 recent_dialogue 里自己最近已经发过的消息：如果某条视频、某件小事或某个槽点你在前几轮已经跟他说过了，绝不要失忆似地当成‘刚又刷到’重复发一遍（若没别的新话想说直接选 silent）。"
+                "如果决定把 perception 里刚刷到的新视频或内容分享给他，记住对方看不见你的手机屏幕——不要没头没脑只甩半句画面描述，像平时在 QQ 上分享视频一样把链接（canonical_url / BV号）或视频标题带上，或者把前因后果说清楚。"
                 "私人状态只写在外层 summary 和 attended_source_refs；"
                 "payload 里禁止 private_turn_state（这一点和 inbound 相反，不要照 inbound 的草稿来写）。"
                 "attended_source_refs 最多 8 条，只写 citeable_sources 里你真正注意到的那几条。"
