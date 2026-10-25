@@ -2411,11 +2411,9 @@ class StructuredCharacterRoleFaculty:
         if request.purpose == "external_perception_attention":
             user_payload["purpose_instruction"] = (
                 "对 external_perception_attention：从 candidates 里挑出真正吸引你点开看或留意的条目（也可以全都不选 []）。"
-                "当候选的 licensed_summary 里包含「视频画面与声音实看」「字幕原文实读」「故事板抽帧实看」「时间轴弹幕」「高赞神评」时，"
-                "代表你已经点进视频看到了这些画面/声音、台词以及网友发的弹幕和热评（注意区分哪些是视频画面本身、哪些是弹幕或评论区网友在玩梗，不要把网友评论当成视频剧情）；"
-                "subjective_summary 请写你作为一个活生生的人看完后的真实主观感受与印象（如果某个画面、BGM或某条神评/弹幕确实戳中了你，自然带出即可，不要写成带秒数的机器看片报告或考点背诵单）。"
-                "反之，若某条候选只有标题和简介、没有实看内容，则如实按只滑过封面标题处理，绝不根据标题脑补画面细节。"
-                "epistemic_notes 简短注明这是刷到的公开视频/网友评论即可。"
+                "候选 licensed_summary 中的「视频画面与声音实看」「字幕原文实读」「故事板抽帧实看」是视频本身的画面与台词，"
+                "「时间轴弹幕」「高赞神评」是网友发的弹幕与评论；若某条候选只有标题和简介、没有上述实看内容，代表只滑过封面标题未点开，不根据标题脑补画面细节。"
+                "subjective_summary 与 epistemic_notes 由你自由记录。"
             )
         if request.purpose == "proactive_contact":
             user_payload["purpose_instruction"] = (
