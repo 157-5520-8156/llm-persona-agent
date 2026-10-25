@@ -935,6 +935,140 @@ def _source_item(
     )
 
 
+_BVID_PATTERN = re.compile(r"\b(BV1[0-9A-Za-z]{9})\b")
+_B23_SHORTLINK_PATTERN = re.compile(r"https?://b23\.tv/([0-9A-Za-z_-]{4,24})")
+_INBOUND_BILI_SUMMARY_CACHE: dict[str, str] = {}
+
+
+async def extract_or_resolve_bvid(
+    text: str,
+    *,
+    http_client: httpx.AsyncClient | None = None,
+) -> str | None:
+    """Extract a ``BV1...`` ID from text or resolve a ``b23.tv`` short link."""
+    if not text:
+        return None
+    direct = _BVID_PATTERN.search(text)
+    if direct is not None:
+        return direct.group(1)
+    short = _B23_SHORTLINK_PATTERN.search(text)
+    if short is None:
+        return None
+    short_url = f"https://b23.tv/{short.group(1)}"
+
+    async def _resolve(client: httpx.AsyncClient) -> str | None:
+        try:
+            resp = await client.get(
+                short_url,
+                headers=_DEFAULT_HEADERS,
+                follow_redirects=False,
+                timeout=4.0,
+            )
+            location = str(resp.headers.get("location") or "")
+            m = _BVID_PATTERN.search(location)
+            return m.group(1) if m is not None else None
+        except Exception:
+            return None
+
+    if http_client is not None:
+        return await _resolve(http_client)
+    async with httpx.AsyncClient(trust_env=False) as client:
+        return await _resolve(client)
+
+
+async def inspect_bilibili_video_by_bvid(
+    bvid: str,
+    *,
+    http_client: httpx.AsyncClient | None = None,
+    vision_api_key: str | None = None,
+    bili_sessdata: str | None = None,
+) -> str | None:
+    """Fetch metadata + subtitle/frames/danmaku/comments for a user-shared Bilibili video."""
+    if not bvid or not bvid.startswith("BV"):
+        return None
+    cached_summary = _INBOUND_BILI_SUMMARY_CACHE.get(bvid)
+    if cached_summary:
+        return cached_summary
+
+    async def _inspect(client: httpx.AsyncClient) -> str | None:
+        try:
+            resp = await client.get(
+                f"https://api.bilibili.com/x/web-interface/view?bvid={bvid}",
+                headers=_DEFAULT_HEADERS,
+                timeout=6.0,
+            )
+            if resp.status_code != 200:
+                return None
+            body = resp.json()
+            entry = body.get("data") if isinstance(body, dict) and body.get("code") == 0 else None
+            if not isinstance(entry, dict):
+                return None
+            adapter = BilibiliPopularAdapter(
+                http_client=client,
+                vision_api_key=vision_api_key,
+                bili_sessdata=bili_sessdata,
+            )
+            enrichment = _VIDEO_ENRICHMENT_CACHE.get(bvid)
+            if enrichment is None:
+                enrichment = await adapter._enrich_single_video(entry, bvid=bvid)
+                if enrichment.inspection_mode != "card_only":
+                    if len(_VIDEO_ENRICHMENT_CACHE) >= _MAX_CACHE_ENTRIES:
+                        _VIDEO_ENRICHMENT_CACHE.pop(next(iter(_VIDEO_ENRICHMENT_CACHE)))
+                    _VIDEO_ENRICHMENT_CACHE[bvid] = enrichment
+            if not isinstance(entry.get("pubdate"), int) or entry.get("pubdate", 0) <= 0:
+                entry = {**entry, "pubdate": 1}
+            item = _source_item(
+                entry,
+                gateway_ref="bilibili-api:view",
+                signal_kind="bilibili_shared_video",
+                upstream_publisher_ref="publisher:bilibili",
+                enrichment=enrichment,
+            )
+            if len(_INBOUND_BILI_SUMMARY_CACHE) >= _MAX_CACHE_ENTRIES:
+                _INBOUND_BILI_SUMMARY_CACHE.pop(next(iter(_INBOUND_BILI_SUMMARY_CACHE)))
+            _INBOUND_BILI_SUMMARY_CACHE[bvid] = item.licensed_summary
+            return item.licensed_summary
+        except Exception:
+            return None
+
+    if http_client is not None:
+        return await _inspect(http_client)
+    async with httpx.AsyncClient(trust_env=False) as client:
+        return await _inspect(client)
+
+
+async def enrich_qq_fragment_with_bilibili_video(
+    fragment: Any,
+    *,
+    http_client: httpx.AsyncClient | None = None,
+    vision_api_key: str | None = None,
+    bili_sessdata: str | None = None,
+) -> Any:
+    """When an inbound QQ fragment carries a Bilibili video link/card, append real video inspection."""
+    from dataclasses import replace
+
+    text = getattr(fragment, "text", None)
+    if not isinstance(text, str) or not text:
+        return fragment
+    if "【对方分享的B站视频实看：" in text:
+        return fragment
+    if "BV1" not in text and "b23.tv/" not in text:
+        return fragment
+    bvid = await extract_or_resolve_bvid(text, http_client=http_client)
+    if not bvid:
+        return fragment
+    summary = await inspect_bilibili_video_by_bvid(
+        bvid,
+        http_client=http_client,
+        vision_api_key=vision_api_key,
+        bili_sessdata=bili_sessdata,
+    )
+    if not summary:
+        return fragment
+    enriched_text = f"{text}\n【对方分享的B站视频实看：{summary}】"[:12_000]
+    return replace(fragment, text=enriched_text)
+
+
 __all__ = [
     "BILIBILI_POPULAR_URL",
     "BilibiliPopularAdapter",
@@ -945,4 +1079,7 @@ __all__ = [
     "_should_inspect_frames",
     "_snapshot_entries",
     "_unpack_pvdata_entries",
+    "enrich_qq_fragment_with_bilibili_video",
+    "extract_or_resolve_bvid",
+    "inspect_bilibili_video_by_bvid",
 ]

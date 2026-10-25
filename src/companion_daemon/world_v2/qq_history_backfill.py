@@ -168,6 +168,11 @@ async def backfill_missed_private_messages(
 
     async def _submit(fragment):  # type: ignore[no-untyped-def]
         try:
+            from .external_world_perception.bilibili import (
+                enrich_qq_fragment_with_bilibili_video,
+            )
+
+            fragment = await enrich_qq_fragment_with_bilibili_video(fragment)
             return await host.inbound_fragment(fragment)
         except Exception:  # noqa: BLE001 - one bad record must not stop the rest
             logger.exception(

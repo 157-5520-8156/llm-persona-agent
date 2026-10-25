@@ -1362,6 +1362,14 @@ class QQC2CHost:
         submitted = self._ingress_store.submission(source_event_id)
         return submitted.state if submitted is not None else None
 
+    def stored_fragment(self, source_event_id: str) -> QQIngressFragment | None:
+        """Read back an already-persisted ingress fragment by source event ID."""
+
+        if self._ingress_store is None or not source_event_id:
+            return None
+        getter = getattr(self._ingress_store, "fragment", None)
+        return getter(source_event_id) if callable(getter) else None
+
     def _visible_turn_in_flight(self) -> bool:
         """Report whether user-visible context/model/reply work is in flight.
 

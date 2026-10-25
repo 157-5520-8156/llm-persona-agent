@@ -375,3 +375,143 @@ def test_bilibili_vision_and_funnel_helpers_match_dsh_bili_scroll_invariants() -
     assert _should_inspect_frames(entry={"tname": "美食制作"}, subtitle_excerpt=long_talk_sub) is True
     assert _should_inspect_frames(entry={"tname": "日常"}, subtitle_excerpt="") is True
 
+
+@pytest.mark.asyncio
+async def test_inbound_qq_bilibili_json_card_and_shortlink_enrichment() -> None:
+    from companion_daemon.world_v2.external_world_perception.bilibili import (
+        _INBOUND_BILI_SUMMARY_CACHE,
+        _VIDEO_ENRICHMENT_CACHE,
+        enrich_qq_fragment_with_bilibili_video,
+    )
+    from companion_daemon.world_v2.qq_ingress_policy import normalize_onebot_qq_ingress
+
+    _INBOUND_BILI_SUMMARY_CACHE.clear()
+    _VIDEO_ENRICHMENT_CACHE.clear()
+
+    bili_card_json = json.dumps(
+        {
+            "app": "com.tencent.miniapp_01",
+            "prompt": "[QQ小程序]哔哩哔哩",
+            "meta": {
+                "detail_1": {
+                    "appid": "1109937557",
+                    "title": "哔哩哔哩",
+                    "desc": "挑战在大学食堂连吃一周减脂餐，第3天破防了",
+                    "qqdocurl": "https://b23.tv/abcDEF1",
+                }
+            },
+        },
+        ensure_ascii=False,
+    )
+    raw_event = {
+        "post_type": "message",
+        "message_type": "private",
+        "user_id": "2849281720",
+        "message_id": "msg-bili-card-1",
+        "time": 1761350400,
+        "message": [
+            {"type": "json", "data": {"data": bili_card_json}},
+            {"type": "text", "data": {"text": "快看这个笑死我了"}},
+        ],
+    }
+
+    fragment = normalize_onebot_qq_ingress(raw_event)
+    assert fragment is not None
+    assert fragment.text is not None
+    assert "https://b23.tv/abcDEF1" in fragment.text
+    assert "快看这个笑死我了" in fragment.text
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        url = str(request.url)
+        if url == "https://b23.tv/abcDEF1":
+            return httpx.Response(
+                302,
+                headers={"Location": "https://www.bilibili.com/video/BV1xx411c7mD?share_source=qq"},
+            )
+        if url == "https://api.bilibili.com/x/web-interface/view?bvid=BV1xx411c7mD":
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {
+                        "bvid": "BV1xx411c7mD",
+                        "aid": 999,
+                        "cid": 888,
+                        "title": "挑战在大学食堂连吃一周减脂餐，第3天破防了",
+                        "desc": "本来想认真减脂，结果阿姨手抖加了一碗红烧肉",
+                        "tname": "社科·法律·心理",
+                        "duration": 180,
+                        "pubdate": 1761350400,
+                        "owner": {"name": "阿柴今天吃什么"},
+                        "stat": {"view": 528000, "like": 46200, "danmaku": 3100},
+                    },
+                },
+            )
+        if url == "https://api.bilibili.com/x/player/wbi/v2?bvid=BV1xx411c7mD&cid=888":
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {
+                        "subtitle": {
+                            "subtitles": [
+                                {
+                                    "lan": "ai-zh",
+                                    "lan_doc": "中文（自动生成）",
+                                    "subtitle_url": "//aisubtitle.hdslb.com/bfs/ai_subtitle/test.json",
+                                }
+                            ]
+                        }
+                    },
+                },
+            )
+        if url == "https://aisubtitle.hdslb.com/bfs/ai_subtitle/test.json":
+            return httpx.Response(
+                200,
+                json={
+                    "body": [
+                        {"from": 0.0, "content": "第一天我们在二楼窗口点了水煮鸡胸肉和西兰花，味道淡得像在嚼纸板"},
+                        {"from": 42.5, "content": "到了第三天中午实在扛不住了，阿姨问我要不要淋点红烧肉汁，我直接鬼使神差说来一整份红烧肉"},
+                        {"from": 95.0, "content": "最后称体重不仅没瘦反而重了一斤半，减脂计划彻底宣告破产"},
+                    ]
+                },
+            )
+        if url == "https://comment.bilibili.com/888.xml":
+            return httpx.Response(
+                200,
+                text='<i><d p="43.0,1,25,16777215,0,0,0,0">阿姨：看你怪可怜的</d></i>',
+            )
+        if url == "https://api.bilibili.com/x/v2/reply?type=1&oid=999&sort=2&ps=5":
+            return httpx.Response(
+                200,
+                json={
+                    "code": 0,
+                    "data": {
+                        "replies": [
+                            {
+                                "member": {"uname": "路人甲"},
+                                "content": {"message": "42秒向红烧肉屈服那段演我本人"},
+                                "like": 1314,
+                            }
+                        ]
+                    },
+                },
+            )
+        return httpx.Response(404)
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as client:
+        enriched = await enrich_qq_fragment_with_bilibili_video(
+            fragment,
+            http_client=client,
+            bili_sessdata="test_sess",
+        )
+
+    assert enriched.text is not None
+    assert "【对方分享的B站视频实看：" in enriched.text
+    assert "字幕原文实读：[0s]第一天我们在二楼窗口点了水煮鸡胸肉和西兰花" in enriched.text
+    assert "[42s]到了第三天中午实在扛不住了" in enriched.text
+    assert "时间轴弹幕：[43s]阿姨：看你怪可怜的" in enriched.text
+    assert "高赞神评：路人甲：42秒向红烧肉屈服那段演我本人(赞1314)" in enriched.text
+
+

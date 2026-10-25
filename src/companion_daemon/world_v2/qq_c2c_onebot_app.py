@@ -604,6 +604,20 @@ def create_qq_c2c_onebot_app(
             return {"status": "ignored_qq_shape_v2_unsupported"}
         if fragment.recipient_id != recipient_id:
             return {"status": "ignored_private"}
+        stored_getter = getattr(host, "stored_fragment", None)
+        stored_fragment = (
+            stored_getter(fragment.source_event_id)
+            if callable(stored_getter)
+            else None
+        )
+        if stored_fragment is not None:
+            fragment = stored_fragment
+        else:
+            from .external_world_perception.bilibili import (
+                enrich_qq_fragment_with_bilibili_video,
+            )
+
+            fragment = await enrich_qq_fragment_with_bilibili_video(fragment)
         archive_task = _start_attachment_archive(raw_event)
         try:
             result = await host.accept_inbound_fragment(fragment)

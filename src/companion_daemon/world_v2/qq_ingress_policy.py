@@ -256,6 +256,7 @@ class QQIngressStore(Protocol):
     ) -> QQIngressBatch | None: ...
     def complete(self, *, batch_id: str, outcome_status: str, action_id: str | None) -> None: ...
     def submission(self, source_event_id: str) -> QQIngressSubmission | None: ...
+    def fragment(self, source_event_id: str) -> QQIngressFragment | None: ...
     def has_uncommitted_content(
         self,
         *,
@@ -520,6 +521,10 @@ class MemoryQQIngressStore:
     def submission(self, source_event_id: str) -> QQIngressSubmission | None:
         record = self._fragments.get(source_event_id)
         return self._submission(record) if record is not None else None
+
+    def fragment(self, source_event_id: str) -> QQIngressFragment | None:
+        record = self._fragments.get(source_event_id)
+        return record.fragment if record is not None else None
 
     def has_uncommitted_content(
         self,
@@ -797,6 +802,16 @@ class SQLiteQQIngressStore:
             outcome_status=row["outcome_status"], action_id=row["action_id"],
         )
 
+    def fragment(self, source_event_id: str) -> QQIngressFragment | None:
+        with self._lock:
+            row = self._connection.execute(
+                "SELECT payload_json FROM world_v2_qq_ingress_fragments WHERE source_event_id=?",
+                (source_event_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return self._decode_fragment(json.loads(row["payload_json"]))
+
     def has_uncommitted_content(
         self,
         *,
@@ -862,6 +877,53 @@ class SQLiteQQIngressStore:
     def close(self) -> None:
         with self._lock:
             self._connection.close()
+
+
+def _extract_onebot_json_card_text(data: Mapping[str, object]) -> str | None:
+    """Extract bounded title/description/URL text from a OneBot JSON share card."""
+
+    raw = data.get("data")
+    payload: Mapping[str, object] | None = None
+    if isinstance(raw, Mapping):
+        payload = raw
+    elif isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, Mapping):
+                payload = parsed
+        except (TypeError, ValueError):
+            payload = None
+    if payload is None:
+        return None
+
+    prompt = str(payload.get("prompt") or "").strip()
+    meta = payload.get("meta")
+    titles: list[str] = []
+    urls: list[str] = []
+    if isinstance(meta, Mapping):
+        for section in meta.values():
+            if not isinstance(section, Mapping):
+                continue
+            for t_key in ("title", "desc"):
+                val = str(section.get(t_key) or "").strip()
+                if val and val not in titles:
+                    titles.append(val)
+            for u_key in ("qqdocurl", "jumpUrl", "targetUrl", "contentUrl", "url"):
+                u_val = str(section.get(u_key) or "").strip()
+                if u_val.startswith("//"):
+                    u_val = "https:" + u_val
+                if u_val.startswith(("http://", "https://")) and u_val not in urls:
+                    urls.append(u_val)
+
+    parts: list[str] = []
+    if prompt and prompt not in titles:
+        parts.append(prompt)
+    parts.extend(titles[:3])
+    parts.extend(urls[:2])
+    if not parts:
+        return None
+    joined = " ".join(" ".join(p.split()) for p in parts if p).strip()
+    return joined[:600] if joined else None
 
 
 def normalize_onebot_qq_ingress(
@@ -932,6 +994,10 @@ def normalize_onebot_qq_ingress(
         data = data if isinstance(data, Mapping) else {}
         if segment_type == "text" and str(data.get("text") or "").strip():
             texts.append(str(data["text"]).strip())
+        elif segment_type == "json":
+            card_text = _extract_onebot_json_card_text(data)
+            if card_text:
+                texts.append(card_text)
         elif segment_type in {"image", "record", "video", "file"}:
             attachments.append(onebot_attachment_ref(segment_type, data))
         elif segment_type == "face" and data.get("id") is not None:
