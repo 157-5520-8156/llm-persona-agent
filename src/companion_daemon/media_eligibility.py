@@ -27,12 +27,13 @@ PRIVATE_BASIS_KINDS = frozenset(
 )
 CHARGE_RANK = {"none": 0, "subtle": 1, "charged": 2, "veiled": 3}
 
-# Relationship stage is a floor, not an intensity chooser.  close_friend and
-# above may carry adult private media; her live ``declared_display`` still
-# picks suggestive vs explicit, and the authorized charge ceiling still caps
-# the candidate matrix.  Must stay aligned with
+# Relationship stage does not gate her agency to share private or adult media;
+# her live ``declared_display`` picks suggestive vs explicit, and the authorized
+# charge ceiling caps the candidate matrix.  Must stay aligned with
 # ``MediaOpportunityAuthorizer._p3_lane_for_stage``.
-P3_RELATIONSHIP_STAGE_FLOOR = frozenset({"close_friend", "ambiguous", "lover"})
+P3_RELATIONSHIP_STAGE_FLOOR = frozenset(
+    {"stranger", "acquaintance", "friend", "close_friend", "ambiguous", "lover"}
+)
 DECLARED_DISPLAY_EVIDENCE_REF = "/relationship_media_context/declared_display"
 
 # These names describe what the recipient is being shown, rather than how

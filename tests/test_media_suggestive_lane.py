@@ -780,11 +780,11 @@ async def test_first_person_private_prompt_author_keeps_character_authorship_in_
     )
     assert "close, body-inclusive frame" in explicit_contract
     assert "fully-wrapped environmental portrait" in explicit_contract
-    assert "no sexual act and no key-area exposure" in explicit_contract
+    assert "bare breasts, nipples, intimate anatomy" in explicit_contract
     assert "naturally_visible_regions=" in explicit_prompt
     krea2_explicit = _compile_krea2_private_prompt(explicit_plan)
     assert "Unmistakably recipient-exclusive adult sexual communication" in krea2_explicit
-    assert "no sexual act and no key-area exposure" in krea2_explicit
+    assert "explicit adult nudity and bare intimate anatomy are authorized" in krea2_explicit
     assert "close body-inclusive frame" in krea2_explicit
     assert "fully-wrapped environmental portrait" in krea2_explicit
     krea2_suggestive = _compile_krea2_private_prompt(planned.plan)

@@ -26,6 +26,7 @@ from .media_selection_attempt import (
     MediaSelectionAttemptRecordedPayload,
     media_selection_attempt_id,
 )
+from .declared_display_contract import live_declared_display
 from .errors import ConcurrencyConflict
 from .event_identity import domain_idempotency_key
 from .private_image_evidence_contract import RecipientScopedImageEvidenceDeclaredPayload
@@ -138,6 +139,21 @@ class MediaSelectionWorker:
             if (selection := self._derive_selection(projection=projection, candidate=item)) is not None
         }
         selectable = tuple(item for item in eligible if item.candidate_id in selections)
+        p3_with_declared_display = tuple(
+            item
+            for item in selectable
+            if selections[item.candidate_id].media_privacy_ceiling == "intimate"
+            and selections[item.candidate_id].recipient_ref is not None
+            and live_declared_display(
+                ledger=self._ledger,
+                projection=projection,
+                recipient_ref=selections[item.candidate_id].recipient_ref or "",
+                at_logical_time=logical_time,
+            )
+            is not None
+        )
+        if p3_with_declared_display:
+            selectable = p3_with_declared_display
         recoverable: list[str] = []
         invalid_pending = False
         lookup = getattr(self._ledger, "lookup_event_commit", None)
@@ -804,7 +820,7 @@ class MediaSelectionWorker:
             except ValueError:
                 return None
             if (
-                declaration.source_privacy_ceiling == "private"
+                declaration.source_privacy_ceiling in {"personal", "private"}
                 and declaration.image_evidence.character_media is not None
                 and declaration.image_evidence.character_media.character_ref == contract.subject_ref
             ):
@@ -832,7 +848,7 @@ class MediaSelectionWorker:
         )
 
     def _recipient_scoped_private_candidate(self, *, candidate) -> bool:  # type: ignore[no-untyped-def]
-        if candidate.privacy_ceiling != "private":
+        if candidate.privacy_ceiling not in {"personal", "private"}:
             return False
         for source in candidate.source_events:
             located = self._ledger.lookup_event_commit(source.event_ref)

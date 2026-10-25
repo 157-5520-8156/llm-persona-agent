@@ -33,6 +33,7 @@ from types import MappingProxyType, SimpleNamespace
 from typing import Literal, Mapping, Protocol
 
 from .character_media_fact_binder import CharacterMediaCandidateRuntime
+from .declared_display_contract import live_declared_display
 from .image_evidence_contract import (
     CharacterMediaEvidenceV1,
     ImageEvidenceV1,
@@ -79,7 +80,9 @@ _NEGATIVE_MOODS = ("hurt", "anger", "sadness", "loneliness", "anxiety", "resentm
 # RandomDrawRecorded event while still allowing mood to move the threshold.
 _BUCKET_COUNT = 40
 _BUCKET_WIDTH_BP = 10_000 // _BUCKET_COUNT
-_PRIVATE_ELIGIBLE_STAGES = frozenset({"close_friend", "ambiguous", "lover"})
+_PRIVATE_ELIGIBLE_STAGES = frozenset(
+    {"acquaintance", "friend", "close_friend", "ambiguous", "lover"}
+)
 
 
 def _digest(value: object) -> str:
@@ -369,11 +372,13 @@ class LifeVisualEvidenceAuthor:
 
         requested = tuple(dict.fromkeys(source_refs))
         projection: _ProjectionLike = self._ledger.project()
+        prefer_private = self._has_live_declared_display(projection)
         present = self._declare_present_moment_if_ready(
             projection=projection,
             declared_sources=frozenset(),
             logical_time=getattr(projection, "logical_time", None),
             private_today=0,
+            prefer_private=prefer_private,
             trace_id=trace_id,
             correlation_id=correlation_id,
         )
@@ -396,26 +401,14 @@ class LifeVisualEvidenceAuthor:
         declared_sources, recent = self._declaration_ledger_view(
             projection=projection,
             logical_time=logical_time,
-        )
-        daily = sum(1 for _lane, at in recent if logical_time - at <= timedelta(days=1))
-        if daily >= self._policy.max_declarations_per_day:
-            return VisualEvidenceAuthorResult(
-                status="idle", reason_code="visual_evidence.daily_budget_exhausted"
-            )
-        if recent and logical_time - max(at for _lane, at in recent) < self._policy.min_gap:
-            return VisualEvidenceAuthorResult(
-                status="idle", reason_code="visual_evidence.min_gap_not_elapsed"
-            )
-        private_today = sum(
-            1
-            for lane, at in recent
-            if lane == "private" and logical_time - at <= timedelta(days=1)
+            private_only=prefer_private,
         )
         requested_set = frozenset(requested)
         eligible = self._eligible_occurrences(
             projection=projection,
             logical_time=logical_time,
             declared_sources=declared_sources,
+            prefer_private=prefer_private,
         )
         for occurrence, opening, annex, lane in eligible:
             attended_aliases = self._requested_source_aliases(
@@ -424,10 +417,7 @@ class LifeVisualEvidenceAuthor:
             )
             if not requested_set.intersection(attended_aliases) or not annex.self_capture:
                 continue
-            if lane == "private" and (
-                private_today >= self._policy.max_private_declarations_per_day
-                or not self._recipient_relationship_ready(projection)
-            ):
+            if lane == "private" and not self._recipient_relationship_ready(projection):
                 continue
             result = self._declare(
                 occurrence=occurrence,
@@ -445,6 +435,7 @@ class LifeVisualEvidenceAuthor:
             projection=projection,
             logical_time=logical_time,
             declared_sources=declared_sources,
+            lookback=self._policy.starvation_lookback,
         )
         for occurrence, activity_kind, visual in open_life:
             attended_aliases = self._requested_source_aliases(
@@ -461,6 +452,7 @@ class LifeVisualEvidenceAuthor:
                 occurrence=occurrence,
                 activity_kind=activity_kind,
                 visual=visual,
+                prefer_private=prefer_private,
                 trace_id=trace_id,
                 correlation_id=correlation_id,
             )
@@ -524,6 +516,7 @@ class LifeVisualEvidenceAuthor:
         declared_sources: frozenset[str],
         logical_time: datetime | None,
         private_today: int,
+        prefer_private: bool = False,
         trace_id: str,
         correlation_id: str,
     ) -> VisualEvidenceAuthorResult | None:
@@ -533,7 +526,9 @@ class LifeVisualEvidenceAuthor:
             return None
         if not declared_sources:
             declared_sources, _recent = self._declaration_ledger_view(
-                projection=projection, logical_time=logical_time
+                projection=projection,
+                logical_time=logical_time,
+                private_only=prefer_private,
             )
         fact = inspect_present_moment(
             projection=projection,
@@ -541,30 +536,41 @@ class LifeVisualEvidenceAuthor:
             logical_time=logical_time,
             declared_sources=declared_sources,
         )
-        if fact.reason == "already_open":
+        if fact.reason == "already_open" and (
+            not prefer_private
+            or not fact.source_ref
+            or fact.source_ref in declared_sources
+        ):
             return VisualEvidenceAuthorResult(
                 status="idle",
                 reason_code="visual_evidence.present_moment_already_open",
                 declared_source_ref=fact.source_ref,
             )
-        if not fact.photographable or fact.reason != "active" or not fact.source_ref:
+        if (
+            not fact.photographable
+            or fact.reason not in {"active", "already_open"}
+            or not fact.source_ref
+        ):
             return None
         open_life = self._declare_open_life_present_moment(
             projection=projection,
             source_ref=fact.source_ref,
+            prefer_private=prefer_private,
             trace_id=trace_id,
             correlation_id=correlation_id,
         )
         if open_life is not None:
             return open_life
         row = self._active_plan_declaration_row(
-            projection=projection, source_ref=fact.source_ref
+            projection=projection,
+            source_ref=fact.source_ref,
+            prefer_private=prefer_private,
         )
         if row is None:
             return None
         occurrence, opening, annex, lane = row
         if lane == "private" and (
-            private_today >= self._policy.max_private_declarations_per_day
+            (not prefer_private and private_today >= self._policy.max_private_declarations_per_day)
             or not self._recipient_relationship_ready(projection)
         ):
             return None
@@ -585,6 +591,7 @@ class LifeVisualEvidenceAuthor:
         *,
         projection: _ProjectionLike,
         source_ref: str,
+        prefer_private: bool = False,
         trace_id: str,
         correlation_id: str,
     ) -> VisualEvidenceAuthorResult | None:
@@ -630,6 +637,7 @@ class LifeVisualEvidenceAuthor:
                 occurrence=occurrence,
                 activity_kind=kind,
                 visual=visual,
+                prefer_private=prefer_private,
                 trace_id=trace_id,
                 correlation_id=correlation_id,
             )
@@ -639,7 +647,11 @@ class LifeVisualEvidenceAuthor:
         return None
 
     def _active_plan_declaration_row(
-        self, *, projection: _ProjectionLike, source_ref: str
+        self,
+        *,
+        projection: _ProjectionLike,
+        source_ref: str,
+        prefer_private: bool = False,
     ) -> tuple[object, ReviewedLifeSeedOpening, object, str] | None:
         for plan in getattr(projection, "plans", ()) or ():
             origin = getattr(plan, "authority_origin", None)
@@ -657,7 +669,15 @@ class LifeVisualEvidenceAuthor:
                 return None
             lane = (
                 "private"
-                if opening.visual_potential == "private_transition"
+                if (
+                    opening.visual_potential == "private_transition"
+                    or (
+                        prefer_private
+                        and visibility in {"personal", "private"}
+                        and self._recipient_ref is not None
+                        and bool(annex.self_capture)
+                    )
+                )
                 else "public"
             )
             if lane == "public" and visibility not in _ORDINARY_LIFE_VISIBILITIES:
@@ -665,7 +685,13 @@ class LifeVisualEvidenceAuthor:
             occurrence = SimpleNamespace(
                 settlement_event_ref=source_ref,
                 trigger_ref=getattr(plan, "plan_id", kind),
-                visibility=visibility if visibility in _ORDINARY_LIFE_VISIBILITIES else "private",
+                visibility=(
+                    "private"
+                    if lane == "private"
+                    else visibility
+                    if visibility in _ORDINARY_LIFE_VISIBILITIES
+                    else "private"
+                ),
                 settled_at=getattr(plan, "last_transitioned_at", None)
                 or getattr(projection, "logical_time", None),
                 result_payload_ref=None,
@@ -676,7 +702,9 @@ class LifeVisualEvidenceAuthor:
         return None
 
     @staticmethod
-    def _available_photo_candidate_count(projection: _ProjectionLike) -> int:
+    def _available_photo_candidate_count(
+        projection: _ProjectionLike, *, private_only: bool = False
+    ) -> int:
         logical_time = getattr(projection, "logical_time", None)
         count = 0
         for item in getattr(projection, "photo_candidates", ()) or ():
@@ -687,6 +715,12 @@ class LifeVisualEvidenceAuthor:
                 isinstance(logical_time, datetime)
                 and isinstance(expires_at, datetime)
                 and expires_at <= logical_time
+            ):
+                continue
+            if private_only and not any(
+                "recipient-scoped-image-evidence-declared"
+                in str(getattr(src, "event_ref", ""))
+                for src in getattr(item, "source_events", ()) or ()
             ):
                 continue
             count += 1
@@ -702,21 +736,34 @@ class LifeVisualEvidenceAuthor:
         ],
         private_today: int,
         projection: _ProjectionLike,
+        prefer_private: bool = False,
         trace_id: str,
         correlation_id: str,
     ) -> VisualEvidenceAuthorResult | None:
+        if prefer_private:
+            for occurrence, opening, annex, lane in eligible:
+                if lane == "private" and self._recipient_relationship_ready(projection):
+                    return self._declare(
+                        occurrence=occurrence,
+                        opening=opening,
+                        annex=annex,
+                        lane=lane,
+                        trace_id=trace_id,
+                        correlation_id=correlation_id,
+                    )
         for occurrence, activity_kind, visual in open_life:
             return self._declare_open_life(
                 occurrence=occurrence,
                 activity_kind=activity_kind,
                 visual=visual,
+                prefer_private=prefer_private,
                 trace_id=trace_id,
                 correlation_id=correlation_id,
             )
         for occurrence, opening, annex, lane in eligible:
             if lane == "private":
                 if (
-                    private_today >= self._policy.max_private_declarations_per_day
+                    (not prefer_private and private_today >= self._policy.max_private_declarations_per_day)
                     or not self._recipient_relationship_ready(projection)
                 ):
                     continue
@@ -742,7 +789,13 @@ class LifeVisualEvidenceAuthor:
             return VisualEvidenceAuthorResult(
                 status="unavailable", reason_code="visual_evidence.logical_time_unavailable"
             )
-        if self._available_photo_candidate_count(projection) > 0:
+        prefer_private = self._has_live_declared_display(projection)
+        if (
+            self._available_photo_candidate_count(
+                projection, private_only=prefer_private
+            )
+            > 0
+        ):
             return VisualEvidenceAuthorResult(
                 status="idle", reason_code="visual_evidence.candidates_already_available"
             )
@@ -751,6 +804,7 @@ class LifeVisualEvidenceAuthor:
             declared_sources=frozenset(),
             logical_time=logical_time,
             private_today=0,
+            prefer_private=prefer_private,
             trace_id=trace_id,
             correlation_id=correlation_id,
         )
@@ -759,12 +813,8 @@ class LifeVisualEvidenceAuthor:
         declared_sources, recent = self._declaration_ledger_view(
             projection=projection,
             logical_time=logical_time,
+            private_only=prefer_private,
         )
-        daily = sum(1 for _lane, at in recent if logical_time - at <= timedelta(days=1))
-        if daily >= self._policy.max_declarations_per_day:
-            return VisualEvidenceAuthorResult(
-                status="idle", reason_code="visual_evidence.daily_budget_exhausted"
-            )
         private_today = sum(
             1
             for lane, at in recent
@@ -775,6 +825,7 @@ class LifeVisualEvidenceAuthor:
             logical_time=logical_time,
             declared_sources=declared_sources,
             lookback=self._policy.starvation_lookback,
+            prefer_private=prefer_private,
         )
         open_life = self._eligible_open_life_occurrences(
             projection=projection,
@@ -787,6 +838,7 @@ class LifeVisualEvidenceAuthor:
             eligible=eligible,
             private_today=private_today,
             projection=projection,
+            prefer_private=prefer_private,
             trace_id=trace_id,
             correlation_id=correlation_id,
         )
@@ -803,6 +855,7 @@ class LifeVisualEvidenceAuthor:
         self, *, projection: _ProjectionLike, logical_time: datetime,
         declared_sources: frozenset[str],
         lookback: timedelta | None = None,
+        prefer_private: bool = False,
     ) -> tuple[tuple[object, ReviewedLifeSeedOpening, ReviewedOpeningVisualEvidence, str], ...]:
         window = self._policy.lookback if lookback is None else lookback
         plans = {
@@ -833,12 +886,19 @@ class LifeVisualEvidenceAuthor:
             annex = opening.visual_evidence
             visibility = getattr(occurrence, "visibility", None)
             if (
+                prefer_private
+                and visibility in {"personal", "private"}
+                and self._recipient_ref is not None
+                and annex.self_capture
+            ):
+                rows.append((occurrence, opening, annex, "private"))
+            elif (
                 visibility in _ORDINARY_LIFE_VISIBILITIES
                 and opening.visual_potential not in {"none", "private_transition"}
             ):
                 rows.append((occurrence, opening, annex, "public"))
             elif (
-                visibility == "private"
+                visibility in {"personal", "private"}
                 and opening.visual_potential == "private_transition"
                 and self._recipient_ref is not None
                 and annex.self_capture
@@ -939,7 +999,11 @@ class LifeVisualEvidenceAuthor:
         return tuple(rows)
 
     def _declaration_ledger_view(
-        self, *, projection: _ProjectionLike, logical_time: datetime,
+        self,
+        *,
+        projection: _ProjectionLike,
+        logical_time: datetime,
+        private_only: bool = False,
     ) -> tuple[frozenset[str], tuple[tuple[str, datetime], ...]]:
         """Collect already-declared source refs and recent declaration beats."""
 
@@ -947,16 +1011,19 @@ class LifeVisualEvidenceAuthor:
         declared: set[str] = set()
         recent: list[tuple[str, datetime]] = []
         for ref in getattr(projection, "committed_world_event_refs", ()):
-            if getattr(ref, "event_type", None) not in _DECLARATION_EVENT_TYPES:
+            event_type = getattr(ref, "event_type", None)
+            if event_type not in _DECLARATION_EVENT_TYPES:
                 continue
             at = getattr(ref, "logical_time", None)
             if isinstance(at, datetime) and at <= logical_time:
                 lane = (
                     "private"
-                    if ref.event_type == "RecipientScopedImageEvidenceDeclared"
+                    if event_type == "RecipientScopedImageEvidenceDeclared"
                     else "public"
                 )
                 recent.append((lane, at))
+            if private_only and event_type != "RecipientScopedImageEvidenceDeclared":
+                continue
             if not callable(lookup):
                 continue
             located = lookup(ref.event_id)
@@ -1130,6 +1197,7 @@ class LifeVisualEvidenceAuthor:
         occurrence,
         activity_kind: str,
         visual: LifeDevelopmentVisualEvidenceDraft,
+        prefer_private: bool = False,
         trace_id: str,
         correlation_id: str,
     ) -> VisualEvidenceAuthorResult:
@@ -1161,8 +1229,75 @@ class LifeVisualEvidenceAuthor:
             for item in visual.objects
         )
         character_media = self._open_life_character_media(occurrence)
+        visibility = getattr(occurrence, "visibility")
+        situational_context = self._situational_context(
+            projection=projection,
+            logical_time=getattr(occurrence, "settled_at"),
+            privacy_ceiling=visibility,
+        )
+        if (
+            prefer_private
+            and visibility in {"personal", "private"}
+            and self._recipient_ref is not None
+            and character_media is not None
+            and self._recipient_relationship_ready(projection)
+        ):
+            activity: dict[str, object] = {
+                "id": getattr(occurrence, "trigger_ref", activity_kind) or activity_kind,
+                "kind": activity_kind,
+                "description": visual.activity_description or activity_kind,
+                "private_transition": True,
+            }
+            evidence = RecipientScopedImageEvidenceV1(
+                visibility="private",
+                summary=self._settled_summary(occurrence),
+                activity=activity,
+                location=location,
+                environment=environment,
+                situational_context=situational_context,
+                character_media=character_media,
+            )
+            command_id = "visual-evidence:" + _digest(
+                [self._ledger.world_id, settlement_ref, "open-life-private"]
+            )
+            commit = self._recipient_scoped.declare(
+                RecipientScopedImageEvidenceDeclarationCommand(
+                    command_id=command_id,
+                    source_event_ref=settlement_ref,
+                    recipient_ref=self._recipient_ref,
+                    image_evidence=evidence,
+                ),
+                logical_time=logical_time,
+                created_at=logical_time,
+                actor=self._actor,
+                trace_id=trace_id,
+                correlation_id=correlation_id,
+            )
+            declared_ref = next(iter(getattr(commit, "event_ids", ())), None)
+            opened: tuple[str, ...] = ()
+            if declared_ref is not None:
+                try:
+                    opened = self._character_candidates.open_once(
+                        wake_event_ref=declared_ref,
+                        logical_time=logical_time,
+                        actor=self._actor,
+                        trace_id=trace_id,
+                        correlation_id=correlation_id,
+                    )
+                except ValueError:
+                    _LOG.warning(
+                        "character media candidates could not open for %s", declared_ref
+                    )
+            return VisualEvidenceAuthorResult(
+                status="declared",
+                reason_code="visual_evidence.declared",
+                declared_event_ref=declared_ref,
+                declared_source_ref=settlement_ref,
+                lane="private",
+                opened_candidate_ids=opened,
+            )
         evidence = ImageEvidenceV1(
-            visibility=getattr(occurrence, "visibility"),
+            visibility=visibility,
             summary=self._settled_summary(occurrence),
             activity=(
                 {
@@ -1176,11 +1311,7 @@ class LifeVisualEvidenceAuthor:
             location=location,
             environment=environment,
             objects=objects,
-            situational_context=self._situational_context(
-                projection=projection,
-                logical_time=getattr(occurrence, "settled_at"),
-                privacy_ceiling=getattr(occurrence, "visibility"),
-            ),
+            situational_context=situational_context,
             character_media=character_media,
         )
         command_id = "visual-evidence:" + _digest(
@@ -1356,13 +1487,24 @@ class LifeVisualEvidenceAuthor:
             source_event_refs=source_event_refs,
         )
 
-    def _recipient_relationship_ready(self, projection: _ProjectionLike) -> bool:
-        """P3 evidence only makes sense once the relationship carries it.
+    def _has_live_declared_display(self, projection: _ProjectionLike) -> bool:
+        logical_time = getattr(projection, "logical_time", None)
+        if self._recipient_ref is None or not isinstance(logical_time, datetime):
+            return False
+        if not callable(getattr(self._ledger, "lookup_event_commit", None)):
+            return False
+        return (
+            live_declared_display(
+                ledger=self._ledger,
+                projection=projection,
+                recipient_ref=self._recipient_ref,
+                at_logical_time=logical_time,
+            )
+            is not None
+        )
 
-        The stage floor mirrors the media authorizer's own eligibility (any
-        stage below ``close_friend`` raises there); declaring earlier would
-        only accumulate dead recipient-scoped candidates.
-        """
+    def _recipient_relationship_ready(self, projection: _ProjectionLike) -> bool:
+        """Check whether recipient-scoped P3 declarations are eligible."""
 
         if self._recipient_ref is None:
             return False
@@ -1373,6 +1515,8 @@ class LifeVisualEvidenceAuthor:
         )
         if len(states) != 1:
             return False
+        if self._has_live_declared_display(projection):
+            return True
         return getattr(states[0], "stage", None) in _PRIVATE_ELIGIBLE_STAGES
 
 

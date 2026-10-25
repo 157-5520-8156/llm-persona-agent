@@ -961,6 +961,38 @@ def _payment_required_cooldown_seconds(exc: Exception) -> float | None:
     return None
 
 
+def _is_deepseek_content_filter_rejection(
+    exc: Exception,
+    response_payload: Mapping[str, object] | None = None,
+) -> bool:
+    """Detect DeepSeek hard content-risk / moderation rejections."""
+
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = exc.response.status_code if exc.response is not None else 0
+        if status in {400, 422}:
+            text = str(exc).casefold()
+            if any(
+                token in text
+                for token in (
+                    "content exists risk",
+                    "content_filter",
+                    "content filter",
+                    "sensitive",
+                    "moderation",
+                )
+            ):
+                return True
+    if isinstance(exc, (ValueError, json.JSONDecodeError)) and isinstance(
+        response_payload, Mapping
+    ):
+        choices = response_payload.get("choices")
+        if isinstance(choices, list) and choices and isinstance(choices[0], Mapping):
+            finish_reason = str(choices[0].get("finish_reason") or "").casefold()
+            if finish_reason in {"content_filter", "sensitive"}:
+                return True
+    return False
+
+
 def _is_failover_eligible_provider_failure(exc: Exception) -> bool:
     """Classify availability failures without treating bad content as an outage."""
     if isinstance(exc, ModelCircuitOpenError):
@@ -1345,6 +1377,101 @@ class DeepSeekChatModel:
     def _expected_response_tool(self, tools, tool_choice):
         return _expected_tool_name(tools, tool_choice)
 
+    async def _fallback_after_content_filter(
+        self,
+        *,
+        messages: list[dict[str, object]],
+        temperature: float,
+        json_object: bool,
+        tools: list[dict[str, object]] | None = None,
+        on_text_delta: Callable[[str], object] | None = None,
+    ) -> tuple[str, dict[str, object], dict[str, object]] | None:
+        """Fail over to uncensored OpenRouter Hermes when DeepSeek content filter triggers."""
+
+        if self.provider != "deepseek":
+            return None
+        explicit_key = getattr(self, "content_filter_fallback_api_key", None)
+        if not explicit_key and urlsplit(self.base_url).hostname == "127.0.0.1":
+            return None
+        openrouter_key = str(
+            explicit_key or os.environ.get("OPENROUTER_API_KEY") or ""
+        ).strip()
+        if not openrouter_key:
+            return None
+        fallback_base = str(
+            getattr(self, "content_filter_fallback_base_url", None)
+            or os.environ.get("OPENROUTER_BASE_URL")
+            or "https://openrouter.ai/api/v1"
+        ).rstrip("/")
+        fallback_model = str(
+            getattr(self, "content_filter_fallback_model", None)
+            or os.environ.get("HERMES_PRIVATE_PROMPT_MODEL")
+            or HERMES_4_70B_PRICE.model
+        ).strip()
+        fallback_messages = list(messages)
+        if tools and isinstance(tools[0], Mapping):
+            func = tools[0].get("function")
+            if isinstance(func, Mapping):
+                tool_name = str(func.get("name") or "tool")
+                schema = func.get("parameters") or {}
+                fallback_messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Return ONLY a single valid JSON object matching the exact parameters "
+                            f"schema for `{tool_name}` (no markdown fences, no extra wrapper): "
+                            f"{json.dumps(schema, ensure_ascii=False)}"
+                        ),
+                    }
+                )
+        fallback_payload: dict[str, object] = {
+            "model": fallback_model,
+            "messages": fallback_messages,
+            "max_completion_tokens": self.max_completion_tokens,
+            "temperature": temperature,
+        }
+        if json_object or tools:
+            fallback_payload["response_format"] = {"type": "json_object"}
+        proxy_url = os.environ.get("OPENAI_PROXY_URL", "").strip() or None
+        logger.warning(
+            "deepseek content filter triggered on model=%s; failing over to openrouter model=%s",
+            self.model,
+            fallback_model,
+        )
+        async with httpx.AsyncClient(
+            timeout=45,
+            trust_env=False,
+            proxy=proxy_url if self.transport is None else None,
+            transport=self.transport,
+        ) as fallback_client:
+            resp = await fallback_client.post(
+                f"{fallback_base}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {openrouter_key}",
+                    "Content-Type": "application/json",
+                },
+                json=fallback_payload,
+            )
+            _raise_for_provider_status(resp)
+            payload = resp.json()
+        if not isinstance(payload, dict):
+            return None
+        usage = self._response_usage(payload)
+        message = self._response_message(payload)
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, str) or not content.strip():
+            return None
+        cleaned = content.strip()
+        if (json_object or tools) and cleaned.startswith("```"):
+            lines = cleaned.splitlines()
+            if len(lines) >= 3 and lines[-1].strip() == "```":
+                cleaned = "\n".join(lines[1:-1]).strip()
+        if on_text_delta is not None and cleaned:
+            callback_result = on_text_delta(cleaned)
+            if inspect.isawaitable(callback_result):
+                await callback_result
+        return cleaned, payload, usage
+
     def _test_only_capture_identity_headers(
         self,
         *,
@@ -1725,46 +1852,65 @@ class DeepSeekChatModel:
         except Exception as exc:
             if admission_in_progress:
                 raise
-            provider_outage = _is_provider_outage(exc)
-            if self.capacity_gate is not None and capacity_token is not None:
-                if request_emitted and _provider_completion_may_still_be_running(exc):
-                    self.capacity_gate.abandon(
-                        capacity_token,
-                        reason=f"transport_ambiguous:{type(exc).__name__}",
+            fallback_hit = None
+            if not forced_tool_head_released and _is_deepseek_content_filter_rejection(
+                exc, response_payload
+            ):
+                try:
+                    fallback_hit = await self._fallback_after_content_filter(
+                        messages=messages,
+                        temperature=temperature,
+                        json_object=not tools,
+                        tools=tools,
+                        on_text_delta=on_text_delta,
                     )
-                else:
-                    self.capacity_gate.release(capacity_token)
-            if self.circuit_breaker is not None and provider_outage:
-                payment_cooldown = _payment_required_cooldown_seconds(exc)
-                if payment_cooldown is not None:
-                    self.circuit_breaker.record_failure(cooldown_seconds=payment_cooldown)
-                else:
-                    self.circuit_breaker.record_failure()
-            self._report_usage(
-                ModelCallUsage(
-                    purpose=purpose,
-                    model=self.model,
-                    status="failed",
-                    provider=self.provider,
-                    latency_ms=max(0, int((monotonic() - started) * 1000)),
-                    error=_redact_provider_secrets(
-                        f"stream_error:{type(exc).__name__}:{exc}"
-                    )[:_USAGE_ERROR_LIMIT],
-                    **_model_usage_token_counts(usage),
-                    world_id=str(call_meta.get("world_id") or ""),
-                    turn_id=str(call_meta.get("turn_id") or ""),
-                    action_id=str(call_meta.get("action_id") or ""),
-                    cadence=str(call_meta.get("cadence") or ""),
-                    attempt=max(1, int(call_meta.get("attempt") or 1)),
-                    budget_reservation_id=str(call_meta.get("budget_reservation_id") or ""),
-                    thinking_enabled=self.thinking_enabled,
-                    reasoning_effort=(self.reasoning_effort if self.thinking_enabled else ""),
-                    billing_state=_failed_call_billing_state(
-                        usage, request_emitted=request_emitted, error=exc,
-                    ),
+                except Exception:
+                    logger.warning(
+                        "openrouter content-filter fallback failed in stream", exc_info=True
+                    )
+            if fallback_hit is not None:
+                content, response_payload, usage = fallback_hit
+            else:
+                provider_outage = _is_provider_outage(exc)
+                if self.capacity_gate is not None and capacity_token is not None:
+                    if request_emitted and _provider_completion_may_still_be_running(exc):
+                        self.capacity_gate.abandon(
+                            capacity_token,
+                            reason=f"transport_ambiguous:{type(exc).__name__}",
+                        )
+                    else:
+                        self.capacity_gate.release(capacity_token)
+                if self.circuit_breaker is not None and provider_outage:
+                    payment_cooldown = _payment_required_cooldown_seconds(exc)
+                    if payment_cooldown is not None:
+                        self.circuit_breaker.record_failure(cooldown_seconds=payment_cooldown)
+                    else:
+                        self.circuit_breaker.record_failure()
+                self._report_usage(
+                    ModelCallUsage(
+                        purpose=purpose,
+                        model=self.model,
+                        status="failed",
+                        provider=self.provider,
+                        latency_ms=max(0, int((monotonic() - started) * 1000)),
+                        error=_redact_provider_secrets(
+                            f"stream_error:{type(exc).__name__}:{exc}"
+                        )[:_USAGE_ERROR_LIMIT],
+                        **_model_usage_token_counts(usage),
+                        world_id=str(call_meta.get("world_id") or ""),
+                        turn_id=str(call_meta.get("turn_id") or ""),
+                        action_id=str(call_meta.get("action_id") or ""),
+                        cadence=str(call_meta.get("cadence") or ""),
+                        attempt=max(1, int(call_meta.get("attempt") or 1)),
+                        budget_reservation_id=str(call_meta.get("budget_reservation_id") or ""),
+                        thinking_enabled=self.thinking_enabled,
+                        reasoning_effort=(self.reasoning_effort if self.thinking_enabled else ""),
+                        billing_state=_failed_call_billing_state(
+                            usage, request_emitted=request_emitted, error=exc,
+                        ),
+                    )
                 )
-            )
-            raise
+                raise
         if self.capacity_gate is not None and capacity_token is not None:
             self.capacity_gate.release(capacity_token)
         if self.circuit_breaker is not None:
@@ -1923,54 +2069,72 @@ class DeepSeekChatModel:
         except Exception as exc:
             if admission_in_progress:
                 raise
-            provider_outage = _is_provider_outage(exc)
-            if self.capacity_gate is not None and capacity_token is not None:
-                if request_emitted and _provider_completion_may_still_be_running(exc):
-                    self.capacity_gate.abandon(
-                        capacity_token,
-                        reason=f"transport_ambiguous:{type(exc).__name__}",
+            fallback_hit = None
+            if _is_deepseek_content_filter_rejection(
+                exc, payload if "payload" in locals() and isinstance(payload, Mapping) else None
+            ):
+                try:
+                    fallback_hit = await self._fallback_after_content_filter(
+                        messages=messages,
+                        temperature=temperature,
+                        json_object=json_object,
+                        tools=tools,
                     )
-                else:
-                    self.capacity_gate.release(capacity_token)
-            if self.circuit_breaker is not None and provider_outage:
-                payment_cooldown = _payment_required_cooldown_seconds(exc)
-                if payment_cooldown is not None:
-                    self.circuit_breaker.record_failure(cooldown_seconds=payment_cooldown)
-                else:
-                    self.circuit_breaker.record_failure()
-            if isinstance(exc, (ValueError, TypeError, json.JSONDecodeError)):
-                error = f"schema_error:{exc}"
-            elif isinstance(exc, ModelCapacityBusyError):
-                error = f"capacity_busy:{exc}"
-            elif provider_outage:
-                error = f"provider_error:{exc}"
-            elif isinstance(exc, httpx.HTTPStatusError):
-                error = f"provider_rejection:{exc}"
+                except Exception:
+                    logger.warning(
+                        "openrouter content-filter fallback failed", exc_info=True
+                    )
+            if fallback_hit is not None:
+                content, payload, usage = fallback_hit
             else:
-                error = f"unexpected_error:{exc}"
-            self._report_usage(
-                ModelCallUsage(
-                    purpose=purpose,
-                    model=self.model,
-                    status="failed",
-                    provider=self.provider,
-                    latency_ms=max(0, int((monotonic() - started) * 1000)),
-                    error=_redact_provider_secrets(error)[:_USAGE_ERROR_LIMIT],
-                    **_model_usage_token_counts(usage),
-                    world_id=str(call_meta.get("world_id") or ""),
-                    turn_id=str(call_meta.get("turn_id") or ""),
-                    action_id=str(call_meta.get("action_id") or ""),
-                    cadence=str(call_meta.get("cadence") or ""),
-                    attempt=max(1, int(call_meta.get("attempt") or 1)),
-                    budget_reservation_id=str(call_meta.get("budget_reservation_id") or ""),
-                    thinking_enabled=self.thinking_enabled,
-                    reasoning_effort=(self.reasoning_effort if self.thinking_enabled else ""),
-                    billing_state=_failed_call_billing_state(
-                        usage, request_emitted=request_emitted, error=exc,
-                    ),
+                provider_outage = _is_provider_outage(exc)
+                if self.capacity_gate is not None and capacity_token is not None:
+                    if request_emitted and _provider_completion_may_still_be_running(exc):
+                        self.capacity_gate.abandon(
+                            capacity_token,
+                            reason=f"transport_ambiguous:{type(exc).__name__}",
+                        )
+                    else:
+                        self.capacity_gate.release(capacity_token)
+                if self.circuit_breaker is not None and provider_outage:
+                    payment_cooldown = _payment_required_cooldown_seconds(exc)
+                    if payment_cooldown is not None:
+                        self.circuit_breaker.record_failure(cooldown_seconds=payment_cooldown)
+                    else:
+                        self.circuit_breaker.record_failure()
+                if isinstance(exc, (ValueError, TypeError, json.JSONDecodeError)):
+                    error = f"schema_error:{exc}"
+                elif isinstance(exc, ModelCapacityBusyError):
+                    error = f"capacity_busy:{exc}"
+                elif provider_outage:
+                    error = f"provider_error:{exc}"
+                elif isinstance(exc, httpx.HTTPStatusError):
+                    error = f"provider_rejection:{exc}"
+                else:
+                    error = f"unexpected_error:{exc}"
+                self._report_usage(
+                    ModelCallUsage(
+                        purpose=purpose,
+                        model=self.model,
+                        status="failed",
+                        provider=self.provider,
+                        latency_ms=max(0, int((monotonic() - started) * 1000)),
+                        error=_redact_provider_secrets(error)[:_USAGE_ERROR_LIMIT],
+                        **_model_usage_token_counts(usage),
+                        world_id=str(call_meta.get("world_id") or ""),
+                        turn_id=str(call_meta.get("turn_id") or ""),
+                        action_id=str(call_meta.get("action_id") or ""),
+                        cadence=str(call_meta.get("cadence") or ""),
+                        attempt=max(1, int(call_meta.get("attempt") or 1)),
+                        budget_reservation_id=str(call_meta.get("budget_reservation_id") or ""),
+                        thinking_enabled=self.thinking_enabled,
+                        reasoning_effort=(self.reasoning_effort if self.thinking_enabled else ""),
+                        billing_state=_failed_call_billing_state(
+                            usage, request_emitted=request_emitted, error=exc,
+                        ),
+                    )
                 )
-            )
-            raise
+                raise
         if self.capacity_gate is not None and capacity_token is not None:
             self.capacity_gate.release(capacity_token)
         if self.circuit_breaker is not None:

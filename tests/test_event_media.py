@@ -1975,7 +1975,7 @@ def test_close_friend_opens_invite_desire_when_authorized_ceiling_is_charged() -
     from companion_daemon.event_media import _interaction_bid_values
     from companion_daemon.media_interaction import DEFAULT_INTERACTION_CONFIG
 
-    blocked = _interaction_bid_values(
+    friend_allowed = _interaction_bid_values(
         _opportunity(
             privacy="intimate",
             sensual_charge_ceiling="charged",
@@ -1996,7 +1996,7 @@ def test_close_friend_opens_invite_desire_when_authorized_ceiling_is_charged() -
         config_path=DEFAULT_INTERACTION_CONFIG,
     )
 
-    assert "invite_desire" not in blocked
+    assert "invite_desire" in friend_allowed
     assert "invite_desire" in allowed
 
 

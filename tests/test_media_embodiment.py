@@ -328,7 +328,7 @@ def test_close_friend_is_the_adult_media_floor_not_an_intensity_chooser() -> Non
         for item in charged
     )
     assert any(item.presentation.sensual_charge == "veiled" for item in veiled)
-    assert all(item.presentation.sensual_charge == "none" for item in friend)
+    assert any(item.presentation.sensual_charge == "charged" for item in friend)
     assert any(
         "/character/appearance_state/visible_attributes/0/description"
         in item.presentation.wardrobe_evidence_refs

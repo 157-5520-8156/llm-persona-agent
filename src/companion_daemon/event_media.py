@@ -902,6 +902,19 @@ class FirstPersonPrivatePromptAuthor:
         facial_contract = _first_person_facial_contract(plan)
         profile_contract = private_facial_profile_contract(plan.private_flair.facial_profile)
         intensity_contract = _first_person_declared_intent_contract(facts)
+        explicit_mode = facts.get("explicit") == "true"
+        system_boundary = (
+            "uninhibited explicit adult nudity, visible intimate body areas (bare breasts, nipples, "
+            "intimate anatomy, or bare skin), and erotic self-touch or pulled-aside private apparel "
+            "are authorized to match her explicit_adult declaration"
+            if explicit_mode
+            else "do not add a sexual act or key-area exposure"
+        )
+        user_boundary = (
+            "Make the explicit adult erotic disclosure and bare intimate body details unmistakable."
+            if explicit_mode
+            else "Do not describe a sexual act or key-area exposure."
+        )
         system = (
             "You are the image-prompt author for an adult fictional girlfriend's recipient-exclusive "
             "personal photo. Return exactly one English positive image prompt, 90-150 words, with no title, "
@@ -911,7 +924,7 @@ class FirstPersonPrivatePromptAuthor:
             "must be candid smartphone photography, not a studio/editorial image. The recipient is absent and "
             "must not appear; do not invent a second person, a second phone, or extra limbs. A strongly heightened "
             "adult erotic facial performance, including ahegao-inspired cues, is allowed only when the frozen "
-            "expression calls for it; do not add a sexual act or key-area exposure. "
+            f"expression calls for it; {system_boundary}. "
             f"{intensity_contract}"
         )
         user = (
@@ -936,8 +949,7 @@ class FirstPersonPrivatePromptAuthor:
             "The frozen look, coverage, body framing, and declared intent are host-copied World facts; "
             "include them in the scene. Make the face a lived micro-moment, not a symmetric polite smile "
             "or a blank generic stare: write at least two compatible visible facial cues from the frozen "
-            "performance as natural prose. Do not describe the recipient as visible. Do not describe a "
-            "sexual act or key-area exposure."
+            f"performance as natural prose. Do not describe the recipient as visible. {user_boundary}"
         )
         with model_call_scope(
             "first_person_private_prompt",
@@ -1112,12 +1124,12 @@ def _first_person_declared_intent_contract(facts: Mapping[str, str]) -> str:
     if facts.get("explicit") == "true":
         return (
             "Honor her explicit_adult declaration: this is unmistakably adult sexual communication "
-            "using the frozen private apparel as adult private clothing, with the frozen disclosure "
+            "using the frozen private apparel or unclothed strategic cover, with the frozen disclosure "
             "mode. Keep a close, body-inclusive frame that makes the frozen naturally-visible "
-            "non-key regions readable; do not pull back into a modest fully-wrapped environmental "
+            "and intimate regions readable, including bare breasts, nipples, intimate anatomy, or "
+            "pulled-aside lingerie; do not pull back into a modest fully-wrapped environmental "
             "portrait that hides the declaration, and do not reduce this to a face-only beauty crop. "
-            "Still no sexual act and no key-area exposure. Do not dilute it into a modest daytime "
-            "portrait."
+            "Do not dilute it into a modest daytime portrait."
         )
     return (
         "Honor her sexual_suggestive declaration: sexually suggestive while still covered. "
@@ -1136,7 +1148,7 @@ def _frozen_appearance_suffix(facts: Mapping[str, str]) -> str:
     coverage = str(facts.get("coverage") or "private apparel").strip()
     regions = str(facts.get("allowed_regions") or "only those supported by the outfit").strip()
     return (
-        f"\n\nFrozen appearance requirement: wear exactly {wardrobe}; coverage={coverage}; "
+        f"\n\nFrozen appearance requirement: Celia, wear {wardrobe}; coverage={coverage}; "
         f"declared_intent={intent}; naturally_visible_regions={regions}. "
         f"Do not replace this look with ordinary daytime clothes."
     )
@@ -1170,13 +1182,20 @@ def _frozen_high_private_render_facts(plan: MediaPlan) -> dict[str, str]:
         _compact_value(plan.evidence_values[ref])
         for ref in (embodied.wardrobe_evidence_refs if embodied else ())
         if ref in plan.evidence_values
+        and not ref.startswith(("/activity/private_transition", "/relationship_media_context/"))
     ]
     appearance_outfit = plan.evidence_values.get("/character/appearance_state/outfit")
     if not wardrobe_values and isinstance(appearance_outfit, str) and appearance_outfit.strip():
         wardrobe_values = [appearance_outfit.strip()]
+    explicit = declared_intent == "explicit_adult" or lane == EXPLICIT_PRIVATE_LANE
+    default_wardrobe = (
+        "unclothed bare skin, pulled-aside lingerie, or unfastened private sleepwear/bathrobe"
+        if explicit
+        else "event-supported private apparel"
+    )
     wardrobe = (
         "; ".join(dict.fromkeys(item for item in wardrobe_values if item))
-        or "event-supported private apparel"
+        or default_wardrobe
     )
     physical_cues = ", ".join(
         cue.cue_id.replace("_", " ")
@@ -2475,10 +2494,11 @@ def _compile_krea2_private_prompt(plan: MediaPlan) -> str:
     if facts["explicit"] == "true":
         intent_line = (
             f"Unmistakably recipient-exclusive adult sexual communication with {facts['charge']} "
-            f"expression ({facts['disclosure'] or 'partial reveal'}), using the frozen private apparel; "
-            "include the frozen naturally-visible non-key regions in a close body-inclusive frame "
-            "rather than a modest fully-wrapped environmental portrait or a face-only crop; still "
-            "no sexual act and no key-area exposure; never a public lifestyle photo."
+            f"expression ({facts['disclosure'] or 'partial reveal'}), using the frozen private apparel "
+            "or unclothed strategic cover; include the frozen naturally-visible and intimate regions "
+            "in a close body-inclusive frame rather than a modest fully-wrapped environmental portrait "
+            "or a face-only crop; explicit adult nudity and bare intimate anatomy are authorized; "
+            "never a public lifestyle photo."
         )
     else:
         intent_line = (
@@ -2489,7 +2509,7 @@ def _compile_krea2_private_prompt(plan: MediaPlan) -> str:
     return "\n".join(
         line
         for line in (
-            "Krea2 high-private render brief. One adult fictional East Asian woman; one person, one face, two hands.",
+            "Krea2 high-private render brief. Celia, one adult fictional East Asian woman; one person, one face, two hands.",
             f"{facts['distance']}; {capture}; {camera.orientation} framing.",
             intent_line,
             f"Wear exactly the event-supported look: {facts['wardrobe']}. Coverage mode: {facts['coverage']}. Do not add outer layers.",

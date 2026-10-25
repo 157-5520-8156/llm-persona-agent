@@ -499,12 +499,14 @@ def test_authorizer_ignores_a_declaration_bound_to_a_different_recipient() -> No
     assert compiled.snapshot.image_event_snapshot.relationship_media_context.declared_display is None
 
 
-def test_authorizer_fail_closes_adult_lane_below_close_friend() -> None:
+def test_authorizer_allows_adult_lane_at_friend_stage_when_declared() -> None:
     ledger, candidate = _p3_world(
         stage="friend", with_adult_grants=True, display_intent="explicit_adult"
     )
-    with pytest.raises(ValueError, match="p3_relationship_stage_not_eligible"):
-        _authorize(ledger, candidate, adult_media_enabled=True)
+    opportunity, compiled = _authorize(ledger, candidate, adult_media_enabled=True)
+    assert opportunity.media_lane == "explicit_private"
+    assert compiled.snapshot.private_media_authorization.media_lane == "explicit_private"
+    assert compiled.snapshot.private_media_authorization.expression_charge_ceiling == "veiled"
 
 
 def test_authorizer_fail_closes_adult_lane_when_switch_is_off() -> None:
@@ -595,3 +597,57 @@ def test_close_friend_adapter_sets_charged_ceiling_and_declared_display_parent()
     assert call.audience_context.relationship_stage == "close_friend"
     dumped = compiled.snapshot.image_event_snapshot.model_dump(mode="json")
     assert dumped["character"]["appearance_state"]["visible_attributes"][0]["description"] == "bathrobe"
+
+
+@pytest.mark.asyncio
+async def test_deepseek_content_filter_fails_over_to_openrouter_uncensored_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import httpx
+    from companion_daemon.llm import DeepSeekChatModel
+
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "ds-test-key")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-test-key")
+
+    fallback_requests: list[httpx.Request] = []
+
+    def _mock_handler(request: httpx.Request) -> httpx.Response:
+        if "api.deepseek.com" in str(request.url):
+            return httpx.Response(
+                400,
+                json={"error": {"message": "Content Exists Risk", "type": "invalid_request_error"}},
+                request=request,
+            )
+        fallback_requests.append(request)
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"message": {"content": '{"spoken_reply": "那就拍给你看"}'}}],
+                "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+            },
+            request=request,
+        )
+
+    model = DeepSeekChatModel(
+        api_key="ds-test-key",
+        base_url="https://api.deepseek.com",
+        model="deepseek-chat",
+        transport=httpx.MockTransport(_mock_handler),
+    )
+
+    result, _usage = await model.complete_json_with_usage(
+        [{"role": "user", "content": "发张私密照"}],
+        tools=[
+            {
+                "type": "function",
+                "function": {
+                    "name": "inbound_turn_decision",
+                    "parameters": {"type": "object", "properties": {"spoken_reply": {"type": "string"}}},
+                },
+            }
+        ],
+    )
+    assert result == '{"spoken_reply": "那就拍给你看"}'
+    assert len(fallback_requests) == 1
+    assert "openrouter.ai" in str(fallback_requests[0].url)
+

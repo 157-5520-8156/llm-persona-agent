@@ -682,6 +682,17 @@ def _private_wardrobe_evidence_refs(snapshot: Mapping[str, object]) -> tuple[str
             for field in ("kind", "description"):
                 if _private_wardrobe_text(str(item.get(field) or "").lower()):
                     refs.append(f"/objects/{index}/{field}")
+    activity = _mapping(snapshot.get("activity"))
+    for field in ("kind", "description"):
+        if _private_wardrobe_text(str(activity.get(field) or "").lower()):
+            refs.append(f"/activity/{field}")
+    if activity.get("private_transition") is True:
+        refs.append("/activity/private_transition")
+    declared = _mapping(
+        _mapping(snapshot.get("relationship_media_context")).get("declared_display")
+    )
+    if str(declared.get("media_intent") or "") in {"sexual_suggestive", "explicit_adult"}:
+        refs.append("/relationship_media_context/declared_display")
     return tuple(dict.fromkeys(refs))
 
 

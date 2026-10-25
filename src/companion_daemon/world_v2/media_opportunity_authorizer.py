@@ -73,7 +73,7 @@ class MediaOpportunityAuthorizer:
             and selection.recipient_ref is not None
             and selection.private_expression_basis_ref is not None
             and candidate.character_media_contract is not None
-            and candidate.privacy_ceiling == "private"
+            and candidate.privacy_ceiling in {"personal", "private"}
         )
         if not p1 and not p2 and not p3:
             raise ValueError("media_authorizer.public_preview_only")
@@ -235,7 +235,7 @@ class MediaOpportunityAuthorizer:
             return "explicit_private", "veiled"
         if adult_eligible and declared_intent == "sexual_suggestive":
             return "suggestive_private", "charged"
-        if stage == "close_friend":
+        if stage not in {"ambiguous", "lover"}:
             return "alluring_life", "subtle"
         return "alluring_life", "charged"
 
@@ -256,7 +256,7 @@ class MediaOpportunityAuthorizer:
                 return None
             activity = declaration.image_evidence.activity
             if (
-                declaration.source_privacy_ceiling == "private"
+                declaration.source_privacy_ceiling in {"personal", "private"}
                 and isinstance(activity, dict)
                 and activity.get("private_transition") is True
                 and isinstance(activity.get("id"), str)
