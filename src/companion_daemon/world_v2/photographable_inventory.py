@@ -150,10 +150,13 @@ def _candidate_hold_reason(
     return "not_available"
 
 
+MAX_HELD_PHOTO_MOMENTS = 2
+
+
 def shareable_photo_facts(
     projection: object, *, logical_time: datetime | None
 ) -> tuple[PhotographableMomentFact, ...]:
-    """One fact per opened candidate, including those that cannot be sent yet."""
+    """One fact per opened candidate, including bounded recent held items."""
 
     facts: list[PhotographableMomentFact] = []
     for item in getattr(projection, "photo_candidates", ()) or ():
@@ -179,6 +182,10 @@ def shareable_photo_facts(
                 taxonomy=taxonomy if isinstance(taxonomy, str) else None,
             )
         )
+    held_indices = [idx for idx, fact in enumerate(facts) if not fact.photo_in_hand]
+    if len(held_indices) > MAX_HELD_PHOTO_MOMENTS:
+        evict = set(held_indices[:-MAX_HELD_PHOTO_MOMENTS])
+        facts = [fact for idx, fact in enumerate(facts) if idx not in evict]
     return tuple(facts)
 
 

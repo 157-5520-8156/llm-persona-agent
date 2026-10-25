@@ -324,3 +324,33 @@ async def test_soft_daily_budget_exhaustion_is_a_visible_degraded_signal() -> No
     assert [reason.model_dump(mode="json") for reason in observation.reasons] == [
         {"signal": "model_usage_budget", "reason_code": "budget_exhausted"},
     ]
+
+
+@pytest.mark.asyncio
+async def test_structural_life_source_authority_and_thread_safe_text_shadow_probe(
+    tmp_path,
+) -> None:
+    from companion_daemon.world_v2.text_shadow_observer import TextShadowObserver
+
+    observer = TextShadowObserver(
+        database=tmp_path / "companion.sqlite",
+        world_id="world:test",
+        model=object(),
+    )
+    try:
+        probes = _ready_probes()
+        probes["life_source_authority"] = _probe({"status": "structural", "warning": False})
+        probes["character_interior"] = lambda: {
+            "status": "ready",
+            "installed": True,
+            "ordinary_text_observation": observer.health_snapshot(),
+        }
+        observation = await DashboardRuntimeObservationSampler(
+            **probes,  # type: ignore[arg-type]
+            clock=lambda: NOW,
+        ).capture()
+        assert observation.life_source_authority_state == "ready"
+        assert observation.character_interior_state == "ready"
+        assert observation.reasons == ()
+    finally:
+        await observer.aclose()

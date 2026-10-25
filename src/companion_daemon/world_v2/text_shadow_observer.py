@@ -180,11 +180,12 @@ class TextShadowObserver:
                 _LOG.exception('text shadow observation failed; foreground unaffected')
 
     def health_snapshot(self):
-        counts = dict(self._connection.execute('SELECT state,count(*) FROM text_observations WHERE world_id=? GROUP BY state', (self.world_id,)))
-        severities = dict(self._connection.execute(
-            "SELECT json_extract(verdict_json,'$.severity'),count(*) FROM text_observations WHERE world_id=? AND state='observed' GROUP BY json_extract(verdict_json,'$.severity')",
-            (self.world_id,),
-        ))
+        with sqlite3.connect(self.path, timeout=0.05) as conn:
+            counts = dict(conn.execute('SELECT state,count(*) FROM text_observations WHERE world_id=? GROUP BY state', (self.world_id,)))
+            severities = dict(conn.execute(
+                "SELECT json_extract(verdict_json,'$.severity'),count(*) FROM text_observations WHERE world_id=? AND state='observed' GROUP BY json_extract(verdict_json,'$.severity')",
+                (self.world_id,),
+            ))
         return {'mode':'sampled', 'sample_every':self.sample_every,'daily_call_limit':self.daily_limit,
                 'counts':counts,'offer_errors':self.offer_errors,'semantic_gate':False,
                 'observed_severities':severities,

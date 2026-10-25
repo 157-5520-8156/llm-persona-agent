@@ -6,6 +6,7 @@ crash recovery uses that same audit, including an explicit null response.
 
 from __future__ import annotations
 
+from functools import lru_cache
 import hashlib
 import json
 
@@ -46,6 +47,11 @@ class CharacterLifeResponseError(ValueError):
         super().__init__(self.code)
 
 
+@lru_cache(maxsize=4096)
+def _parsed_character_life_response(canonical_json: str) -> CharacterLifeResponsePayload:
+    return CharacterLifeResponsePayload.model_validate_json(canonical_json)
+
+
 def derive_character_life_responses(
     *,
     state,
@@ -72,7 +78,7 @@ def derive_character_life_responses(
     responses = []
     seen_sources = set()
     for change in changes:
-        response = CharacterLifeResponsePayload.model_validate_json(change.payload.canonical_json)
+        response = _parsed_character_life_response(change.payload.canonical_json)
         if response.actor_ref != owner_actor_ref:
             raise CharacterLifeResponseError("actor_mismatch")
         response_id = character_life_response_id(

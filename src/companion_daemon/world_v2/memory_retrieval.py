@@ -43,6 +43,7 @@ from .schemas import (
 from .prehistory_memory_source import (
     PrehistoryMemoryReading, prehistory_memory_binding, prehistory_memory_reading, resolve_prehistory_memory_source,
 )
+from .projection_lookup import lookup_first
 
 
 class MemorySourceExcerpt(FrozenModel):
@@ -553,34 +554,27 @@ class MemoryRetrievalCompiler:
 
         if self._life_content_store is None:
             return None
-        experience = next(
-            (
-                item
-                for item in projection.experiences
-                if isinstance(item, ExperienceProjection)
-                and item.experience_id == binding.source_id
-            ),
-            None,
+        experience = lookup_first(
+            projection.experiences,
+            "experience_id",
+            binding.source_id,
+            predicate=lambda item: isinstance(item, ExperienceProjection),
         )
-        transition = next(
-            (
-                item
-                for item in projection.experience_transitions
-                if isinstance(item, ExperienceTransitionProjection)
+        transition = lookup_first(
+            projection.experience_transitions,
+            "accepted_event_ref",
+            binding.authority_event_ref,
+            predicate=lambda item: (
+                isinstance(item, ExperienceTransitionProjection)
                 and item.experience_id == binding.source_id
                 and item.entity_revision == binding.source_entity_revision
-                and item.accepted_event_ref == binding.authority_event_ref
             ),
-            None,
         )
-        committed = next(
-            (
-                item
-                for item in projection.committed_world_event_refs
-                if item.event_id == binding.authority_event_ref
-                and item.event_type == "ExperienceCommitted"
-            ),
-            None,
+        committed = lookup_first(
+            projection.committed_world_event_refs,
+            "event_id",
+            binding.authority_event_ref,
+            predicate=lambda item: item.event_type == "ExperienceCommitted",
         )
         if experience is None or transition is None or committed is None:
             return None
@@ -594,13 +588,13 @@ class MemoryRetrievalCompiler:
             or self._canonical_hash(transition.values_after) != binding.source_values_hash
         ):
             return None
-        descriptor = next(
-            (
-                item
-                for item in projection.life_content_descriptors
-                if isinstance(item, LifeContentDescriptorProjection)
+        descriptor = lookup_first(
+            projection.life_content_descriptors,
+            "source_entity_id",
+            experience.experience_id,
+            predicate=lambda item: (
+                isinstance(item, LifeContentDescriptorProjection)
                 and item.source_kind == "experience"
-                and item.source_entity_id == experience.experience_id
                 and item.source_entity_revision == experience.entity_revision
                 and item.source_event_ref == binding.authority_event_ref
                 and item.source_world_revision == binding.authority_world_revision
@@ -608,22 +602,20 @@ class MemoryRetrievalCompiler:
                 and item.content_ref == experience.values.summary_ref
                 and item.content_payload_hash == experience.values.summary_payload_hash
             ),
-            None,
         )
         if descriptor is None or descriptor.privacy_class != experience.values.privacy_class:
             return None
         if descriptor.content_ref in user_channel_limited_content_refs:
             return None
-        descriptor_event = next(
-            (
-                item
-                for item in projection.committed_world_event_refs
-                if item.event_id == descriptor.descriptor_event_ref
-                and item.event_type == "LifeContentRecorded"
+        descriptor_event = lookup_first(
+            projection.committed_world_event_refs,
+            "event_id",
+            descriptor.descriptor_event_ref,
+            predicate=lambda item: (
+                item.event_type == "LifeContentRecorded"
                 and item.world_revision == descriptor.descriptor_world_revision
                 and item.payload_hash == descriptor.descriptor_payload_hash
             ),
-            None,
         )
         if descriptor_event is None:
             return None

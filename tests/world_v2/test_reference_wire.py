@@ -138,3 +138,16 @@ def test_table_columns_preserve_reference_types_and_literal_prose():
     assert view["affect"]["rows"][0][0].startswith("@r:")
     assert view["affect"]["rows"][0][2] == _ref("literal")
     assert expand_reference_view(view, bindings) == original
+
+
+def test_source_ref_aliases_and_token_map_intern_opaque_values_losslessly():
+    aliases = {f"S{i:02d}": _ref(f"alias-{i}") for i in range(12)}
+    original = {
+        "source_ref_aliases": aliases,
+        "token_map": dict(aliases),
+    }
+    view, bindings = prepare_reference_view(original)
+    assert all(val.startswith(bindings["prefix"]) for val in view["source_ref_aliases"].values())
+    assert all(val.startswith(bindings["prefix"]) for val in view["token_map"].values())
+    assert expand_reference_view(view, bindings) == original
+

@@ -376,7 +376,7 @@ class InboundTurnFaculty:
     # just before they finished, causing an avoidable second author call.
     # One second is the existing port's hard ceiling, not a mandatory pause;
     # ready/empty jobs still return immediately and the role owns Recall.
-    automatic_prefetch_join_seconds = 1.0
+    automatic_prefetch_join_seconds = 0.02
 
     def __init__(
         self,

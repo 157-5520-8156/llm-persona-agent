@@ -595,6 +595,10 @@ class Settings(BaseSettings):
         default=False, alias="WORLD_V2_NATIVE_SLIM_CORE",
         description="Opt-in typed required semantic fields with compact optional capabilities; requires the slim author transport.",
     )
+    world_v2_inbound_context_window_enabled: bool = Field(
+        default=False, alias="WORLD_V2_INBOUND_CONTEXT_WINDOW_ENABLED",
+        description="Bound older own utterances, older appraisal rows and affect proof refs in the inbound provider view.",
+    )
     world_v2_visible_expression_profile: Literal["compact", "whole_v3_review_v6", "whole_v3_review_v7", "whole_v3_review_v8", "experimental_independent_v21", "experimental_independent_v22", "experimental_independent_v23", "grounded_review_v24", "grounded_review_v25"] = Field(
         default="compact",
         alias="WORLD_V2_VISIBLE_EXPRESSION_PROFILE",

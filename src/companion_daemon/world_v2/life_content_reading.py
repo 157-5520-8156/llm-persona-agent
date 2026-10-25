@@ -179,7 +179,7 @@ def selected_world_consequence(
     return consequence
 
 
-@lru_cache(maxsize=128)
+@lru_cache(maxsize=4096)
 def parse_world_consequence_content(text: str) -> WorldConsequenceV2:
     consequence = WorldConsequenceV2.model_validate_json(text)
     canonical = json.dumps(
@@ -252,25 +252,28 @@ def _read_character_life_experience_material(
         or _PRIVACY[experience.values.privacy_class] > _PRIVACY[viewer_privacy_ceiling]
     ):
         raise ValueError("structured life reading is outside the viewer privacy ceiling")
-    if experience not in projection.experiences:
+    if lookup_first(projection.experiences, "experience_id", experience.experience_id) != experience:
         raise ValueError("structured life reading requires the pinned Experience")
     accepted = lookup_first(
         projection.committed_world_event_refs, "event_id", experience.origin.accepted_event_ref,
         predicate=lambda item: item.event_type == "ExperienceCommitted",
     )
-    descriptor = next((
-        item for item in projection.life_content_descriptors
-        if item.content_kind == "experience_summary"
-        and item.source_kind == "experience"
-        and item.source_entity_id == experience.experience_id
-        and item.source_entity_revision == experience.entity_revision
-        and accepted is not None
-        and item.source_event_ref == accepted.event_id
-        and item.source_world_revision == accepted.world_revision
-        and item.source_payload_hash == accepted.payload_hash
-        and item.content_ref == experience.values.summary_ref
-        and item.content_payload_hash == experience.values.summary_payload_hash
-    ), None)
+    descriptor = lookup_first(
+        projection.life_content_descriptors,
+        "source_entity_id",
+        experience.experience_id,
+        predicate=lambda item: (
+            item.content_kind == "experience_summary"
+            and item.source_kind == "experience"
+            and item.source_entity_revision == experience.entity_revision
+            and accepted is not None
+            and item.source_event_ref == accepted.event_id
+            and item.source_world_revision == accepted.world_revision
+            and item.source_payload_hash == accepted.payload_hash
+            and item.content_ref == experience.values.summary_ref
+            and item.content_payload_hash == experience.values.summary_payload_hash
+        ),
+    )
     if descriptor is None or (
         descriptor.privacy_class == "withhold"
         or _PRIVACY[descriptor.privacy_class] < _PRIVACY[experience.values.privacy_class]

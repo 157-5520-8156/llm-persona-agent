@@ -15,7 +15,7 @@ _MAX_INDEXES = 32
 _MAX_INDEX_ROWS = 100_000
 _MAX_RETAINED_ROWS = 200_000
 _RETAINED_ROWS = 0
-_BUILD_AFTER_LOOKUPS = 8
+_BUILD_AFTER_LOOKUPS = 4
 _REPLAY_INDEXES = ContextVar("projection_replay_indexes", default=None)
 
 
@@ -85,23 +85,84 @@ def append_indexed(rows, item, attribute):
 
 def lookup_last(rows, attribute, value):
     """Preserve last-row semantics of existing authority dictionaries."""
+    global _RETAINED_ROWS
+    get_key = attrgetter(attribute)
+    def scan():
+        return next((row for row in reversed(rows) if get_key(row) == value), None)
+
     replay = _REPLAY_INDEXES.get()
     scoped = _scoped_index(replay, (type(rows[0]), attribute), rows) if replay is not None and type(rows) is tuple and rows else None
     if scoped is not None and scoped[2] is not False:
-        return scoped[2].get(value)
-    get_key = attrgetter(attribute)
-    return next((row for row in reversed(rows) if get_key(row) == value), None)
+        try:
+            return scoped[2].get(value)
+        except TypeError:
+            return scan()
+    if type(rows) is not tuple or not 8 <= len(rows) <= _MAX_INDEX_ROWS:
+        return scan()
+    cache_key = (id(rows), attribute, "last")
+    with _LOCK:
+        cached = _INDEXES.get(cache_key)
+        if cached is not None and cached[0] is rows:
+            _INDEXES.move_to_end(cache_key)
+            index = cached[1]
+            uses = cached[2] + 1
+        else:
+            index, uses = None, 1
+        if index is None and uses >= _BUILD_AFTER_LOOKUPS:
+            index = _build_index(tuple(reversed(rows)), attribute)
+        if cached is None or cached[0] is not rows:
+            _RETAINED_ROWS += len(rows) - (len(cached[0]) if cached is not None else 0)
+        _INDEXES[cache_key] = (rows, index, uses)
+        while len(_INDEXES) > _MAX_INDEXES or _RETAINED_ROWS > _MAX_RETAINED_ROWS:
+            _, evicted = _INDEXES.popitem(last=False)
+            _RETAINED_ROWS -= len(evicted[0])
+    if index is None or index is False:
+        return scan()
+    try:
+        return index.get(value)
+    except TypeError:
+        return scan()
 
 
 def _build_index(rows, attribute):
     index = {}
     path = attribute.split(".")
+    valid_types: dict[tuple[type, str], bool] = {}
+    if len(path) == 1:
+        part = path[0]
+        last_type = None
+        for row in rows:
+            row_type = type(row)
+            if row_type is not last_type:
+                ok = valid_types.get((row_type, part))
+                if ok is None:
+                    ok = (
+                        isinstance(row, FrozenModel)
+                        and row_type.model_config.get("frozen") is True
+                        and part in row_type.model_fields
+                    )
+                    valid_types[(row_type, part)] = ok
+                if not ok:
+                    return False
+                last_type = row_type
+            key = getattr(row, part)
+            if not isinstance(key, (str, int, type(None))):
+                return False
+            index.setdefault(key, row)
+        return index
     for row in rows:
         key = row
         for part in path:
-            if (not isinstance(key, FrozenModel)
-                or type(key).model_config.get("frozen") is not True
-                or part not in type(key).model_fields):
+            row_type = type(key)
+            ok = valid_types.get((row_type, part))
+            if ok is None:
+                ok = (
+                    isinstance(key, FrozenModel)
+                    and row_type.model_config.get("frozen") is True
+                    and part in row_type.model_fields
+                )
+                valid_types[(row_type, part)] = ok
+            if not ok:
                 return False
             key = getattr(key, part)
         if not isinstance(key, (str, int, type(None))):

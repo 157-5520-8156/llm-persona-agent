@@ -45,16 +45,18 @@ def latest_selection_decided_at(
 
     if not isinstance(candidate_id, str) or not candidate_id:
         return None
-    refs = {
-        getattr(item, "event_id", None): item
-        for item in getattr(projection, "committed_world_event_refs", ()) or ()
-    }
+    refs: dict[object, object] | None = None
     times: list[datetime] = []
     for rev in getattr(projection, "proposal_revisions", ()) or ():
         if getattr(rev, "candidate_id", None) != candidate_id:
             continue
         at = getattr(rev, "decided_at", None)
         if not isinstance(at, datetime):
+            if refs is None:
+                refs = {
+                    getattr(item, "event_id", None): item
+                    for item in getattr(projection, "committed_world_event_refs", ()) or ()
+                }
             committed = refs.get(getattr(rev, "proposal_event_ref", None))
             at = getattr(committed, "logical_time", None)
         if isinstance(at, datetime):

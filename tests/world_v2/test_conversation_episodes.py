@@ -123,3 +123,97 @@ def test_split_does_not_make_the_characters_tail_replies_disappear():
     assert own_lines == [line.text[:159] + "…" if len(line.text) > 160 else line.text for line in lines[1:]]
     assert all(len(doc.text) <= 1024 and len(doc.source_bindings) <= 16 for doc in episodes)
     assert len({doc.source_item_ref for doc in episodes}) == len(episodes)
+
+
+def test_ledger_resolver_indexes_prior_sitting_episodes_below_240_item_cap() -> None:
+    from companion_daemon.world_v2.context_resolver import query_from_projection
+    from companion_daemon.world_v2.ledger import ObservationEventLocator, WorldLedger
+    from companion_daemon.world_v2.ledger_context_resolver import (
+        ContextRelevanceScope,
+        context_capsule_compiler_from_ledger,
+    )
+    from companion_daemon.world_v2.recall_index import FeatureHashRecallEmbedding, InMemoryRecallIndex
+    from companion_daemon.world_v2.recall_runtime import RecallCoordinator
+    from companion_daemon.world_v2.schemas import Observation, WorldEvent
+
+    world_id = "world:episode-recall-closure"
+    ledger = WorldLedger.in_memory(world_id=world_id)
+
+    now = START + timedelta(hours=3)
+
+    def make_msg(index: int, text: str, at: datetime) -> WorldEvent:
+        payload_hash = "sha256:" + hashlib.sha256(text.encode()).hexdigest()
+        obs = Observation(
+            schema_version="world-v2.1",
+            observation_id=f"observation:message:{index}",
+            world_id=world_id,
+            logical_time=now,
+            created_at=at,
+            trace_id=f"trace:message:{index}",
+            causation_id=f"platform:message:{index}",
+            correlation_id="conversation:continuity",
+            source="platform:test",
+            source_event_id=f"message:{index}",
+            actor=USER,
+            channel="qq_c2c",
+            payload_ref=f"payload:message:{index}",
+            payload_hash=payload_hash,
+            text=text,
+            received_at=at,
+        )
+        return WorldEvent.from_payload(
+            schema_version="world-v2.1",
+            event_id=f"event:message:{index}",
+            world_id=world_id,
+            event_type="ObservationRecorded",
+            logical_time=now,
+            created_at=at,
+            actor=obs.actor,
+            source=obs.source,
+            trace_id=obs.trace_id,
+            causation_id=obs.causation_id,
+            correlation_id=obs.correlation_id,
+            idempotency_key=ObservationEventLocator.for_message(
+                world_id=world_id,
+                observation_id=obs.observation_id,
+                source=obs.source,
+                source_event_id=obs.source_event_id,
+            ).idempotency_key,
+            payload=obs.model_dump(mode="json"),
+        )
+
+    start_ev = WorldEvent.from_payload(
+        schema_version="world-v2.1",
+        event_id="event:start",
+        world_id=world_id,
+        event_type="WorldStarted",
+        logical_time=now,
+        created_at=now,
+        actor="system:test",
+        source="test",
+        trace_id="trace:start",
+        causation_id="cause:start",
+        correlation_id="corr:start",
+        idempotency_key="id:start",
+        payload={},
+    )
+    ev1 = make_msg(1, "我昨晚熬夜改那份电路实验报告，差点没交上。", START)
+    ev2 = make_msg(2, "今天下午导师居然夸我电路实验数据写得挺细。", now)
+    ledger.commit([start_ev, ev1, ev2], expected_world_revision=0, expected_deliberation_revision=0)
+    index = InMemoryRecallIndex(embedding=FeatureHashRecallEmbedding())
+    recall = RecallCoordinator(index=index)
+    try:
+        compiler = context_capsule_compiler_from_ledger(
+            ledger=ledger,
+            relevance_scope=ContextRelevanceScope(actor_ref=ACTOR, related_subject_refs=(USER,)),
+            recall_coordinator=recall,
+        )
+        projection = ledger.project()
+        compiler.compile(
+            query_from_projection(projection, actor_ref=ACTOR, trigger_ref=ev2.event_id)
+        )
+        episodes = [doc for doc in index.snapshot().documents if is_conversation_episode(doc)]
+        assert len(episodes) == 1
+        assert "熬夜改那份电路实验报告" in episodes[0].text
+    finally:
+        recall.close()

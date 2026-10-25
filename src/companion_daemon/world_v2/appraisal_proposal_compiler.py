@@ -140,12 +140,18 @@ class AppraisalProposalCompiler:
                 proposal_id=proposal_id,
             )
         )
-        projection = self._ledger.project_at(current_cursor)
         source_change_ids = {
             item.change_id
             for item in authority.proposal.proposed_changes
             if item.kind == "appraisal_transition"
         }
+        if not source_change_ids:
+            return AppraisalProposalCompilation(
+                status="no_change",
+                source_proposal_id=authority.proposal.proposal_id,
+                source_proposal_event_ref=authority.audit.event_ref,
+            )
+        projection = self._ledger.project_at(current_cursor)
         existing = self._existing_rebased_candidate(
             projection=projection,
             source_proposal_event_ref=authority.audit.event_ref,
@@ -166,6 +172,7 @@ class AppraisalProposalCompiler:
             authority=authority,
             commit_cursor=current_cursor,
             identity_world_revision=current_cursor.world_revision,
+            projection=projection,
         )
 
     def _record_authority(
@@ -174,6 +181,7 @@ class AppraisalProposalCompiler:
         authority,
         commit_cursor: ProjectionCursor,
         identity_world_revision: int | None,
+        projection=None,
     ) -> AppraisalProposalCompilation:
         changes = tuple(
             item for item in authority.proposal.proposed_changes if item.kind == "appraisal_transition"
@@ -189,7 +197,8 @@ class AppraisalProposalCompiler:
         change = changes[0]
         if change.transition != "activate":
             raise AppraisalProposalCompilerError("transition_not_implemented")
-        projection = self._ledger.project_at(commit_cursor)
+        if projection is None:
+            projection = self._ledger.project_at(commit_cursor)
         source_event = self._event(authority.audit.trigger_ref)
         typed = self._compile_activate(
             authority=authority,

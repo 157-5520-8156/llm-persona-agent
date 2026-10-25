@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .world_planning import WorldPlanningIndex
 from .event_detail_contract import EventDetailProgramIndex
+from .projection_lookup import lookup_first, lookup_last
 
 from .character_prehistory import PrehistoryArchiveProjection, PrehistoryRecordProjection, validate_prehistory_state
 
@@ -2413,7 +2414,8 @@ def validate_plan_authority_state(
     logical_time: datetime | None,
     allow_legacy_missing: bool = False,
 ) -> None:
-    event_by_id = {item.event_id: item for item in committed_events}
+    if not plans:
+        return
     expected_type = {
         "planned": {"ActivityPlanned"},
         "active": {"ActivityStarted", "ActivityResumed"},
@@ -2433,7 +2435,7 @@ def validate_plan_authority_state(
             if allow_legacy_missing and owner is None and origin is None:
                 continue
             raise ValueError("Plan requires explicit owner and exact authority origin")
-        event = event_by_id.get(origin.accepted_event_ref)
+        event = lookup_first(committed_events, "event_id", origin.accepted_event_ref)
         if (
             event is None
             or event.event_type != origin.accepted_event_type
@@ -6218,7 +6220,6 @@ class LedgerProjection(FrozenModel):
             set(origin_descriptors)
         ):
             raise ValueError("NPC promotion edges must be one-to-one")
-        committed_by_ref = {item.event_id: item for item in self.committed_world_event_refs}
         for npc in self.npcs:
             edge = npc.promotion_edge
             if edge is None:
@@ -6253,7 +6254,9 @@ class LedgerProjection(FrozenModel):
                 if candidate is not None
                 else ()
             )
-            registration = committed_by_ref.get(edge.registration_event_ref)
+            registration = lookup_last(
+                self.committed_world_event_refs, "event_id", edge.registration_event_ref
+            )
             if (
                 len(descriptor_matches) != 1
                 or registration is None
@@ -6316,7 +6319,9 @@ class LedgerProjection(FrozenModel):
             ):
                 raise ValueError("World place ref lacks exact settlement identity")
         for coordinate in self.biographical_coordinates:
-            source = committed_by_ref.get(coordinate.settlement_event_ref)
+            source = lookup_last(
+                self.committed_world_event_refs, "event_id", coordinate.settlement_event_ref
+            )
             occurrence = next(
                 (
                     item

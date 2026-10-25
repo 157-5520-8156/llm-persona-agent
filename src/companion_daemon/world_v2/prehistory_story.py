@@ -5,6 +5,7 @@ Raw source quotations are review evidence, never model-visible recollections.
 from __future__ import annotations
 
 from datetime import datetime
+from functools import lru_cache
 from typing import Literal
 
 from pydantic import Field, model_validator
@@ -162,6 +163,7 @@ class CompactStoryMemoryReading(StoryMemoryReading):
     blocks: tuple[StoryEventReading, ...]
 
 
+@lru_cache(maxsize=4096)
 def compact_story_reading(reading: StoryMemoryReading) -> CompactStoryMemoryReading:
     if isinstance(reading, CompactStoryMemoryReading):
         return reading

@@ -114,7 +114,7 @@ def _life_source_authority(payload: Mapping[str, object]) -> _NormalizedSignal:
         return _NormalizedSignal("unavailable", "composition_unavailable")
     return _state(
         status,
-        ready=frozenset({"ready"}),
+        ready=frozenset({"ready", "structural"}),
         degraded=frozenset(
             {
                 "operational_isolation_unverified",

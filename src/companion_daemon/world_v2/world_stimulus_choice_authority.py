@@ -20,14 +20,26 @@ from .world_life_intent_contract import (
 )
 
 
-@lru_cache(maxsize=128)
+@lru_cache(maxsize=4096)
 def _parsed_proposal(text):
     return validate_proposal_envelope(json.loads(text))
 
 
-@lru_cache(maxsize=128)
+@lru_cache(maxsize=4096)
 def _parsed_model_audit(text):
     return RecordedModelResultAudit.model_validate_json(text)
+
+
+@lru_cache(maxsize=4096)
+def _proposal_change_actor_refs(text: str) -> tuple[str | None, ...]:
+    proposal = _parsed_proposal(text)
+    if not isinstance(proposal, DecisionProposal):
+        return ()
+    return tuple(
+        json.loads(change.payload.canonical_json).get("actor_ref")
+        for change in proposal.proposed_changes
+        if change.kind in {"world_life_intent", "world_life_response", "world_plan_response"}
+    )
 
 
 def world_life_response_source_refs(
@@ -115,9 +127,8 @@ def read_world_stimulus_choice_authority(
     # Keep the domain's existing actor mismatch diagnostic before checking
     # the model lineage. These are typed actor fields, never prose inference.
     if any(
-        json.loads(change.payload.canonical_json).get("actor_ref") != owner_actor_ref
-        for change in proposal.proposed_changes
-        if change.kind in {"world_life_intent", "world_life_response", "world_plan_response"}
+        actor != owner_actor_ref
+        for actor in _proposal_change_actor_refs(audit.proposal_json)
     ):
         raise error_type("actor_mismatch")
     model = lookup_first(state.model_result_audits, "model_result_ref", audit.model_result_ref)

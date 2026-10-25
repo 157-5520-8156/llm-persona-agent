@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+import hashlib
+import re
 import unicodedata
 
 from .lexical_feature_cache import lexical_feature_cache
@@ -136,6 +138,70 @@ def lexical_relevance_bp(query_text: str, document_texts: tuple[str, ...]) -> in
     return _cached_lexical_relevance_bp.__wrapped__(query_text, document_texts)
 
 
+_GENERIC_CONVERSATIONAL_NGRAMS = frozenset(
+    {
+        "今天",
+        "昨天",
+        "明天",
+        "现在",
+        "刚才",
+        "这会",
+        "会儿",
+        "这会儿",
+        "时候",
+        "的时候",
+        "没有",
+        "有没",
+        "有没有",
+        "是不是",
+        "是吧",
+        "能不能",
+        "能不",
+        "不能",
+        "要不要",
+        "要不",
+        "不要",
+        "好不好",
+        "好不",
+        "不好",
+        "对不对",
+        "对不",
+        "不对",
+        "想起来",
+        "想起",
+        "起来",
+        "觉得",
+        "那种",
+        "这种",
+        "或者",
+        "什么",
+        "怎么",
+        "那个",
+        "这个",
+        "一点",
+        "一下",
+        "其实",
+        "反正",
+        "就是",
+        "还是",
+        "可以",
+        "已经",
+        "自己",
+        "我们",
+        "你们",
+        "他们",
+        "因为",
+        "所以",
+        "但是",
+        "如果",
+        "的事",
+        "说到",
+        "印象",
+        "以前",
+    }
+)
+
+
 class AssociativeRecallCompiler:
     """Select a bounded evidence-only prefetch set behind one small Interface."""
 
@@ -149,28 +215,82 @@ class AssociativeRecallCompiler:
         *,
         cue_text: str,
         candidates: tuple[AssociativeRecallCandidate, ...],
+        seed: str = "",
     ) -> AssociativeRecallSelection:
-        cue_features = _recall_features((cue_text,))
+        compressed_vo = re.sub(
+            r"([\u4e00-\u9fff])[的了过着张个次场顿口份遍回]([\u4e00-\u9fff])",
+            r"\1\2",
+            cue_text,
+        )
+        raw_cue_features = _recall_features(
+            (cue_text, compressed_vo) if compressed_vo != cue_text else (cue_text,)
+        )
+        substantive_cue_features = frozenset(
+            feature
+            for feature in (raw_cue_features - _GENERIC_CONVERSATIONAL_NGRAMS)
+            if not (
+                feature != "小时候"
+                and (
+                    feature.startswith(("时候", "候", "没有", "有没", "或者", "觉得", "想起", "起来"))
+                    or feature.endswith(("有", "没", "的", "了", "吗", "呢", "吧", "啊", "呀", "或"))
+                )
+            )
+        )
+        cue_features = substantive_cue_features or raw_cue_features
         ranked: list[tuple[int, str, str]] = []
         for candidate in candidates:
-            overlap = cue_features & _recall_features(candidate.texts)
-            # One generic two-character collision ("今天", for example) is
-            # not enough to spend scarce working-context space.  A longer
-            # exact cue or two independently overlapping n-grams is a
-            # high-precision first phase; dense association can later widen
-            # recall behind this same Interface.
-            if not overlap or (
+            doc_features = _recall_features(candidate.texts)
+            overlap = cue_features & doc_features
+            if not overlap:
+                continue
+            if (
                 not any(len(feature) >= 3 for feature in overlap)
                 and len(overlap) < 2
             ):
                 continue
-            score = sum(len(feature) * len(feature) for feature in overlap)
+            distinct_overlap = frozenset(
+                feature
+                for feature in overlap
+                if not any(
+                    feature != other and feature in other for other in overlap
+                )
+            )
+            score = sum(
+                4 if feature.endswith("时候") else len(feature) * len(feature)
+                for feature in distinct_overlap
+            )
+            if seed:
+                jitter = (
+                    int.from_bytes(
+                        hashlib.sha256(
+                            f"associative-recall.1:{seed}:{candidate.slice_name}:{candidate.item_ref}".encode(
+                                "utf-8"
+                            )
+                        ).digest()[:2],
+                        "big",
+                    )
+                    % 64
+                )
+                score = score * 8 + jitter
             ranked.append((score, candidate.slice_name, candidate.item_ref))
         ranked.sort(key=lambda item: (-item[0], item[1], item[2]))
+        top = list(ranked[: self._max_items])
+        if (
+            seed
+            and self._max_items >= 2
+            and top
+            and not any(slice_name == "active_memory_candidates" for _, slice_name, _ in top)
+        ):
+            top_memory = next(
+                (item for item in ranked if item[1] == "active_memory_candidates"),
+                None,
+            )
+            if top_memory is not None:
+                top[-1] = top_memory
         return AssociativeRecallSelection(
             item_refs=frozenset(
                 (slice_name, item_ref)
-                for _, slice_name, item_ref in ranked[: self._max_items]
+                for _, slice_name, item_ref in top
             )
         )
 

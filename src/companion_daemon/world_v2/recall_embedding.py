@@ -28,7 +28,7 @@ from .sqlite_coordination import configure_shared_sqlite_connection, sqlite_writ
 _MAX_CACHED_VECTORS_TOTAL = 8_192
 
 
-@lru_cache(maxsize=1024)
+@lru_cache(maxsize=4096)
 def _decoded_vector(vector_json: str, dimensions: int) -> tuple[float, ...]:
     """Reuse immutable vector decoding, never source or row eligibility.
 

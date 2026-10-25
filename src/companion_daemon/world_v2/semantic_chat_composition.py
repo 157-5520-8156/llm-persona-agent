@@ -1268,6 +1268,7 @@ def build_semantic_chat_composition(
             visible_source_review_model=source_closure_model if visible_source_review_required else None,
             atomic_tool_envelope_version=visible_author_tool_version,
             native_slim_core=settings.world_v2_native_slim_core,
+            inbound_context_window=settings.world_v2_inbound_context_window_enabled,
             use_schema_references=visible_author_schema_references,
             evidence_first_schema=visible_author_evidence_first_schema,
             visible_source_review_version=visible_source_review_version,

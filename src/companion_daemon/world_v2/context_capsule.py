@@ -3131,6 +3131,10 @@ class ContextCapsuleCompiler:
         capsule = _compile_resolved_context(
             resolved, policy=self._policy, _authority=_COMPILER_AUTHORITY
         )
+        if not relationship_evaluation:
+            self._compiled_context_cache[context_query_hash(pinned_query)] = capsule
+            while len(self._compiled_context_cache) > 16:
+                self._compiled_context_cache.pop(next(iter(self._compiled_context_cache)))
         return PreparedContextCapsuleHandle(
             query=pinned_query,
             resolved=resolved,

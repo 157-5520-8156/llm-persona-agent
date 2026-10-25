@@ -5514,6 +5514,29 @@ def test_host_clerical_binding_caps_attention_and_binds_host_owned_fields():
     assert "user_channel_completion" not in quiet["decision"]["payload"]
     assert quiet["decision"]["payload"]["decision"] == "no_op"
 
+    glm_echo = {
+        "source_refs": ["event:a", "event:unoffered"],
+        "decision": {
+            "status": "decision",
+            "type": "object",
+            "proposal_extra": "ignored",
+            "payload": {"decision": "no_op"},
+        },
+    }
+    _bind_host_owned_source_lists(
+        glm_echo,
+        request=SimpleNamespace(purpose="activity_lifecycle_choice", capability_manifest=manifest),
+        offered_attention=frozenset({"event:a"}),
+        max_attention=8,
+    )
+    assert "source_refs" not in glm_echo
+    assert glm_echo["attended_source_refs"] == ["event:a"]
+    assert glm_echo["status"] == "decision"
+    assert glm_echo["decision"] == {
+        "source_refs": ["event:a", "event:b"],
+        "payload": {"decision": "no_op"},
+    }
+
 
 @pytest.mark.asyncio
 async def test_host_repairs_an_unescaped_inner_quote_instead_of_rejecting_the_turn():

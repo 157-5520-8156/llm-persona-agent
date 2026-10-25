@@ -525,6 +525,44 @@ def compact_chat_model_facing_context(raw: str) -> str:
         if semantic_items:
             slices[name] = {"availability": "available", "items": semantic_items}
     context["slices"] = slices
+    snapshot = context.get("inner_life_snapshot")
+    if isinstance(snapshot, dict):
+        materials = snapshot.get("materials")
+        if isinstance(materials, dict):
+            moments = materials.get("moments_i_can_share")
+            if isinstance(moments, dict):
+                moment_items = moments.get("items")
+                if isinstance(moment_items, list) and len(moment_items) > 2:
+                    held_indices = [
+                        idx
+                        for idx, item in enumerate(moment_items)
+                        if isinstance(item, dict) and item.get("photo_in_hand") is False
+                    ]
+                    if len(held_indices) > 2:
+                        evict = set(held_indices[:-2])
+                        kept_items = [
+                            item for idx, item in enumerate(moment_items) if idx not in evict
+                        ]
+                        evicted_refs = {
+                            item.get("source_ref")
+                            for idx, item in enumerate(moment_items)
+                            if idx in evict
+                            and isinstance(item, dict)
+                            and isinstance(item.get("source_ref"), str)
+                        }
+                        kept_refs = {
+                            item.get("source_ref")
+                            for item in kept_items
+                            if isinstance(item, dict)
+                            and isinstance(item.get("source_ref"), str)
+                        }
+                        moments["items"] = kept_items
+                        if isinstance(moments.get("source_refs"), list):
+                            moments["source_refs"] = [
+                                ref
+                                for ref in moments["source_refs"]
+                                if ref not in (evicted_refs - kept_refs)
+                            ]
     return json.dumps(
         context,
         ensure_ascii=False,

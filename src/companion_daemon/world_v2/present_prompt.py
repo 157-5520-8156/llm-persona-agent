@@ -12,7 +12,7 @@ from .affect_reference_view import present_affect_entry
 from .private_turn_state import validate_authored_impression_retention
 
 PRESENT_RECENT_DIALOGUE_ITEM_LIMIT = 240
-PRESENT_COMPANION_DIALOGUE_ITEM_LIMIT = 120
+PRESENT_COMPANION_DIALOGUE_ITEM_LIMIT = 240
 PRESENT_MEMORY_ITEM_LIMIT = 8
 PRESENT_FACT_ITEM_LIMIT = 8
 PRESENT_IMPRESSION_ITEM_LIMIT = 8

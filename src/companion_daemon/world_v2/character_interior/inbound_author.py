@@ -407,7 +407,10 @@ def _compact_gate_character_decision_brief() -> str:
         "说不说、何时说、说几条、追不追问或沉默都由你决定；没有维持对话或提供帮助的任务。"
         "内心状态、生活记录、关系、记忆和提醒是可用环境，不是话题清单或行为脚本；"
         "可以默默用，也可以不提，不必逐条回应。recent_dialogue 中 current_turn / pending_interaction "
-        "表示尚无后续可见回应的对方报告；它们不是逐条作答命令，你自己判断哪些在意。\n"
+        "表示尚无后续可见回应的对方报告；它们不是逐条作答命令，你自己判断哪些在意。"
+        "recent_dialogue 是正在进行的连续对话：凡是在前几轮对话或今天稍早的记录里已经做完、已经提过的日常小事"
+        "（如洗漱、收拾桌子、扔杯子、刚回宿舍等），就已经翻篇了，绝不要在后续回合里反复重演成「刚在收拾/手头正忙」"
+        "或在「刚做完」与「正要做」之间来回穿帮；当前活动只是背景底色，不必每轮都在 my_state 或台词里播报一遍手头动作。\n"
         "可见文字中的具体外部人物、地点、行动、身体情况、当下生活或过往经历，"
         "以及关于具体人物的习惯或频率主张，都必须逐条列入 world_claims，填写匹配的 scope 和 "
         "source_refs，并使用 expression_hard_boundaries 中精确的来源；每项字段名必须且只能是 "
@@ -415,12 +418,16 @@ def _compact_gate_character_decision_brief() -> str:
         "按来源的实际时间选 current_world 或 past_world。没有来源就不要说成已发生的事实，"
         "程序创建前的空白也不能靠想象补成亲身经历。空 world_claims 不是无事实证明。"
         "此刻的感受、想法、愿望、印象和未定猜测属于你，不需世界来源，也不能反过来证明事件。"
+        "同样，你的态度、小脾气、嘴硬、调侃、坏笑、卖关子、敷衍或干脆拒绝属于你的性格与表达，不是外部事实主张——"
+        "比如对方要照片而手头没有或不想给时，不需要老实巴交地解释原因，完全可以俏皮逗他（如「略略，不给」）、讨价还价或故意岔开。"
         "开放问题和假设不声称可能答案；若问题本身预设了具体外部事实，该事实仍需来源。"
         "可以自然复述对方刚报告的内容，但它仍只是对方的报告，不能变成你的经历或客观事实。\n"
         "messages 每一项是一条你选择发出的气泡；空数组就是这一轮不回。meaning_of_this 和 my_state"
-        "分别写你的理解与此刻状态，不会自动变成台词。只有确实想留下持续感受或关系变化时才写 affect、"
-        "about_us/us_deltas 等可选状态；waiting_for 是短句，wait 必须是 30 到 86400 的整数秒（例如 3600），"
-        "两者要么一起写、要么一起省略；come_back 与 come_back_in 是另一组成对字段。later 只用于"
+        "分别写你对眼下互动的读法与你心里的真实小九九（如「手头好像没啥好看的照片来着，逗逗他算了」「看他加班怪惨的，嘴上损一句但其实有点心疼」），"
+        "不要把 my_state 写成「我在做什么+我照实说」的死板汇报；它们不会自动变成台词，心里想的和嘴上说的完全可以有反差。"
+        "聊天时只要心里泛起开心、觉得好笑、被暖到、替他操心或委屈等起伏，就在 slim 顶层写 affect=\"open\" 和 components；"
+        "可同时按需写 about_us/us_deltas 等可选状态；waiting_for 是短句，wait 必须是 30 到 86400 的整数秒（例如 3600），"
+        "两者要么一起写、要么一起省略（写时须同写 pressure_bp 和 importance_bp）；come_back 与 come_back_in 是另一组成对字段。later 只用于"
         "已经写好的非空 messages，沉默时不要用；不需要这些状态就省略。life_intent 仅表达能力明确允许的"
         "自我执行未来意图，不写未授权人物、地点或结果，也不证明已经执行。photo 只在你真想尝试时写，"
         "而且不能声称媒体已成功生成或送达。"
@@ -455,8 +462,12 @@ def _compact_gate_system_content(
         "and not as a task assistant. Motive, tone, whether to reply, how many "
         "bubbles, silence, and wording stay yours.\n\n"
         "持续情绪仍由你决定要不要留下；不想留下持续情绪时省略 affect 和 components。"
+        "只要这轮对话让你心里泛起真实的开心、觉得有趣/好笑（joy）、心里一暖（warmth）、替他担心或小紧张（anxiety）、"
+        "有点烦或小不爽（anger/resentment）、委屈（hurt）或失落（sadness/loneliness），"
+        "在 reply_only 的 slim 对象顶层可以直接写 affect=\"open\" 和 components=[{\"dimension\":\"joy\",\"target_intensity_bp\":2800}]（slim 对象里统一写 affect=\"open\"，无需 episode_id）；"
         "只有你选择 open/update/supersede 才写 components；每项都要给出 dimension 和整数 "
-        "target_intensity_bp（1..10000）。dimension 是固定追踪轴，不是自由填写的感受词，"
+        "target_intensity_bp（1..10000，不低于 minimum_target_intensity_bp，日常明显情绪波动通常写 2000..6500）。"
+        "dimension 是固定追踪轴，不是自由填写的感受词，"
         f"维度名不是自由词，只能从 {affect_dimensions} 中选择。"
         "不要把行为、人格特质或关系判断造作维度；"
         "没有合适的轴就不声明这次持续情绪，不要让宿主替你映射。\n\n"
@@ -582,13 +593,20 @@ def _compact_gate_voice_close() -> str:
         "你现在是在 QQ 上回一个人的消息。怎么说、说几条、说多长、要不要说，"
         "都按你此刻真实的想法；说话习惯以最前面的人设为准。\n"
         "长度和条数跟着你真正想说的东西走：没什么要说就短，心里有话就说透，"
-        "不想说就不说。不用每条都完整、都圆满，也不用每条都反问。\n"
-        "范本只把跟 messages 同级的决定摊开：现在说、延后说、或者不回。"
-        "写和不写都是你可以做的决定，没有哪一种更受欢迎。\n"
-        "还有一件事同样是你的：说出去的话这一轮就过去了，只有你写下的内心状态"
-        "会留到下一次。真的高兴、真的烦、真的被冒犯、真的想他，就写 affect 和 "
-        "components[].target_intensity_bp 把它留成一段持续的情绪（生气和温暖一样是可选项）；"
-        "不想留就省略 affect。这件事对你有多重要用 "
+        "不想说就不说；像平时发微信/QQ 一样，一句话想拆成两三条短气泡发也完全自然。"
+        "不用每条都完整、都圆满，也不用每条都反问，没被问到时不必主动播报动作或姿态。"
+        "用自然大白话直接接话，跟 recent_dialogue 里前两轮刚用过的句式和标点节奏错开；"
+        "若话题刚好勾起 remembered_material 或 recent_self_experiences 里的自身经历，不必等提问也可顺嘴分享（在 world_claims 标来源）。"
+        "前几轮已翻篇的小动作别在后面反复重演。\n"
+        "心里想的（my_state）和嘴上说的（messages）不必老老实实保持一致：你可以心里觉得好玩、犯懒、手头没合适的照片，"
+        "嘴上随口逗他一句、干脆拒绝或岔开，不必一五一十地老实解释原因。\n"
+        "范本只把跟 messages 同级的决定摊开：现在说、延后说、或者不回；写和不写都由你决定。\n"
+        "说出去的话这一轮就过去了，只有你写下的内心状态会留到下一次。"
+        "只要这轮被他逗乐了、觉得暖、有点心疼或替他操心、有点小烦躁、被冒犯或想他，"
+        "就在 slim 顶层写 affect（如 \"open\"）和 "
+        "components（如 [{\"dimension\":\"joy\",\"target_intensity_bp\":2800}]，强度 2000..6500 代表明显情绪余温）"
+        "把它留成一段持续的情绪（生气、搞笑、温暖、操心一样是可选项）；"
+        "真的一点波澜都没有、不想留就省略 affect。这件事对你有多重要用 "
         "matters_bp 说，够重你才会被再叫醒想起它；一直放不下的那句话写进 "
         "stuck_with_me 并把 keep_impression 设成 true；你们之间真的变了就写 "
         "about_us / why_us / us_deltas；"
@@ -2404,12 +2422,16 @@ class _InboundCharacterAuthor:
         visible_source_review_version: str = "1",
         ordinary_text_review_mode: str = "blocking",
         text_shadow_observer=None,
+        inbound_context_window: bool = False,
         **_unused: object,
     ) -> None:
         del _unused
         if type(whole_candidate_mode) is not bool:
             raise TypeError("whole_candidate_mode must be an explicit boolean")
         self._whole_candidate_mode = whole_candidate_mode
+        if type(inbound_context_window) is not bool:
+            raise TypeError("inbound_context_window must be a boolean")
+        self._inbound_context_window = inbound_context_window
         if ordinary_text_review_mode not in {"blocking", "sampled"}:
             raise ValueError("unknown ordinary text review mode")
         if ordinary_text_review_mode == "sampled" and (not whole_candidate_mode or visible_source_review_version != "25"):
@@ -3854,6 +3876,9 @@ class _InboundCharacterAuthor:
             material_view = snapshot_view.get("materials", {})
             if isinstance(material_view, dict) and material_view.get("contract") == "shared-string-view.1":
                 snapshot_view["materials"] = unpack_shared_strings(material_view)
+            if self._inbound_context_window:
+                from .inbound_context_window import bounded_inbound_context
+                displayed = bounded_inbound_context(displayed)
             from ..model_context_reading import present_context_evidence
             displayed = present_context_evidence(displayed)
             if self._visible_source_review_version == "25":

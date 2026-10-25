@@ -466,8 +466,16 @@ const DashboardHomeClient=(()=>{
       });
     };
     add('活动与计划','overview_life',['plan'],'暂无可展示的活动或计划','生活状态暂时不可用');
-    add('人在哪','overview_life',['location'],'暂无可展示的位置记录','位置状态暂时不可用');
-    add('身体状态','overview_life',['resource'],'暂无可展示的身体状态','身体状态暂时不可用');
+    if(!visibleHighlights(snapshot,'overview_life',['location']).length&&visibleHighlights(snapshot,'overview_life',['world_occurrence']).length){
+      add('周围环境','overview_life',['world_occurrence'],'暂无可展示的环境记录','环境状态暂时不可用');
+    }else{
+      add('人在哪','overview_life',['location'],'暂无可展示的位置记录','位置状态暂时不可用');
+    }
+    if(!visibleHighlights(snapshot,'overview_life',['resource']).length&&visibleHighlights(snapshot,'overview_life',['experience']).length){
+      add('最近经历','overview_life',['experience'],'暂无可展示的经历记录','经历记录暂时不可用');
+    }else{
+      add('身体状态','overview_life',['resource'],'暂无可展示的身体状态','身体状态暂时不可用');
+    }
     add('情绪记录','facts_memory_inner',['affect_episode'],'暂无可展示的情绪记录','情绪记录暂时不可用');
     add('关系状态','relationship_lifecycle',['relationship_state'],'暂无可展示的关系记录','关系状态暂时不可用');
     add('互动状态','operations',['response_expectation'],'暂无可展示的互动状态','互动状态暂时不可用');

@@ -15,6 +15,7 @@ import hashlib
 import json
 
 from ..accepted_ledger_batch import AcceptedLedgerBatchIssuer
+from ..projection_lookup import lookup_last
 from ..immediate_emotion_proposal_worker import ImmediateEmotionProposalWorker
 from ..relationship_acceptance_runtime import RelationshipAcceptanceRuntime
 from ..relationship_proposal_compiler import RelationshipProposalCompiler
@@ -329,7 +330,6 @@ class _LedgerCapsuleInteriorProjection:
         lookup = getattr(self.ledger, "lookup_event_commit", None)
         if not callable(lookup):
             raise ValueError("aspiration authority lookup is unavailable")
-        committed = {item.event_id: item for item in projection.committed_world_event_refs}
         entries: list[dict[str, object]] = []
         inventory = list(snapshot.source_inventory)
         for aspiration in aspirations:
@@ -339,7 +339,7 @@ class _LedgerCapsuleInteriorProjection:
                 if self.ledger.blocks_event_loop
                 else lookup(source_ref)
             )
-            recorded = committed.get(source_ref)
+            recorded = lookup_last(projection.committed_world_event_refs, "event_id", source_ref)
             if located is None or recorded is None:
                 raise ValueError("active aspiration authority is not committed")
             event, commit = located
@@ -1114,6 +1114,7 @@ def compose_production_character_interior(
     visible_source_review_model: object | None = None,
     atomic_tool_envelope_version: str = "1",
     native_slim_core: bool = False,
+    inbound_context_window: bool = False,
     use_schema_references: bool = False,
     evidence_first_schema: bool = False,
     visible_source_review_version: str = "1",
@@ -1142,6 +1143,7 @@ def compose_production_character_interior(
         visible_source_review_model=visible_source_review_model,
         atomic_tool_envelope_version=atomic_tool_envelope_version,
         native_slim_core=native_slim_core,
+        inbound_context_window=inbound_context_window,
         use_schema_references=use_schema_references,
         evidence_first_schema=evidence_first_schema,
         visible_source_review_version=visible_source_review_version,

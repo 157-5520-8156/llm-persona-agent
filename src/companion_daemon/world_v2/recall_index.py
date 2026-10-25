@@ -611,6 +611,24 @@ class RecallSearchDiagnostic(FrozenModel):
         return self
 
 
+@lru_cache(maxsize=4096)
+def _compact_story_document(document: RecallDocument) -> RecallDocument:
+    if document.prehistory is None or document.prehistory.story is None:
+        return document
+    from .prehistory_story import compact_story_reading
+
+    compacted_story = compact_story_reading(document.prehistory.story)
+    if compacted_story is document.prehistory.story:
+        return document
+    return document.model_copy(
+        update={
+            "prehistory": document.prehistory.model_copy(
+                update={"story": compacted_story}
+            )
+        }
+    )
+
+
 class RecallRebuildReport(FrozenModel):
     mode: Literal["noop", "cursor_only", "documents_changed"]
     document_count: int = Field(ge=0)
@@ -720,13 +738,10 @@ class _RecallIndexCore:
         eligible_rows = tuple((document, position) for position, (document, _) in enumerate(rows)
                               if self._eligible(document, query))
         if self.policy_version in {"world-v2-recall-index.hybrid.15", "world-v2-recall-index.hybrid.16", "world-v2-recall-index.hybrid.17", "world-v2-recall-index.hybrid.18", "world-v2-recall-index.hybrid.19", "world-v2-recall-index.hybrid.20"} and query.story_window is None:
-            from .prehistory_story import compact_story_reading
-            eligible_rows = tuple((document.model_copy(update={
-                "prehistory": document.prehistory.model_copy(update={
-                    "story": compact_story_reading(document.prehistory.story),
-                }),
-            }) if document.prehistory is not None and document.prehistory.story is not None else document,
-                                   vector) for document, vector in eligible_rows)
+            eligible_rows = tuple(
+                (_compact_story_document(document), vector)
+                for document, vector in eligible_rows
+            )
         search_rows = tuple(row for row in eligible_rows if not row[0].context_only)
         # Reuse pure lexical work inside this exact eligibility snapshot; no
         # cached authority, corpus frequency or ranking survives the query.
@@ -1470,7 +1485,7 @@ class _SharedSearchPreparation:
         if (len(rows) != len(self.documents)
                 or any(document is not original for (document, _), original in zip(rows, self.documents))):
             raise ValueError("shared recall preparation requires identical document objects")
-        key = (core.policy_version, core._eligible,
+        key = (core.policy_version, getattr(core._eligible, "__func__", core._eligible),
                getattr(core._prepare_search, "__func__", core._prepare_search), query.model_dump_json())
         with self._lock:
             if self._cacheable is None:

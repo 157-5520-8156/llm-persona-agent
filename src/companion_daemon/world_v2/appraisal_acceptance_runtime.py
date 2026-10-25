@@ -129,20 +129,12 @@ class AppraisalProposalAuthorityReader:
         )
         if trigger is None or trigger.state != "claimed" or trigger.claim_lease is None:
             raise AppraisalAcceptanceError("trigger_not_claimed")
-        # A ledger indexes events by event id, not proposal id.  Scan only the
-        # immutable committed reference list to locate the proposal event, then
-        # re-open its exact envelope for full-byte verification.
-        proposal_ref = next(
-            (ref.event_id for ref in projection.committed_world_event_refs if ref.event_type == "ProposalRecorded"),
-            None,
-        )
         # Deliberation events are intentionally absent from committed_world_event_refs.
         # Use the ledger's own audit projection for deterministic event identity instead.
         audit = next(
             (item for item in projection.proposal_audits if item.proposal_id == proposal_id), None
         )
-        if audit is not None:
-            proposal_ref = audit.event_ref
+        proposal_ref = audit.event_ref if audit is not None else None
         if proposal_ref is None:
             # Legacy typed proposals have no separate audit projection.  Their
             # durable idempotency identity is the only exact lookup available.

@@ -6,10 +6,22 @@ verified original Plan and its current accepted lifecycle head.
 
 from __future__ import annotations
 
+from functools import lru_cache
 import hashlib
 
 from .life_events import ActivityPlannedPayload
+from .projection_lookup import lookup_first
 from .schemas import ProjectionCursor, WorldEvent
+
+
+@lru_cache(maxsize=2048)
+def _parsed_activity_planned_payload(payload_json: str) -> ActivityPlannedPayload:
+    return ActivityPlannedPayload.model_validate_json(payload_json)
+
+
+@lru_cache(maxsize=4096)
+def _validated_world_event(event: WorldEvent) -> WorldEvent:
+    return WorldEvent.model_validate_json(event.model_dump_json())
 
 
 class RoleLifeIntentActivityReader:
@@ -67,7 +79,7 @@ class RoleLifeIntentActivityReader:
         )
         if cursor != expected_cursor:
             return None
-        plan = next((x for x in projection.plans if x.plan_id == plan_id), None)
+        plan = lookup_first(projection.plans, "plan_id", plan_id)
         if plan is None or plan.status != status or plan.owner_actor_ref != actor_ref:
             return None
         if plan.privacy_class == "withhold":
@@ -77,7 +89,6 @@ class RoleLifeIntentActivityReader:
         )
         if plan.authority_origin is None:
             return None
-        authority = {x.event_id: x for x in projection.committed_world_event_refs}
         bindings = []
         planned = None
         event_coordinates = (
@@ -85,12 +96,10 @@ class RoleLifeIntentActivityReader:
             (plan.authority_origin.accepted_event_ref, plan.authority_origin.accepted_event_type),
         )
         for event_ref, event_type in dict.fromkeys(event_coordinates):
-            ref = authority.get(event_ref)
+            ref = lookup_first(projection.committed_world_event_refs, "event_id", event_ref)
             located = self._ledger.lookup_event_commit(event_ref)
             if located is not None:
-                located = (
-                    WorldEvent.model_validate_json(located[0].model_dump_json()), located[1],
-                )
+                located = (_validated_world_event(located[0]), located[1])
             if (
                 ref is None
                 or located is None
@@ -111,7 +120,7 @@ class RoleLifeIntentActivityReader:
             ):
                 return None
             if event_type == "ActivityPlanned":
-                planned = ActivityPlannedPayload.model_validate_json(located[0].payload_json)
+                planned = _parsed_activity_planned_payload(located[0].payload_json)
                 self._validate(state=projection, event=located[0], payload=planned)
             elif located[0].payload().get("plan_id") != plan_id:
                 return None
@@ -141,9 +150,7 @@ class RoleLifeIntentActivityReader:
                   if callable(self._origin_field) else getattr(planned, self._origin_field))
         proposal = self._ledger.lookup_event_commit(origin.proposal_event_ref)
         if proposal is not None:
-            proposal = (
-                WorldEvent.model_validate_json(proposal[0].model_dump_json()), proposal[1],
-            )
+            proposal = (_validated_world_event(proposal[0]), proposal[1])
         if proposal is None or any(
             (
                 proposal[0].event_type != "ProposalRecorded",

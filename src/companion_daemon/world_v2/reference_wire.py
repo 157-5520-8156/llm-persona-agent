@@ -133,9 +133,13 @@ def reference_bindings_hash(dictionary):
 
 
 def _reference_field(key):
-    return key in {"ref", "id", "token_map"} or key.endswith(
+    return key in {"ref", "id", "token_map", "source_ref_aliases"} or key.endswith(
         ("_ref", "_refs", "_id", "_ids")
     )
+
+
+def _reference_map_parent(path):
+    return bool(path) and path[-1] in {"token_map", "source_ref_aliases"}
 
 
 _HOST_IDENTITY_PATHS = frozenset({
@@ -186,7 +190,13 @@ def prepare_reference_view(value):
                         for column, cell in zip(columns, row, strict=True):
                             collect(cell, _reference_field(column), (*child_path, "[]", column))
                     continue
-                collect(child, _reference_field(key) or child_path in _HOST_IDENTITY_PATHS, child_path)
+                collect(
+                    child,
+                    _reference_field(key)
+                    or _reference_map_parent(path)
+                    or child_path in _HOST_IDENTITY_PATHS,
+                    child_path,
+                )
         elif isinstance(node, list):
             for child in node:
                 collect(child, reference, (*path, "[]"))
@@ -225,7 +235,13 @@ def prepare_reference_view(value):
                                     for column, cell in zip(columns, row, strict=True)] for row in rows]
                     mapped[key] = transformed[0] if single else transformed
                 else:
-                    mapped[key] = replace(child, _reference_field(key) or child_path in _HOST_IDENTITY_PATHS, child_path)
+                    mapped[key] = replace(
+                        child,
+                        _reference_field(key)
+                        or _reference_map_parent(path)
+                        or child_path in _HOST_IDENTITY_PATHS,
+                        child_path,
+                    )
             return mapped
         if isinstance(node, list):
             return [replace(child, reference, (*path, "[]")) for child in node]

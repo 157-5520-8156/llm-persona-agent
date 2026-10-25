@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
+from functools import lru_cache
 import hashlib
 import json
 
@@ -107,6 +108,7 @@ def derive_world_life_plan(*, state, world_id: str, proposal_id: str, owner_acto
                                 owner_actor_ref=owner_actor_ref, visibility=occurrence.visibility)
 
 
+@lru_cache(maxsize=1024)
 def make_world_life_plan(*, intent, origin, source, world_id, owner_actor_ref, visibility,
                          supersedes_plan_id=None, plan_id=None):
     plan_id = plan_id or world_life_plan_id(world_id=world_id, actor_ref=owner_actor_ref,

@@ -44,7 +44,8 @@ def derive_character_life_experience_summary(
     binding: ExperienceWorldLifeResponseBinding,
 ) -> CharacterLifeExperienceSummary:
     """Render exact binding values; callers separately prove source authority."""
-    binding = ExperienceWorldLifeResponseBinding.model_validate_json(binding.model_dump_json())
+    if type(binding) is not ExperienceWorldLifeResponseBinding:
+        binding = ExperienceWorldLifeResponseBinding.model_validate_json(binding.model_dump_json())
     return CharacterLifeExperienceSummary(
         world_consequence=binding.settlement,
         character_response=CharacterLifeExperienceResponse(
@@ -55,7 +56,7 @@ def derive_character_life_experience_summary(
     )
 
 
-@lru_cache(maxsize=128)
+@lru_cache(maxsize=4096)
 def validate_character_life_experience_summary(
     text: str,
     binding: ExperienceWorldLifeResponseBinding,

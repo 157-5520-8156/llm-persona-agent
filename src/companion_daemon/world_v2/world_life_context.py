@@ -23,7 +23,7 @@ from pydantic import Field, model_validator
 
 from .biographical_lifecycle import BiographicalLifecycleCatalog
 from .life_content import LifeContentCompiler, LifeContentExcerpt
-from .photographable_inventory import settlement_has_available_photo
+from .photographable_inventory import available_photo_source_refs, settlement_has_available_photo
 from .schema_core import FrozenModel, PrivacyClass
 from .schemas import DueWindow, LedgerProjection, ProjectionCursor
 
@@ -389,6 +389,7 @@ class WorldLifeContextCompiler:
         self._completed_activity_reader = completed_activity_reader
         self._biography = biography
         self._biography_timezone = biography_timezone
+        self._detail_origin_cache: dict[tuple[str, str], str | None] = {}
 
     def compile(
         self,
@@ -400,9 +401,10 @@ class WorldLifeContextCompiler:
         biographical_timeline_source: WorldLifeSourceBinding | None = None,
         user_channel_limited_content_refs: frozenset[str] = frozenset(),
         focus_event_ref: str | None = None,
+        settled_excerpts: dict[str, LifeContentExcerpt] | None = None,
     ) -> tuple[WorldLifeModelContextItem, ...]:
-        excerpts = {}
-        if self._life_content is not None and cursor is not None:
+        excerpts = dict(settled_excerpts) if settled_excerpts is not None else {}
+        if settled_excerpts is None and self._life_content is not None and cursor is not None:
             excerpts = {
                 item.source_entity_id: item
                 for item in self._life_content.compile(
@@ -421,6 +423,9 @@ class WorldLifeContextCompiler:
         committed = {
             event.event_id: event for event in projection.committed_world_event_refs
         }
+        available_photos = available_photo_source_refs(
+            projection, logical_time=projection.logical_time
+        )
         active_items: list[ActiveWorldOccurrenceContextItem] = []
         items: list[WorldLifeContextItem] = []
         for occurrence in projection.world_occurrences:
@@ -497,10 +502,21 @@ class WorldLifeContextCompiler:
                 )
                 if privacy == "withhold" or ranks[privacy] > ranks[viewer_privacy_ceiling]:
                     continue
-            proposal = (self._ledger.lookup_event_commit(occurrence.trigger_ref)
-                        if self._ledger is not None and occurrence.activation_authority == "world_outlook" else None)
-            detail_origin = (proposal[0].payload().get("central_authorship", {}).get("event_detail_origin")
-                             if proposal is not None and proposal[0].source == "world-outlook-execution.1" else None)
+            detail_origin: str | None = None
+            if self._ledger is not None and occurrence.activation_authority == "world_outlook":
+                cache_key = (occurrence.trigger_ref, settlement.payload_hash)
+                if cache_key in self._detail_origin_cache:
+                    detail_origin = self._detail_origin_cache[cache_key]
+                else:
+                    proposal = self._ledger.lookup_event_commit(occurrence.trigger_ref)
+                    detail_origin = (
+                        proposal[0].payload().get("central_authorship", {}).get("event_detail_origin")
+                        if proposal is not None and proposal[0].source == "world-outlook-execution.1"
+                        else None
+                    )
+                    if len(self._detail_origin_cache) >= 2048:
+                        self._detail_origin_cache.clear()
+                    self._detail_origin_cache[cache_key] = detail_origin
             items.append(
                 WorldLifeContextItem(
                     occurrence_id=occurrence.occurrence_id,
@@ -521,11 +537,7 @@ class WorldLifeContextCompiler:
                     world_planning=planning[occurrence.occurrence_id][0] if occurrence.occurrence_id in planning else None,
                     participation_scope=("external_event_not_character_attendance_or_presence"
                                          if detail_origin is not None else None),
-                    photo_in_hand=settlement_has_available_photo(
-                        projection,
-                        settlement_ref=settlement.event_id,
-                        logical_time=projection.logical_time,
-                    ),
+                    photo_in_hand=settlement.event_id in available_photos,
                 )
             )
         biography = self._biographical_item(

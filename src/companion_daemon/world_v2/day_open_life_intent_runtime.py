@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
+from functools import lru_cache
 import json
 from zoneinfo import ZoneInfo
 
@@ -31,6 +32,7 @@ from .day_open_life_intent_contract import (
 from .chat_life_intent_contract import LifeIntentDraft
 from .event_identity import domain_idempotency_key
 from .life_events import ActivityPlannedPayload
+from .projection_lookup import lookup_first
 from .role_life_intent_reader import RoleLifeIntentActivityReader
 from .schemas import DueWindow, EvidenceRef, PlanStateProjection, ProjectionCursor, WorldEvent
 
@@ -191,21 +193,15 @@ def materialize_day_open_proposal(result, capability_payload, *, world_id: str):
     )
 
 
-def _derive_day_open_life_plans(*, state, world_id: str, proposal_id: str, owner_actor_ref: str):
-    """The same original proof is checked by live acceptance and reducer replay."""
-    from .character_interior.audit import recorded_character_interior_lineage
+@lru_cache(maxsize=1024)
+def _parsed_day_open_proposal(world_id: str, owner_actor_ref: str, proposal_json: str, proposal_hash: str):
     from .character_interior.contracts import InnerDecision
-    from .character_interior.run_result import CausalOpportunityRuntime
-    from .proposal_audit_schemas import RecordedModelResultAudit
     from .proposal_envelope import DecisionProposal, validate_proposal_envelope
 
-    audit = next((x for x in state.proposal_audits if x.proposal_id == proposal_id), None)
-    if audit is None:
-        raise DayOpenLifeIntentError("proposal_missing")
-    proposal = validate_proposal_envelope(json.loads(audit.proposal_json))
+    proposal = validate_proposal_envelope(json.loads(proposal_json))
     if not isinstance(proposal, DecisionProposal) or any((
         proposal.schema_registry_version not in {DAY_OPEN_LIFE_INTENT_REGISTRY_VERSION, DAY_OPEN_LIFE_AGENDA_REGISTRY_VERSION},
-        proposal.proposal_hash != audit.proposal_hash,
+        proposal.proposal_hash != proposal_hash,
         len(proposal.proposed_changes) != 1,
         proposal.proposed_changes[0].kind != "day_open_life_intent",
     )):
@@ -220,20 +216,28 @@ def _derive_day_open_life_plans(*, state, world_id: str, proposal_id: str, owner
         raise DayOpenLifeIntentError("actor_mismatch")
     if proposal != materialize_day_open_proposal(result, capability_payload, world_id=world_id):
         raise DayOpenLifeIntentError("derived_proposal_mismatch")
+    return proposal, change, agenda, payload, result, capability, intents
+
+
+@lru_cache(maxsize=1024)
+def _verified_day_open_audit_pair(
+    world_id: str,
+    owner_actor_ref: str,
+    proposal_json: str,
+    proposal_hash: str,
+    audit_json: str,
+    audit,
+    model,
+):
+    from .character_interior.audit import recorded_character_interior_lineage
+    from .character_interior.run_result import CausalOpportunityRuntime
+    from .proposal_audit_schemas import RecordedModelResultAudit
+
+    proposal, change, agenda, payload, result, capability, intents = _parsed_day_open_proposal(
+        world_id, owner_actor_ref, proposal_json, proposal_hash
+    )
     supplied = capability.self_directed_intent
-    model = next((x for x in state.model_result_audits
-                  if x.model_result_ref == audit.model_result_ref), None)
-    if model is None or any(
-        getattr(model, field) != getattr(audit, field)
-        for field in (
-            "proposal_hash", "model_call_id", "attempt_id", "capsule_id", "trigger_ref",
-            "deliberation_result_id", "evaluated_world_revision",
-        )
-    ) or model.audit_contract != "model-result-audit.7" or (
-        model.attempt_index != 0 or model.attempt_count != 1
-    ):
-        raise DayOpenLifeIntentError("model_binding_invalid")
-    recorded = RecordedModelResultAudit.model_validate_json(model.audit_json)
+    recorded = RecordedModelResultAudit.model_validate_json(audit_json)
     identity = CausalOpportunityRuntime(
         world_id=world_id, actor_ref=owner_actor_ref, purpose=PURPOSE,
     ).identity_for_refs(
@@ -264,7 +268,38 @@ def _derive_day_open_life_plans(*, state, world_id: str, proposal_id: str, owner
             item.model_dump(mode="json", exclude={"event_ref", "event_payload_hash"})
         ):
             raise DayOpenLifeIntentError("audit_event_hash_invalid")
-    sources = {x.event_id: x for x in state.committed_world_event_refs}
+    return proposal, change, agenda, payload, result, capability, intents
+
+
+def _derive_day_open_life_plans(*, state, world_id: str, proposal_id: str, owner_actor_ref: str):
+    """The same original proof is checked by live acceptance and reducer replay."""
+    audit = lookup_first(state.proposal_audits, "proposal_id", proposal_id)
+    if audit is None:
+        raise DayOpenLifeIntentError("proposal_missing")
+    proposal, change, agenda, payload, result, capability, intents = _parsed_day_open_proposal(
+        world_id, owner_actor_ref, audit.proposal_json, audit.proposal_hash
+    )
+    supplied = capability.self_directed_intent
+    model = lookup_first(state.model_result_audits, "model_result_ref", audit.model_result_ref)
+    if model is None or any(
+        getattr(model, field) != getattr(audit, field)
+        for field in (
+            "proposal_hash", "model_call_id", "attempt_id", "capsule_id", "trigger_ref",
+            "deliberation_result_id", "evaluated_world_revision",
+        )
+    ) or model.audit_contract != "model-result-audit.7" or (
+        model.attempt_index != 0 or model.attempt_count != 1
+    ):
+        raise DayOpenLifeIntentError("model_binding_invalid")
+    _verified_day_open_audit_pair(
+        world_id,
+        owner_actor_ref,
+        audit.proposal_json,
+        audit.proposal_hash,
+        model.audit_json,
+        audit,
+        model,
+    )
     completion = supplied.completion_source
     if completion is not None:
         from .activity_continuation_source import validate_completion_source
@@ -273,7 +308,7 @@ def _derive_day_open_life_plans(*, state, world_id: str, proposal_id: str, owner
             state, completion, actor_ref=owner_actor_ref, cursor_revision=result.cursor.world_revision,
         )
     for declared in proposal.evidence_refs:
-        source = sources.get(declared.ref_id)
+        source = lookup_first(state.committed_world_event_refs, "event_id", declared.ref_id)
         if completion is not None and declared.ref_id == completion.event_ref:
             if (declared.source_world_revision != completion.world_revision
                     or declared.immutable_hash != "sha256:" + completion.payload_hash):
@@ -288,13 +323,32 @@ def _derive_day_open_life_plans(*, state, world_id: str, proposal_id: str, owner
             != supplied.day_key,
         )):
             raise DayOpenLifeIntentError("clock_source_invalid")
-    selected = sources[supplied.selected_clock_ref]
-    if completion is not None and sources[completion.event_ref].logical_time > selected.logical_time:
-        raise DayOpenLifeIntentError("completion_source_is_in_future")
-    selected_head = next((x for x in sources.values()
-                          if x.world_revision == result.cursor.world_revision), None)
+    selected = lookup_first(state.committed_world_event_refs, "event_id", supplied.selected_clock_ref)
+    if selected is None:
+        raise DayOpenLifeIntentError("clock_source_invalid")
+    if completion is not None:
+        comp_event = lookup_first(state.committed_world_event_refs, "event_id", completion.event_ref)
+        if comp_event is not None and comp_event.logical_time > selected.logical_time:
+            raise DayOpenLifeIntentError("completion_source_is_in_future")
+    selected_head = lookup_first(state.committed_world_event_refs, "world_revision", result.cursor.world_revision)
     if selected_head is None or selected_head.logical_time != selected.logical_time:
         raise DayOpenLifeIntentError("selection_clock_invalid")
+    return _built_day_open_life_plans(
+        world_id,
+        owner_actor_ref,
+        audit,
+        model,
+        selected,
+    )
+
+
+@lru_cache(maxsize=1024)
+def _built_day_open_life_plans(world_id: str, owner_actor_ref: str, audit, model, selected):
+    proposal, change, agenda, payload, result, capability, intents = _parsed_day_open_proposal(
+        world_id, owner_actor_ref, audit.proposal_json, audit.proposal_hash
+    )
+    supplied = capability.self_directed_intent
+    completion = supplied.completion_source
     origin = DayOpenLifeIntentOrigin(
         contract=("day-open-life-intent-origin.5" if capability.contract.endswith((".7", ".8", ".9")) else
                   "day-open-life-intent-origin.4" if agenda else

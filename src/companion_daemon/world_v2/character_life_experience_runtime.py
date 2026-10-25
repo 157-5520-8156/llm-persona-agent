@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from .world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS
 
+from functools import lru_cache
 import hashlib
 import json
 
@@ -56,6 +57,11 @@ def _cursor(state) -> ProjectionCursor:
     )
 
 
+@lru_cache(maxsize=4096)
+def _response_payload_hash(response: CharacterLifeResponseRecordedPayload) -> str:
+    return life_content_payload_hash(_canonical(response.model_dump(mode="json")))
+
+
 def validate_character_life_experience_binding(*, state, world_id: str, binding) -> None:
     """Reprove accepted response bytes and its exact original role decision.
 
@@ -63,7 +69,8 @@ def validate_character_life_experience_binding(*, state, world_id: str, binding)
     Settlement state, privacy and participants are also checked by the normal
     Experience reducer; readers can call this proof at their own pinned cursor.
     """
-    binding = ExperienceWorldLifeResponseBinding.model_validate_json(binding.model_dump_json())
+    if type(binding) is not ExperienceWorldLifeResponseBinding:
+        binding = ExperienceWorldLifeResponseBinding.model_validate_json(binding.model_dump_json())
     source = binding.settlement
     response = binding.response
     committed = lookup_first(state.committed_world_event_refs, "event_id", binding.response_event_ref)
@@ -88,8 +95,7 @@ def validate_character_life_experience_binding(*, state, world_id: str, binding)
             committed is not None and committed.event_type != "CharacterLifeResponseRecorded",
             committed is not None and committed.world_revision != binding.response_world_revision,
             committed is not None and committed.payload_hash != binding.response_payload_hash,
-            life_content_payload_hash(_canonical(response.model_dump(mode="json")))
-            != binding.response_payload_hash,
+            _response_payload_hash(response) != binding.response_payload_hash,
             settlement is None,
             settlement is not None and settlement.event_type != "WorldOccurrenceSettled",
             settlement is not None and settlement.world_revision != source.authority_world_revision,

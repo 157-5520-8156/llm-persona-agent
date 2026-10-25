@@ -191,6 +191,7 @@ class ConversationContinuityCompiler:
         rank_overrides = self._associative_recall.compile(
             cue_text=current.text,
             candidates=retrieval_candidates,
+            seed=trigger_ref,
         ).item_refs
         return ConversationContinuitySelection(
             dialogue=selected_dialogue,

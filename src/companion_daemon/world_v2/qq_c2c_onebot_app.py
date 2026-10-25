@@ -768,6 +768,8 @@ def create_qq_c2c_onebot_app(
         host_denied = _require_safe_dashboard_host(request)
         if host_denied is not None:
             return host_denied
+        if not settings.world_v2_dashboard_auth_enabled:
+            return None
         if _dashboard_session_is_valid(request, settings):
             return None
         return _read_only_operator_access(
@@ -833,7 +835,7 @@ def create_qq_c2c_onebot_app(
                 status_code=503,
                 headers={"Cache-Control": "no-store"},
             )
-        if not _dashboard_session_is_valid(request, settings):
+        if settings.world_v2_dashboard_auth_enabled and not _dashboard_session_is_valid(request, settings):
             return HTMLResponse(LOGIN_HTML, headers={"Cache-Control": "no-store"})
         return HTMLResponse(DASHBOARD_HTML, headers={"Cache-Control": "no-store"})
 

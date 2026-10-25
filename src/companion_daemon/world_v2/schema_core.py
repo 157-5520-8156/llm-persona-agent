@@ -13,7 +13,12 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+_SCALAR_NON_DATETIME_TYPES = (str, int, bool, float, type(None))
+
+
 def _contains_naive_datetime(value: Any) -> bool:
+    if type(value) in _SCALAR_NON_DATETIME_TYPES:
+        return False
     if isinstance(value, datetime):
         return value.tzinfo is None or value.utcoffset() is None
     if isinstance(value, dict):
@@ -28,7 +33,7 @@ def _contains_naive_datetime(value: Any) -> bool:
 # Only the pure timezone predicate is reused, never source/permission checks.
 _TIMEZONE_FIELD_CACHE: OrderedDict = OrderedDict()
 _TIMEZONE_FIELD_LOCK = RLock()
-_TIMEZONE_FIELD_CACHE_LIMIT = 256
+_TIMEZONE_FIELD_CACHE_LIMIT = 4096
 
 
 def _timezone_scan_is_immutable(value: Any) -> bool:
@@ -84,7 +89,10 @@ class FrozenModel(BaseModel):
     @model_validator(mode="after")
     def datetimes_are_timezone_aware(self) -> FrozenModel:
         for name in type(self).model_fields:
-            if _field_contains_naive_datetime(self, name, getattr(self, name)):
+            val = getattr(self, name)
+            if type(val) in _SCALAR_NON_DATETIME_TYPES or isinstance(val, BaseModel):
+                continue
+            if _field_contains_naive_datetime(self, name, val):
                 raise ValueError(f"{name} must contain only timezone-aware datetimes")
         return self
 

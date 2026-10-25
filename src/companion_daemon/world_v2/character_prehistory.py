@@ -16,6 +16,7 @@ from pydantic import Field, model_validator
 
 from .schema_core import FrozenModel, PrivacyClass, canonicalize_json_value
 from .immutable_value_cache import immutable_value_cache
+from .projection_lookup import lookup_last
 from .prehistory_story import PrehistoryStoryStructure, StoryRelationKind
 from .story_episode import StoryEpisode
 
@@ -398,9 +399,13 @@ def _projected_record_hash(record: PrehistoryRecord) -> str:
 
 def validate_prehistory_state(archives, records, events, *, logical_time, world_id=None):
     """A cached projection cannot invent or silently drop accepted history."""
-    by_ref = {x.event_id: x for x in events}
-    expected_archives = {x.event_id for x in events if x.event_type == "CharacterPrehistoryArchiveAccepted"}
-    expected_records = {x.event_id for x in events if x.event_type == "CharacterPrehistoryRecordImported"}
+    expected_archives = set()
+    expected_records = set()
+    for x in events:
+        if x.event_type == "CharacterPrehistoryArchiveAccepted":
+            expected_archives.add(x.event_id)
+        elif x.event_type == "CharacterPrehistoryRecordImported":
+            expected_records.add(x.event_id)
     if expected_archives != {x.accepted_event_ref for x in archives} or expected_records != {x.accepted_event_ref for x in records}:
         raise ValueError("prehistory projection has missing or uncommitted authority")
     if len({x.manifest.archive_id for x in archives}) != len(archives) or len({x.record.record_id for x in records}) != len(records):
@@ -409,7 +414,7 @@ def validate_prehistory_state(archives, records, events, *, logical_time, world_
         *((x, _validated_archive_payload_hash, "CharacterPrehistoryArchiveAccepted") for x in archives),
         *((x, _validated_record_payload_hash, "CharacterPrehistoryRecordImported") for x in records),
     ):
-        source = by_ref.get(row.accepted_event_ref)
+        source = lookup_last(events, "event_id", row.accepted_event_ref)
         # Reuse only the immutable payload's construction/validation/hash.
         # Current source membership, metadata and logical time remain checks
         # of this projection, even when the pure value is already cached.
@@ -421,7 +426,7 @@ def validate_prehistory_state(archives, records, events, *, logical_time, world_
         ):
             raise ValueError("prehistory projection changed its exact accepted source")
     for archive in archives:
-        start = by_ref.get(archive.world_started_ref)
+        start = lookup_last(events, "event_id", archive.world_started_ref)
         if start is None or (
             start.event_type, start.world_revision, start.payload_hash, start.logical_time
         ) != ("WorldStarted", archive.world_started_revision, archive.world_started_hash, archive.world_started_at):

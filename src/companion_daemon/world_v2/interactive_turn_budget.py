@@ -58,9 +58,9 @@ class InteractiveTurnBudgetPolicy:
     hedge_after_seconds: float = 6.5
     acceptance_dispatch_reserve_seconds: float = 1.0
     # One soft ingress-to-first-provider budget for API-external work. QQ's
-    # durable sender-rhythm window consumes part of this same interval; Recall
-    # may use only what remains instead of adding another independent wait.
-    first_provider_entry_seconds: float = 0.5
+    # durable sender-rhythm window and Context resolution consume part of this
+    # interval; 1.15s leaves room for the 0.45s semantic Recall first-pass join.
+    first_provider_entry_seconds: float = 1.15
     # The configured independent role provider also showed cold completions
     # above 8s. This window opens only after a real author failure, so raising
     # the ceiling does not slow an ordinary successful turn.

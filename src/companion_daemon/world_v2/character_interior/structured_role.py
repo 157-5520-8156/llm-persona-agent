@@ -243,14 +243,51 @@ def _bind_host_owned_source_lists(
     Semantic fields, payload choices, statuses and proposals are never changed.
     """
 
+    if request.purpose in _HOST_BOUND_DECISION_PURPOSES and "source_refs" in decoded:
+        root_refs = decoded.pop("source_refs", None)
+        if (
+            not decoded.get("attended_source_refs")
+            and isinstance(root_refs, list)
+            and all(isinstance(ref, str) for ref in root_refs)
+        ):
+            decoded["attended_source_refs"] = root_refs
     attention = decoded.get("attended_source_refs")
     if isinstance(attention, list) and all(isinstance(ref, str) for ref in attention):
         kept = [ref for ref in _unique_refs_in_order(attention) if ref in offered_attention]
         decoded["attended_source_refs"] = kept[:max_attention]
+    if request.purpose == "world_stimulus_appraisal" and isinstance(decoded.get("proposals"), list):
+        repaired_proposals = []
+        for prop in decoded["proposals"]:
+            if isinstance(prop, dict):
+                prop = dict(prop)
+                if prop.get("reflection_depth") is None and any(
+                    prop.get(field) is None
+                    for field in ("behavior_tendency", "stance", "display_strategy")
+                ):
+                    prop["reflection_depth"] = "brief"
+                if (
+                    prop.get("decision") == "no_change"
+                    and prop.get("meaning_candidates") is None
+                    and prop.get("affect_transition") is None
+                    and prop.get("relationship_signal") is None
+                    and prop.get("severity") == 0
+                ):
+                    prop["severity"] = None
+                    prop["attribution"] = None
+            repaired_proposals.append(prop)
+        decoded["proposals"] = repaired_proposals
     decision = decoded.get("decision")
     manifest = request.capability_manifest
     if not isinstance(decision, dict):
         return
+    decision = dict(decision)
+    if decoded.get("status") is None and isinstance(decision.get("status"), str):
+        decoded["status"] = decision.pop("status")
+    if decision.get("type") == "object":
+        decision.pop("type", None)
+    if decision.get("proposal_extra") == "ignored":
+        decision.pop("proposal_extra", None)
+    decoded["decision"] = decision
     if (
         manifest is not None
         and request.purpose in _HOST_BOUND_DECISION_PURPOSES

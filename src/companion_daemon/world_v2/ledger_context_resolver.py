@@ -9,10 +9,12 @@ an inferred reference or hash.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
+from functools import lru_cache
 import hashlib
 import json
 import logging
+import re
 import threading
 import time
 from typing import Iterable, Mapping
@@ -23,6 +25,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from .affect_events import AffectEpisodeOpenedPayload
 from .appraisal_events import AppraisalAcceptedPayload
 from .appraisal_source_identity import conversation_source_cluster_ref
+from .projection_lookup import lookup_first, lookup_last
 from .fact_observation_value import FactObservationValueBinding
 from .biographical_lifecycle import BiographicalLifecycleCatalog
 from .biographical_timeline_authority import (
@@ -403,12 +406,41 @@ def _automatic_recall_link_refs(
     return tuple(sorted(set(link_refs) - conversation_scopes))
 
 
+def _prehistory_stage_cue(source: object) -> str:
+    prehistory = getattr(source, "prehistory", None)
+    occurred_from = getattr(prehistory, "occurred_from", None) or getattr(
+        source, "occurred_from", None
+    )
+    if not isinstance(occurred_from, datetime):
+        return ""
+    local_dt = occurred_from.astimezone(_SHANGHAI) if occurred_from.tzinfo else occurred_from
+    ym = (local_dt.year, local_dt.month)
+    if ym < (2018, 9):
+        return "小时候 童年 小学"
+    if ym < (2021, 9):
+        return "初中 中学"
+    if ym < (2024, 8):
+        return "高中 中学"
+    return "大学"
+
+
+@lru_cache(maxsize=2048)
+def _parsed_affect_episode_opened(payload_json: str) -> AffectEpisodeOpenedPayload:
+    return AffectEpisodeOpenedPayload.model_validate_json(payload_json)
+
+
+@lru_cache(maxsize=2048)
+def _parsed_appraisal_accepted(payload_json: str) -> AppraisalAcceptedPayload:
+    return AppraisalAcceptedPayload.model_validate_json(payload_json)
+
+
 def _relevant_prehistory_memory_link_refs(
     items: tuple[MemoryRetrievalItem, ...],
     *,
     actor_ref: str,
     logical_time: datetime | None,
     query_text: str,
+    seed: str = "",
 ) -> tuple[str, ...]:
     """Seed Recall from one active, actor-owned prehistory matching the trigger.
 
@@ -436,16 +468,45 @@ def _relevant_prehistory_memory_link_refs(
     # structured relevance. Do not apply the context rank-override floor here:
     # it is meant for explicitly attended items and would make unrelated
     # memories tie with the current observation's actual match.
-    ranked = [
-        (
-            _rank("active_memory_candidates", item, logical_time, query_text),
-            memory_relevance_bp(query_text, item),
-            item.candidate_id,
-        )
-        for item in eligible
-        if _item_relevance_texts(item)
-        and memory_relevance_bp(query_text, item) > 0
-    ]
+    ranked = []
+    for item in eligible:
+        base_texts = _item_relevance_texts(item)
+        if not base_texts:
+            continue
+        if seed:
+            stage_cues = tuple(
+                cue
+                for excerpt in item.source_excerpts
+                if (cue := _prehistory_stage_cue(excerpt))
+            )
+            compressed_query = re.sub(
+                r"([\u4e00-\u9fff])[的了过着张个次场顿口份遍回]([\u4e00-\u9fff])",
+                r"\1\2",
+                query_text,
+            )
+            effective_query = (
+                f"{query_text} {compressed_query}"
+                if compressed_query != query_text
+                else query_text
+            )
+            rel_bp = lexical_relevance_bp(effective_query, (*base_texts, *stage_cues))
+        else:
+            rel_bp = memory_relevance_bp(query_text, item)
+        if rel_bp <= 0:
+            continue
+        rank_score = _rank("active_memory_candidates", item, logical_time, query_text)
+        if seed:
+            jitter = (
+                int.from_bytes(
+                    hashlib.sha256(
+                        f"prehistory-link.1:{seed}:{item.candidate_id}".encode("utf-8")
+                    ).digest()[:2],
+                    "big",
+                )
+                % 600
+            )
+            rel_bp += jitter
+        ranked.append((rank_score, rel_bp, item.candidate_id))
     ranked.sort(key=lambda row: (-row[0], -row[1], row[2]))
     return (ranked[0][2],) if ranked else ()
 
@@ -1927,7 +1988,8 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             content_store=self._life_content_store,
             reviewed_identity_summaries=self._reviewed_npc_identity_summaries,
         )
-        committed = {item.event_id: item for item in projection.committed_world_event_refs}
+        if not views:
+            return ()
         registrations: dict[str, list[CommittedWorldEventRef]] = {}
         for authority in projection.committed_world_event_refs:
             if authority.event_type != "NpcRegistered":
@@ -1951,7 +2013,13 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         npc_by_ref = {f"npc:{item.npc_id}": item for item in projection.npcs}
         result: list[NpcIdentityRecallItem] = []
         for view in views:
-            exact = committed.get(view.promotion_event_ref)
+            exact = (
+                lookup_last(
+                    projection.committed_world_event_refs, "event_id", view.promotion_event_ref
+                )
+                if view.promotion_event_ref is not None
+                else None
+            )
             candidates = registrations.get(view.npc_ref, [])
             registration = (
                 exact
@@ -2034,9 +2102,10 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             if self._relevance_scope.actor_ref != query.actor_ref:
                 raise ValueError("Context relevance scope belongs to another actor")
             return self._relevance_scope
-        if query.trigger_ref not in {
-            item.event_id for item in projection.committed_world_event_refs
-        }:
+        if (
+            lookup_first(projection.committed_world_event_refs, "event_id", query.trigger_ref)
+            is None
+        ):
             return ContextRelevanceScope(actor_ref=query.actor_ref)
         located = self._ledger.lookup_event_commit(query.trigger_ref)
         if located is None:
@@ -2331,6 +2400,9 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             focus_event_ref=query.trigger_ref,
             biographical_timeline_source=self._biographical_timeline_source(projection),
             user_channel_limited_content_refs=user_channel_limited_content_refs,
+            settled_excerpts={
+                item.source_entity_id: item for item in life_content.settled_items
+            },
         )
         world_life_ms = (time.perf_counter() - domain_phase_started) * 1000
         domain_phase_started = time.perf_counter()
@@ -2474,7 +2546,12 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                 )
         for item in memories_for_continuity:
             texts = bounded_texts(
-                tuple(source.text for source in item.source_excerpts)
+                tuple(
+                    part
+                    for source in item.source_excerpts
+                    for part in (source.text, _prehistory_stage_cue(source))
+                    if part
+                )
             )
             if texts:
                 retrieval_candidates.append(
@@ -2578,12 +2655,26 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         # their own exact event/evidence closure; AffectEpisodeProjection does
         # not retain every update event identity and therefore is not itself
         # safe historical recall authority.
+        all_scoped_recall_appraisals = sorted(
+            (item for item in projection.appraisals if item.subject_ref in subject_refs),
+            key=lambda item: (item.accepted_at, item.appraisal_id),
+            reverse=True,
+        )
+        counterpart_recall_appraisals = [
+            item for item in all_scoped_recall_appraisals if item.subject_ref != query.actor_ref
+        ][:24]
+        reserved_appraisal_ids = {item.appraisal_id for item in counterpart_recall_appraisals}
+        remaining_recall_appraisals = [
+            item
+            for item in all_scoped_recall_appraisals
+            if item.appraisal_id not in reserved_appraisal_ids
+        ][: 32 - len(counterpart_recall_appraisals)]
         recall_appraisal_candidates = tuple(
             sorted(
-                (item for item in projection.appraisals if item.subject_ref in subject_refs),
+                (*counterpart_recall_appraisals, *remaining_recall_appraisals),
                 key=lambda item: (item.accepted_at, item.appraisal_id),
                 reverse=True,
-            )[:32]
+            )
         )
         recall_appraisals = tuple(
             normalized
@@ -2619,13 +2710,10 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             if located is None:
                 continue
             event, _ = located
-            committed = next(
-                (
-                    ref
-                    for ref in projection.committed_world_event_refs
-                    if ref.event_id == event.event_id
-                ),
-                None,
+            committed = lookup_last(
+                projection.committed_world_event_refs,
+                "event_id",
+                event.event_id,
             )
             if (
                 committed is None
@@ -2635,7 +2723,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             ):
                 continue
             try:
-                opening = AffectEpisodeOpenedPayload.model_validate_json(event.payload_json).episode
+                opening = _parsed_affect_episode_opened(event.payload_json).episode
             except ValueError:
                 continue
             if (
@@ -2651,23 +2739,17 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                 for component in opening.components
                 for meaning in component.appraisal_refs
             }:
-                appraisal = next(
-                    (item for item in projection.appraisals if item.appraisal_id == meaning_ref[0]),
-                    None,
-                )
+                appraisal = appraisal_by_id.get(meaning_ref[0])
                 if appraisal is None or appraisal.subject_ref not in subject_refs:
                     subject_scope_is_closed = False
                     break
                 appraisal_located = self._ledger.lookup_event_commit(
                     appraisal.origin.accepted_event_ref
                 )
-                appraisal_committed = next(
-                    (
-                        ref
-                        for ref in projection.committed_world_event_refs
-                        if ref.event_id == appraisal.origin.accepted_event_ref
-                    ),
-                    None,
+                appraisal_committed = lookup_last(
+                    projection.committed_world_event_refs,
+                    "event_id",
+                    appraisal.origin.accepted_event_ref,
                 )
                 if appraisal_located is None or appraisal_committed is None:
                     subject_scope_is_closed = False
@@ -2681,7 +2763,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                     subject_scope_is_closed = False
                     break
                 try:
-                    accepted_appraisal = AppraisalAcceptedPayload.model_validate_json(
+                    accepted_appraisal = _parsed_appraisal_accepted(
                         appraisal_event.payload_json
                     ).appraisal
                 except ValueError:
@@ -2724,9 +2806,23 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                 # what the character could have forgotten — everything
                 # outside the window — mirroring the chat recent_dialogue
                 # item budget below.
-                recall_dialogue = tuple(
-                    sorted(dialogue_candidates, key=lambda item: item.occurred_at)
-                )[:-CHAT_RECENT_DIALOGUE_ITEM_LIMIT]
+                ordered_dialogue = sorted(
+                    dialogue_candidates,
+                    key=lambda item: (item.occurred_at, item.sequence, item.dialogue_id),
+                )
+                live_tail_count = 0
+                if ordered_dialogue:
+                    newest_at = ordered_dialogue[-1].occurred_at
+                    for candidate in reversed(ordered_dialogue[-4:]):
+                        if newest_at - candidate.occurred_at < timedelta(minutes=45):
+                            live_tail_count += 1
+                        else:
+                            break
+                recall_dialogue = (
+                    tuple(ordered_dialogue[:-live_tail_count])
+                    if live_tail_count
+                    else tuple(ordered_dialogue)
+                )
                 npc_identities = self._npc_identity_recall_items(projection)
                 # Index the readable source archive, not the 1440-character
                 # display window. Otherwise an older result (and its linked
@@ -2768,9 +2864,14 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                     candidates=(
                         *(
                             _recall_event_binding(item)
-                            for item in projection.committed_world_event_refs
-                            if item.world_revision <= query.world_revision
-                            and item.event_id in required_authority_refs
+                            for ref_id in sorted(required_authority_refs)
+                            if (
+                                item := lookup_last(
+                                    projection.committed_world_event_refs, "event_id", ref_id
+                                )
+                            )
+                            is not None
+                            and item.world_revision <= query.world_revision
                         ),
                         *(
                             binding
@@ -2865,6 +2966,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                             actor_ref=query.actor_ref,
                             logical_time=query.logical_time,
                             query_text=trigger_dialogue.text,
+                            seed=f"{query.trigger_ref}:{query.ledger_sequence}",
                         ),
                         limit=4,
                     )

@@ -214,7 +214,8 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
                 # Content-scoped restrictions also hide titles and associations.
                 withheld += 1
                 continue
-            title = "活动的实际结果" if reading.attempt_text else "世界事件"
+            headline_src = (reading.attempt_text or reading.text or "").strip()
+            title = headline_src or ("活动的实际结果" if reading.attempt_text else "世界事件")
             status = _STATUS_LABELS.get(item.status, "事件状态未识别")
             detail = ("环境：" + reading.text if reading.text else "尚无可读取的已结算正文。")
             if reading.attempt_text:
@@ -265,6 +266,17 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
                     detail += "\n\n她当时的感受：" + response.response_text
                 else:
                     detail += "\n\n她没有留下对此事的文字感受。"
+                headline_src = (
+                    response.response_text
+                    if response and response.response_text
+                    else (
+                        world.authorized_attempt_result.text
+                        if world.authorized_attempt_result
+                        else world.environment.text
+                    )
+                ).strip()
+                if headline_src:
+                    title = headline_src
                 content_state, truncated = "read", reading.truncated
                 source = experience_world_occurrence(projection, item)
                 if source:

@@ -1099,6 +1099,14 @@ class SQLiteWorldLedger:
                     ledger_sequence
                 )
                 WHERE json_extract(event_json, '$.event_type') = 'ExecutionReceiptRecorded';
+            CREATE INDEX IF NOT EXISTS world_v2_events_proposal_lookup
+                ON world_v2_events (
+                    world_id,
+                    json_extract(json_extract(event_json, '$.payload_json'), '$.proposal_id'),
+                    json_extract(json_extract(event_json, '$.payload_json'), '$.proposal_kind'),
+                    ledger_sequence
+                )
+                WHERE json_extract(event_json, '$.event_type') = 'ProposalRecorded';
             CREATE INDEX IF NOT EXISTS world_v2_events_fact_history_lookup
                 ON world_v2_events (
                     world_id,

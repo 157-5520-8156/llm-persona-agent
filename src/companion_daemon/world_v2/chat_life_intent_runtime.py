@@ -9,12 +9,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import timedelta
+from functools import lru_cache
 import hashlib
 import json
 
 from .chat_life_intent_contract import ChatLifeIntentOrigin, LifeIntentPayload
 from .event_identity import domain_idempotency_key
 from .life_events import ActivityPlannedPayload
+from .projection_lookup import lookup_first
 from .proposal_audit_schemas import RecordedModelResultAudit
 from .proposal_envelope import DecisionProposal, validate_proposal_envelope
 from .role_life_intent_reader import RoleLifeIntentActivityReader
@@ -23,6 +25,21 @@ from .unified_inbound_decision import inspect_unified_inbound_decision
 
 SOURCE = "world-v2:chat-life-intent"
 PLAN_PREFIX = "plan:chat-life-intent:"
+
+
+@lru_cache(maxsize=4096)
+def _parsed_proposal(text: str):
+    return validate_proposal_envelope(json.loads(text))
+
+
+@lru_cache(maxsize=4096)
+def _parsed_life_intent(text: str) -> LifeIntentPayload:
+    return LifeIntentPayload.model_validate_json(text)
+
+
+@lru_cache(maxsize=4096)
+def _parsed_model_audit(text: str) -> RecordedModelResultAudit:
+    return RecordedModelResultAudit.model_validate_json(text)
 
 
 def _digest(value: object) -> str:
@@ -55,20 +72,20 @@ def derive_chat_life_plan(*, state, world_id: str, proposal_id: str, owner_actor
     Accepts either current reducer state or a ledger projection, so replay and
     live acceptance enforce exactly the same semantic-free authority checks.
     """
-    audit = next((x for x in state.proposal_audits if x.proposal_id == proposal_id), None)
+    audit = lookup_first(state.proposal_audits, "proposal_id", proposal_id)
     if audit is None:
         raise ChatLifeIntentError("proposal_missing")
-    proposal = validate_proposal_envelope(json.loads(audit.proposal_json))
+    proposal = _parsed_proposal(audit.proposal_json)
     if not isinstance(proposal, DecisionProposal) or proposal.proposal_hash != audit.proposal_hash:
         raise ChatLifeIntentError("proposal_binding_invalid")
     change = inspect_unified_inbound_decision(proposal).life_intent
     if change is None or change.expected_entity_revision != 0:
         raise ChatLifeIntentError("explicit_intent_missing")
-    intent = LifeIntentPayload.model_validate_json(change.payload.canonical_json)
+    intent = _parsed_life_intent(change.payload.canonical_json)
     if intent.actor_ref != owner_actor_ref:
         raise ChatLifeIntentError("actor_mismatch")
-    model = next(
-        (x for x in state.model_result_audits if x.model_result_ref == audit.model_result_ref), None
+    model = lookup_first(
+        state.model_result_audits, "model_result_ref", audit.model_result_ref
     )
     if model is None or any(
         (
@@ -83,7 +100,7 @@ def derive_chat_life_plan(*, state, world_id: str, proposal_id: str, owner_actor
         )
     ):
         raise ChatLifeIntentError("model_binding_invalid")
-    recorded = RecordedModelResultAudit.model_validate_json(model.audit_json)
+    recorded = _parsed_model_audit(model.audit_json)
     lineage = recorded.character_interior_lineage
     if (
         lineage is None
@@ -91,16 +108,11 @@ def derive_chat_life_plan(*, state, world_id: str, proposal_id: str, owner_actor
         or lineage.author_model_call_id != model.model_call_id
     ):
         raise ChatLifeIntentError("inner_turn_authority_missing")
-    observation = next(
-        (
-            x
-            for x in state.message_observations
-            if x.observation_id == intent.source_observation_ref
-        ),
-        None,
+    observation = lookup_first(
+        state.message_observations, "observation_id", intent.source_observation_ref
     )
-    source = next(
-        (x for x in state.committed_world_event_refs if x.event_id == audit.trigger_ref), None
+    source = lookup_first(
+        state.committed_world_event_refs, "event_id", audit.trigger_ref
     )
     if (
         observation is None
@@ -126,13 +138,8 @@ def derive_chat_life_plan(*, state, world_id: str, proposal_id: str, owner_actor
         )
     ):
         raise ChatLifeIntentError("source_binding_invalid")
-    clock_source = next(
-        (
-            x
-            for x in state.committed_world_event_refs
-            if x.world_revision == audit.evaluated_world_revision
-        ),
-        None,
+    clock_source = lookup_first(
+        state.committed_world_event_refs, "world_revision", audit.evaluated_world_revision
     )
     if clock_source is None or clock_source.world_revision < observation.world_revision:
         raise ChatLifeIntentError("selection_clock_unavailable")
