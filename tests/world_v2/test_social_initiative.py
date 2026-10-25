@@ -2526,3 +2526,68 @@ async def test_shared_outreach_technical_failures_do_not_consume_daily_budget() 
         projection, clock.logical_time
     ) is True
 
+
+@pytest.mark.asyncio
+async def test_non_retryable_spontaneous_failure_does_not_wedge_situation_independent() -> None:
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    occurred_at = NOW + timedelta(minutes=35)
+    stimulus = WorldEvent.from_payload(
+        schema_version="world-v2.1",
+        event_id="event:external-perception:bilibili-share",
+        world_id="world:social-context-test",
+        event_type="ExternalPerceptionRecorded",
+        logical_time=occurred_at,
+        created_at=occurred_at,
+        actor="actor:companion",
+        source="test",
+        trace_id="trace:bilibili-share",
+        causation_id="cause:bilibili-share",
+        correlation_id="conversation:bilibili-share",
+        idempotency_key="perception:bilibili-share",
+        payload={"actor_ref": "actor:companion", "summary": "刷到一条搞笑视频"},
+    )
+    original_lookup = compiler._ledger.lookup_event_commit  # noqa: SLF001
+    compiler._ledger.lookup_event_commit = lambda event_id: (  # type: ignore[attr-defined]
+        (stimulus, SimpleNamespace(world_revision=3))
+        if event_id == stimulus.event_id
+        else original_lookup(event_id)
+    )
+    projection.committed_world_event_refs = (
+        *projection.committed_world_event_refs,
+        SimpleNamespace(
+            event_id=stimulus.event_id,
+            event_type=stimulus.event_type,
+            logical_time=stimulus.logical_time,
+            world_revision=3,
+        ),
+    )
+    projection.logical_time = occurred_at + timedelta(minutes=2)
+    dead_consideration_id = "consideration:social-initiative:" + "9" * 64
+    projection.trigger_processes = (
+        SimpleNamespace(
+            process_kind="proactive_action_deliberation",
+            trigger_ref="proactive-consideration:" + dead_consideration_id,
+            source_evidence_ref=projection.committed_world_event_refs[0].event_id,
+            state="terminal",
+            runtime_outcome_ref="proactive:deliberation-failed:model-result:dead",
+        ),
+    )
+    projection.model_result_audits = (
+        SimpleNamespace(
+            model_result_ref="model-result:dead",
+            proposal_hash=None,
+            evaluated_world_revision=2,
+            audit_json='{"failure_code":"authored_expression_reselection_invalid"}',
+        ),
+    )
+
+    opportunity = await compiler.next_opportunity(
+        projection,
+        excluded_consideration_ids=frozenset({dead_consideration_id}),
+    )
+
+    assert opportunity is not None
+    assert opportunity.source_kind == "situation_change"
+    assert stimulus.event_id in opportunity.stimulus_event_refs
+
+

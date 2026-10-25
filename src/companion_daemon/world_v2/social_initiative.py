@@ -1494,7 +1494,36 @@ class SocialInitiativeCompiler:
         latest_cluster = [refs[0]]
         for ref in refs[1:]:
             if ref.logical_time - latest_cluster[0].logical_time >= _SITUATION_WINDOW:
-                latest_cluster = [ref]
+                cluster_is_unconsidered_mintable = (
+                    any(
+                        item.event_type in _INDEPENDENT_SITUATION_MINT_EVENT_TYPES
+                        for item in latest_cluster
+                    )
+                    and not self._terminal_consideration(
+                        projection,
+                        situation_independent_consideration_id(
+                            stimulus_anchor_event_id=latest_cluster[0].event_id
+                        ),
+                    )
+                )
+                if (
+                    cluster_is_unconsidered_mintable
+                    and ref.event_type not in _INDEPENDENT_SITUATION_MINT_EVENT_TYPES
+                ):
+                    latest_cluster.append(ref)
+                else:
+                    carried_perceptions = (
+                        [
+                            item
+                            for item in latest_cluster
+                            if item.event_type == "ExternalPerceptionRecorded"
+                            and (ref.logical_time - item.logical_time)
+                            <= timedelta(minutes=60)
+                        ]
+                        if cluster_is_unconsidered_mintable
+                        else []
+                    )
+                    latest_cluster = [ref, *carried_perceptions]
             else:
                 latest_cluster.append(ref)
         return tuple(item.event_id for item in latest_cluster)
@@ -1579,6 +1608,20 @@ class SocialInitiativeCompiler:
             None,
         )
         if failed_audit is None:
+            return None
+        try:
+            failure_code = json.loads(failed_audit.audit_json).get("failure_code")
+        except (TypeError, json.JSONDecodeError, AttributeError):
+            failure_code = None
+        if failure_code in {
+            "authored_expression_reselection_invalid",
+            "recall_choice_reselection_invalid",
+            "proactive_claim_binding_invalid",
+            "affect_target_reselection_invalid",
+            "inventory_invalid",
+            "coverage_invalid",
+            "required_tool_choice_unsupported",
+        }:
             return None
         latest_message_revision = (
             projection.message_observations[-1].world_revision

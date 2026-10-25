@@ -1534,6 +1534,7 @@ def _world_claim_source_refs_by_scope(
         )
     )
 
+    settled: set[str] = set()
     if (
         request is not None
         and request.trigger_message is not None
@@ -1551,9 +1552,21 @@ def _world_claim_source_refs_by_scope(
         current_world.difference_update(settled)
         past_world.difference_update(settled)
 
+    completed_world_life = (
+        _world_life_occurrence_source_tokens(
+            context,
+            include_active=False,
+        )
+        - settled
+    )
+
     return {
         "current_world": current_world,
-        "past_world": past_world,
+        "past_world": past_world
+        | _recent_dialogue_authority_tokens(
+            context,
+            epistemic_scope="companion_expression_record",
+        ),
         "counterpart_history": _slice_claim_authority_tokens(
             context,
             "relevant_facts",
@@ -1567,10 +1580,17 @@ def _world_claim_source_refs_by_scope(
             context,
             epistemic_scope="companion_expression_record",
         )
+        | _recent_dialogue_authority_tokens(
+            context,
+            epistemic_scope="counterpart_report_only",
+        )
+        | set(counterpart_message_source_refs)
         | _slice_claim_authority_tokens(
             context,
             "recent_experiences",
         )
+        | completed_world_life
+        | _external_perception_influence_source_tokens(context)
         | private_shared_history,
         "stable_identity": _slice_claim_authority_tokens(context, "character_core")
         | private_stable_identity,
@@ -2286,6 +2306,13 @@ def _normalize_world_claim_aliases(value: dict[str, object]) -> dict[str, object
                 ("claim_text" if key == "text" else key): item
                 for key, item in claim.items()
             }
+            changed = True
+        if (
+            claim.get("scope") == "subjective_or_hypothetical"
+            and isinstance(claim.get("source_refs"), (list, tuple))
+            and claim.get("source_refs")
+        ):
+            claim = {**claim, "source_refs": []}
             changed = True
         repaired.append(claim)
     if not changed:

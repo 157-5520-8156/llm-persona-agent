@@ -4060,8 +4060,9 @@ class StructuredCharacterRoleFaculty:
                 ],
                 "world_claims_rule": (
                     "Use objects, never strings. Only factual claims need entries; "
-                    "feelings and hypothetical impulses may use scope=subjective_or_hypothetical "
-                    "or omit the claim. Every grounded claim cites at least one matching "
+                    "feelings and hypothetical impulses may omit the claim (or use "
+                    "scope=subjective_or_hypothetical with source_refs: []). "
+                    "Every grounded claim cites at least one matching "
                     "supplied source ref; use [] when the beats contain no factual claim. "
                     "A dialogue beat is not current_world."
                 ),

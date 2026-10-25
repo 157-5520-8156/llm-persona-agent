@@ -11,14 +11,19 @@ import binascii
 import json
 import zlib
 
-from .deliberation import MAX_MODEL_OUTPUT_BYTES, ModelInput, ModelOutput
+from .deliberation import (
+    MAX_COMPLETED_INBOUND_OUTPUT_BYTES,
+    MAX_MODEL_OUTPUT_BYTES,
+    ModelInput,
+    ModelOutput,
+)
 from .visible_source_runtime import canonical, digest, requirement_table
 
 CAPABILITY_CONTRACT = "character-interior-proactive-capability.2"
 CAPABILITY_PREFIX = "proactive-reviewed-turn-capability:sha256:"
 DECISION_CONTRACT = "character-interior-proactive-reviewed-decision.1"
 REQUIREMENT_KEY = "visible_source_requirement_json"
-MAX_COMPLETED_OUTPUT_BYTES = 2 * MAX_MODEL_OUTPUT_BYTES
+MAX_COMPLETED_OUTPUT_BYTES = MAX_COMPLETED_INBOUND_OUTPUT_BYTES
 _REQUIREMENT_CODEC = "proactive-private-requirement-zlib.1"
 _MAX_REQUIREMENT_CHARACTERS = 512_000
 _MAX_REQUIREMENT_BYTES = 4 * _MAX_REQUIREMENT_CHARACTERS

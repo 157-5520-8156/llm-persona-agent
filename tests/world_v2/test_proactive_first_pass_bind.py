@@ -617,3 +617,60 @@ def test_hitchhiked_us_deltas_materialize_a_relationship_signal() -> None:
     )
 
     production_proposal_grammar("proactive").validate(proposal)
+
+
+def test_subjective_claim_with_source_refs_normalizes_and_external_perception_binds_shared_history() -> None:
+    payload = _payload(
+        world_claims=[
+            {
+                "claim_text": "看到这条离谱视频突然想甩给他",
+                "scope": "subjective_or_hypothetical",
+                "source_refs": ["life-influence:external-perception:bilibili:1"],
+            }
+        ]
+    )
+    bound = _bind(payload)
+    assert bound["world_claims"] == [
+        {
+            "claim_text": "看到这条离谱视频突然想甩给他",
+            "scope": "subjective_or_hypothetical",
+            "source_refs": [],
+        }
+    ]
+    _validate(payload)
+
+    bili_ref = "event:external-perception:bilibili:1"
+    bili_item = "life-influence:external-perception:bilibili:1"
+    context = _context()
+    context["slices"]["world_life"] = {
+        "availability": "available",
+        "items": [
+            {
+                "item_ref": bili_item,
+                "source_ref": bili_ref,
+                "source_refs": [bili_ref],
+                "value": {
+                    "context_kind": "external_perception_influence",
+                    "summary": "刷到一条抽象视频",
+                },
+                "source_bindings": [
+                    {
+                        "source_kind": "committed_event",
+                        "authority_type": "ExternalPerceptionRecorded",
+                        "ref": bili_ref,
+                        "source_world_revision": 4,
+                        "immutable_hash": "c" * 64,
+                    }
+                ],
+            }
+        ],
+    }
+    draft = _draft_with_claims(
+        {
+            "claim_text": "刚刚刷到一条抽象视频",
+            "scope": "shared_history",
+            "source_refs": [bili_item],
+        }
+    )
+    assert bind_proactive_world_claims(draft=draft, request=_request(context)) is draft
+

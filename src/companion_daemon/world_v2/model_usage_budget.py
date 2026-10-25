@@ -74,9 +74,9 @@ BACKGROUND_LANE_PRIORITY = MappingProxyType(
         "experience_memory_retention": 1,
         "fact_memory_retention": 1,
         "memory_consolidation": 1,
+        "proactive_contact": 1,
         # Kept, but they yield the last of the envelope to tier 1.
         "activity_lifecycle_choice": 2,
-        "proactive_contact": 2,
         "interaction_fact_draft": 2,
         # Her private thoughts.
         "private_impression_reflection": 3,
