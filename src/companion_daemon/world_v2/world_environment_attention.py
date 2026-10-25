@@ -26,20 +26,21 @@ GUIDANCE = (
 INDEPENDENT_SCENE_GUIDANCE = (
     "This is an independent ordinary opening. Choose whether to continue a sourced "
     "development or author an unrelated one, and choose its scale, tone and lasting consequences. "
-    "A candidate can be a small, "
-    "unremarkable slice of external life; it need not introduce a problem, "
-    "obstacle, announcement, task or lasting change. Background world history "
-    "constrains contradictions but is not a collection of examples to imitate. "
+    "Avoid repeating generic facility maintenance, janitorial mopping or canteen background noise "
+    "already overrepresented in recent_life_texture; vary tone across ordinary moments, unexpected "
+    "snags, minor setbacks, awkward or lively social encounters, and substantive developments. "
     "The character's current feelings, plans and the user's personal reports "
     "do not select what independently happens in this setting. Nothing here "
-    "chooses what she does, notices, likes, or says. Ordinary and adverse events "
-    "remain allowed; this is no topic quota or required emotional tone."
+    "chooses what she does, notices, likes, or says. Ordinary, positive and adverse events "
+    "are all welcome; when proposing multiple outcomes, include genuinely distinct branches "
+    "(e.g. smooth progress vs a frustrating obstacle or twist)."
 )
 
 ORDINARY_SCENE_LANGUAGE = (
-    "自然语言字段请用中文。由你决定本次是平常片刻还是会产生持续后果的发展，"
-    "以及承接既有故事还是发生独立的新事。平静、变化和没有成果都允许；不要因例文或最近话题而照抄。"
-    "只创造本次权限允许的外部事实；主角是否参与、注意、喜欢或回应，仍由角色自己决定。"
+    "自然语言字段请用中文。由你决定本次是日常插曲、意外小挫折、人际碰撞还是会产生持续后果的发展，"
+    "以及承接既有故事还是发生独立的新事。避免反复写保洁拖地、食堂白汽、挪桌椅等雷同背景白噪音；"
+    "分支结果之间应有真实差异（如顺利进行 vs 遇到阻碍、扑空或突发状况）。"
+    "只创造本次权限允许的外部事实；主角是否参与、注意、委屈、吐槽或求助，仍由角色自己决定。"
     "协议键、枚举和来源坐标保持原样。"
 )
 

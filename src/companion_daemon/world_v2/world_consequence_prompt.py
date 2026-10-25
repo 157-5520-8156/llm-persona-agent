@@ -412,14 +412,16 @@ def compile_world_consequence_messages(
         guidance += (
             "This is a disturbance occasion; no_op remains valid. If proposing, at least one outcome "
             "must carry a durable external consequence through dynamic_life_direction, "
-            "objective_biographical_transition or a provisional NPC/place. Use the selected field's "
+            "objective_biographical_transition or a provisional NPC/place (including real setbacks, "
+            "unexpected obstacles, interpersonal friction or dilemmas). Use the selected field's "
             "complete schema, source declarations and privacy floor. The content and outcome remain yours.\n"
         )
     elif attention is not None:
         guidance += (
             "For this independent ordinary opening, environment_attention selects an offered external "
-            "setting, not protagonist presence, participation or observation. A quiet, unremarkable scene "
-            "is valid; it need not advance the last story, solve her agenda or create a problem.\n"
+            "setting, not protagonist presence, participation or observation. Vary tone across ordinary "
+            "moments, small snags, unexpected obstacles or lively encounters, and avoid repeating generic "
+            "janitorial/canteen maintenance noise from recent_life_texture.\n"
         )
     if temporal_publication is not None:
         guidance += (
