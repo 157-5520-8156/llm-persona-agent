@@ -30,7 +30,10 @@ import io
 import json
 import os
 import re
+import shutil
 import struct
+import subprocess
+import tempfile
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -59,12 +62,32 @@ _DEFAULT_HEADERS = {
     "Referer": "https://www.bilibili.com/",
 }
 _DANMAKU_PATTERN = re.compile(r'<d p="([^"]+)">([^<]+)</d>')
+_BILI_EMOJI_PATTERN = re.compile(r"\[([^\]]{1,24}_[^\]]{1,24})\]")
+_BILI_SHORT_EMOJI_PATTERN = re.compile(r"\[[^\]]{1,12}\]")
 _COVER_WIDTH = 512
 _FRAME_MAX = 3
 _TILE_W_DEFAULT = 480
 _TILE_H_DEFAULT = 270
 _MAX_IMAGE_BYTES = 1_500_000
+_MAX_VIDEO_DIRECT_BYTES = 4_200_000
+_MAX_VIDEO_RANGE_BYTES = 2_500_000
+_OMNI_MODEL_DEFAULT = "qwen3.5-omni-flash"
 _MAX_DEEP_INSPECT_PER_FETCH = 2
+_FFMPEG_FALLBACK_PATHS = (
+    "/opt/homebrew/bin/ffmpeg",
+    "/usr/local/bin/ffmpeg",
+    "/Users/geoff/homebrew/Caskroom/miniconda/base/envs/openface-env/bin/ffmpeg",
+)
+
+
+def _find_ffmpeg() -> str | None:
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    for path in _FFMPEG_FALLBACK_PATHS:
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    return None
 
 # Categories and subtitle cues where visual frames carry the core content even
 # when some text exists (aligned with dsh-bili-scroll's duty.md visual rules).
@@ -459,43 +482,62 @@ class BilibiliPopularAdapter:
             replies_task,
         )
 
-        # Stage 2: Only invoke vision on cropped 480x270 storyboard tiles when
-        # subtitle evidence is absent/insufficient or the video is visual/demo.
+        # Stage 2: When visual/audio inspection is needed, prefer real MP4 video+audio
+        # via Qwen-Omni (Plan C) so the character genuinely sees motion and hears BGM/voice,
+        # falling back to cropped 480x270 storyboard tiles when a video stream is unavailable.
         vision_summary = ""
         frame_timestamps: tuple[float, ...] = ()
+        used_omni_video = False
         need_frames = _should_inspect_frames(entry=entry, subtitle_excerpt=subtitle_excerpt)
+        is_mock = isinstance(getattr(self._http_client, "_transport", None), httpx.MockTransport)
         if self._vision_api_key and need_frames:
-            frames_task = (
-                self._fetch_cropped_videoshot_frames(
-                    bvid=bvid,
-                    cid=cid,
-                    duration=duration,
-                    num=_FRAME_MAX,
+            if not is_mock and isinstance(cid, int) and cid > 0:
+                video_data_url = await self._fetch_video_clip_data_url(bvid=bvid, cid=cid)
+                if video_data_url:
+                    vision_summary = await self._analyze_video_with_omni(
+                        title=title,
+                        owner_name=owner_name,
+                        desc=desc,
+                        video_data_url=video_data_url,
+                    )
+                    if vision_summary:
+                        used_omni_video = True
+            if not vision_summary:
+                frames_task = (
+                    self._fetch_cropped_videoshot_frames(
+                        bvid=bvid,
+                        cid=cid,
+                        duration=duration,
+                        num=_FRAME_MAX,
+                    )
+                    if isinstance(cid, int) and cid > 0
+                    else asyncio.sleep(0, result=())
                 )
-                if isinstance(cid, int) and cid > 0
-                else asyncio.sleep(0, result=())
-            )
-            cover_url = _cover_url(pic, width=_COVER_WIDTH) if pic else ""
-            cover_task = (
-                self._fetch_image_data_url(cover_url)
-                if cover_url.startswith("https://")
-                else asyncio.sleep(0, result=None)
-            )
-            cropped_frames, cover_data_url = await asyncio.gather(frames_task, cover_task)
-            frame_timestamps = tuple(f.got_sec for f in cropped_frames)
-            if cropped_frames or cover_data_url:
-                vision_summary = await self._analyze_video_with_vision(
-                    title=title,
-                    owner_name=owner_name,
-                    desc=desc,
-                    subtitle_excerpt=subtitle_excerpt,
-                    cover_data_url=cover_data_url,
-                    cropped_frames=cropped_frames,
-                    danmaku_highlights=danmaku_highlights,
-                    top_comments=top_comments,
+                cover_url = _cover_url(pic, width=_COVER_WIDTH) if pic else ""
+                cover_task = (
+                    self._fetch_image_data_url(cover_url)
+                    if cover_url.startswith("https://")
+                    else asyncio.sleep(0, result=None)
                 )
+                cropped_frames, cover_data_url = await asyncio.gather(frames_task, cover_task)
+                frame_timestamps = tuple(f.got_sec for f in cropped_frames)
+                if cropped_frames or cover_data_url:
+                    vision_summary = await self._analyze_video_with_vision(
+                        title=title,
+                        owner_name=owner_name,
+                        desc=desc,
+                        subtitle_excerpt=subtitle_excerpt,
+                        cover_data_url=cover_data_url,
+                        cropped_frames=cropped_frames,
+                        danmaku_highlights=danmaku_highlights,
+                        top_comments=top_comments,
+                    )
 
-        if subtitle_excerpt and vision_summary:
+        if used_omni_video and subtitle_excerpt:
+            mode = "subtitle+omni_video"
+        elif used_omni_video:
+            mode = "omni_video"
+        elif subtitle_excerpt and vision_summary:
             mode = "subtitle+frames"
         elif subtitle_excerpt:
             mode = "subtitle"
@@ -635,22 +677,164 @@ class BilibiliPopularAdapter:
             body = resp.json()
             replies = ((body.get("data") or {}).get("replies") or []) if isinstance(body, dict) else []
             out: list[str] = []
-            for item in replies[:4]:
+            for item in replies:
                 if not isinstance(item, dict):
                     continue
                 member = item.get("member")
                 content = item.get("content")
-                uname = _clean_text(member.get("uname") if isinstance(member, dict) else "", limit=32)
-                msg = _clean_text(content.get("message") if isinstance(content, dict) else "", limit=100)
-                like = item.get("like")
-                if not msg:
+                if not isinstance(content, dict):
                     continue
+                uname = _clean_text(member.get("uname") if isinstance(member, dict) else "", limit=32)
+                raw_msg = _clean_text(content.get("message"), limit=120)
+                if not raw_msg:
+                    continue
+                stripped_text = _BILI_SHORT_EMOJI_PATTERN.sub(
+                    "", _BILI_EMOJI_PATTERN.sub("", raw_msg)
+                ).strip()
+                pictures = content.get("pictures")
+                has_pictures = isinstance(pictures, list) and len(pictures) > 0
+                # Skip pure emoji comments ("[doge]") or short captions attached
+                # to unseen comment-section images ("大会员就是干这个的", "申请支援")
+                # that make no sense without viewing the commenter's image.
+                if not stripped_text:
+                    continue
+                if has_pictures and len(stripped_text) < 16:
+                    continue
+                if "大会员就是干这个" in raw_msg:
+                    continue
+                msg = _BILI_EMOJI_PATTERN.sub(r"(表情:\1)", raw_msg)
+                like = item.get("like")
                 like_str = f"(赞{like})" if isinstance(like, int) and like > 0 else ""
                 prefix = f"{uname}：" if uname else ""
                 out.append(f"{prefix}{msg}{like_str}")
+                if len(out) >= 4:
+                    break
             return tuple(out)
         except Exception:
             return ()
+
+    async def _fetch_video_clip_data_url(self, *, bvid: str, cid: int) -> str | None:
+        """Fetch a low-res 360p MP4 clip (video + audio) for Qwen-Omni inspection."""
+        try:
+            resp = await self._http_client.get(
+                (
+                    f"https://api.bilibili.com/x/player/playurl"
+                    f"?bvid={bvid}&cid={cid}&qn=16&fnval=1&platform=html5&high_quality=0"
+                ),
+                headers=_DEFAULT_HEADERS,
+                timeout=6.0,
+            )
+            if resp.status_code != 200:
+                return None
+            body = resp.json()
+            durls = ((body.get("data") or {}).get("durl") or []) if isinstance(body, dict) else []
+            if not durls or not isinstance(durls[0], dict):
+                return None
+            durl = _https(str(durls[0].get("url") or ""))
+            size = int(durls[0].get("size") or 0)
+            if not durl.startswith("https://"):
+                return None
+            if 0 < size <= _MAX_VIDEO_DIRECT_BYTES:
+                v_resp = await self._http_client.get(
+                    durl,
+                    headers=_DEFAULT_HEADERS,
+                    timeout=12.0,
+                )
+                if v_resp.status_code == 200 and v_resp.content:
+                    return "data:video/mp4;base64," + base64.b64encode(v_resp.content).decode("ascii")
+                return None
+            ffmpeg_bin = _find_ffmpeg()
+            if not ffmpeg_bin:
+                return None
+            v_resp = await self._http_client.get(
+                durl,
+                headers={**_DEFAULT_HEADERS, "Range": f"bytes=0-{_MAX_VIDEO_RANGE_BYTES}"},
+                timeout=12.0,
+            )
+            if v_resp.status_code not in (200, 206) or not v_resp.content:
+                return None
+            raw_slice = v_resp.content
+
+            def _remux(data: bytes) -> bytes | None:
+                with (
+                    tempfile.NamedTemporaryFile(suffix=".mp4") as f_in,
+                    tempfile.NamedTemporaryFile(suffix=".mp4") as f_out,
+                ):
+                    f_in.write(data)
+                    f_in.flush()
+                    subprocess.run(
+                        [ffmpeg_bin, "-y", "-i", f_in.name, "-t", "25", "-c", "copy", f_out.name],
+                        capture_output=True,
+                        timeout=8.0,
+                        check=False,
+                    )
+                    clip = f_out.read()
+                    return clip if len(clip) > 1024 else None
+
+            clip_bytes = await asyncio.to_thread(_remux, raw_slice)
+            if not clip_bytes:
+                return None
+            return "data:video/mp4;base64," + base64.b64encode(clip_bytes).decode("ascii")
+        except Exception:
+            return None
+
+    async def _analyze_video_with_omni(
+        self,
+        *,
+        title: str,
+        owner_name: str,
+        desc: str,
+        video_data_url: str,
+    ) -> str:
+        """Use Qwen-Omni on actual video+audio stream for objective audiovisual perception."""
+        prompt_lines = [
+            f"这是B站视频《{title}》（UP主：{owner_name}）。"
+            "请用150字以内如实描述你在这段视频里实际看到的画面（人物/角色形象、动作节奏、场景细节、画面内嵌文字或AI水印）"
+            "以及听到的声音（背景音乐风格、节奏、人声台词或唱词）。只描述客观看到的和听到的视听内容，不要猜测观众反应或总结笑点。",
+        ]
+        if desc:
+            prompt_lines.append(f"UP主简介参考：{desc}")
+        content: list[dict[str, Any]] = [
+            {"type": "video_url", "video_url": {"url": video_data_url}},
+            {"type": "text", "text": "\n".join(prompt_lines)},
+        ]
+        omni_model = os.environ.get("OMNI_MODEL", _OMNI_MODEL_DEFAULT)
+        try:
+            async with httpx.AsyncClient(timeout=28.0, trust_env=False) as omni_client:
+                async with omni_client.stream(
+                    "POST",
+                    f"{self._vision_base_url}/chat/completions",
+                    headers={"Authorization": f"Bearer {self._vision_api_key}"},
+                    json={
+                        "model": omni_model,
+                        "messages": [{"role": "user", "content": content}],
+                        "modalities": ["text"],
+                        "enable_thinking": False,
+                        "stream": True,
+                    },
+                ) as resp:
+                    if resp.status_code != 200:
+                        return ""
+                    chunks: list[str] = []
+                    async for line in resp.aiter_lines():
+                        if not line or not line.startswith("data: "):
+                            continue
+                        payload_str = line[6:].strip()
+                        if payload_str == "[DONE]":
+                            break
+                        try:
+                            obj = json.loads(payload_str)
+                        except json.JSONDecodeError:
+                            continue
+                        choices = obj.get("choices") or []
+                        if choices and isinstance(choices[0], dict):
+                            delta = choices[0].get("delta") or {}
+                            text_piece = delta.get("content")
+                            if isinstance(text_piece, str) and text_piece:
+                                chunks.append(text_piece)
+                    return _clean_text("".join(chunks), limit=450)
+        except Exception:
+            return ""
 
     async def _fetch_cropped_videoshot_frames(
         self,
@@ -793,17 +977,14 @@ class BilibiliPopularAdapter:
             content.append({"type": "image_url", "image_url": {"url": frame.data_url}})
         frame_labels = "、".join(f"第{i + 1}帧({int(f.got_sec)}s)" for i, f in enumerate(cropped_frames))
         prompt_lines = [
-            f"请结合512px封面与故事板裁出的单帧画面（{frame_labels or '无抽帧'}，每帧480x270）、时间轴弹幕及高赞评论，"
-            f"用120字以内具体说清这个B站视频《{title}》（UP主：{owner_name}）画面里实际拍了什么、哪个时间点发生了什么名场面/内嵌字幕内容，以及观众在笑什么或吐槽什么。不要套话。",
+            f"请结合512px封面与故事板裁出的单帧画面（{frame_labels or '无抽帧'}，每帧480x270），"
+            f"用120字以内如实描述这个B站视频《{title}》（UP主：{owner_name}）画面里实际拍了什么（人物/角色形象、场景、画面内嵌文字或水印）。"
+            "只描述客观看到的画面内容，不要根据静态抽帧猜测动作帧率，也不要脑补观众反应或总结笑点。",
         ]
         if desc:
-            prompt_lines.append(f"UP主简介：{desc}")
+            prompt_lines.append(f"UP主简介参考：{desc}")
         if subtitle_excerpt:
             prompt_lines.append(f"已知字幕片段：{subtitle_excerpt[:300]}")
-        if danmaku_highlights:
-            prompt_lines.append("时间轴弹幕：" + " / ".join(danmaku_highlights[:15]))
-        if top_comments:
-            prompt_lines.append("高赞评论：" + " ｜ ".join(top_comments[:4]))
         content.append({"type": "text", "text": "\n".join(prompt_lines)})
         try:
             async with httpx.AsyncClient(timeout=18.0, trust_env=False) as vl_client:
@@ -906,12 +1087,15 @@ def _source_item(
         if enrichment.subtitle_excerpt:
             summary_parts.append(f"字幕原文实读：{enrichment.subtitle_excerpt}")
         if enrichment.vision_summary:
-            ts_label = (
-                "（抽帧时刻：" + "/".join(f"{int(t)}s" for t in enrichment.frame_timestamps_sec) + "）"
-                if enrichment.frame_timestamps_sec
-                else ""
-            )
-            summary_parts.append(f"故事板抽帧实看{ts_label}：{enrichment.vision_summary}")
+            if "omni_video" in enrichment.inspection_mode:
+                summary_parts.append(f"视频画面与声音实看：{enrichment.vision_summary}")
+            else:
+                ts_label = (
+                    "（抽帧时刻：" + "/".join(f"{int(t)}s" for t in enrichment.frame_timestamps_sec) + "）"
+                    if enrichment.frame_timestamps_sec
+                    else ""
+                )
+                summary_parts.append(f"故事板抽帧实看{ts_label}：{enrichment.vision_summary}")
         if enrichment.danmaku_highlights:
             summary_parts.append(
                 "时间轴弹幕：" + " / ".join(enrichment.danmaku_highlights[:8])
