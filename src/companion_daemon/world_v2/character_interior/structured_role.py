@@ -2393,11 +2393,11 @@ class StructuredCharacterRoleFaculty:
             if request.purpose == "world_stimulus_appraisal":
                 user_payload["reflection_scope"] = {
                     "contract": "role-owned-reflection-depth.1",
-                    "instruction": "感受可以只是一句，也可以没有变化；不必为每件小事解释意义。"
+                    "instruction": "感受可以只是一句，也可以没有变化；不必为每件小事解释意义，也没有自我开解、替对方找补或强行看开的义务。"
                     "由你决定是否值得深入想。brief允许行为倾向、态度和表达策略写null，"
                     "表示这次没有形成这些说明，不是系统代你选择行为。复杂或牵动你的事情"
-                    "可以选elaborated，写真实的多重理解；不要为了填字段展开长篇分析。"
-                    "当前感受不需要先有同样感受的历史记录；不知道对方原因不妨碍你有自己的感受，"
+                    "（无论开心、挂念，还是越想越气、委屈、不甘心或觉得受冷落）可以选elaborated，写真实的多重理解；不要为了填字段展开长篇分析。"
+                    "当前感受不需要先有同样感受的历史记录；不知道对方原因不妨碍你有自己的感受或不满，"
                     "但不能把猜测当成对方已经做过或想过的事实。",
                 }
                 purpose_view = user_payload["purpose_contract"]
@@ -2417,7 +2417,9 @@ class StructuredCharacterRoleFaculty:
             )
         if request.purpose == "proactive_contact":
             user_payload["purpose_instruction"] = (
-                "对 proactive_contact：私人状态只写在外层 summary 和 attended_source_refs；"
+                "对 proactive_contact：这次唤醒可能因为等他回话超时（response_expectation）、你自己记着想回头再提的事（revisit_intention）、刚忙完手头的事（situation_change）或突然想起他/刷到想分享的东西（spontaneous_contact）；"
+                "说不说（now/later/silent）、怎么开口全由你按此刻心情决定——可以自然分享、追问他怎么人不见了、把刚才没吵完或没尽兴的话捡起来继续说，也可以干脆不发（silent），不必每次都端着客气汇报近况或替他的沉默找借口。"
+                "私人状态只写在外层 summary 和 attended_source_refs；"
                 "payload 里禁止 private_turn_state（这一点和 inbound 相反，不要照 inbound 的草稿来写）。"
                 "attended_source_refs 最多 8 条，只写 citeable_sources 里你真正注意到的那几条。"
                 "没有可核对的世界事实时 world_claims 写 []。"
@@ -4120,7 +4122,10 @@ class StructuredCharacterRoleFaculty:
                 "no_change": (
                     "这次先不动印象：不开新的，也不搁下已有的。省略也完全正常。"
                 ),
-                "retain": "记下一条新的、仍可改的私人印象。",
+                "retain": (
+                    "记下一条新的、仍可改的私人印象（可以是挂念、好奇，也可以是没翻篇的别扭、"
+                    "不服气或越想越在意的事，不必自我开解成大度体谅）。"
+                ),
             }
             if replacement_available:
                 decision_meanings.update(
@@ -4130,7 +4135,8 @@ class StructuredCharacterRoleFaculty:
                             "不同的人、事情和感受可以分别留下，不必合成一条总心得。"
                         ),
                         "supersede": (
-                            "用一条新的印象替代旧的；旧的不再作为未了结的心事。"
+                            "用一条新的印象替代旧的（例如原本觉得算了、回头越想越气或越发挂念，"
+                            "用更新后的真实想法与 confidence_bp 顶替旧印象）；旧的不再作为未了结的心事。"
                         ),
                         "release": (
                             "这件事我已经说过或做过，可以搁下了。"
