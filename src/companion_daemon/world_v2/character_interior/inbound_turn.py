@@ -376,7 +376,7 @@ class InboundTurnFaculty:
     # just before they finished, causing an avoidable second author call.
     # One second is the existing port's hard ceiling, not a mandatory pause;
     # ready/empty jobs still return immediately and the role owns Recall.
-    automatic_prefetch_join_seconds = 0.02
+    automatic_prefetch_join_seconds = 0.65
 
     def __init__(
         self,
@@ -1080,6 +1080,54 @@ class CharacterInteriorInboundDeliberationAdapter:
 
     async def recover_stream_head(self, request: ModelInput, failure_code: str) -> ModelOutput:
         return await self.recover(request, failure_code)
+
+    async def warm_inbound_snapshot(
+        self,
+        *,
+        trigger_ref: str,
+        cursor: ProjectionCursor,
+        logical_time: datetime,
+    ) -> InnerLifeSnapshot:
+        opportunity_identity = CausalOpportunityIdentity(
+            world_id=self._world_id,
+            actor_ref=self._actor_ref,
+            purpose=_PURPOSE,
+            source_refs=(trigger_ref,),
+            epoch=trigger_ref,
+        )
+        warm_digest = _digest(
+            {
+                "world_id": self._world_id,
+                "actor_ref": self._actor_ref,
+                "trigger_ref": trigger_ref,
+                "cursor": cursor.model_dump(mode="json"),
+            }
+        )
+        return await self._interior.project(
+            InteriorOpportunity(
+                inner_turn_ref="inbound-inner-turn:warm:" + warm_digest,
+                world_id=self._world_id,
+                actor_ref=self._actor_ref,
+                trigger_ref=trigger_ref,
+                cursor=cursor,
+                logical_time=logical_time,
+                purpose=_PURPOSE,
+                source_refs=(trigger_ref,),
+                capability_manifest=_InteriorCapabilityManifest(
+                    capability_ref="inbound-turn-capability:warm:" + warm_digest,
+                    capability_kind=_CAPABILITY_KIND,
+                    payload_json="{}",
+                    payload_hash=_sha256("{}"),
+                    source_refs=(trigger_ref,),
+                ),
+                opportunity_ref=opportunity_identity.opportunity_ref,
+                occasion=mint_user_message(
+                    source_event_ref=trigger_ref,
+                    created_at=logical_time,
+                    merge_key=trigger_ref,
+                ),
+            )
+        )
 
     async def _consider(
         self,

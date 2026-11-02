@@ -10,6 +10,7 @@ from datetime import timedelta
 import hashlib
 import json
 import logging
+import os
 from typing import Literal
 
 from .character_interior.audit import recorded_character_interior_model_result
@@ -88,6 +89,28 @@ class MemoryConsolidationRuntime(MemoryReviewLease):
             return candidate.updated_at + timedelta(hours=4)
         return None
 
+    def _cooldown_until(self, projection):
+        raw = os.environ.get("WORLD_V2_MEMORY_CONSOLIDATION_MIN_INTERVAL_SECONDS", "").strip()
+        if not raw:
+            return None
+        try:
+            min_interval = int(raw)
+        except ValueError:
+            return None
+        if min_interval <= 0:
+            return None
+        last_opened = next(
+            (
+                ref.logical_time
+                for ref in reversed(projection.committed_world_event_refs)
+                if ref.event_id.startswith("event:memory-consolidation:open:")
+            ),
+            None,
+        )
+        if last_opened is None:
+            return None
+        return last_opened + timedelta(seconds=min_interval)
+
     async def next_due(self, *, future_only=False):
         projection = await self._project()
         pending = [p for p in projection.trigger_processes
@@ -95,18 +118,30 @@ class MemoryConsolidationRuntime(MemoryReviewLease):
         if pending:
             return min(p.claim_lease.expires_at if p.claim_lease else projection.logical_time for p in pending)
         snapshot = await asyncio.to_thread(self._understandings.schedule, projection)
-        return min((at for c in projection.memory_candidates
-                    for at in (review_due(c), self._incremental_due(c, snapshot))
-                    if at is not None and (not future_only or projection.logical_time is None
-                                           or at > projection.logical_time)), default=None)
+        due = min((at for c in projection.memory_candidates
+                   for at in (review_due(c), self._incremental_due(c, snapshot))
+                   if at is not None and (not future_only or projection.logical_time is None
+                                          or at > projection.logical_time)), default=None)
+        if due is None:
+            return None
+        cooldown_until = self._cooldown_until(projection)
+        if cooldown_until is not None and cooldown_until > due:
+            return cooldown_until
+        return due
 
     async def _open(self, projection):
         now = projection.logical_time
+        cooldown_until = self._cooldown_until(projection)
+        if cooldown_until is not None and now is not None and now < cooldown_until:
+            return None
         snapshot = await asyncio.to_thread(self._understandings.schedule, projection)
         def due_at(c):
             return min((at for at in (review_due(c), self._incremental_due(c, snapshot)) if at is not None), default=None)
-        due = sorted((c for c in projection.memory_candidates if due_at(c) is not None and due_at(c) <= now),
-                     key=lambda c: (support_fingerprint(c) in snapshot.acknowledged, due_at(c), c.candidate_id))
+        if not any((d := due_at(c)) is not None and d <= now for c in projection.memory_candidates):
+            return None
+        coalesce_until = now + timedelta(hours=4)
+        due = sorted((c for c in projection.memory_candidates if (d := due_at(c)) is not None and d <= coalesce_until),
+                     key=lambda c: (due_at(c) > now, support_fingerprint(c) in snapshot.acknowledged, due_at(c), c.candidate_id))
         clocks = [e for e in projection.committed_world_event_refs if e.event_type == "ClockAdvanced"]
         if not due or not clocks:
             return None
@@ -138,7 +173,7 @@ class MemoryConsolidationRuntime(MemoryReviewLease):
         else:
             return None
         due = balanced_memory_batch([c for c in due if c.candidate_id in readable])
-        if not due:
+        if not due or not any((d := due_at(c)) is not None and d <= now for c in due):
             return None
         # Actual role cognition still resolves full receipt, source and privacy
         # authority. Idle polling needs only the incremental review schedule.
@@ -258,9 +293,9 @@ class MemoryConsolidationRuntime(MemoryReviewLease):
                                   for i, r in enumerate(job["context_readings"])],
                 understanding_instruction=(
                     "understandings=[]表示没有新的长期理解，完全正常。只有值得留下的才记录，最多3条。"
-                    "这是在既有长期账本上增量更新，不是另写一套：先比较standing_understandings。"
-                    "已有方面不再retain；只换一种说法而没有实质变化就不更新。"
+                    "先对照已有的standing_understandings：已有方面不再retain；只换一种说法而没有实质变化就不更新。"
                     "新证据补充或改变旧方面选revise，同一方面的重复记录选merge；retain仅用于此前没有的新方面。"
+                    "summary必须用自然平实的日常第一人称大白话直接写你记住的事与想法，绝不写成工作台账或进度汇报（禁止写『XX这条线更新/收口/淡出』『框架不变』『受用』『余温』等套话）。"
                     "不要通过另起名字重复旧观点，只有有意义的差异才分别留下。"
                     "可以把新经历与旧记忆连起来、加强或修正已有理解；选择revise更新同一方面，"
                     "merge只合并你认为同一方面的重复理解，不要把不同人和不同事情压成一条总心得。"
@@ -270,6 +305,7 @@ class MemoryConsolidationRuntime(MemoryReviewLease):
                     "理解与信心是你的，可犹豫、负面或改变；不代表新增外部经历或强制当前情绪。"
                     "不需要重复已有原文，更不能新增来源里没有的人物、行动、对话和结果。"
                     "事实摘录的subject_ref和speaker_ref表示主体与说话者，不要把对方的‘我’当成你自己的经历。"
+                    "涉及自主生活或NPC互动时，summary须保留具体NPC姓名或身份，不要把与NPC（如社团同学、室友）的约定或互动写成与聊天对象的事。"
                 ),
             )
         opportunity = _memory_opportunity(world_id=projection.world_id, actor_ref=self._actor_ref,

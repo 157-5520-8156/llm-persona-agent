@@ -38,10 +38,19 @@ class QQDelivery:
     async def send_sticker(
         self, recipient_id: str, *, sticker_id: str
     ) -> dict[str, object]:
-        """Send one catalogued standard QQ face segment."""
+        """Send one catalogued standard QQ face segment or meme sticker image."""
 
         if not self._uses_onebot():
             raise ValueError("official QQ C2C stickers are not installed")
+        if sticker_id.startswith("meme:"):
+            from companion_daemon.world_v2.sticker_vault import (
+                resolve_sticker_vault_image_path,
+            )
+
+            image_path = resolve_sticker_vault_image_path(sticker_id)
+            if image_path is None:
+                raise ValueError("QQ meme sticker token is not in the sticker vault")
+            return await self._onebot_target(recipient_id).send_image(image_path)
         prefix = "qq-face:"
         if not sticker_id.startswith(prefix):
             raise ValueError("QQ sticker token is not a standard face reference")

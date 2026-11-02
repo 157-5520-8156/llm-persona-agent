@@ -16,6 +16,7 @@ import time
 from urllib.parse import urlsplit
 
 from .dashboard_explorer_ui import EXPLORER_CSS, EXPLORER_HTML, EXPLORER_JS
+from .dashboard_presentation import DASHBOARD_CSS
 
 
 DASHBOARD_SESSION_COOKIE = "girl_agent_v2_dashboard_session"
@@ -112,27 +113,12 @@ UNAVAILABLE_HTML = """<!doctype html>
 DASHBOARD_HTML = """<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light"><title>沈知栀 · 生活现场</title><style>
-:root{font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;color:#263d36;background:#f4f4ed;font-synthesis:none;--ink:#263d36;--muted:#66786e;--line:#dce2d7;--line-strong:#c9d4c2;--paper:#fffef9;--paper-tint:#f7f9f2;--green:#315b4a;--green-deep:#234537;--soft:#e7eee2;--amber:#835e25;--shadow:0 6px 24px rgba(38,61,54,.045)}
-*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(circle at 50% 0,#e9efe2 0,#f4f4ed 520px);color:var(--ink)}button,select,input{font:inherit}button,a,select{-webkit-tap-highlight-color:transparent}button,select{cursor:pointer}button:focus-visible,a:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #a4b89a;outline-offset:3px}[hidden]{display:none!important}
-.bar{position:sticky;top:0;z-index:40;background:rgba(244,244,237,.86);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid rgba(201,212,194,.75);padding:16px 36px;display:flex;align-items:center;justify-content:space-between;gap:24px}.bar>*{max-width:1440px}.identity{display:flex;gap:14px;align-items:center}.monogram{display:grid;place-items:center;width:42px;height:42px;background:linear-gradient(145deg,#396855,#284c3d);color:#fffef2;border-radius:13px;font-size:21px;font-family:"Songti SC","STSong",serif;box-shadow:0 3px 10px rgba(49,91,74,.2)}.bar h1{font-size:18px;font-weight:600;letter-spacing:.04em;margin:0}.eyebrow{margin:4px 0 0;color:var(--muted);font-size:10px;letter-spacing:.18em;font-weight:500}.bar-actions{display:flex;align-items:center;gap:10px}.button{border:1px solid var(--line-strong);background:var(--paper);border-radius:10px;padding:8px 14px;font-size:12px;font-weight:500;color:var(--ink);box-shadow:0 1px 2px rgba(38,61,54,.04)}.button.primary{background:var(--green);color:#fffef9;border-color:var(--green);box-shadow:0 2px 6px rgba(49,91,74,.18)}.logout{margin:0}.logout button{background:transparent;border:1px solid transparent;border-radius:10px;padding:8px 12px;color:var(--muted);font:12px inherit;cursor:pointer}.logout button:hover{background:rgba(38,61,54,.05);color:var(--ink)}
-.status-bar{max-width:1400px;margin:18px auto 0;padding:10px 18px;background:rgba(255,254,249,.82);border:1px solid var(--line);border-radius:14px;display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:12px;color:var(--muted);box-shadow:0 2px 10px rgba(38,61,54,.025)}.status-meta{display:flex;align-items:center;gap:14px;flex-wrap:wrap}.capture-state{display:inline-flex;align-items:center;gap:7px;color:var(--green);background:var(--soft);padding:4px 11px;border-radius:999px;font-weight:500;font-size:11px}.capture-state:before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}.capture-state.error{color:#914b38;background:#f5e4dc}.header-clock{margin:0;font-variant-numeric:tabular-nums;color:var(--ink);font-weight:500}.readonly{letter-spacing:.03em;font-size:11px;color:var(--muted)}.capture-notice{max-width:1400px;margin:14px auto 0;padding:12px 18px;background:#f6ead7;border:1px solid #e8d5b4;border-radius:12px;color:#754e29;font-size:13px;line-height:1.6}.recording-tools{max-width:1400px;margin:14px auto 0;padding:10px 18px;background:#eef3e9;border:1px solid #d4dfd0;border-radius:12px;display:flex;align-items:center;gap:12px;font-size:12px;color:var(--ink)}.recording-tools select{background:var(--paper);border:1px solid var(--line-strong);border-radius:8px;padding:6px 28px 6px 12px;color:var(--ink)}
-.wrap{max-width:1440px;margin:auto;padding:18px 0 52px;display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:20px;align-items:stretch}.wrap>*{grid-column:1/-1}.status-bar,.capture-notice,.recording-tools,.wrap{width:calc(100% - 56px)}.panel,.section-card{background:var(--paper);border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);overflow:hidden;min-width:0}
-.now-panel{grid-column:1/-1;display:grid;grid-template-columns:minmax(210px,245px) minmax(0,1fr);padding:22px 26px;gap:24px;background:linear-gradient(125deg,#e5ede0 0%,#f5f8ef 48%,#fffef9 100%);border-color:#d1dccb;align-items:stretch}.now-panel>div:first-child{display:flex;flex-direction:column;justify-content:space-between;padding-right:18px;border-right:1px solid rgba(49,91,74,.12)}.hero-label{display:inline-block;font-size:10px;font-weight:600;letter-spacing:.16em;color:var(--green);background:rgba(49,91,74,.09);padding:4px 10px;border-radius:999px;margin:0 0 10px;width:fit-content}.now-panel h2{font-size:30px;font-weight:600;letter-spacing:.03em;margin:0;color:var(--green-deep)}.hero-note{margin:8px 0 0;color:var(--muted);line-height:1.7;font-size:12px}.world-clock{font-size:11.5px;color:var(--green-deep);background:rgba(255,254,249,.78);border:1px solid rgba(49,91,74,.14);border-radius:10px;padding:7px 11px;line-height:1.45;margin:14px 0 0;font-variant-numeric:tabular-nums;font-weight:500}.now-story{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-content:stretch}.now-line{min-width:0;background:rgba(255,254,249,.9);border:1px solid #d7e1d1;border-top:3px solid #7c9a82;border-radius:13px;padding:12px 15px;display:flex;flex-direction:column;justify-content:flex-start;box-shadow:0 2px 6px rgba(38,61,54,.025)}.now-line .k{display:block;font-size:10.5px;font-weight:600;letter-spacing:.04em;color:#556b5e}.now-line .v{display:block;margin-top:5px;font-size:13.5px;font-weight:550;color:var(--ink);line-height:1.5;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}.now-line .d{display:block;margin-top:5px;padding-top:5px;border-top:1px dashed #e5ece0;color:var(--muted);font-size:11.5px;line-height:1.5;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}.now-line.missing{border-top-color:#cbd4c5;background:rgba(250,251,246,.65)}.now-line.missing .v{color:var(--muted);font-size:12.5px;font-weight:400}
-#agendaPanel{grid-column:1/-1}.domain-details{grid-column:1/-1;min-width:0}.footer{grid-column:1/-1}
-.section-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:20px;align-items:stretch}.section-card{grid-column:span 4;padding:20px 22px;display:flex;flex-direction:column;min-height:0}.section-card[data-focus-area="life"],.section-card[data-focus-area="pending"]{grid-column:1/-1}.section-head{display:flex;justify-content:space-between;gap:12px;align-items:center;padding-bottom:12px;border-bottom:1px solid #eaefe5}.section-head h2{font-size:16.5px;font-weight:600;margin:0;letter-spacing:.02em;color:var(--green-deep)}.section-state{border-radius:999px;padding:4px 10px;background:var(--soft);color:var(--green);font-size:11px;font-weight:500;white-space:nowrap}.section-state[data-state="unavailable"],.section-state[data-state="degraded"],.section-state[data-state="stale"]{background:#f4e3d7;color:#91523a}.section-state[data-state="empty"],.section-state[data-state="disabled"]{background:#eeeee7;color:var(--muted)}.section-body{padding-top:14px;display:flex;flex-direction:column;gap:12px;flex:1;min-height:0}.section-note{font-size:12px;color:var(--muted);line-height:1.65;margin:0}.empty-state{padding:22px 16px;border:1px dashed var(--line-strong);border-radius:12px;background:#fafbf6;color:var(--muted);font-size:12.5px;line-height:1.7;text-align:center}.section-subtitle{font-size:12px;color:#4f6558;font-weight:600;letter-spacing:.04em;margin:0 0 10px}.life-columns{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:20px;align-items:stretch}.life-column{min-width:0;background:#fafbf6;border:1px solid #e6ece0;border-radius:14px;padding:16px;display:flex;flex-direction:column}.activity-list,.highlight-list{display:grid;gap:10px;max-height:380px;overflow-y:auto;padding-right:4px;align-content:start}.section-card[data-focus-area="pending"] .highlight-list{grid-template-columns:repeat(auto-fill,minmax(260px,1fr));max-height:240px}.highlight{padding:12px 14px;background:var(--paper);border:1px solid #e1e8dc;border-radius:12px;min-width:0;box-shadow:0 1px 3px rgba(38,61,54,.02)}.highlight-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.kind-tag{color:var(--green);background:var(--soft);padding:2px 7px;border-radius:5px;font-size:10px;font-weight:500;letter-spacing:.03em}.when{font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}.highlight h3{font-size:13.5px;line-height:1.5;font-weight:550;margin:6px 0 0;overflow-wrap:anywhere;color:var(--ink)}.status-pill{display:inline-block;margin-top:6px;border-radius:5px;padding:2px 7px;background:var(--soft);font-size:10px;font-weight:500;color:var(--green)}.highlight[data-status="planned"] .status-pill,.highlight[data-status="pending"] .status-pill{background:#f2ead8;color:var(--amber)}.highlight .detail{font-size:11.5px;line-height:1.65;color:var(--muted);margin:6px 0 0;overflow-wrap:anywhere}.chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}.chip{font-size:10px;line-height:1.35;color:#54675c;background:#eef2e9;border:1px solid #dfe6d9;border-radius:5px;padding:2px 6px;overflow-wrap:anywhere}a.chip-link{color:var(--green-deep);background:#e3efe6;border-color:#bdd3c2;text-decoration:none;font-weight:500}a.chip-link:hover{background:#d5e7da}.rel-bars{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px 12px;margin-top:9px;padding:9px 11px;background:#f7f9f2;border:1px solid #e3eadc;border-radius:9px}.rel-bar-row{display:flex;flex-direction:column;gap:3px}.rel-bar-head{display:flex;justify-content:space-between;font-size:10.5px;color:#4e6357;font-weight:500}.rel-bar-track{height:6px;background:#e2e9dc;border-radius:999px;overflow:hidden}.rel-bar-fill{height:100%;background:linear-gradient(90deg,#5b876c,#315b4a);border-radius:999px}.timeline{list-style:none;padding:0;margin:0;display:grid;gap:10px}.timeline li{display:grid;grid-template-columns:10px minmax(0,1fr);gap:12px;align-items:start}.timeline-dot{margin-top:18px;width:8px;height:8px;border-radius:50%;background:#6e8d77;box-shadow:0 0 0 3px #e6eee2}.timeline .highlight{background:var(--paper);border:1px solid #e3e9dd;padding:12px 14px;border-radius:12px}.timeline h3{margin-top:6px}.timeline-caption{font-size:11.5px;color:var(--muted);margin:0 0 10px;line-height:1.7}
-.metric-grid,.signal-grid,.notice-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:8px}.metric,.signal,.notice{padding:8px 11px;border:1px solid #e2e8dc;border-radius:10px;background:#fafbf6;min-width:0}.metric span,.signal span,.notice span{display:block;color:var(--muted);font-size:10px;line-height:1.35}.metric strong,.signal strong,.notice strong{display:block;margin-top:3px;font-size:16px;font-weight:600;color:var(--green-deep);font-variant-numeric:tabular-nums}.signal strong,.notice strong{font-size:12px;line-height:1.5;font-weight:500}.zero-metrics,.section-contract{border-top:1px dashed var(--line);padding-top:10px;margin-top:auto}.zero-metrics summary,.section-contract summary{font-size:11px;color:var(--muted);cursor:pointer;user-select:none}.zero-metrics .metric-grid{margin-top:8px}.truncated{font-size:11px;color:var(--muted);margin:auto 0 0;line-height:1.6}.operator-details{grid-column:1/-1;padding:16px 22px;background:var(--paper);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow)}.operator-details>summary{font-size:13px;font-weight:550;color:var(--ink);cursor:pointer;display:flex;align-items:center;justify-content:space-between}.operator-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;padding-top:16px}.operator-grid .section-card{grid-column:span 1;box-shadow:none;background:#fafbf6}.meta{display:grid;grid-template-columns:auto 1fr;gap:8px 18px;font-size:11.5px;color:var(--muted);margin:0}.meta dt{font-weight:500;color:var(--ink)}.meta dd{margin:0;overflow-wrap:anywhere}.footer{font-size:11.5px;color:var(--muted);display:flex;justify-content:space-between;gap:16px;line-height:1.8;padding:4px 6px}.footer a{color:inherit}
-#agendaPanel{grid-column:1/-1;display:grid;gap:20px}
-.worldline-card{background:linear-gradient(180deg,#f9fbf5 0%,#fffef9 100%);border-color:#cfdcc7}.worldline-meta{display:flex;flex-wrap:wrap;gap:10px;align-items:center;font-size:11.5px;color:var(--muted)}.worldline-pill{background:#e6efe2;color:var(--green-deep);border:1px solid #c7d8c0;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:500}.worldline-block-title{font-size:12px;font-weight:600;letter-spacing:.05em;color:var(--green-deep);margin:4px 0 8px;display:flex;align-items:center;gap:8px}.worldline-block-title:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--green)}.worldline-stages{display:grid;grid-template-columns:repeat(6,minmax(165px,1fr));gap:10px;overflow-x:auto;padding-bottom:4px}.wl-stage{background:var(--paper);border:1px solid #dce5d6;border-top:3px solid #8ba690;border-radius:12px;padding:11px 12px;display:flex;flex-direction:column;gap:5px;min-width:0;position:relative}.wl-stage[data-active="true"]{background:linear-gradient(180deg,#edf4e8 0%,#fffef9 100%);border-color:#9ab69e;border-top:3px solid var(--green);box-shadow:0 3px 10px rgba(49,91,74,.08)}.wl-stage-top{display:flex;justify-content:space-between;align-items:center;gap:6px;font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums}.wl-stage-step{font-weight:600;color:var(--green);letter-spacing:.04em}.wl-stage-now{background:var(--green);color:#fffef9;padding:1px 6px;border-radius:999px;font-size:9.5px;font-weight:500}.wl-stage h4{font-size:12.5px;font-weight:600;color:var(--ink);margin:0;line-height:1.45}.wl-stage p{font-size:11px;color:var(--muted);margin:0;line-height:1.55;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}.worldline-threads{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.wl-thread{background:var(--paper);border:1px solid #d8e2d2;border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;box-shadow:0 2px 8px rgba(38,61,54,.03)}.wl-thread-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}.wl-thread-tag{font-size:10px;font-weight:600;letter-spacing:.06em;color:var(--green);background:var(--soft);padding:2px 8px;border-radius:6px}.wl-thread h3{font-size:14.5px;font-weight:600;color:var(--green-deep);margin:0;line-height:1.45}.wl-situation{font-size:12px;color:var(--ink);line-height:1.65;margin:0}.wl-question{background:#f5f0e2;border:1px solid #e2d4b5;border-left:3px solid #b58d47;border-radius:9px;padding:8px 10px;font-size:11.5px;color:#684d27;line-height:1.55;margin:0}.wl-question strong{font-weight:600;color:#543c1b}.wl-dev-list{list-style:none;padding:0;margin:2px 0 0;display:grid;gap:6px}.wl-dev-list li{position:relative;padding:6px 9px 6px 22px;background:#f7f9f2;border:1px solid #e4ebde;border-radius:8px;font-size:11.5px;color:#395044;line-height:1.5}.wl-dev-list li:before{content:"↳";position:absolute;left:8px;top:5px;color:var(--green);font-weight:600}.worldline-bottom{display:grid;grid-template-columns:7fr 5fr;gap:14px}.wl-subpanel{background:#fafbf6;border:1px solid #e2eadc;border-radius:14px;padding:13px 15px;display:flex;flex-direction:column;gap:9px;min-width:0}.wl-opp-list,.wl-conv-list{display:grid;gap:8px;max-height:250px;overflow-y:auto;padding-right:4px}.wl-opp,.wl-conv{background:var(--paper);border:1px solid #dfe7d9;border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:4px}.wl-opp[data-status="已触发"]{border-left:3px solid var(--green)}.wl-opp[data-status="待触发"]{border-left:3px solid #b58d47;background:#fffdf7}.wl-conv{border-left:3px solid #5c7f91}.wl-opp-top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}.wl-opp h4,.wl-conv h4{font-size:12.5px;font-weight:600;color:var(--ink);margin:0;line-height:1.45}.wl-opp p,.wl-conv p{font-size:11.5px;color:var(--muted);margin:0;line-height:1.6}
-body.recording .operator-only{display:none!important}body.recording .bar{padding-top:22px}body.recording .wrap{gap:28px}body.recording .hero-note,body.recording .section-note{font-size:14px}body.recording .now-line .v{font-size:18px}body.recording .highlight h3{font-size:19px}body.recording .highlight .detail{font-size:14px}body.recording .kind-tag,body.recording .when,body.recording .chip,body.recording .status-pill{font-size:12px}body.recording .section-head h2{font-size:22px}body.recording[data-focus]:not([data-focus="all"]) .wrap,body.recording[data-focus]:not([data-focus="all"]) .section-grid{grid-template-columns:1fr}body.recording[data-focus]:not([data-focus="all"]) .section-card,body.recording[data-focus]:not([data-focus="all"]) .run-explorer,body.recording[data-focus]:not([data-focus="all"]) .evidence-explorer{grid-column:1/-1}body.recording[data-focus]:not([data-focus="all"]) .highlight-list{grid-template-columns:repeat(2,minmax(0,1fr));max-height:none}body.recording .section-card{padding:28px}
-.agenda-controls,.agenda-navigation{display:flex;align-items:center;flex-wrap:wrap;gap:8px}.agenda-controls{justify-content:space-between;background:#f6f8f1;border:1px solid #e1e8dc;border-radius:13px;padding:9px 13px}.agenda-range{font-size:13px;margin-left:6px;font-weight:600;color:var(--green-deep);font-variant-numeric:tabular-nums}.agenda-filter{font:inherit;font-size:12px;padding:6px 11px;border:1px solid var(--line-strong);border-radius:9px;background:var(--paper);color:var(--ink)}.agenda-layout{display:grid;grid-template-columns:minmax(0,1fr) 310px;border:1px solid var(--line-strong);border-radius:15px;overflow:hidden;background:var(--paper);box-shadow:0 2px 12px rgba(38,61,54,.03)}.agenda-scroll{overflow:auto;max-height:350px;background:#fffefa}.agenda-calendar{min-width:980px;display:grid;grid-template-columns:repeat(7,minmax(140px,1fr))}.agenda-day-heading{padding:8px 6px;font-size:11.5px;font-weight:600;text-align:center;border-bottom:1px solid var(--line);border-left:1px solid #e6ece0;background:#f4f7ee;color:var(--ink);white-space:nowrap;position:sticky;top:0;z-index:10}.agenda-day-heading:first-child,.agenda-windows:nth-child(8),.agenda-day:nth-child(15){border-left:0}.agenda-day-heading[data-today="true"]{color:var(--green-deep);font-weight:700;background:#dfece0;box-shadow:inset 0 -2px 0 var(--green)}.agenda-windows{padding:5px;display:flex;flex-direction:column;gap:4px;border-left:1px solid #e6ece0;border-bottom:1px solid var(--line);min-height:32px;max-height:74px;overflow-y:auto;background:#fafbf6}.agenda-window,.agenda-event{font:inherit;text-align:left;color:#2f4c3c;background:#e6efe2;border:1px solid #c2d5b9;border-left:3px solid #4e7a60;border-radius:7px;cursor:pointer;min-width:0;overflow:hidden;padding:5px 7px;display:flex;flex-direction:column;gap:2px;box-shadow:0 1px 2px rgba(38,61,54,.03)}.agenda-window{font-size:10px}.agenda-window[data-kind="outlook"]{color:#715332;background:#f6efe0;border:1px dashed #c7a76d;border-left:3px solid #b58d47}.agenda-window[data-kind="expectation"],.agenda-window[data-kind="revisit"],.agenda-window[data-kind="commitment"]{background:#efeaf5;border-color:#cfc2de;border-left:3px solid #7d6591;color:#584463}.agenda-window[data-kind="planning"],.agenda-event[data-kind="planning"]{background:#f5efe2;color:#6e542b;border-color:#dcd0b2;border-left:3px solid #a68346}.agenda-event[data-kind="experience"]{background:#e1eee4;color:#2c543d;border-color:#b6d1bc;border-left:3px solid #3c6e52}.agenda-event[data-kind="world"]{background:#e4eef2;color:#2f5264;border-color:#b8d1dc;border-left:3px solid #46748a}.agenda-event:hover,.agenda-event:focus-visible,.agenda-event[aria-pressed="true"]{box-shadow:0 3px 9px rgba(38,61,54,.11)}.agenda-event[aria-pressed="true"],.agenda-window[aria-pressed="true"]{outline:2px solid var(--green);outline-offset:-1px}.agenda-day{border-left:1px solid #e6ece0;padding:6px;display:flex;flex-direction:column;gap:5px;min-height:250px;background:linear-gradient(180deg,#fffefa 0,#fafbf6 100%)}.agenda-event{position:relative;width:100%;box-sizing:border-box;font-size:11px;flex-shrink:0}.agenda-event-meta{display:flex;align-items:center;justify-content:space-between;gap:4px}.agenda-entry-time{font-size:9.5px;font-weight:600;opacity:.85;line-height:1.1;font-variant-numeric:tabular-nums}.agenda-entry-kind{font-size:9px;opacity:.78;background:rgba(255,254,249,.65);padding:1px 4px;border-radius:4px}.agenda-entry-title{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;line-height:1.35;font-weight:500;overflow-wrap:anywhere}.agenda-detail{background:#f7f9f2;border-left:1px solid var(--line);padding:14px 16px;min-width:0;max-height:350px;overflow-y:auto;display:flex;flex-direction:column;gap:6px}.agenda-detail h3{font-size:14px;line-height:1.5;font-weight:600;color:var(--green-deep);overflow-wrap:anywhere;margin:2px 0}.agenda-detail-time{font-size:11px;line-height:1.5;color:var(--muted);font-variant-numeric:tabular-nums;margin:0}.agenda-detail-body{font-size:12px;line-height:1.7;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--ink);background:var(--paper);border:1px solid #e3e9dd;border-radius:10px;padding:10px 12px;margin:2px 0 0}.agenda-related{display:inline-flex;align-items:center;font:inherit;font-size:11px;font-weight:500;text-align:left;line-height:1.45;color:var(--green);background:#e7efe2;border:1px solid #c8d8c0;border-radius:8px;padding:5px 9px;margin-top:3px;text-decoration:none;cursor:pointer;width:fit-content}.agenda-warning{font-size:11.5px;color:#8d5c31;background:#f6ecdc;border:1px solid #e5d2b2;border-radius:8px;padding:7px 10px;margin:0}.agenda-event:focus-visible,.agenda-window:focus-visible{outline:3px solid #283f31;z-index:9}@media(max-width:1180px){.agenda-layout,.worldline-bottom,.worldline-threads{grid-template-columns:1fr}.agenda-detail{border-left:0;border-top:1px solid var(--line);max-height:none}.agenda-scroll{max-height:360px}.section-card{grid-column:span 6}.operator-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:960px){.now-panel{grid-template-columns:1fr;gap:20px}.now-panel>div:first-child{border-right:0;border-bottom:1px solid rgba(49,91,74,.12);padding-right:0;padding-bottom:16px}.now-story{grid-template-columns:repeat(2,minmax(0,1fr))}.life-columns{grid-template-columns:1fr}}@media(max-width:680px){.bar{padding:14px 18px;gap:8px}.status-bar,.capture-notice,.recording-tools,.wrap{width:calc(100% - 32px)}.bar h1{font-size:15px}.monogram{width:36px;height:36px}.eyebrow,.readonly{display:none}.status-bar{padding:10px 14px;align-items:start}.status-meta{align-items:start;flex-direction:column;gap:6px}.wrap{padding:16px 0 40px;gap:16px}.section-grid,.operator-grid,.life-columns,.now-story{grid-template-columns:1fr}.section-card{grid-column:1/-1;padding:20px}.now-panel{padding:20px}.bar-actions{gap:6px}.button{font-size:11px;padding:7px 10px}body.recording[data-focus]:not([data-focus="all"]) .highlight-list{grid-template-columns:1fr}.footer{flex-direction:column;gap:4px}}
-@media(prefers-reduced-motion:no-preference){.button,.now-line,.highlight{transition:background .15s,border-color .15s,transform .15s,box-shadow .15s}.button:hover{filter:brightness(.97)}.now-line:hover{border-color:#b6c8ae;transform:translateY(-1px)}}
 </style></head><body><header class="bar"><div class="identity"><span class="monogram" aria-hidden="true">栀</span><div><h1>沈知栀 · 生活现场</h1><p class="eyebrow">A LIFE, CONTINUING</p></div></div><div class="bar-actions"><button id="recordingToggle" class="button primary" type="button" aria-pressed="false">录制模式</button><form class="logout operator-only" method="post" action="/world-v2/dashboard/logout"><button type="submit">退出登录</button></form></div></header>
 <div class="status-bar"><div class="status-meta"><span id="captureState" class="capture-state" role="status">正在读取</span><p id="headerClock" class="header-clock"></p></div><span class="readonly">只读 · 不改变她的生活</span></div>
 <p id="captureNotice" class="capture-notice" role="status" hidden></p>
-<div id="recordingTools" class="recording-tools" hidden><label for="recordingFocus">聚焦区域</label><select id="recordingFocus"><option value="all">完整视图</option><option value="now">这一刻</option><option value="life">生活进展</option><option value="memory">记忆</option><option value="emotion">情绪</option><option value="relationships">关系</option><option value="pending">未完成事项</option></select><span>仅改变显示；同步状态始终保留 · Esc 退出</span></div>
-<main class="wrap"><section class="panel now-panel" data-focus-area="now"><div><p class="hero-label">THE PRESENT</p><h2>这一刻</h2><p class="hero-note">生活有自己的时间。<br>这里是已经记录下来的状态。</p><p id="worldClock" class="world-clock"></p></div><div id="nowStory" class="now-story"><p class="section-note">正在读取生活状态…</p></div></section><div id="sectionGrid" class="section-grid"></div><footer class="footer"><span>只展示经过授权的摘要，私密反思不在此呈现。</span><span class="operator-only">本机 owner 视图</span></footer></main>
-<script src="/world-v2/dashboard/app.js?v=world-v2-dashboard-home.1-ui7" defer></script></body></html>"""
+<div id="recordingTools" class="recording-tools" hidden><label for="recordingFocus">聚焦区域</label><select id="recordingFocus"><option value="all">完整视图</option><option value="now">这一刻</option><option value="life">生活日程</option><option value="story">故事脉络</option><option value="media">照片</option><option value="memory">记忆</option><option value="emotion">情绪</option><option value="relationships">关系</option><option value="pending">未完成事项</option></select><span>仅改变显示；同步状态始终保留 · Esc 退出</span></div>
+<main class="wrap"><div class="page-intro"><div><h2 id="viewTitle">她的生活，一眼展开。</h2><p id="viewDescription">一周的日常，正在生长的故事。点开一处，读得更近一点。</p></div><span class="page-index" id="viewIndex">LIFE / AT A GLANCE</span></div><section class="panel now-panel" data-focus-area="now"><div><p class="hero-label">THE PRESENT</p><h2>这一刻</h2><p class="hero-note">记录下来的这一刻</p><p id="worldClock" class="world-clock"></p></div><div id="nowStory" class="now-story"><p class="section-note">正在读取生活状态…</p></div></section><div id="sectionGrid" class="section-grid"></div><footer class="footer"><span>只展示经过授权的摘要，私密反思不在此呈现。</span><span class="operator-only">本机 owner 视图</span></footer></main>
+<dialog id="detailDrawer" class="detail-drawer" aria-labelledby="drawerTitle"><div class="drawer-head"><div><p class="eyebrow">LOOK A LITTLE CLOSER</p><h2 id="drawerTitle">记录详情</h2></div><button type="button" id="closeDrawer" class="button" aria-label="关闭详情">关闭 ×</button></div><div id="drawerBody" class="drawer-body"></div></dialog><script src="/world-v2/dashboard/app.js?v=world-v2-dashboard-home.1-ui10" defer></script></body></html>"""
 
 DASHBOARD_APP_JS = """'use strict';
 const DashboardHomeClient=(()=>{
@@ -353,14 +339,29 @@ const DashboardHomeClient=(()=>{
   }
   function highlightHeadline(item){
     const title=typeof item.title==='string'?item.title.trim():'';
-    const status=typeof item.status_label==='string'?item.status_label.trim():'';
+    const rawStatus=typeof item.status_label==='string'?item.status_label.trim():'';
+    const status=({decayed:'已消退',preview:'预览'})[rawStatus]||rawStatus;
     const kindLabel=typeof item.kind_label==='string'?item.kind_label.trim():'';
+    const detail=typeof item.detail==='string'?item.detail.trim():'';
     if(title==='character_media')return '生活随手拍与自拍';
     if(title==='life_share')return '日常分享随手拍';
     if(title==='一组表达')return '发给你的消息';
+    if(/^[a-z0-9_.:-]+$/i.test(title)&&detail)return detail;
     const generic=!title||title===kindLabel||GENERIC_TITLES[title]===true;
     if(generic)return status||title||kindLabel;
     return title;
+  }
+  function readableText(value){
+    if(typeof value!=='string')return {text:'',label:'',structured:false};
+    try{
+      const data=JSON.parse(value);
+      if(record(data)||Array.isArray(data)){
+        // A reported utterance keeps its original wording and attribution boundary.
+        if(record(data)&&data.kind==='npc_statement'&&data.claim_authority==='speaker_report_only'&&typeof data.utterance==='string')return {text:data.utterance,label:'人物说法 · 不代表已核实事实',structured:true};
+        return {text:'',label:'结构化记录',structured:true};
+      }
+    }catch(_e){}
+    return {text:value,label:'',structured:false};
   }
   function highlightView(item){
     if(!record(item)||item.privacy_class==='withhold'||item.kind==='private_impression')return null;
@@ -379,7 +380,8 @@ const DashboardHomeClient=(()=>{
       }
     }
     const headline=highlightHeadline(item);
-    const status=typeof item.status_label==='string'?item.status_label.trim():'';
+    const rawStatus=typeof item.status_label==='string'?item.status_label.trim():'';
+    const status=({decayed:'已消退',preview:'预览'})[rawStatus]||rawStatus;
     return{
       kind:typeof item.kind==='string'?item.kind:'',
       kindLabel:KIND_HEADINGS[item.kind]||item.kind_label||'记录',
@@ -491,8 +493,11 @@ const DashboardHomeClient=(()=>{
     const lines=[];
     const add=(label,sectionId,kinds,empty,unavailable)=>{
       const data=sectionData(snapshot,sectionId);
-      const items=newestFirst(visibleHighlights(snapshot,sectionId,kinds));
-      const view=items.find(v=>v.title&&!['进行中','一项活动','世界事件','已经落进世界的事'].includes(v.title))||items[0];
+      const terminal=new Set(['fulfilled','superseded','expired','cancelled','closed','withdrawn']);
+      const items=newestFirst(visibleHighlights(snapshot,sectionId,kinds)).filter(item=>!kinds.includes('response_expectation')||!terminal.has(item.statusCode));
+      const view=(kinds&&kinds.includes('relationship_state')&&items.find(v=>v.title==='和你'))
+        ||items.find(v=>v.title&&!['进行中','一项活动','世界事件','已经落进世界的事'].includes(v.title))
+        ||items[0];
       lines.push({
         label,
         text:view?[view.title,view.status].filter(Boolean).join(' · '):(data?empty:unavailable),
@@ -537,6 +542,60 @@ const DashboardHomeClient=(()=>{
     }
     return grouped;
   }
+  function weekCells(snapshot,filter='all',status='all'){
+    const view=agendaView(snapshot,filter,status);if(!view)return null;
+    const complete=Array.isArray(view.agenda.week_slots);
+    const slots=complete?view.agenda.week_slots:[];
+    return {...view,days:view.days.map(day=>({...day,cells:Array.from({length:12},(_,i)=>{
+      const hour=i*2;
+      const segments=day.timed.filter(segment=>Math.floor(segment.minute/120)*2===hour);
+      const slot=slots.find(item=>item.date===day.date&&item.hour===hour);
+      const count=slot?(filter==='all'?slot.known_count:Number(slot.kinds?.[filter]||0)):0;
+      const known=status==='all'&&complete?count:null;
+      return {date:day.date,hour,segments,known,labels:status==='all'&&['all','planning'].includes(filter)?slot?.labels||[]:[],firstPage:slot?.first_page,lastPage:slot?.last_page,
+        state:segments.length?'loaded':known>0?'unloaded':(complete&&status==='all'||!view.agenda.truncated)?'empty':'unknown'};
+    })}))};
+  }
+  function storyGraph(worldline,threadIndex=0){
+    if(!record(worldline)||!Array.isArray(worldline.threads)||!worldline.threads[threadIndex])return {nodes:[],edges:[],width:900,height:300};
+    const thread=worldline.threads[threadIndex];
+    const all=Array.isArray(worldline.opportunities)?worldline.opportunities:[];
+    const identity=(opp,index)=>Number.isInteger(opp.index)?opp.index:index;
+    const indexed=new Map(all.map((opp,index)=>[identity(opp,index),opp]));
+    const selected=new Set(all.map((opp,index)=>({opp,index:identity(opp,index)})).filter(({opp})=>Array.isArray(opp.thread_indexes)?opp.thread_indexes.includes(threadIndex):(opp.thread_titles||[]).includes(thread.title)).map(({index})=>index));
+    const includeParents=id=>{for(const parent of indexed.get(id)?.after_indexes||[]){if(indexed.has(parent)&&!selected.has(parent)){selected.add(parent);includeParents(parent);}}};
+    [...selected].forEach(includeParents);
+    const layers=new Map();
+    for(let pass=0;pass<=selected.size;pass++){
+      let changed=false;
+      for(const id of selected){
+        if(layers.has(id))continue;
+        const parents=(indexed.get(id).after_indexes||[]).filter(p=>selected.has(p));
+        if(parents.every(p=>layers.has(p))){layers.set(id,parents.length?Math.max(...parents.map(p=>layers.get(p)))+1:0);changed=true;}
+      }
+      if(!changed)break;
+    }
+    const nodes=[{id:'thread',x:24,y:34,w:214,h:100,label:'故事主线',title:thread.title,text:thread.situation,tone:'root'}];
+    const edges=[];
+    const notes=Array.isArray(thread.developments)?thread.developments:[];
+    const explicit=all.some(opp=>Array.isArray(opp.after_indexes));
+    if(explicit){nodes[0].label='故事主线 · '+notes.length+' 条进展摘要';nodes[0].text=[thread.situation,...notes].join('\\n\\n');}
+    (explicit?[]:notes).forEach((text,index)=>{
+      const id='note-'+index;nodes.push({id,x:290,y:34+index*118,w:214,h:94,label:'进展摘要 '+String(index+1).padStart(2,'0'),title:text,text,tone:'record'});
+      edges.push({from:'thread',to:id,kind:'membership'});
+    });
+    if(thread.open_question){nodes.push({id:'question',x:24,y:190,w:214,h:118,label:'尚未揭晓',title:thread.open_question,text:thread.open_question,tone:'question'});edges.push({from:'thread',to:'question',kind:'membership'});}
+    const rowCounts=new Map();
+    [...selected].sort((a,b)=>(Date.parse(indexed.get(a).opens_at)||0)-(Date.parse(indexed.get(b).opens_at)||0)||a-b).forEach(id=>{
+      const opp=indexed.get(id),layer=layers.get(id)||0,row=rowCounts.get(layer)||0;rowCounts.set(layer,row+1);
+      const tone=opp.status==='已落实为世界事件'?'realized':opp.status==='候选窗口已结束'?'ended':'candidate';
+      nodes.push({id:'opp-'+id,x:(explicit?290:560)+layer*248,y:34+row*118,w:214,h:94,label:opp.status||'未来候选',title:opp.title,text:opp.detail,tone,when:opp.opens_at,endsAt:opp.closes_at,threads:opp.thread_titles||[]});
+      const parents=(opp.after_indexes||[]).filter(parent=>selected.has(parent));
+      for(const parent of parents)if(layers.has(parent)&&layers.has(id)&&layers.get(parent)<layers.get(id))edges.push({from:'opp-'+parent,to:'opp-'+id,kind:'prerequisite'});
+      if(!parents.length)edges.push({from:'thread',to:'opp-'+id,kind:'membership'});
+    });
+    return {nodes,edges,width:Math.max(840,...nodes.map(n=>n.x+n.w+28)),height:Math.max(350,...nodes.map(n=>n.y+n.h+30))};
+  }
   return{
     DATA_URL,
     ROOM_MESSAGE_TYPE,
@@ -548,6 +607,9 @@ const DashboardHomeClient=(()=>{
     formatClock,
     formatRelative,
     highlightView,
+    weekCells,
+    storyGraph,
+    readableText,
     lifeView,
     agendaView,
     agendaKey,
@@ -579,11 +641,17 @@ if(typeof document!=='undefined'){
   let recording=false;
   let focusArea='all';
   let previousScroll=0;
-  const focusAreas=['all','now','mechanism','evidence','life','memory','emotion','relationships','pending'];
+  const disclosureState=new Map();
+  function rememberDisclosure(node,key){
+    node.open=disclosureState.get(key)||false;
+    node.addEventListener('toggle',()=>disclosureState.set(key,node.open));
+    return node;
+  }
+  const focusAreas=['all','now','mechanism','evidence','life','story','media','memory','emotion','relationships','pending'];
   let displayPaused=false;
   let resumePending=false;
   const explorer=DashboardExplorer.mount(DashboardHomeClient,{
-    onShowEvidence(){if(recording){focusArea='evidence';applyPresentation();}},
+    onShowEvidence(){if(recording){focusArea='evidence';applyPresentation();}byId('explorerDetails').open=true;byId('explorerDetails').scrollIntoView?.({block:'start'});},
   });
   const element=(tag,className,text)=>{
     const node=document.createElement(tag);
@@ -591,6 +659,36 @@ if(typeof document!=='undefined'){
     if(text!==undefined)node.textContent=String(text);
     return node;
   };
+  const svgEl=(tag,attrs={},text)=>{
+    const node=document.createElementNS('http://www.w3.org/2000/svg',tag);
+    for(const [k,v] of Object.entries(attrs)){if(v!==undefined&&v!==null)node.setAttribute(k,String(v));}
+    if(text!==undefined)node.textContent=String(text);
+    return node;
+  };
+  let closeLightbox=null;
+  function openLightbox(imgUrl,title,metaText){
+    if(closeLightbox)closeLightbox();
+    const previousFocus=document.activeElement;
+    const previousOverflow=document.body.style.overflow;
+    const backdrop=element('div','lightbox-backdrop');
+    const modal=element('div','lightbox-modal');
+    modal.setAttribute('role','dialog');modal.setAttribute('aria-modal','true');modal.setAttribute('aria-label','照片预览');
+    const img=element('img','');img.src=imgUrl;img.alt=title||'照片预览';
+    const closeBtn=element('button','button','关闭预览 ✕');closeBtn.type='button';
+    const caption=element('div','lightbox-caption');
+    const textWrap=element('div','');
+    textWrap.append(element('strong','',title||'她的随手拍'),element('div','',metaText||''));
+    caption.append(textWrap,closeBtn);
+    modal.append(img,caption);
+    backdrop.appendChild(modal);
+    const close=()=>{if(backdrop.parentNode)backdrop.parentNode.removeChild(backdrop);document.body.style.overflow=previousOverflow;closeLightbox=null;previousFocus?.focus({preventScroll:true});};
+    closeLightbox=close;
+    modal.addEventListener('keydown',e=>{if(e.key==='Tab'){e.preventDefault();closeBtn.focus();}});
+    closeBtn.addEventListener('click',e=>{e.stopPropagation();close();});
+    backdrop.addEventListener('click',close);
+    modal.addEventListener('click',e=>e.stopPropagation());
+    document.body.appendChild(backdrop);document.body.style.overflow='hidden';closeBtn.focus();
+  }
   function setCaptureState(state){
     const badge=byId('captureState');
     if(badge){
@@ -608,21 +706,30 @@ if(typeof document!=='undefined'){
   function applyPresentation(){
     document.body.classList.toggle('recording',recording);
     document.body.dataset.focus=focusArea;
+    document.body.dataset.view='single';
     byId('recordingToggle').textContent=recording?'退出录制模式':'录制模式';
     byId('recordingToggle').setAttribute('aria-pressed',String(recording));
     byId('recordingTools').hidden=!recording;
     byId('recordingFocus').value=focusArea;
     for(const panel of document.querySelectorAll('[data-focus-area]')){
       panel.hidden=recording&&focusArea!=='all'&&panel.dataset.focusArea!==focusArea;
+      if(recording&&panel.tagName.toLowerCase()==='details'&&(!panel.hidden))panel.open=true;
     }
-    const domains=byId('domainDetails');
-    if(recording&&['memory','emotion','relationships','pending'].includes(focusArea))domains.open=true;
-    domains.hidden=recording&&['now','mechanism','evidence','life'].includes(focusArea);
+    const domains=byId('domainDetails');domains.open=true;
+    domains.hidden=recording&&['now','mechanism','evidence','life','story'].includes(focusArea);
+    byId('agendaPanel').hidden=recording&&!['all','life'].includes(focusArea);
+    byId('storyPanel').hidden=recording&&!['all','story'].includes(focusArea);
+    const explorerDetails=byId('explorerDetails');
+    if(explorerDetails){explorerDetails.hidden=recording&&!['all','mechanism','evidence'].includes(focusArea);if(recording&&['mechanism','evidence'].includes(focusArea))explorerDetails.open=true;}
+    const cost=byId('costMeterDetails');if(cost)cost.hidden=recording;
   }
+  byId('costMeterDetails')?.addEventListener('toggle',()=>{if(byId('costMeterDetails').open)loadCostMeter();});
+  const recordingOpenState=new Map();
   function toggleRecording(){
+    if(!recording){for(const panel of document.querySelectorAll('[data-focus-area]'))if(panel.tagName.toLowerCase()==='details')recordingOpenState.set(panel.dataset.focusArea,panel.open);}
     if(!recording)previousScroll=window.scrollY||0;
     recording=!recording;
-    if(!recording)focusArea='all';
+    if(!recording){focusArea='all';for(const panel of document.querySelectorAll('[data-focus-area]'))if(recordingOpenState.has(panel.dataset.focusArea))panel.open=recordingOpenState.get(panel.dataset.focusArea);recordingOpenState.clear();}
     applyPresentation();
     window.scrollTo(0,recording?0:previousScroll);
   }
@@ -642,7 +749,7 @@ if(typeof document!=='undefined'){
     applyPresentation();
   });
   document.addEventListener('keydown',event=>{
-    if(event.key==='Escape'&&recording)toggleRecording();
+    if(event.key==='Escape'){if(byId('detailDrawer')?.open){event.preventDefault();closeDetails();return;}if(closeLightbox){event.preventDefault();closeLightbox();}else if(recording)toggleRecording();}
   });
   function renderClocks(snapshot){
     const clock=DashboardHomeClient.formatClock(snapshot.logical_time);
@@ -650,15 +757,69 @@ if(typeof document!=='undefined'){
     byId('headerClock').textContent=clock?'世界时间 '+clock:'世界时间暂无记录';
     byId('worldClock').textContent=generated?'快照生成于 '+generated:'';
   }
+  function orbitClock(value){
+    const date=new Date(value||'');
+    if(Number.isNaN(date.getTime()))return element('p','section-note','世界时间暂无记录');
+    const clock=DashboardHomeClient.formatClock(value).split(' ').pop();
+    const [hours,minutes]=clock.split(':').map(Number);
+    const fraction=(hours*60+minutes)/1440;
+    const svg=svgEl('svg',{viewBox:'0 0 240 240',class:'day-orbit',role:'img','aria-label':'世界时间 '+clock+'，24 小时刻度'});
+    svg.appendChild(svgEl('title',{},'世界时间 '+clock+' · 北京时间'));
+    svg.appendChild(svgEl('circle',{cx:120,cy:120,r:103,fill:'none',stroke:'currentColor','stroke-opacity':'.08'}));
+    svg.appendChild(svgEl('circle',{cx:120,cy:120,r:83,fill:'none',stroke:'currentColor','stroke-opacity':'.16','stroke-width':2}));
+    svg.appendChild(svgEl('circle',{cx:120,cy:120,r:83,fill:'none',stroke:'#7be2c9','stroke-width':2,'stroke-linecap':'round',pathLength:100,'stroke-dasharray':(fraction*100)+' 100',transform:'rotate(-90 120 120)',class:'orbit-progress'}));
+    for(let i=0;i<48;i++){
+      const angle=i*Math.PI/24-Math.PI/2,r=i%2===0?94:97;
+      svg.appendChild(svgEl('line',{x1:120+r*Math.cos(angle),y1:120+r*Math.sin(angle),x2:120+100*Math.cos(angle),y2:120+100*Math.sin(angle),stroke:'currentColor','stroke-opacity':i%12===0?'.7':'.25'}));
+    }
+    const angle=fraction*Math.PI*2-Math.PI/2;
+    svg.appendChild(svgEl('circle',{cx:120+83*Math.cos(angle),cy:120+83*Math.sin(angle),r:4,fill:'#9af4d9',class:'orbit-dot'}));
+    svg.appendChild(svgEl('text',{x:120,y:108,'text-anchor':'middle',class:'orbit-caption'},'WORLD TIME'));
+    svg.appendChild(svgEl('text',{x:120,y:144,'text-anchor':'middle',class:'orbit-time'},clock));
+    svg.appendChild(svgEl('text',{x:120,y:167,'text-anchor':'middle',class:'orbit-zone'},'北京时间 · 24h'));
+    return svg;
+  }
+  function appendReading(parent,value,{className='detail',key='',limit=240}={}){
+    const reading=DashboardHomeClient.readableText(value);
+    if(reading.label)parent.appendChild(element('span','reading-label',reading.label));
+    if(reading.text){
+      if(reading.text.length>limit){
+        const more=rememberDisclosure(element('details','prose-disclosure'),key||value);
+        const summary=element('summary','');
+        summary.append(element('span','prose-preview',reading.text.slice(0,limit)+'…'),element('span','prose-toggle','展开全文'));
+        more.append(summary,element('p',className,reading.text));parent.appendChild(more);
+      }else parent.appendChild(element('p',className,reading.text));
+    }else if(reading.structured){
+      const details=rememberDisclosure(element('details','structured-detail'),key||value);
+      details.append(element('summary','','查看记录原文'),element('pre','',value));parent.appendChild(details);
+    }
+  }
   function renderNowStory(snapshot){
-    const parent=byId('nowStory');
-    parent.replaceChildren();
-    for(const line of DashboardHomeClient.nowStory(snapshot)){
-      const card=element('div','now-line'+(line.missing?' missing':''));
-      card.append(element('span','k',line.label),element('span','v',line.text));
-      if(line.detail&&!line.text.startsWith(line.detail)&&line.label!=='活动与计划')card.appendChild(element('span','d',line.detail));
-      // Full intention belongs to the life card; the present stays a summary.
-      parent.appendChild(card);
+    const parent=byId('nowStory');parent.replaceChildren();
+    const lines=DashboardHomeClient.nowStory(snapshot);
+    const line=lines[0];
+    const main=element('div','present-main');
+    main.appendChild(element('span','present-label',line.missing?'ACTIVITY / 暂无记录':'ACTIVITY / 活动与计划'));
+    appendReading(main,line.text,{className:'present-title',key:'present-title',limit:190});
+    if(line.detail&&line.detail!==line.text){
+      const detail=rememberDisclosure(element('details','now-context-detail'),'present-intention');
+      detail.appendChild(element('summary','','原本的打算'));appendReading(detail,line.detail,{key:'present-intention-text'});main.appendChild(detail);
+    }
+    const context=element('div','now-context');
+    for(const index of [1,2]){
+      const item=lines[index];
+      const details=rememberDisclosure(element('details'),'present-'+index);
+      details.appendChild(element('summary','',item.label+(item.missing?' · 暂无记录':'')));
+      appendReading(details,item.detail||item.text,{key:'present-context-'+index});context.appendChild(details);
+    }
+    main.appendChild(context);
+    parent.append(main,orbitClock(snapshot.logical_time));
+    // A terminal expectation belongs in history, never in a "currently waiting" tile.
+    const expectation=lines[5];
+    if(!expectation.missing){
+      const note=element('details','present-expectation');
+      rememberDisclosure(note,'present-expectation');note.appendChild(element('summary','','互动期待 · '+expectation.text));
+      if(expectation.detail)appendReading(note,expectation.detail);parent.appendChild(note);
     }
   }
   function empty(parent,text){parent.appendChild(element('p','empty-state',text));}
@@ -682,19 +843,38 @@ if(typeof document!=='undefined'){
       parent.appendChild(details);
     }
   }
+  const HIDDEN_CHIP_LABELS=new Set(['正文状态','表达段数','已送达段数','可展示段数','允许引用','可供角色模型查看','事项说明','提取强度','强化次数','候选结果','观察','参与者','照片画面','把握度','重要度','已知特征','环境结果正文','经历来源','角色回应']);
   function appendHighlight(parent,view){
-    const card=element('article','highlight');
+    let extraClass=' scrapbook-note';
+    if(view.kind==='expression_plan'||view.kind==='response_expectation'||view.kind==='expectation_assessment'||view.kind==='revisit_intention')extraClass=' chat-bubble-card';
+    else if(view.kind==='external_perception'||view.kind==='external_signal')extraClass=' bili-card';
+    const card=element('article','highlight'+extraClass);
     card.dataset.status=view.statusCode;
     const top=element('div','highlight-top');
     top.appendChild(element('span','kind-tag',view.kindLabel));
     if(view.when)top.appendChild(element('time','when',DashboardHomeClient.formatClock(view.when)));
-    card.append(top,element('h3','',view.title||view.kindLabel));
+    const repeatsDetail=view.detail&&(view.detail===view.title||(view.title.endsWith('…')&&view.detail.startsWith(view.title.slice(0,-1))));
+    card.appendChild(top);
+    if(!repeatsDetail&&!(view.kind==='expression_plan'&&view.title==='发给你的消息')){
+      const title=DashboardHomeClient.readableText(view.title);
+      if(title.structured)appendReading(card,view.title,{key:'title-'+view.kind+'-'+view.when});
+      else if(title.text)card.appendChild(element('h3','',title.text));
+    }
     if(view.status)card.appendChild(element('span','status-pill',view.status));
-    if(view.detail&&view.detail!==view.title)card.appendChild(element('p','detail',view.detail));
+    if(view.detail)appendReading(card,view.detail,{key:'highlight-'+view.kind+'-'+view.when+'-'+view.title});
     if(view.values.length){
+      const imgVal=view.values.find(v=>v.label==='照片画面'&&v.text.startsWith('/world-v2/dashboard/media/'));
+      if(imgVal){
+        const frame=element('div','polaroid-frame');
+        frame.style.maxWidth='240px';frame.style.marginTop='8px';frame.style.cursor='pointer';
+        const img=element('img','');img.src=imgVal.text;img.alt=view.detail||view.title||'照片';img.loading='lazy';
+        frame.appendChild(img);
+        frame.addEventListener('click',()=>openLightbox(imgVal.text,view.detail||view.title,view.when?DashboardHomeClient.formatClock(view.when):''));
+        card.appendChild(frame);
+      }
       const relDims=new Set(['信任','亲近','尊重','可靠','相互','修复信心']);
       const barValues=view.kind==='relationship_state'?view.values.filter(v=>relDims.has(v.label)&&/%$/.test(v.text)):[];
-      const otherValues=barValues.length?view.values.filter(v=>!barValues.includes(v)):view.values;
+      const otherValues=view.values.filter(v=>!barValues.includes(v)&&!HIDDEN_CHIP_LABELS.has(v.label));
       if(barValues.length){
         const bars=element('div','rel-bars');
         for(const item of barValues){
@@ -714,7 +894,7 @@ if(typeof document!=='undefined'){
         const chips=element('div','chips');
         for(const value of otherValues){
           if(value.text.startsWith('http://')||value.text.startsWith('https://')){
-            const link=element('a','chip chip-link',value.label+' · 打开原链接 ↗');
+            const link=element('a','chip chip-link','▶ 打开原视频 / 原链接 ↗');
             link.href=value.text;link.target='_blank';link.rel='noopener noreferrer';
             chips.appendChild(link);
           }else{
@@ -726,19 +906,36 @@ if(typeof document!=='undefined'){
     }
     parent.appendChild(card);
   }
-  function appendHighlights(parent,views){
+  function appendHighlights(parent,views,{limit=4,key=''}={}){
     const list=element('div','highlight-list');
-    for(const view of views)appendHighlight(list,view);
+    for(const view of views.slice(0,limit))appendHighlight(list,view);
     parent.appendChild(list);
+    if(views.length>limit){
+      const details=rememberDisclosure(element('details','more-records'),key||JSON.stringify(views.map(v=>[v.kind,v.title,v.when])));
+      details.appendChild(element('summary','','还有 '+(views.length-limit)+' 条记录'));
+      const rest=element('div','highlight-list');
+      for(const view of views.slice(limit))appendHighlight(rest,view);
+      details.appendChild(rest);parent.appendChild(details);
+    }
   }
   function sectionCard(title,section,area){
-    const card=element('section','section-card');
+    const collapsible=area&&!['life','story'].includes(area);
+    const card=element(collapsible?'details':'section','section-card');
+    if(collapsible)rememberDisclosure(card,'panel-'+area);
     if(area)card.dataset.focusArea=area;
-    const head=element('div','section-head');
+    const head=element(collapsible?'summary':'div','section-head');
     const state=section&&typeof section.state==='string'?section.state:'unavailable';
+    card.dataset.state=state;
     const badge=element('span','section-state',DashboardHomeClient.stateLabel(state));
     badge.dataset.state=state;
     head.append(element('h2','',title),badge);
+    if(collapsible){
+      const kinds={relationships:['relationship_state'],emotion:['affect_episode'],recent:['experience'],memory:['memory_candidate','fact']};
+      const highlights=(section?.data?.highlights||[]).filter(item=>!kinds[area]||kinds[area].includes(item.kind)).map(DashboardHomeClient.highlightView).filter(Boolean);
+      const first=(area==='relationships'&&highlights.find(item=>item.title==='和你'))||highlights[0];
+      const value=area==='relationships'?(first?.status||'查看关系'):area==='emotion'?(first?.title||'查看感受'):area==='media'?'照片与声音':area==='pending'?'事项与回访':area==='recent'?'最近留下的片段':area==='memory'?'记住的片段':'点开查看';
+      head.appendChild(element('span','card-preview',DashboardHomeClient.readableText(value).text.slice(0,48)));
+    }
     const body=element('div','section-body');
     card.append(head,body);
     return {card,body};
@@ -748,246 +945,460 @@ if(typeof document!=='undefined'){
       parent.appendChild(element('p','truncated','这里只展示部分摘要，未列出的记录不代表不存在。'));
     }
   }
-  let agendaWeek=null,agendaPage=null,agendaFilter='all',agendaStatus='all',agendaSelection=null;
+  let agendaWeek=null,agendaPage=null,agendaFilter='all',agendaStatus='all',agendaSelection=null,galSelection=null,galRouteFilter='0';
   const agendaLabels={planning:'客观规划',experience:'角色经历',plan:'角色计划',world:'实际事件',outlook:'命运候选',commitment:'约定',revisit:'再次考虑',expectation:'回应期待'};
-  function renderWorldline(snapshot){
-    const section=snapshot.sections.overview_life;
-    const data=isRecord(section&&section.data)?section.data:null;
-    const agenda=data&&isRecord(data.agenda)?data.agenda:null;
-    const wl=agenda&&isRecord(agenda.worldline)?agenda.worldline:null;
-    if(!wl)return null;
-    const {card,body}=sectionCard('命运世界线 · 剧情走向与未来分支',{state:'ready'},'life');
-    card.classList.add('worldline-card');
-    const meta=element('div','worldline-meta');
-    meta.append(
-      element('span','worldline-pill','下次重审 '+DashboardHomeClient.formatClock(wl.review_at)),
-      element('span','worldline-pill','中期视野至 '+DashboardHomeClient.formatClock(wl.horizon_end)),
-      element('span','','由命运机制根据她的真实经历、学业日历与周围人际生成的长期剧情走向与世界线收束记录。')
-    );
-    body.appendChild(meta);
-    if(Array.isArray(wl.stages)&&wl.stages.length){
-      body.appendChild(element('h3','worldline-block-title','学年长线章节（'+wl.stages.length+' 个阶段演进）'));
-      const stageRow=element('div','worldline-stages');
-      wl.stages.forEach((st,idx)=>{
-        const box=element('div','wl-stage');
-        const active=st.status==='当前阶段';
-        if(active)box.dataset.active='true';
-        const top=element('div','wl-stage-top');
-        top.appendChild(element('span','wl-stage-step','CH.0'+(idx+1)));
-        if(active)top.appendChild(element('span','wl-stage-now','当前阶段'));
-        else top.appendChild(element('span','',String(st.starts_on||'').slice(5,10)+' ~ '+String(st.ends_on||'').slice(5,10)));
-        box.append(top,element('h4','',st.title),element('p','',st.situation));
-        const chips=element('div','chips');
-        chips.appendChild(element('span','chip',String(st.starts_on||'')+' — '+String(st.ends_on||'')));
-        if(!active&&st.status)chips.appendChild(element('span','chip',st.status));
-        box.appendChild(chips);
-        stageRow.appendChild(box);
-      });
-      body.appendChild(stageRow);
+  function photoCaption(item){
+    // Historical summaries can contain a serialized envelope. Do not expose
+    // protocol payloads as prose or infer a caption from their arbitrary fields.
+    for(const text of [item.detail,item.title]){
+      if(!text)continue;
+      try{if(isRecord(JSON.parse(text))||Array.isArray(JSON.parse(text)))continue;}catch(_e){}
+      return text;
     }
-    if(Array.isArray(wl.threads)&&wl.threads.length){
-      body.appendChild(element('h3','worldline-block-title','当前并行的三条核心故事线与未来分支'));
-      const threadsGrid=element('div','worldline-threads');
-      wl.threads.forEach((th,idx)=>{
-        const box=element('article','wl-thread');
-        const head=element('div','wl-thread-head');
-        head.append(element('span','wl-thread-tag','WORLDLINE 0'+(idx+1)),element('span','status-pill',th.status||'进行中'));
-        box.append(head,element('h3','',th.title),element('p','wl-situation',th.situation));
-        const q=element('p','wl-question');
-        q.append(element('strong','','悬念与走向：'),document.createTextNode(String(th.open_question||'')));
-        box.appendChild(q);
-        if(Array.isArray(th.developments)&&th.developments.length){
-          const list=element('ul','wl-dev-list');
-          for(const dev of th.developments)list.appendChild(element('li','',dev));
-          box.appendChild(list);
+    return '照片记录';
+  }
+  function renderVisualStudio(snapshot){
+    const studio=element('div','visual-studio');
+    // 1. 6-Axis Relationship Hexagonal Radar Chart
+    const relSec=snapshot.sections.relationship_lifecycle;
+    const relCard=sectionCard('你们之间',relSec,'relationships');
+    relCard.card.className='section-card studio-card';
+    const relStates=DashboardHomeClient.visibleHighlights(snapshot,'relationship_lifecycle',['relationship_state']);
+    const relSignals=DashboardHomeClient.visibleHighlights(snapshot,'relationship_lifecycle',['relationship_signal','relationship_adjustment']).sort((a,b)=>(Date.parse(b.when)||0)-(Date.parse(a.when)||0));
+    const relState=relStates.find(r=>r.title==='和你')||relStates[0];
+    const dims=['信任','亲近','尊重','可靠','相互','修复信心'];
+    const dimMap={};
+    if(relState&&Array.isArray(relState.values)){
+      for(const v of relState.values){
+        if(dims.includes(v.label)&&/%$/.test(v.text))dimMap[v.label]=Math.max(0,Math.min(100,parseFloat(v.text)||0));
+      }
+    }
+    if(dims.every(d=>Object.hasOwn(dimMap,d))){
+      const wrap=element('div','radar-wrap');
+      const svg=svgEl('svg',{viewBox:'0 0 220 200',class:'radar-svg','aria-label':'六维关系雷达图'});
+      const cx=110,cy=102,R=64;
+      const pt=(idx,ratio)=>{
+        const ang=(-Math.PI/2)+(idx*Math.PI/3);
+        return [Math.round((cx+R*ratio*Math.cos(ang))*10)/10,Math.round((cy+R*ratio*Math.sin(ang))*10)/10];
+      };
+      for(const level of [0.33,0.66,1]){
+        const pts=dims.map((_,i)=>pt(i,level).join(',')).join(' ');
+        svg.appendChild(svgEl('polygon',{points:pts,fill:level===1?'rgba(45,94,76,0.05)':'none',stroke:'rgba(30,53,47,0.13)','stroke-width':'1'}));
+      }
+      dims.forEach((d,i)=>{
+        const [ex,ey]=pt(i,1);
+        svg.appendChild(svgEl('line',{x1:cx,y1:cy,x2:ex,y2:ey,stroke:'rgba(30,53,47,0.13)','stroke-width':'1'}));
+        const [lx,ly]=pt(i,1.27);
+        const val=dimMap[d];
+        const lbl=svgEl('text',{x:lx,y:ly+4,'text-anchor':'middle','font-size':'10.5','font-weight':'700',fill:'#1e352f'},d+' '+val+'%');
+        svg.appendChild(lbl);
+      });
+      const valPts=dims.map((d,i)=>pt(i,(dimMap[d])/100).join(',')).join(' ');
+      svg.appendChild(svgEl('polygon',{points:valPts,fill:'rgba(53,107,87,0.26)',stroke:'#2d5e4c','stroke-width':'2.4'}));
+      dims.forEach((d,i)=>{
+        const [vx,vy]=pt(i,(dimMap[d])/100);
+        svg.appendChild(svgEl('circle',{cx:vx,cy:vy,r:'4',fill:'#1a9d8a',stroke:'#fffef9','stroke-width':'1.6'}));
+      });
+      const summaryCol=element('div','radar-summary');
+      const hero=element('div','stage-hero');
+      hero.append(element('span','','当前关系阶段'),element('strong','',relState.status||relState.title||'熟悉中'));
+      summaryCol.appendChild(hero);
+      const bars=element('div','rel-bars');
+      for(const d of dims){
+        const pct=(dimMap[d])+'%';
+        const row=element('div','rel-bar-row');
+        const head=element('div','rel-bar-head');
+        head.append(element('span','',d),element('span','',pct));
+        const track=element('div','rel-bar-track');
+        const fill=element('div','rel-bar-fill');fill.style.width=pct;
+        track.appendChild(fill);row.append(head,track);bars.appendChild(row);
+      }
+      summaryCol.appendChild(element('p','section-note','六项已记录的关系维度，不作好坏评分。'));
+      const dimensions=rememberDisclosure(element('details','relationship-dimensions'),'relationship-dimensions');dimensions.append(element('summary','','查看六项维度'),bars);summaryCol.appendChild(dimensions);
+      wrap.append(svg,summaryCol);
+      relCard.body.appendChild(wrap);
+      if(relSignals.length){
+        const sigWrap=element('div','mood-gauges');
+        for(const sig of relSignals.slice(0,1)){
+          const item=element('div','appraisal-quote');
+          const top=element('div','mood-row-top');
+          top.append(element('strong','',sig.kindLabel),element('span','when',sig.when?DashboardHomeClient.formatClock(sig.when):''));
+          item.append(top,element('div','',sig.detail||sig.title));
+          sigWrap.appendChild(item);
         }
-        threadsGrid.appendChild(box);
-      });
-      body.appendChild(threadsGrid);
-    }
-    if((Array.isArray(wl.opportunities)&&wl.opportunities.length)||(Array.isArray(wl.convergences)&&wl.convergences.length)){
-      const bottom=element('div','worldline-bottom');
-      const oppCol=element('div','wl-subpanel');
-      oppCol.appendChild(element('h3','worldline-block-title','近期命运契机与触发窗口'));
-      const oppList=element('div','wl-opp-list');
-      for(const opp of Array.isArray(wl.opportunities)?wl.opportunities:[]){
-        const item=element('div','wl-opp');
-        item.dataset.status=opp.status;
-        const top=element('div','wl-opp-top');
-        const left=element('div','chips');left.style.marginTop='0';
-        left.append(element('span','kind-tag',opp.lane_label),element('span','status-pill',opp.status));
-        for(const t of Array.isArray(opp.thread_titles)?opp.thread_titles:[])left.appendChild(element('span','chip',t));
-        top.append(left,element('span','when',DashboardHomeClient.formatClock(opp.opens_at)+' — '+DashboardHomeClient.formatClock(opp.closes_at)));
-        item.append(top,element('h4','',opp.title),element('p','',opp.detail));
-        oppList.appendChild(item);
+        relCard.body.appendChild(sigWrap);
+        if(relSignals.length>1){const more=rememberDisclosure(element('details','more-records'),'relationship-signals');more.appendChild(element('summary','','更早的关系记录 · '+(relSignals.length-1)));appendHighlights(more,relSignals.slice(1));relCard.body.appendChild(more);}
       }
-      oppCol.appendChild(oppList);
-      const convCol=element('div','wl-subpanel');
-      convCol.appendChild(element('h3','worldline-block-title','世界线收束与变动响应'));
-      const convList=element('div','wl-conv-list');
-      for(const conv of Array.isArray(wl.convergences)?wl.convergences:[]){
-        const item=element('div','wl-conv');
-        const top=element('div','wl-opp-top');
-        const left=element('div','chips');left.style.marginTop='0';
-        left.appendChild(element('span','kind-tag',conv.decision_label));
-        for(const t of Array.isArray(conv.thread_titles)?conv.thread_titles:[])left.appendChild(element('span','chip',t));
-        top.appendChild(left);
-        item.append(top,element('p','',conv.reason));
-        convList.appendChild(item);
-      }
-      convCol.appendChild(convList);
-      bottom.append(oppCol,convCol);
-      body.appendChild(bottom);
+    }else{
+      if(relState)appendHighlight(relCard.body,relState);
+      else empty(relCard.body,(!relSec||relSec.state==='unavailable')?'关系记录暂时不可用。':'暂无可展示的关系记录。');
     }
-    return card;
+    studio.appendChild(relCard.card);
+
+    // 2. Mood Spectrum & Inner Appraisals
+    const emoSec=snapshot.sections.facts_memory_inner;
+    const emoCard=sectionCard('心情与感受',emoSec,'emotion');
+    emoCard.card.className='section-card studio-card';
+    const affects=DashboardHomeClient.visibleHighlights(snapshot,'facts_memory_inner',['affect_episode','affect_baseline']);
+    const appraisals=DashboardHomeClient.visibleHighlights(snapshot,'facts_memory_inner',['appraisal']).sort((a,b)=>(Date.parse(b.when)||0)-(Date.parse(a.when)||0)).slice(0,2);
+    const resources=DashboardHomeClient.visibleHighlights(snapshot,'overview_life',['resource','attention']).slice(0,3);
+    if(affects.length||appraisals.length||resources.length){
+      const gauges=element('div','mood-gauges');
+      for(const af of affects.slice(0,2)){
+        const row=element('div','mood-row');
+        const top=element('div','mood-row-top');
+        top.append(element('strong','',af.title),element('span','status-pill',af.status||'当前心境'));
+        row.appendChild(top);
+        const percentage=af.values.find(v=>/^(?:100|[0-9]{1,2})(?:[.][0-9]+)?%$/.test(v.text));
+        if(percentage){
+          const bar=element('div','mood-bar');bar.setAttribute('aria-hidden','true');
+          const fill=element('div','mood-bar-fill');fill.style.width=percentage.text;bar.appendChild(fill);row.appendChild(bar);
+          row.appendChild(element('span','when',percentage.label+' '+percentage.text));
+        }
+        gauges.appendChild(row);
+      }
+      for(const res of resources){
+        const pctVal=(res.values||[]).find(v=>/^(?:100|[0-9]{1,2})(?:[.][0-9]+)?%$/.test(v.text));
+        const row=element('div','mood-row');
+        const top=element('div','mood-row-top');
+        top.append(element('strong','',res.title+' ('+(res.status||res.kindLabel)+')'),element('span','when',pctVal?pctVal.text:(res.when?DashboardHomeClient.formatClock(res.when):'')));
+        row.appendChild(top);
+        if(pctVal){
+          const bar=element('div','mood-bar');bar.setAttribute('aria-hidden','true');
+          const fill=element('div','mood-bar-fill');fill.style.width=pctVal.text;bar.appendChild(fill);row.appendChild(bar);
+        }
+        gauges.appendChild(row);
+      }
+      emoCard.body.appendChild(gauges);
+      if(appraisals.length){
+        const notesGrid=element('div','mood-gauges');
+        for(const ap of appraisals){
+          const q=element('div','appraisal-quote');
+          const head=element('div','mood-row-top');
+          head.append(element('strong','','当时的处境判断'),element('span','when',ap.when?DashboardHomeClient.formatClock(ap.when):''));
+          q.appendChild(head);appendReading(q,ap.detail||ap.title,{key:'appraisal-'+ap.when,limit:110});
+          notesGrid.appendChild(q);
+        }
+        emoCard.body.appendChild(notesGrid);
+      }
+    }else{
+      empty(emoCard.body,(!emoSec||emoSec.state==='unavailable')?'情绪记录暂时不可用。':'暂无可展示的情绪与处境判断。');
+    }
+    studio.appendChild(emoCard.card);
+
+    // 3. Scattered Overlapping Polaroid Desk & 35mm Film Strip
+    const mediaSec=snapshot.sections.perception_media;
+    const mediaCard=sectionCard('留住的瞬间',mediaSec,'media');
+    mediaCard.card.className='section-card studio-card';
+    const mediaItems=DashboardHomeClient.visibleHighlights(snapshot,'perception_media',['media_delivery','media_preview','media_inspection','photo_candidate']).sort((a,b)=>(Date.parse(b.when)||0)-(Date.parse(a.when)||0));
+    const seenUrls=new Set();
+    const photos=[];
+    const notes=[];
+    for(const item of mediaItems){
+      const imgVal=(item.values||[]).find(v=>v.label==='照片画面'&&v.text.startsWith('/world-v2/dashboard/media/'));
+      if(imgVal){
+        if(seenUrls.has(imgVal.text))continue;
+        seenUrls.add(imgVal.text);
+        photos.push({item,url:imgVal.text});
+      }else if(item.detail||item.title){
+        notes.push(item);
+      }
+    }
+    if(photos.length||notes.length){
+      if(photos.length){
+        const desk=element('div','polaroid-desk');
+        const grid=element('div','gallery-grid');
+        for(const {item,url} of photos){
+          const pCard=element('button','polaroid-card');pCard.type='button';
+          pCard.appendChild(element('span','polaroid-tape',''));
+          const frame=element('div','polaroid-frame');
+          const img=element('img','');img.src=url;img.alt=photoCaption(item);img.loading='lazy';
+          const badge=element('span','polaroid-badge',item.kind==='media_delivery'?'已发给你':(item.status||'拍立得成片'));
+          frame.append(img,badge);
+          const caption=photoCaption(item);
+          const timeStr=item.when?DashboardHomeClient.formatClock(item.when):'';
+          const meta=element('div','polaroid-meta');
+          meta.append(element('span','','INSTANT · '+item.kindLabel),element('span','',timeStr));
+          pCard.append(frame,element('p','polaroid-caption',caption),meta);
+          pCard.addEventListener('click',()=>openLightbox(url,caption,item.kindLabel+(timeStr?' · '+timeStr:'')));
+          grid.appendChild(pCard);
+        }
+        desk.appendChild(grid);
+        mediaCard.body.appendChild(desk);
+      }
+      if(notes.length){
+        const strip=element('div','film-strip');
+        notes.slice(0,4).forEach((n,idx)=>{
+          const frame=element('div','film-frame');
+          const head=element('div','film-frame-head');
+          head.append(element('span','','35MM · 0'+(idx+1)+'A'),element('span','',n.when?DashboardHomeClient.formatClock(n.when):n.kindLabel));
+          frame.append(head,element('div','',n.detail||n.title));
+          strip.appendChild(frame);
+        });
+        const more=rememberDisclosure(element('details','more-records'),'media-notes');
+        more.append(element('summary','','拍摄相关记录 · '+notes.length),strip);mediaCard.body.appendChild(more);
+      }
+    }else{
+      empty(mediaCard.body,(!mediaSec||mediaSec.state==='unavailable')?'相册记录暂时不可用。':'本次快照暂无可展示的照片。');
+    }
+    const voiceHost=element('div','mood-gauges');
+    mediaCard.body.appendChild(voiceHost);
+    if(typeof fetch==='function'){
+      fetch('/world-v2/dashboard/voice',{credentials:'same-origin'}).then(r=>r&&r.ok?r.json():null).then(data=>{
+        const vNotes=data&&Array.isArray(data.voice_notes)?data.voice_notes:[];
+        if(!vNotes.length)return;
+        voiceHost.replaceChildren();
+        for(const vn of vNotes.slice(0,6)){
+          const box=element('div','appraisal-quote');
+          const top=element('div','mood-row-top');
+          const dur=vn.duration_seconds?(' · '+vn.duration_seconds+'s'):'';
+
+          top.append(element('strong','','语音片段'+dur),element('span','when',vn.created_at?DashboardHomeClient.formatClock(vn.created_at):''));
+          const textLine=element('div','','「'+(vn.text||'')+'」');
+          const audio=element('audio','');
+          audio.controls=true;audio.preload='none';audio.src=vn.audio_url;
+          audio.style.cssText='width:100%;height:32px;margin-top:6px;border-radius:999px;';
+          box.append(top,textLine,audio);
+          voiceHost.appendChild(box);
+        }
+      }).catch(()=>{});
+    }
+    studio.appendChild(mediaCard.card);
+    sectionGrid.appendChild(studio);
+  }
+  let drawerOrigin=null;
+  function closeDetails(){
+    const dialog=byId('detailDrawer');if(!dialog)return;
+    if(dialog.close)dialog.close();else dialog.open=false;
+    drawerOrigin?.focus?.({preventScroll:true});drawerOrigin=null;
+  }
+  function openDetails(title,content,snapshot=null){
+    const dialog=byId('detailDrawer');if(!dialog)return;
+    if(!dialog.open)drawerOrigin=document.activeElement;
+    byId('drawerTitle').textContent=title;
+    byId('drawerBody').replaceChildren(content);
+    if(snapshot?.logical_time)byId('drawerBody').appendChild(element('p','drawer-provenance','记录快照 · '+DashboardHomeClient.formatClock(snapshot.logical_time)));
+    if(!dialog.open){if(dialog.showModal)dialog.showModal();else dialog.open=true;}
+    byId('closeDrawer')?.focus?.({preventScroll:true});
+  }
+  byId('closeDrawer')?.addEventListener('click',closeDetails);
+  byId('detailDrawer')?.addEventListener('cancel',event=>{event.preventDefault();closeDetails();});
+  byId('detailDrawer')?.addEventListener('click',event=>{if(event.target===byId('detailDrawer'))closeDetails();});
+  let pendingAgendaCell=null;
+  function changeAgendaPage(page){
+    if(displayPaused||loading)return;
+    agendaPage=page;snapshotEtag=null;loadDashboardHome();
+  }
+  function showAgendaEntry(snapshot,entry,entries){
+    agendaSelection=DashboardHomeClient.agendaKey(entry);
+    const content=element('div','agenda-reading');
+    content.append(element('span','kind-tag',agendaLabels[entry.kind]),element('span','status-pill',entry.status),element('p','agenda-detail-time',DashboardHomeClient.formatClock(entry.starts_at)+' — '+DashboardHomeClient.formatClock(entry.ends_at)));
+    appendReading(content,entry.detail||entry.title,{className:'agenda-detail-body',key:'agenda-reading-'+entry.index,limit:1000});
+    if(entry.content_state==='unavailable')content.appendChild(element('p','section-note','原文暂时不可用，未根据标题补写。'));
+    if(entry.truncated)content.appendChild(element('p','section-note','当前正文为节选。'));
+    const related=(entry.related||[]).map(index=>entries.find(item=>item.index===index)).filter(Boolean);
+    if(related.length){
+      content.appendChild(element('h3','section-subtitle','已记录的关联'));
+      for(const item of related){const button=element('button','agenda-related',agendaLabels[item.kind]+' · '+item.title);button.type='button';button.addEventListener('click',()=>showAgendaEntry(snapshot,item,entries));content.appendChild(button);}
+    }
+    openDetails(DashboardHomeClient.readableText(entry.title).text||'记录详情',content,snapshot);
+  }
+  function showAgendaCell(snapshot,cell,view){
+    const content=element('div','agenda-cell-reading');
+    const entries=cell.segments.map(segment=>segment.entry);
+    content.appendChild(element('p','section-note',cell.known===null?'当前页载入 '+entries.length+' 条；分页未覆盖的记录不代表不存在。':'此时段已知 '+cell.known+' 条记录，当前筛选载入 '+entries.length+' 条。'));
+    for(const entry of entries){
+      const button=element('button','drawer-record');button.type='button';button.dataset.agendaIndex=String(entry.index);
+      button.append(element('span','when',DashboardHomeClient.formatClock(entry.starts_at)+' · '+agendaLabels[entry.kind]),element('strong','',DashboardHomeClient.readableText(entry.title).text||'结构化记录'),element('span','status-pill',entry.status));
+      button.addEventListener('click',()=>showAgendaEntry(snapshot,entry,view.entries));content.appendChild(button);
+    }
+    if(!entries.length)empty(content,cell.state==='empty'?'当前范围没有符合筛选条件的记录。':'这段记录尚未载入当前页。');
+    if(Number.isInteger(cell.firstPage)&&Number.isInteger(cell.lastPage)){
+      const pages=element('div','drawer-page-controls');
+      const current=Number(view.agenda.page||0);
+      for(const [label,target] of [['读取这一段',cell.firstPage],['上一页',Math.max(cell.firstPage,current-1)],['下一页',Math.min(cell.lastPage,current+1)]]){
+        const button=element('button','button',label);button.type='button';button.disabled=displayPaused||target===current;
+        button.addEventListener('click',()=>{if(displayPaused||loading)return;pendingAgendaCell={date:cell.date,hour:cell.hour};button.disabled=true;changeAgendaPage(target);});pages.appendChild(button);
+      }
+      content.append(pages,element('p','section-note','详情页 '+(current+1)+' / '+view.agenda.page_count+' · 每次只读取一个完整快照'));
+    }
+    openDetails(cell.date+' · '+String(cell.hour).padStart(2,'0')+':00—'+String(cell.hour+2).padStart(2,'0')+':00',content,snapshot);
   }
   function renderAgenda(body,snapshot){
-    const view=DashboardHomeClient.agendaView(snapshot,agendaFilter,agendaStatus);
+    const view=DashboardHomeClient.weekCells(snapshot,agendaFilter,agendaStatus);
     if(!view){empty(body,'周课表暂时不可用。');return;}
-    const {agenda,entries,shown,days}=view;
-    if(!shown.some(entry=>DashboardHomeClient.agendaKey(entry)===agendaSelection))agendaSelection=shown[0]?DashboardHomeClient.agendaKey(shown[0]):null;
+    const {agenda,entries,days}=view;
     const controls=element('div','agenda-controls');
     const navigation=element('div','agenda-navigation');
-    const changeWeek=value=>{
-      if(displayPaused||loading)return;
-      agendaWeek=value;agendaPage=null;agendaSelection=null;snapshotEtag=null;loadDashboardHome();
-    };
     for(const [label,offset] of [['上一周',-7],['本周',null],['下一周',7]]){
-      const button=element('button','button',label);button.type='button';
-      button.disabled=displayPaused;
-      button.addEventListener('click',()=>changeWeek(offset===null?null:DashboardHomeClient.shiftWeek(agenda.week_start,offset)));
-      navigation.appendChild(button);
+      const button=element('button','button',label);button.type='button';button.disabled=displayPaused;
+      button.addEventListener('click',()=>{if(displayPaused||loading)return;agendaWeek=offset===null?null:DashboardHomeClient.shiftWeek(agenda.week_start,offset);agendaPage=null;agendaSelection=null;snapshotEtag=null;loadDashboardHome();});navigation.appendChild(button);
     }
     navigation.appendChild(element('strong','agenda-range',days[0].date+' — '+days[6].date));
-    if(agenda.page_count>1){
-      for(const [label,target] of [['上一页',agenda.page-1],['当前时间',null],['下一页',agenda.page+1]]){
-        const button=element('button','button',label);button.type='button';
-        button.disabled=displayPaused||(target!==null&&(target<0||target>=agenda.page_count));
-        button.addEventListener('click',()=>{
-          if(displayPaused||loading)return;
-          agendaPage=target;agendaSelection=null;snapshotEtag=null;loadDashboardHome();
-        });
-        navigation.appendChild(button);
-      }
-      navigation.appendChild(element('span','section-note',agenda.merged_all_pages?'已合并展示全周 '+entries.length+' 条记录（第 '+(agenda.page+1)+' / '+agenda.page_count+' 页）':'第 '+(agenda.page+1)+' / '+agenda.page_count+' 页'));
-    }
-
     const filter=element('select','agenda-filter');filter.setAttribute('aria-label','筛选当前页课表内容');
-    for(const [value,label] of [['all','全部内容'],['planning','客观规划'],['experience','角色经历'],['plan','角色计划'],['world','实际事件'],['outlook','命运候选'],['intentions','约定与惦记']]){
-      const option=element('option','',label);option.value=value;filter.appendChild(option);
-    }
-    filter.value=agendaFilter;
-    filter.addEventListener('change',()=>{agendaFilter=filter.value;renderLifePanel();});
-    const statusFilter=element('select','agenda-filter');statusFilter.setAttribute('aria-label','筛选课表状态');
-    for(const value of ['all',...new Set([...entries.map(entry=>entry.status),...(agendaStatus==='all'?[]:[agendaStatus])])]){
-      const option=element('option','',value==='all'?'全部状态':value);option.value=value;statusFilter.appendChild(option);
-    }
-    statusFilter.value=agendaStatus;
-    statusFilter.addEventListener('change',()=>{agendaStatus=statusFilter.value;renderLifePanel();});
-    controls.append(navigation,filter,statusFilter);body.appendChild(controls);
-    body.appendChild(element('p','section-note','北京时间 · 七天同屏等宽展示：经历记录已发生的事；规划是客观安排，计划是她自己的打算；命运候选仍待发生。'));
-    if(agenda.planning_state==='unavailable')body.appendChild(element('p','agenda-warning','客观规划暂时无法读取，当前课表不完整。'));
-    if(agenda.outlook_state==='unavailable')body.appendChild(element('p','agenda-warning','命运候选暂时无法读取，当前课表不完整。'));
-    if(agenda.outlook_state==='empty')body.appendChild(element('p','section-note','命运机制尚无可展示的展望。'));
-    if(agenda.truncated)body.appendChild(element('p','agenda-warning','本周至少有 '+agenda.known_count+' 条记录，当前只显示其中 '+entries.length+' 条。未展示不代表不存在。'));
-    if(agenda.withheld_count)body.appendChild(element('p','section-note','另有受可见范围限制的记录未展示。'));
-    const layout=element('div','agenda-layout'),scroll=element('div','agenda-scroll');
-    scroll.setAttribute('tabindex','0');scroll.setAttribute('aria-label','一周课表，可横向滚动');
-    const calendar=element('div','agenda-calendar');
-    calendar.style.gridTemplateColumns='repeat(7, minmax(140px, 1fr))';
+    for(const [value,label] of [['all','全部记录'],['planning','客观课表'],['plan','她的计划'],['experience','亲身经历'],['world','世界事件'],['outlook','未来候选']]){const option=element('option','',label);option.value=value;filter.appendChild(option);}
+    filter.value=agendaFilter;filter.addEventListener('change',()=>{agendaFilter=filter.value;renderLifePanel();});
+    const status=element('select','agenda-filter');status.setAttribute('aria-label','筛选课表状态');
+    for(const code of ['all',...new Set(entries.map(entry=>entry.status))]){const option=element('option','',code==='all'?'全部状态':code);option.value=code;status.appendChild(option);}
+    status.value=agendaStatus;status.addEventListener('change',()=>{agendaStatus=status.value;renderLifePanel();});
+    controls.append(navigation,filter,status);body.appendChild(controls);
+    const help=element('div','week-help');help.append(element('span','','北京时间 · 按开始时段归档，点开查看完整起止时间'),element('span','','浅色：尚未载入 · 空格不代表空闲'));
+    body.appendChild(help);
+    if(agenda.page_count>1)body.appendChild(element('p','section-note','第 '+(Number(agenda.page||0)+1)+' / '+agenda.page_count+' 页 · 当前只显示其中 '+entries.length+' 条正文'));
+    if(agenda.truncated)body.appendChild(element('p','section-note',Array.isArray(agenda.week_slots)?'整周分布已载入；正文按页读取，当前第 '+(Number(agenda.page||0)+1)+' / '+agenda.page_count+' 页。':'这份快照仅含部分记录，其他日期标记为“未载入”，不视作无事发生。'));
+    for(const [key,label] of [['planning_state','客观课表'],['outlook_state','未来候选']])if(agenda[key]==='unavailable')body.appendChild(element('p','agenda-warning',label+'暂不可用，本周视图不完整。'));
+    const scroller=element('div','agenda-scroll week-scroll');scroller.tabIndex=0;scroller.setAttribute('aria-label','一周课表，可横向与纵向滚动');
+    const table=element('div','week-table');table.setAttribute('role','table');table.setAttribute('aria-label','周一至周日的生活课表');
+    const head=element('div','week-row week-head');head.setAttribute('role','row');head.appendChild(element('div','week-corner','时段'));
+    const logical=Date.parse(snapshot.logical_time);const today=Number.isFinite(logical)?new Date(logical+8*3600000).toISOString().slice(0,10):null;
     days.forEach((day,index)=>{
-      const header=element('div','agenda-day-heading',('周'+'一二三四五六日'[index])+' '+day.date.slice(5));
-      if(snapshot.logical_time&&DashboardHomeClient.formatClock(snapshot.logical_time).startsWith(Number(day.date.slice(5,7))+'月'+Number(day.date.slice(8))+'日'))header.dataset.today='true';
-      calendar.appendChild(header);
-    });
-    const select=entry=>{agendaSelection=DashboardHomeClient.agendaKey(entry);renderLifePanel();};
-    const makeButton=(entry,className,timeLabel='')=>{
-      const button=element('button',className);button.type='button';button.dataset.kind=entry.kind;button.dataset.agendaIndex=String(entry.index);
-      button.setAttribute('aria-pressed',String(agendaSelection===DashboardHomeClient.agendaKey(entry)));
-      button.setAttribute('aria-label',agendaLabels[entry.kind]+'，'+entry.title+'，'+entry.status);
-      const meta=element('div','agenda-event-meta');
-      if(timeLabel)meta.appendChild(element('span','agenda-entry-time',timeLabel));
-      meta.appendChild(element('span','agenda-entry-kind',agendaLabels[entry.kind]));
-      button.append(meta,element('span','agenda-entry-title',entry.title));
-      button.title=entry.title+' · '+entry.status;button.addEventListener('click',()=>select(entry));
-      return button;
-    };
-    if(days.some(day=>day.windows.length)){
+      const cell=element('div','week-day-heading');cell.setAttribute('role','columnheader');cell.dataset.today=String(day.date===today);
+      cell.append(element('span','','周'+'一二三四五六日'[index]),element('strong','',day.date.slice(5).replace('-',' / ')));
+      head.appendChild(cell);
+    });table.appendChild(head);
+    for(let row=0;row<12;row++){
+      const line=element('div','week-row');line.setAttribute('role','row');
+      const label=element('div','week-hour',String(row*2).padStart(2,'0')+':00');label.setAttribute('role','rowheader');line.appendChild(label);
       for(const day of days){
-        const windows=element('div','agenda-windows');
-        for(const segment of day.windows)windows.appendChild(makeButton(segment.entry,'agenda-window','时间窗口'));
-        calendar.appendChild(windows);
-      }
+        const cell=day.cells[row],holder=element('div','week-cell');holder.setAttribute('role','cell');holder.dataset.state=cell.state;
+        if(cell.state==='empty'){holder.appendChild(element('span','week-empty','—'));}
+        else{
+          const button=element('button','week-event');button.type='button';button.dataset.weekCell=day.date+'-'+cell.hour;
+          const first=cell.segments[0]?.entry;button.dataset.kind=first?.kind||'unloaded';
+          button.setAttribute('aria-label',day.date+' '+cell.hour+' 时，'+(first?.title||'查看此时段记录'));
+          if(first){button.append(element('span','week-kind',agendaLabels[first.kind]),element('strong','week-title',DashboardHomeClient.readableText(first.title).text||'结构化记录'));}
+          else button.appendChild(element('strong','week-title',cell.labels.length?cell.labels.join(' / '):cell.known>0?cell.known+' 条记录':'未载入'));
+          const total=cell.known===null?cell.segments.length:cell.known;
+          button.appendChild(element('span','week-count',first?(cell.segments.length>1?'已载入 '+cell.segments.length+' 条 · 点开':first.status):(total?'点开读取详情':'查看分页')));
+          button.addEventListener('click',()=>{if(cell.segments.length===1&&(cell.known===null||cell.known===1))showAgendaEntry(snapshot,cell.segments[0].entry,view.entries);else showAgendaCell(snapshot,cell,view);});holder.appendChild(button);
+        }
+        line.appendChild(holder);
+      }table.appendChild(line);
     }
-    for(const day of days){
-      const column=element('div','agenda-day');
-      for(const segment of day.timed){
-        const label=DashboardHomeClient.formatClock(new Date(segment.start).toISOString()).split(' ').pop();
-        column.appendChild(makeButton(segment.entry,'agenda-event',label));
-      }
-      calendar.appendChild(column);
+    scroller.appendChild(table);body.appendChild(scroller);
+    const windows=days.flatMap(day=>day.windows.map(segment=>segment.entry));
+    const unique=[...new Map(windows.map(entry=>[DashboardHomeClient.agendaKey(entry),entry])).values()];
+    const footer=element('div','week-footer');
+    if(unique.length){const button=element('button','button','阶段背景与候选窗口 · '+unique.length);button.type='button';button.addEventListener('click',()=>{
+      const content=element('div','agenda-windows');
+      for(const entry of unique){const record=element('button','drawer-record');record.type='button';record.dataset.agendaIndex=String(entry.index);record.append(element('span','kind-tag',agendaLabels[entry.kind]),element('strong','',entry.title),element('span','status-pill',entry.status));record.addEventListener('click',()=>showAgendaEntry(snapshot,entry,entries));content.appendChild(record);}
+      openDetails('阶段背景与候选窗口',content,snapshot);
+    });footer.appendChild(button);}
+    if(agenda.page_count>1)for(const [label,target] of [['上一页',Number(agenda.page||0)-1],['当前时间',null],['下一页',Number(agenda.page||0)+1]]){const button=element('button','button',label);button.type='button';button.disabled=displayPaused||(target!==null&&(target<0||target>=agenda.page_count));button.addEventListener('click',()=>changeAgendaPage(target));footer.appendChild(button);}
+    footer.appendChild(element('span','section-note','七天始终同屏排列 · 小屏可左右滑动'));body.appendChild(footer);
+    if(pendingAgendaCell){const cell=days.find(day=>day.date===pendingAgendaCell.date)?.cells.find(cell=>cell.hour===pendingAgendaCell.hour);pendingAgendaCell=null;if(cell)showAgendaCell(snapshot,cell,view);}
+  }
+  let storyZoom=null,storyResetScroll=false;
+  function renderWorldline(snapshot){
+    const section=snapshot.sections.overview_life;
+    const wl=section?.state!=='unavailable'&&section?.data?.agenda?.worldline;
+    const {card,body}=sectionCard('故事地图',section,'story');
+    if(!wl){empty(body,'暂时没有可展示的故事脉络。');return card;}
+    const threads=Array.isArray(wl.threads)?wl.threads:[];
+    if(!threads[Number(galRouteFilter)])galRouteFilter='0';
+    const toolbar=element('div','story-toolbar');
+    const picker=element('select','story-route-select');picker.setAttribute('aria-label','选择故事线');picker.dataset.storyRoute='picker';
+    threads.forEach((thread,index)=>{const option=element('option','',String(index+1).padStart(2,'0')+' · '+thread.title);option.value=String(index);picker.appendChild(option);});
+    picker.value=galRouteFilter;picker.addEventListener('change',()=>{galRouteFilter=picker.value;galSelection=null;storyZoom=null;storyResetScroll=true;renderLifePanel();});toolbar.appendChild(picker);
+    const stages=Array.isArray(wl.stages)?wl.stages:[],current=stages.find(stage=>['当前章节','当前阶段'].includes(stage.status));
+    const chapters=element('button','button',current?'章节 · '+current.title:'章节与展望');chapters.type='button';
+    chapters.addEventListener('click',()=>{
+      const content=element('div','chapter-list');
+      for(const stage of stages){const entry=element('article','chapter-entry');entry.append(element('span','kind-tag',stage.status),element('h3','',stage.title),element('p','when',[stage.starts_on,stage.ends_on].join(' — ')));appendReading(entry,stage.situation);content.appendChild(entry);}
+      for(const change of wl.convergences||[]){const entry=element('article','chapter-entry');entry.appendChild(element('span','kind-tag',change.decision_label));appendReading(entry,change.reason);content.appendChild(entry);}
+      openDetails('章节与世界线变化',content,snapshot);
+    });toolbar.appendChild(chapters);
+    const graph=DashboardHomeClient.storyGraph(wl,Number(galRouteFilter));
+    const scroller=element('div','story-map-viewport');scroller.tabIndex=0;scroller.setAttribute('aria-label','故事分支地图，可横向与纵向滚动');
+    const extent=element('div','story-map-extent'),canvas=element('div','story-map-canvas');
+    canvas.style.width=graph.width+'px';canvas.style.height=graph.height+'px';
+    const svg=svgEl('svg',{viewBox:'0 0 '+graph.width+' '+graph.height,width:graph.width,height:graph.height,class:'story-connections','aria-hidden':'true'});
+    const defs=svgEl('defs');const arrow=svgEl('marker',{id:'story-arrow',viewBox:'0 0 8 8',refX:7,refY:4,markerWidth:6,markerHeight:6,orient:'auto-start-reverse'});arrow.appendChild(svgEl('path',{d:'M0 0L8 4L0 8Z',fill:'#75d9be'}));defs.appendChild(arrow);svg.appendChild(defs);
+    for(const edge of graph.edges){
+      const from=graph.nodes.find(n=>n.id===edge.from),to=graph.nodes.find(n=>n.id===edge.to);
+      const x1=from.x+from.w,y1=from.y+from.h/2,x2=to.x,y2=to.y+to.h/2;
+      const mid=x1+(x2-x1)*.5;
+      const route=from.x===to.x?'M'+(from.x+from.w/2)+' '+(from.y+from.h)+' V'+to.y
+        :(edge.kind==='membership'&&to.id.startsWith('opp-')||x2-x1>300)?'M'+x1+' '+y1+' H'+(x1+18)+' V12 H'+(x2-20)+' V'+y2+' H'+x2
+        :'M'+x1+' '+y1+' H'+mid+' V'+y2+' H'+x2;
+      const path=svgEl('path',{d:route,class:'story-edge '+edge.kind,'marker-end':edge.kind==='prerequisite'?'url(#story-arrow)':undefined});svg.appendChild(path);
     }
-    scroll.appendChild(calendar);layout.appendChild(scroll);
-    const detail=element('aside','agenda-detail');detail.setAttribute('aria-live','polite');
-    const selected=shown.find(entry=>DashboardHomeClient.agendaKey(entry)===agendaSelection)||shown[0];
-    if(selected){
-      detail.append(element('span','kind-tag',agendaLabels[selected.kind]),element('h3','',selected.title),element('span','status-pill',selected.status));
-      detail.appendChild(element('p','agenda-detail-time',DashboardHomeClient.formatClock(selected.starts_at)+' — '+DashboardHomeClient.formatClock(selected.ends_at)));
-      detail.appendChild(element('p','agenda-detail-body',selected.detail));
-      if(selected.content_state==='unavailable')detail.appendChild(element('p','section-note','详情来源暂缺，未根据标题补写。'));
-      if(selected.truncated)detail.appendChild(element('p','section-note','正文较长，这里显示节选。'));
-      for(const relation of selected.related||[]){
-        const related=entries.find(entry=>entry.index===relation);
-        if(!related)continue;
-        const button=element('button','agenda-related','已记录的关联：'+related.title);button.type='button';
-        button.addEventListener('click',()=>{agendaFilter='all';select(related);});detail.appendChild(button);
-      }
-    }else empty(detail,'本周此分类没有已记录的内容。');
-    layout.appendChild(detail);body.appendChild(layout);
+    canvas.appendChild(svg);
+    const nodeButtons=[];
+    for(const node of graph.nodes){
+      const button=element('button','story-node');button.type='button';button.dataset.storyPick=node.id;button.dataset.tone=node.tone;
+      button.style.left=node.x+'px';button.style.top=node.y+'px';button.style.width=node.w+'px';button.style.height=node.h+'px';button.setAttribute('aria-pressed',String(galSelection===node.id));
+      button.append(element('span','story-node-label',node.label),element('strong','story-node-title',node.title));
+      button.addEventListener('click',()=>{
+        galSelection=node.id;for(const [other,id] of nodeButtons)other.setAttribute('aria-pressed',String(id===node.id));
+        const content=element('div','story-node-reading');content.appendChild(element('span','kind-tag',node.label));
+        if(node.when)content.appendChild(element('p','when',DashboardHomeClient.formatClock(node.when)+' — '+DashboardHomeClient.formatClock(node.endsAt)));
+        appendReading(content,node.text||node.title,{limit:1600});
+        if(node.tone==='candidate'||node.tone==='realized'||node.tone==='ended')content.appendChild(element('p','section-note','这里保留候选的原说明；实际结果和角色经历在生活记录中另记。'));
+        if(node.threads?.length)content.appendChild(element('p','section-note','关联故事线：'+node.threads.join(' / ')));
+        openDetails(node.title,content,snapshot);
+      });nodeButtons.push([button,node.id]);canvas.appendChild(button);
+    }
+    extent.appendChild(canvas);scroller.appendChild(extent);
+    const fittedZoom=()=>window.matchMedia?.('(max-width:600px)')?.matches?1:Math.max(.65,Math.min(1,(scroller.clientWidth||1100)/graph.width));
+    const applyZoom=()=>{const scale=storyZoom??fittedZoom();canvas.style.transform='scale('+scale+')';extent.style.width=graph.width*scale+'px';extent.style.height=graph.height*scale+'px';scroller.style.height=Math.min(window.matchMedia?.('(max-width:600px)')?.matches?340:378,Math.max(240,graph.height*scale+8))+'px';};applyZoom();window.requestAnimationFrame?.(applyZoom);
+    const zoom=element('div','story-zoom');
+    for(const [label,delta] of [['缩小',-.15],['适应视图',0],['放大',.15]]){const button=element('button','button',label);button.type='button';button.addEventListener('click',()=>{storyZoom=delta?Math.max(.55,Math.min(1.6,(storyZoom??fittedZoom())+delta)):null;applyZoom();});zoom.appendChild(button);}
+    toolbar.appendChild(zoom);body.append(toolbar,scroller);
+    const legend=element('div','story-map-legend');legend.append(element('span','legend-realized','已落实'),element('span','legend-candidate','未来候选'),element('span','legend-ended','窗口已结束'),element('span','','箭头：已记录的前置条件 · 虚线：主线归属'));
+    body.append(legend,element('p','section-note','进展摘要与未决问题是作者的概括，不自动构成因果链。未来候选不代表已经发生或角色已知。'));
+    return card;
   }
   function renderLifePanel(){
     if(lastSnapshot){renderLife(lastSnapshot);applyPresentation();}
   }
   function renderLife(snapshot){
     const host=byId('agendaPanel');
+    const storyScroll=byId('storyPanel')?.querySelector('.story-map-viewport');
+    const storyPosition=storyScroll&&!storyResetScroll?{left:storyScroll.scrollLeft,top:storyScroll.scrollTop}:null;storyResetScroll=false;
     const scroll=host.querySelector('.agenda-scroll');
     const position=scroll?{left:scroll.scrollLeft,top:scroll.scrollTop}:null;
     const focus=document.activeElement;
     const focusIndex=focus&&focus.dataset.agendaIndex;
+    const storyFocus=['storyRoute','storyPick'].find(key=>focus?.dataset?.[key]!==undefined);
+    const storyFocusValue=storyFocus?focus.dataset[storyFocus]:null;
     const filterFocused=focus&&focus.classList.contains('agenda-filter');
     const section=snapshot.sections.overview_life;
     const worldlineCard=renderWorldline(snapshot);
-    const {card,body}=sectionCard('一周生活 · 七日课表与经历日程',section,'life');
+    const {card,body}=sectionCard('这一周的生活',section,'life');
     renderAgenda(body,snapshot);
-    host.replaceChildren(...[worldlineCard,card].filter(Boolean));
+    host.replaceChildren(card);
+    if(byId('storyPanel'))byId('storyPanel').replaceChildren(worldlineCard);
+    const nextStory=byId('storyPanel')?.querySelector('.story-map-viewport');
+    if(nextStory&&storyPosition){const restore=()=>{nextStory.scrollLeft=storyPosition.left;nextStory.scrollTop=storyPosition.top;};restore();window.requestAnimationFrame?.(restore);}
     const nextScroll=host.querySelector('.agenda-scroll');
     if(nextScroll&&position){nextScroll.scrollLeft=position.left;nextScroll.scrollTop=position.top;}
+    else if(nextScroll)nextScroll.scrollTop=344;
+    if(storyFocus){const attr={storyRoute:'data-story-route',storyPick:'data-story-pick'}[storyFocus];byId('storyPanel')?.querySelector('['+attr+'="'+storyFocusValue+'"]')?.focus({preventScroll:true});}
     if(focusIndex!==undefined)host.querySelector('[data-agenda-index="'+focusIndex+'"]')?.focus({preventScroll:true});
     else if(filterFocused)host.querySelector('.agenda-filter')?.focus({preventScroll:true});
   }
-  function renderDomain(snapshot,{title,sectionId,area,kinds,metricKeys,note,filterViews}){
+  function renderDomain(snapshot,{title,sectionId,area,kinds,extraSources=[],note,filterViews}){
     const section=snapshot.sections[sectionId];
     const {card,body}=sectionCard(title,section,area);
     body.appendChild(element('p','section-note',note));
     const data=isRecord(section&&section.data)?section.data:null;
-    if(!data||section.state==='unavailable')empty(body,title+'记录暂时不可用。');
+    if((!data||section.state==='unavailable')&&!extraSources.length)empty(body,title+'记录暂时不可用。');
     else{
-      const metrics=Array.isArray(data.metrics)?data.metrics:[];
-      appendMetricGrid(body,metrics.filter(item=>isRecord(item)&&(!metricKeys||metricKeys.includes(item.key))));
       let views=DashboardHomeClient.visibleHighlights(snapshot,sectionId,kinds);
+      for(const src of extraSources){
+        views=views.concat(DashboardHomeClient.visibleHighlights(snapshot,src.sectionId,src.kinds));
+      }
       if(Array.isArray(kinds)){
-        views=views.slice().sort((a,b)=>{
-          const ka=kinds.indexOf(a.kind),kb=kinds.indexOf(b.kind);
-          if(ka!==kb)return ka-kb;
-          return (Date.parse(b.when)||0)-(Date.parse(a.when)||0);
-        });
+        views=views.slice().sort((a,b)=>(Date.parse(b.when)||0)-(Date.parse(a.when)||0));
       }
       let extraNote=null;
       if(typeof filterViews==='function'){
         const res=filterViews(views);
         views=res.views;extraNote=res.note;
       }
-      if(views.length)appendHighlights(body,views);
+      if(area==='recent')body.className+=' recent-timeline';
+      if(views.length)appendHighlights(body,views,{limit:area==='recent'?3:4,key:'domain-'+area});
       else empty(body,'暂无可展示的'+title+'摘要。');
       if(extraNote)body.appendChild(element('p','section-note',extraNote));
       appendCoverage(body,section);
@@ -1001,22 +1412,43 @@ if(typeof document!=='undefined'){
       :groups.some(group=>group.items.length)?'ready':'empty';
     const {card,body}=sectionCard('未完成事项',{state},'pending');
     body.appendChild(element('p','section-note','待续事项及相关记录，保留原有状态；不据时间推断此刻仍在等待。'));
+    const terminalCodes=new Set(['resolved','completed','cancelled','fulfilled','superseded','expired','closed','withdrawn']);
+    const openCount=groups.reduce((n,g)=>n+g.items.filter(v=>!terminalCodes.has(v.statusCode)).length,0);
+    card.dataset.empty=String(openCount===0&&available.length===groups.length);
+    const overview=element('div','pending-overview');
+    overview.append(element('strong','',openCount?openCount+' 项待续':'暂无开放事项'),element('span','section-note','当前可见记录 · 承诺与回访'));
+    body.appendChild(overview);
+    const disclosure=rememberDisclosure(element('details','pending-disclosure'),'pending-all');
+    disclosure.appendChild(element('summary','','查看事项与历史记录'));
     const columns=element('div','life-columns');
     for(const group of groups){
       const column=element('div','life-column');
       column.appendChild(element('h3','section-subtitle',group.label));
       if(group.state==='unavailable')empty(column,'这部分事项记录暂时不可用。');
       else if(!group.items.length)empty(column,'暂无可展示的事项记录。');
-      else appendHighlights(column,group.items);
+      else{
+        const terminal=new Set(['resolved','completed','cancelled','fulfilled','superseded','expired','closed','withdrawn']);
+        const current=group.items.filter(item=>!terminal.has(item.statusCode));
+        const archived=group.items.filter(item=>terminal.has(item.statusCode));
+        if(current.length)appendHighlights(column,current,{limit:3,key:'pending-'+group.sectionId});
+        else empty(column,'本次可见记录中没有开放事项。');
+        if(archived.length){
+          const archive=rememberDisclosure(element('details','more-records'),'archived-'+group.sectionId);
+          archive.appendChild(element('summary','','已结束的记录 · '+archived.length));
+          appendHighlights(archive,archived);column.appendChild(archive);
+        }
+      }
       appendCoverage(column,snapshot.sections[group.sectionId]);
       columns.appendChild(column);
     }
-    body.appendChild(columns);
+    disclosure.appendChild(columns);
+    if(openCount||available.length!==groups.length)body.appendChild(columns);
+    else body.appendChild(disclosure);
     sectionGrid.appendChild(card);
   }
   function renderOperations(snapshot){
-    const details=element('details','operator-details operator-only');
-    details.appendChild(element('summary','','运维与账本核对详情'));
+    const details=rememberDisclosure(element('details','operator-details operator-only'),'operator');details.dataset.focusArea='operations';
+    details.appendChild(element('summary','','状态与诊断细节'));
     const grid=element('div','operator-grid');
     for(const id of ['authority_privacy','ledger_qualification','runtime_operations','operations','perception_media']){
       const section=snapshot.sections[id];
@@ -1062,52 +1494,178 @@ if(typeof document!=='undefined'){
     explorer.update(snapshot);
     sectionGrid.replaceChildren();
     renderLife(snapshot);
+    renderVisualStudio(snapshot);
     renderDomain(snapshot,{
-      title:'她看到的外部世界',sectionId:'perception_media',area:'memory',
-      kinds:['external_perception','external_signal'],
-      metricKeys:['external_world_perceptions','external_world_signals'],
-      note:'她刷到的 B 站视频、热点与当下主观看法；点击链接芯片可直接打开原内容。',
+      title:'她看过的世界',sectionId:'perception_media',area:'perception',
+      kinds:['external_perception'],note:'外部内容与她留下的看法。',
     });
     renderDomain(snapshot,{
-      title:'她对你说的话与回音',sectionId:'operations',area:'relationships',
-      kinds:['expression_plan','expectation_assessment','action'],
-      metricKeys:['expression_plans','expectation_assessments','actions'],
-      note:'她实际发给你的消息、分享的内容，以及她心里觉得有没等到回应。',
+      title:'你们的对话',sectionId:'operations',area:'chat',
+      kinds:['expression_plan'],note:'表达记录保留原有发送状态。',
+      filterViews(views){return {views:views.filter(v=>v.detail||v.title!=='主动找你'),note:null};},
     });
     renderDomain(snapshot,{
-      title:'镜头、自拍与照片',sectionId:'perception_media',area:'memory',
-      kinds:['media_delivery','media_preview','media_plan','media_opportunity','photo_candidate','media_inspection'],
-      metricKeys:['photo_candidates','media_opportunities','media_plans','media_deliveries'],
-      note:'她日常随手拍下的相册候选、想拍张照的念头与已发送的照片记录。',
+      title:'最近的生活',sectionId:'overview_life',area:'recent',
+      kinds:['experience'],note:'按记录时间排列，顺序不表示因果。',
     });
     renderDomain(snapshot,{
-      title:'记忆与人生底色',sectionId:'facts_memory_inner',area:'memory',
-      kinds:['character_core','memory_candidate','fact'],metricKeys:['facts','memory_candidates'],
-      note:'她对你的已确认事实、她自己的生平底色与候选记忆留存。',
+      title:'记忆的片段',sectionId:'facts_memory_inner',area:'memory',
+      kinds:['memory_candidate','fact'],note:'记忆候选与已确认事实，保留各自状态。',
     });
     renderDomain(snapshot,{
-      title:'情绪与处境判断',sectionId:'facts_memory_inner',area:'emotion',
-      kinds:['affect_episode','affect_baseline','appraisal'],metricKeys:['appraisals','affect_episodes'],
-      note:'她对当前处境的真实感受、注意焦点与情绪起伏记录。',
-    });
-    renderDomain(snapshot,{
-      title:'关系、态度信号与身边的人',sectionId:'relationship_lifecycle',area:'relationships',
-      kinds:['relationship_state','relationship_signal','relationship_adjustment','npc','commitment','relationship_commitment'],
-      metricKeys:['relationship_states','relationship_signals','relationship_adjustments','npcs','private_impressions'],
-      note:'六个维度的关系状态、每次互动后的微妙态度变化，以及她身边的室友与同学。',
+      title:'身边的人与心愿',sectionId:'overview_life',area:'people',
+      kinds:['aspiration','biographical_coordinate'],
+      extraSources:[{sectionId:'relationship_lifecycle',kinds:['npc']}],
+      note:'人物、心愿和生活背景。',
       filterViews(views){
-        let genericCount=0;
-        const kept=views.filter(v=>{
-          if(v.kind==='npc'&&(v.title==='人物'||v.title==='身边人物')){genericCount++;return false;}
-          return true;
-        });
-        return {views:kept,note:genericCount?'已折叠 '+genericCount+' 条尚未展开姓名的泛化路人记录。':null};
+        const kept=views.filter(v=>!(v.kind==='npc'&&!v.detail&&['人物','身边人物','现有人物'].includes(v.title)));
+        return {views:kept,note:kept.length<views.length?'未提供姓名或内容的人物条目已收起，可在运行观察中核对。':null};
       },
     });
     renderPending(snapshot);
     renderOperations(snapshot);
     applyPresentation();
     setCaptureState('ready');
+    if(byId('costMeterDetails')?.open)loadCostMeter();
+  }
+  async function loadCostMeter(){
+    const host=byId('costMeterPanel');
+    if(!host||displayPaused)return;
+    try{
+      const resp=await window.fetch('/world-v2/dashboard/cost',{credentials:'same-origin',headers:{Accept:'application/json'}});
+      if(!resp.ok)throw new Error('cost unavailable');
+      const data=await resp.json();
+      if(!isRecord(data)||!isRecord(data.summary))throw new Error('cost unavailable');
+      renderCostMeter(host,data);
+    }catch(_e){host.replaceChildren(element('p','section-note','成本记录暂时不可用。'));}
+  }
+  function fmtTokens(n){
+    const v=Number(n||0);
+    if(v>=1e6)return (v/1e6).toFixed(2)+'M';
+    if(v>=1e3)return (v/1e3).toFixed(1)+'k';
+    return String(v);
+  }
+  let selectedCostDay=null;
+  function renderCostMeter(host,data){
+    const s=data.summary;
+    const money=value=>'¥'+Number(value||0).toFixed(2);
+    const wrap=element('div','cost-meter-wrap');
+    const kpis=element('div','cost-kpi-grid');
+    for(const [label,value,note] of [
+      ['今日用量成本',money(s.today_total_cny),'API '+money(s.today_api_cny)+' / 订阅折算 '+money(s.today_sub_equiv_cny)],
+      ['近 7 日日均',money(s.days_7_avg_cny),'近 7 日合计 '+money(s.days_7_total_cny)],
+      ['今日模型调用',String(s.today_calls||0)+' 次',fmtTokens(s.today_total_tokens)+' tokens · API 缓存命中 '+(Number(s.today_cache_hit_rate||0)*100).toFixed(1)+'%'],
+    ]){
+      const card=element('div','cost-kpi-card');
+      card.append(element('span','cost-kpi-label',label),element('strong','cost-kpi-value',value),element('span','cost-kpi-sub',note));kpis.appendChild(card);
+    }
+    wrap.append(kpis,element('p','section-note','统计日期 '+String(s.today_date||'暂无')+' · 北京时间。成本包含订阅用量折算，不等同于实际付款账单。'));
+    const purposes=Array.isArray(data.by_purpose)?data.by_purpose:[];
+    const groups=new Map();
+    for(const p of purposes){
+      const name=p.category||'其他';
+      if(!groups.has(name))groups.set(name,{name,total:0,today:0,items:[]});
+      const group=groups.get(name);group.total+=Number(p.days_7_cny||0);group.today+=Number(p.today_cny||0);group.items.push(p);
+    }
+    const categories=[...groups.values()].sort((a,b)=>b.total-a.total);
+    const colors=['#188f81','#80bfb1','#d5ad67','#687f91','#bba7c9'];
+    const chartGrid=element('div','cost-chart-grid');
+    const series=Array.isArray(data.daily_series)?data.daily_series:[];
+    if(series.some(day=>Number(day.total_cny)>0)){
+      const box=element('section','cost-panel-box cost-trend');
+      box.append(element('h3','section-subtitle','每日成本'),element('p','section-note','深绿：后台与感知 · 金色：聊天。选择一天查看用量。'));
+      const svg=svgEl('svg',{viewBox:'0 0 660 230',class:'cost-trend-svg',role:'group','aria-label':'每日成本，按左右键或 Tab 选择日期'});
+      const max=Math.max(.01,...series.map(d=>Number(d.total_cny||0)));
+      const top=20,bottom=190,left=42,plotWidth=604,step=plotWidth/series.length;
+      for(const ratio of [0,.5,1]){
+        const y=bottom-ratio*(bottom-top);
+        svg.appendChild(svgEl('line',{x1:left,y1:y,x2:650,y2:y,stroke:'#dce9e4','stroke-dasharray':'3 5'}));
+        svg.appendChild(svgEl('text',{x:34,y:y+4,'text-anchor':'end',class:'chart-axis'},(max*ratio).toFixed(1)));
+      }
+      const detail=element('div','cost-day-detail');detail.setAttribute('aria-live','polite');
+      const nodes=[];
+      const picker=element('select','cost-date-select');picker.setAttribute('aria-label','选择成本统计日期');
+      for(const day of series){const option=element('option','',day.date+' · '+money(day.total_cny));option.value=day.date;picker.appendChild(option);}
+      const select=index=>{
+        const d=series[index];selectedCostDay=d.date;picker.value=d.date;
+        nodes.forEach((node,i)=>node.setAttribute('aria-pressed',String(i===index)));
+        detail.replaceChildren(element('strong','',String(d.date)+' · '+money(d.total_cny)),element('span','',d.calls+' 次调用 · '+fmtTokens(d.total_tokens)+' tokens'),element('span','', '后台 '+money(d.background_cny)+' / 聊天 '+money(d.interactive_cny)));
+      };
+      series.forEach((d,i)=>{
+        const x=left+i*step+step/2,width=Math.min(26,step*.6);
+        const h=Number(d.total_cny||0)/max*(bottom-top),fg=Number(d.interactive_cny||0)/max*(bottom-top);
+        const node=svgEl('g',{role:'button',tabindex:0,'aria-label':d.date+' 成本 '+money(d.total_cny),class:'cost-day'});
+        node.appendChild(svgEl('title',{},d.date+' · '+money(d.total_cny)));
+        node.appendChild(svgEl('rect',{x:x-step/2+1,y:12,width:step-2,height:bottom-10,rx:5,class:'cost-day-hit'}));
+        node.appendChild(svgEl('rect',{x:x-width/2,y:bottom-h,width,height:Math.max(h,1),rx:4,fill:'#248f80'}));
+        if(fg>0)node.appendChild(svgEl('rect',{x:x-width/2,y:bottom-Math.min(h,fg),width,height:Math.min(h,fg),rx:2,fill:'#d5ad67'}));
+        if(i%Math.max(1,Math.ceil(series.length/7))===0||i===series.length-1)node.appendChild(svgEl('text',{x,y:214,'text-anchor':'middle',class:'chart-axis'},String(d.label||d.date).slice(-5)));
+        node.addEventListener('click',()=>select(i));
+        node.addEventListener('keydown',e=>{if(['Enter',' '].includes(e.key)){e.preventDefault();select(i);}if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();const next=(i+(e.key==='ArrowRight'?1:-1)+nodes.length)%nodes.length;select(next);nodes[next].focus();}});
+        nodes.push(node);svg.appendChild(node);
+      });
+      picker.addEventListener('change',()=>select(series.findIndex(day=>day.date===picker.value)));
+      const previous=series.findIndex(day=>day.date===selectedCostDay);select(previous<0?series.length-1:previous);box.append(picker,svg,detail);chartGrid.appendChild(box);
+    }
+    const total=categories.reduce((sum,c)=>sum+c.total,0);
+    const distribution=element('section','cost-panel-box cost-distribution');
+    distribution.appendChild(element('h3','section-subtitle','成本流向 / 近 7 日'));
+    const ring=svgEl('svg',{viewBox:'0 0 200 200',class:'cost-donut',role:'img','aria-label':'已分类模块近七日成本合计 '+money(total)});
+    ring.appendChild(svgEl('circle',{cx:100,cy:100,r:72,fill:'none',stroke:'#e4eeea','stroke-width':17}));
+    let offset=0;
+    categories.forEach((group,i)=>{
+      const ratio=total>0?group.total/total*100:0;
+      if(ratio>0){
+        const arc=svgEl('circle',{cx:100,cy:100,r:72,fill:'none',stroke:colors[i%colors.length],'stroke-width':17,pathLength:100,'stroke-dasharray':ratio+' '+(100-ratio),'stroke-dashoffset':-offset,transform:'rotate(-90 100 100)'});
+        arc.appendChild(svgEl('title',{},group.name+' '+money(group.total)));ring.appendChild(arc);
+      }
+      offset+=ratio;
+    });
+    ring.appendChild(svgEl('text',{x:100,y:95,'text-anchor':'middle',class:'donut-label'},'已分类用量'));
+    ring.appendChild(svgEl('text',{x:100,y:122,'text-anchor':'middle',class:'donut-total'},money(total)));
+    distribution.appendChild(ring);
+    const legend=element('div','cost-legend');
+    categories.forEach((group,i)=>{const row=element('div','cost-legend-row');const dot=element('i','');dot.style.background=colors[i%colors.length];row.append(dot,element('span','',group.name),element('strong','',money(group.total)));legend.appendChild(row);});
+    distribution.appendChild(legend);chartGrid.appendChild(distribution);wrap.appendChild(chartGrid);
+    const split=element('div','cost-split-grid');
+    const purposeBox=element('section','cost-panel-box');
+    purposeBox.append(element('h3','section-subtitle','功能用量'),element('p','section-note','类别 → 功能。展开查看今日与近 7 日用量。'));
+    for(const group of categories){
+      const details=rememberDisclosure(element('details','cost-category'),'cost-category-'+group.name);
+      const summary=element('summary','');summary.append(element('strong','',group.name),element('span','cost-number',money(group.total)),element('span','disclosure-plus','+'));
+      const list=element('div','cost-purpose-list');
+      const inactive=rememberDisclosure(element('details','cost-inactive'),'cost-inactive-'+group.name);
+      const unused=group.items.filter(p=>!Number(p.days_7_calls)&&!Number(p.today_calls)&&!Number(p.days_7_cny)&&!Number(p.today_cny));
+      inactive.appendChild(element('summary','','近 7 日未调用的模块 · '+unused.length));
+      for(const p of group.items.slice().sort((a,b)=>Number(b.days_7_cny||0)-Number(a.days_7_cny||0))){
+        const row=element('div','cost-purpose-row');
+        const title=element('div','cost-purpose-head');title.append(element('strong','',p.label||p.purpose),element('span','cost-number',money(p.days_7_cny)));
+        const meter=svgEl('svg',{viewBox:'0 0 300 4',preserveAspectRatio:'none',class:'cost-purpose-meter','aria-hidden':'true'});
+        meter.append(svgEl('rect',{width:300,height:4,rx:2,fill:'#e3ede8'}),svgEl('rect',{width:group.total?Math.max(0,Number(p.days_7_cny||0)/group.total*300):0,height:4,rx:2,fill:'#3a9b8b'}));
+        row.append(title,meter,element('p','cost-purpose-meta','今日 '+money(p.today_cny)+' · '+Number(p.today_calls||0)+' 次 / 7 日 '+Number(p.days_7_calls||0)+' 次 · '+fmtTokens(p.days_7_tokens)+' tokens'));(unused.includes(p)?inactive:list).appendChild(row);
+      }
+      if(unused.length)list.appendChild(inactive);
+      details.append(summary,list);purposeBox.appendChild(details);
+    }
+    if(!categories.length)empty(purposeBox,'暂无可展示的分类用量。');
+    const modelsBox=element('section','cost-panel-box');modelsBox.appendChild(element('h3','section-subtitle','模型与计费通道'));
+    const models=Array.isArray(data.by_model)?data.by_model:[];
+    for(const m of models){
+      const detail=rememberDisclosure(element('details','cost-category cost-model'),'cost-model-'+m.model+'-'+m.billing_mode);
+      const summary=element('summary','');const label=element('div','');label.append(element('strong','',m.model),element('span','cost-model-mode',m.billing_mode==='subscription'?'订阅折算':'API 计费'));
+      summary.append(label,element('span','cost-number',money(m.days_7_cny)),element('span','disclosure-plus','+'));
+      detail.append(summary,element('p','cost-purpose-meta','今日 '+money(m.today_cny)+' · '+Number(m.today_calls||0)+' 次 · '+fmtTokens(m.today_tokens)+' tokens'),element('p','cost-purpose-meta','缓存命中 '+(Number(m.cache_hit_rate||0)*100).toFixed(1)+'% · 平均 '+(Number(m.avg_latency_ms||0)/1000).toFixed(1)+' 秒 · 累计 '+money(m.all_time_cny)));
+      modelsBox.appendChild(detail);
+    }
+    modelsBox.appendChild(element('p','section-note','右侧金额为近 7 日用量成本。'));
+    split.append(purposeBox,modelsBox);wrap.appendChild(split);
+    const audit=rememberDisclosure(element('details','cost-audit'),'cost-audit');
+    audit.appendChild(element('summary','','历史累计 '+money(s.all_time_total_cny)+' · '+fmtTokens(s.all_time_calls)+' 次调用 · 查看最近流水'));
+    const records=element('div','cost-recent-list');
+    for(const r of (Array.isArray(data.recent_records)?data.recent_records:[]).slice(0,10)){
+      const row=element('div','cost-recent-row');row.append(element('time','cost-recent-time',r.time||''),element('span','cost-recent-purpose',r.purpose_label||r.purpose),element('span','cost-recent-model',r.model||''),element('span','cost-recent-tok',fmtTokens(r.total_tokens)),element('strong','cost-recent-cny','¥'+Number(r.cost_cny||0).toFixed(4)));records.appendChild(row);
+    }
+    audit.appendChild(records);wrap.appendChild(audit);host.replaceChildren(wrap);
   }
   async function loadDashboardHome(){
     if(loading||displayPaused)return;
@@ -1121,38 +1679,8 @@ if(typeof document!=='undefined'){
         setCaptureState('ready');
         return;
       }
-      const agenda=snapshot?.sections?.overview_life?.data?.agenda;
-      if(agendaPage===null&&isRecord(agenda)&&typeof agenda.page_count==='number'&&agenda.page_count>1&&Array.isArray(agenda.entries)&&agenda.entries.length>0){
-        try{
-          const pages=new Array(agenda.page_count);
-          pages[agenda.page]=agenda.entries;
-          for(let p=0;p<agenda.page_count;p++){
-            if(p===agenda.page)continue;
-            const extra=await DashboardHomeClient.capture(window.fetch.bind(window),null,{week:agenda.week_start,page:p});
-            const extraEntries=extra?.snapshot?.sections?.overview_life?.data?.agenda?.entries;
-            if(Array.isArray(extraEntries))pages[p]=extraEntries;
-          }
-          const merged=[];
-          for(let p=0;p<agenda.page_count;p++){
-            const list=pages[p];
-            if(!Array.isArray(list))continue;
-            const offset=p*10000;
-            for(const item of list){
-              if(!isRecord(item))continue;
-              merged.push({
-                ...item,
-                index:offset+(typeof item.index==='number'?item.index:0),
-                related:Array.isArray(item.related)?item.related.map(r=>offset+r):[],
-              });
-            }
-          }
-          if(merged.length>agenda.entries.length){
-            agenda.entries=merged;
-            agenda.truncated=false;
-            agenda.merged_all_pages=true;
-          }
-        }catch(_e){}
-      }
+      // Render the authorized page immediately. Additional pages are explicit
+      // navigation, never stitched across changing World snapshot cursors.
       snapshotEtag=result.etag;
       lastSnapshot=snapshot;
       renderSnapshot(snapshot);
@@ -1160,6 +1688,7 @@ if(typeof document!=='undefined'){
       if(displayPaused)return;
       // The payload and upstream error never become visible page content.
       setCaptureState(lastSnapshot?'stale':'unavailable');
+      if(pendingAgendaCell){pendingAgendaCell=null;byId('drawerBody')?.appendChild(element('p','agenda-warning','这次读取没有成功，请关闭后重试。'));}
       if(!lastSnapshot){
         explorer.update({sections:{}});
         renderNowStory({sections:{}});
@@ -1169,6 +1698,7 @@ if(typeof document!=='undefined'){
     }finally{loading=false;if(resumePending){resumePending=false;loadDashboardHome();}}
   }
   explorer.update({sections:{}});
+  applyPresentation();
   loadDashboardHome();
   setInterval(loadDashboardHome,15000);
 }
@@ -1178,11 +1708,25 @@ if(typeof document!=='undefined'){
 # authenticated shell. Both ship as Python package code, with no asset-loader
 # or build-time dependency and no new browser data route.
 DASHBOARD_HTML = (
-    DASHBOARD_HTML.replace("</style>", EXPLORER_CSS + "</style>")
-    .replace('<div id="sectionGrid" class="section-grid"></div>', '<div id="agendaPanel"></div>' + EXPLORER_HTML + '<details id="domainDetails" class="domain-details" open><summary>生活全域 · 外界、对话、影像与内心（6 个核心维度）</summary><div id="sectionGrid" class="section-grid"></div></details>')
+    DASHBOARD_HTML.replace("</style>", EXPLORER_CSS + DASHBOARD_CSS + "</style>")
+    .replace(
+        '<div id="sectionGrid" class="section-grid"></div>',
+        '<div id="agendaPanel"></div><div id="storyPanel"></div>'
+        '<details id="costMeterDetails" class="domain-details operator-only">'
+        '<summary>成本与用量</summary>'
+        '<div id="costMeterPanel" class="section-card"><p class="section-note">正在加载实时成本计价数据…</p></div>'
+        '</details>'
+        '<details id="domainDetails" class="domain-details" open>'
+        '<summary>生活记录</summary>'
+        '<div id="sectionGrid" class="section-grid"></div>'
+        '</details>'
+        '<details id="explorerDetails" class="domain-details">'
+        '<summary>运行机制与记录检索</summary>'
+        + EXPLORER_HTML
+        + '</details>',
+    )
     .replace('<option value="now">这一刻</option>', '<option value="now">这一刻</option><option value="mechanism">运行机制</option><option value="evidence">记录浏览</option>')
     .replace('<span class="readonly">只读 · 不改变她的生活</span>', '<div class="view-tools"><span id="pauseLabel" class="pause-label" hidden>画面已暂停 · 不暂停角色进程</span><button id="pauseDisplay" type="button" class="button" aria-pressed="false">暂停画面</button><span class="readonly">只读 · 不改变她的生活</span></div>')
-    .replace('world-v2-dashboard-home.1-ui7', 'world-v2-dashboard-home.1-ui7')
 )
 DASHBOARD_APP_JS = DASHBOARD_APP_JS.replace(
     "if(typeof module!=='undefined'&&module.exports)",

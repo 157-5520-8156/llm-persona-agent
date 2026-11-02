@@ -27,6 +27,7 @@ class SQLiteWorldOutlookStore:
         self._thread_sequence = 0
         self._thread_cursor = None
         self._thread_generation = None
+        self._validated_revisions: dict[tuple[str, str, str], tuple[WorldOutlookDraft, dict]] = {}
         with self._lock:
             configure_shared_sqlite_connection(self._db)
             self._db.executescript("""
@@ -143,12 +144,22 @@ class SQLiteWorldOutlookStore:
                 self._scope(),
             )
             for row in rows:
+                row_key = (row[0], row[1], row[2])
+                cached = self._validated_revisions.get(row_key)
+                if cached is not None:
+                    draft, cached_evidence = cached
+                    if as_of is not None and any(cached_evidence["cursor"][k] > v for k, v in as_of.items()):
+                        continue
+                    return row[0], draft, deepcopy(cached_evidence)
                 draft = WorldOutlookDraft.model_validate_json(row[1])
                 evidence = json.loads(row[2])
                 if digest({"draft": draft.model_dump(mode="json"), "evidence": evidence}) != row[0]:
                     raise ValueError("outlook revision content binding mismatch")
                 if (draft.world_id, draft.actor_ref) != self._scope():
                     raise ValueError("outlook revision owner mismatch")
+                if len(self._validated_revisions) >= 16:
+                    self._validated_revisions.pop(next(iter(self._validated_revisions)))
+                self._validated_revisions[row_key] = (draft, deepcopy(evidence))
                 if as_of is not None and any(evidence["cursor"][k] > v for k, v in as_of.items()):
                     continue
                 return row[0], draft, evidence

@@ -74,10 +74,21 @@ class _MeteredProactiveModel:
 
 class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
     def __init__(
-        self, *, reviewer, expression_capabilities, visible_source_review_version="1", **kwargs
+        self,
+        *,
+        reviewer,
+        expression_capabilities,
+        visible_source_review_version="1",
+        ordinary_text_review_mode="blocking",
+        text_shadow_observer=None,
+        **kwargs,
     ):
         if type(visible_source_review_version) is not str or visible_source_review_version not in SUPPORTED_REVIEW_VERSIONS:
             raise ValueError("unsupported visible source review version")
+        if ordinary_text_review_mode not in {"blocking", "sampled"}:
+            raise ValueError("unknown ordinary text review mode")
+        if ordinary_text_review_mode == "sampled" and visible_source_review_version != "25":
+            raise ValueError("sampled ordinary text requires review version 25")
         from ..visible_independent_review_runtime import validate_independent_reviewer_configuration
         validate_independent_reviewer_configuration(reviewer, visible_source_review_version)
         if visible_source_review_version != "1" and not callable(
@@ -86,6 +97,8 @@ class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
             raise ValueError("versioned source review requires the explicit metered source reviewer")
         super().__init__(**kwargs)
         self._visible_source_review_version = visible_source_review_version
+        self._ordinary_text_review_mode = ordinary_text_review_mode
+        self._text_shadow_observer = text_shadow_observer
         self._model = _MeteredProactiveModel(self._model)
         self._visible_reviewer = reviewer
         self._visible_capabilities = expression_capabilities
@@ -94,6 +107,9 @@ class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
     def visible_review_protocol(self):
         from ..visible_independent_review_receipt import independent_review_protocol
         return independent_review_protocol(self._visible_source_review_version)
+
+    def ordinary_text_review_mode(self):
+        return self._ordinary_text_review_mode
 
     def _remember_rejected(self, request, candidate, reviews):
         previous, _ = self._rejected.get(request.inner_turn_id, ((), ()))
@@ -358,6 +374,15 @@ class ReviewedProactiveStructuredRoleFaculty(StructuredCharacterRoleFaculty):
                 reviewer=self._visible_reviewer,
                 review_version=self._visible_source_review_version,
             )
+            if self._text_shadow_observer is not None and output.visible_source_review_json is not None:
+                from ..visible_review_evidence_storage import read_review_evidence
+                try:
+                    self._text_shadow_observer.offer(
+                        proposal=proposal,
+                        evidence=read_review_evidence(output.visible_source_review_json),
+                    )
+                except Exception:
+                    self._text_shadow_observer.offer_errors += 1
             try:
                 recorded = record_output(output)
             except (TypeError, ValueError) as exc:

@@ -194,6 +194,9 @@ class SocialInitiativePolicy(FrozenModel):
     contact_cooldown_seconds: int = Field(default=900, ge=60, le=86_400)
     local_timezone: str = Field(default="Asia/Shanghai", min_length=1, max_length=64)
     consideration_band_override_seconds: tuple[int, int] | None = None
+    # Optional short-window continuation band (e.g., (120, 240)) when a multi-turn
+    # back-and-forth suddenly goes quiet without an explicit waiting_for/come_back.
+    hot_chat_continuation_seconds: tuple[int, int] | None = None
     # Shared daily budget for S18 long_silence (A) + post-ambient situation
     # independent mint (B). One shared cap keeps "惦记" from becoming 话痨.
     # Two life-driven considers per day (3h apart) make life the main waker
@@ -221,6 +224,12 @@ class SocialInitiativePolicy(FrozenModel):
             if not 60 <= low <= high < self.spontaneous_expiry_seconds:
                 raise ValueError(
                     "social initiative cadence override must fit the spontaneous window"
+                )
+        if self.hot_chat_continuation_seconds is not None:
+            hot_low, hot_high = self.hot_chat_continuation_seconds
+            if not 60 <= hot_low <= hot_high < self.spontaneous_idle_seconds:
+                raise ValueError(
+                    "hot chat continuation band must fit before spontaneous_idle_seconds"
                 )
         delay_low, delay_high = self.long_silence_delay_band_seconds
         if not 3_600 <= delay_low <= delay_high <= 172_800:
@@ -424,7 +433,16 @@ class SocialInitiativeContextPolicy:
         self._policy = policy
 
     def compile(self, *, projection, logical_time: datetime) -> SocialInitiativeDecisionProfile:
-        relationship = projection.relationship_states[-1] if projection.relationship_states else None
+        user_relationships = [
+            item
+            for item in projection.relationship_states
+            if str(getattr(item, "subject_ref", "")).startswith("user:")
+        ]
+        relationship = (
+            user_relationships[-1]
+            if user_relationships
+            else (projection.relationship_states[-1] if projection.relationship_states else None)
+        )
         variables = getattr(relationship, "variables", None)
         stage = str(getattr(relationship, "stage", "stranger"))
         trust = int(getattr(variables, "trust_bp", 0)) if variables is not None else 0
@@ -451,13 +469,20 @@ class SocialInitiativeContextPolicy:
             low, high = override
             relationship_reason = "relationship:test_override"
 
+        connected = (
+            stage in {"friend", "close_friend", "ambiguous", "lover"}
+            or (closeness + mutuality) // 2 >= 4_000
+        )
         approach = guarded = 0
         for episode in projection.affect_episodes:
             if getattr(episode, "status", None) != "active":
                 continue
             for component in getattr(episode, "components", ()):
                 intensity = int(getattr(component, "intensity_bp", 0))
-                if getattr(component, "dimension", None) in {"warmth", "joy"}:
+                dimension = getattr(component, "dimension", None)
+                if dimension in {"warmth", "joy"} or (
+                    connected and dimension in {"loneliness", "anxiety"}
+                ):
                     approach = max(approach, intensity)
                 else:
                     guarded = max(guarded, intensity)
@@ -568,6 +593,95 @@ _POST_SILENT_CONSIDERATION_PREFIX = "consideration:social-initiative:post-silent
 
 def _local_day_key(instant: datetime, *, timezone_name: str) -> str:
     return instant.astimezone(ZoneInfo(timezone_name)).date().isoformat()
+
+
+def unanswered_proactive_outreach_count(projection) -> int:
+    """Count distinct proactive/followup outreach plans or processes since the latest user message."""
+    observations = getattr(projection, "message_observations", ())
+    latest_message_revision = observations[-1].world_revision if observations else 0
+    latest_message_time = next(
+        (
+            item.logical_time
+            for item in reversed(getattr(projection, "committed_world_event_refs", ()))
+            if getattr(item, "world_revision", 0) == latest_message_revision
+            and getattr(item, "event_type", None) == "ObservationRecorded"
+        ),
+        None,
+    )
+    action_groups = {
+        getattr(item, "expression_plan_id", None) or getattr(item, "action_id", None)
+        for item in getattr(projection, "actions", ())
+        if getattr(item, "kind", None) in {"proactive_message", "followup"}
+        and getattr(item, "state", None) not in {"failed", "cancelled", "expired"}
+        and (
+            (
+                getattr(item, "last_updated_revision", 0)
+                or getattr(item, "world_revision", 0)
+            )
+            > latest_message_revision
+            if (
+                getattr(item, "last_updated_revision", 0)
+                or getattr(item, "world_revision", 0)
+            )
+            else (
+                latest_message_time is None
+                or (
+                    getattr(item, "logical_time", None) is not None
+                    and item.logical_time > latest_message_time
+                )
+            )
+        )
+    }
+    action_groups.discard(None)
+    committed_revisions = {
+        item.event_id: item.world_revision
+        for item in getattr(projection, "committed_world_event_refs", ())
+        if getattr(item, "event_id", None)
+    }
+    authorized_processes = {
+        getattr(item, "trigger_id", None) or getattr(item, "trigger_ref", None)
+        for item in getattr(projection, "trigger_processes", ())
+        if getattr(item, "process_kind", None) == "proactive_action_deliberation"
+        and getattr(item, "state", None) == "terminal"
+        and str(getattr(item, "runtime_outcome_ref", "") or "").startswith(
+            "proactive:authorized:"
+        )
+        and getattr(item, "source_evidence_ref", None)
+        and committed_revisions.get(str(item.source_evidence_ref), 1)
+        > latest_message_revision
+    }
+    authorized_processes.discard(None)
+    return max(len(action_groups), len(authorized_processes))
+
+
+def effective_contact_cooldown_seconds(
+    projection, *, policy: SocialInitiativePolicy
+) -> int:
+    """Derive post-outreach contact cooldown from psychological state (Affect + Relationship)."""
+    base = policy.contact_cooldown_seconds
+    if policy.consideration_band_override_seconds is not None:
+        return base
+    unanswered = unanswered_proactive_outreach_count(projection)
+    if unanswered == 0:
+        return base
+    logical_time = getattr(projection, "logical_time", None) or datetime(
+        2026, 1, 1, 12, 0, tzinfo=ZoneInfo(policy.local_timezone)
+    )
+    profile = SocialInitiativeContextPolicy(policy=policy).compile(
+        projection=projection,
+        logical_time=logical_time,
+    )
+    if "affect:approach" in profile.reason_codes:
+        return base
+    if "affect:guarded" in profile.reason_codes:
+        return max(
+            base,
+            min(profile.consideration_band_seconds[1], policy.spontaneous_expiry_seconds),
+        )
+    return max(
+        base,
+        min(profile.consideration_band_seconds[0], policy.spontaneous_expiry_seconds),
+    )
 
 
 def post_silent_consideration_id(
@@ -774,7 +888,9 @@ class SocialInitiativeCompiler:
             )
         if recent_contact is not None and (
             logical_time - recent_contact
-        ).total_seconds() < self._policy.contact_cooldown_seconds:
+        ).total_seconds() < effective_contact_cooldown_seconds(
+            projection, policy=self._policy
+        ):
             return None
         # Situation stimuli are materials for already-paid considers. Do not
         # mint a dedicated model call on a delay table.
@@ -886,7 +1002,9 @@ class SocialInitiativeCompiler:
         )
         if recent_contact is not None:
             cooldown_until = recent_contact + timedelta(
-                seconds=self._policy.contact_cooldown_seconds
+                seconds=effective_contact_cooldown_seconds(
+                    projection, policy=self._policy
+                )
             )
             if logical_time < cooldown_until:
                 return earliest(cooldown_until)
@@ -974,7 +1092,17 @@ class SocialInitiativeCompiler:
         if source is None or source[0].event_type != "ObservationRecorded":
             return False
         elapsed = (logical_time - source[0].logical_time).total_seconds()
-        if elapsed < self._policy.spontaneous_idle_seconds:
+        hot_dropoff = (
+            elapsed < self._policy.spontaneous_idle_seconds
+            and self._policy.hot_chat_continuation_seconds is not None
+            and elapsed >= self._policy.hot_chat_continuation_seconds[0]
+            and self._is_hot_chat_dropoff(
+                projection,
+                latest_obs=latest,
+                latest_source_time=source[0].logical_time,
+            )
+        )
+        if not hot_dropoff and elapsed < self._policy.spontaneous_idle_seconds:
             return False
         if elapsed >= self._policy.spontaneous_expiry_seconds:
             if self._policy.consideration_band_override_seconds is not None:
@@ -1476,6 +1604,30 @@ class SocialInitiativeCompiler:
             if projection.message_observations
             else 0
         )
+        latest_authorized_proactive_revision = max(
+            [
+                *(
+                    self._source_world_revision(projection, str(item.source_evidence_ref))
+                    for item in getattr(projection, "trigger_processes", ())
+                    if getattr(item, "process_kind", None) == "proactive_action_deliberation"
+                    and getattr(item, "state", None) == "terminal"
+                    and str(getattr(item, "runtime_outcome_ref", "") or "").startswith(
+                        "proactive:authorized:"
+                    )
+                    and getattr(item, "source_evidence_ref", None)
+                    and self._source_world_revision(projection, str(item.source_evidence_ref))
+                    > latest_message_revision
+                ),
+                *(
+                    ref.world_revision
+                    for ref in getattr(projection, "committed_world_event_refs", ())
+                    if getattr(ref, "event_type", None)
+                    in {"ActionAuthorized", "ExecutionReceiptRecorded"}
+                    and getattr(ref, "world_revision", 0) > latest_message_revision
+                ),
+            ],
+            default=0,
+        )
         candidate_refs = tuple(
             sorted(
                 (
@@ -1517,6 +1669,7 @@ class SocialInitiativeCompiler:
                             item
                             for item in latest_cluster
                             if item.event_type == "ExternalPerceptionRecorded"
+                            and item.world_revision > latest_authorized_proactive_revision
                             and (ref.logical_time - item.logical_time)
                             <= timedelta(minutes=60)
                         ]
@@ -1610,9 +1763,12 @@ class SocialInitiativeCompiler:
         if failed_audit is None:
             return None
         try:
-            failure_code = json.loads(failed_audit.audit_json).get("failure_code")
+            audit_value = json.loads(failed_audit.audit_json)
+            failure_code = audit_value.get("failure_code")
+            model_id = audit_value.get("model_id")
         except (TypeError, json.JSONDecodeError, AttributeError):
             failure_code = None
+            model_id = None
         if failure_code in {
             "authored_expression_reselection_invalid",
             "recall_choice_reselection_invalid",
@@ -1621,7 +1777,10 @@ class SocialInitiativeCompiler:
             "inventory_invalid",
             "coverage_invalid",
             "required_tool_choice_unsupported",
-        }:
+        } or (
+            failure_code in {"primary_invalid", "corrective_invalid", "main_invalid_output"}
+            and model_id is not None
+        ):
             return None
         latest_message_revision = (
             projection.message_observations[-1].world_revision
@@ -1637,6 +1796,26 @@ class SocialInitiativeCompiler:
         )
         prior_trigger_id = post_silent_prior_trigger_id(consideration_id)
         domain_kind = scheduled_domain_consideration_kind(event.event_type, consideration_id)
+        if domain_kind is None:
+            completed_ids = getattr(projection, "completed_trigger_ids", ())
+            completion_positions = {
+                trigger_id: idx for idx, trigger_id in enumerate(completed_ids)
+            }
+            failure_pos = completion_positions.get(getattr(process, "trigger_id", None))
+            if failure_pos is not None and any(
+                other.process_kind == "proactive_action_deliberation"
+                and other.state == "terminal"
+                and completion_positions.get(getattr(other, "trigger_id", None), -1) > failure_pos
+                and (
+                    str(other.runtime_outcome_ref) in {
+                        "proactive:silent",
+                        "proactive:grounding-rejected",
+                    }
+                    or str(other.runtime_outcome_ref).startswith("proactive:authorized:")
+                )
+                for other in getattr(projection, "trigger_processes", ())
+            ):
+                return None
         source_kind = (
             "post_silent"
             if event.event_type == "ClockAdvanced" and prior_trigger_id is not None
@@ -1883,6 +2062,40 @@ class SocialInitiativeCompiler:
         excluded_consideration_ids: frozenset[str],
         allow_future: bool = False,
     ):
+        latest_message_revision = (
+            projection.message_observations[-1].world_revision
+            if getattr(projection, "message_observations", ())
+            else 0
+        )
+        completed_unanswered_proactive_expectation_revisions = [
+            self._source_world_revision(projection, str(item.source_evidence_ref))
+            for item in getattr(projection, "trigger_processes", ())
+            if getattr(item, "process_kind", None) == "proactive_action_deliberation"
+            and getattr(item, "state", None) == "terminal"
+            and str(getattr(item, "trigger_ref", "") or "").startswith(
+                "proactive-consideration:consideration:social-initiative:expectation-expiry:"
+            )
+            and str(getattr(item, "runtime_outcome_ref", "") or "").startswith(
+                "proactive:authorized:"
+            )
+            and getattr(item, "source_evidence_ref", None)
+            and self._source_world_revision(projection, str(item.source_evidence_ref))
+            > latest_message_revision
+        ]
+        first_proactive_expectation_revision = (
+            min(completed_unanswered_proactive_expectation_revisions)
+            if completed_unanswered_proactive_expectation_revisions
+            else None
+        )
+        manifest_action_kind_by_plan_id = {
+            manifest.plan_id: getattr(
+                getattr(manifest.beats[0], "action", None),
+                "kind",
+                getattr(getattr(manifest.beats[0], "action", None), "action_type", None),
+            )
+            for manifest in getattr(projection, "expression_plan_manifests", ())
+            if getattr(manifest, "beats", ())
+        }
         for expired in unanswered_response_expectations(projection, due_only=not allow_future):
             consideration_id = expired_expectation_consideration_id(expired.plan_id)
             if consideration_id in excluded_consideration_ids:
@@ -1890,6 +2103,13 @@ class SocialInitiativeCompiler:
             # Every plan retains one opportunity. Considering a newer plan
             # does not spend the opportunities of other declared hopes.
             if self._terminal_consideration(projection, consideration_id):
+                continue
+            if (
+                first_proactive_expectation_revision is not None
+                and manifest_action_kind_by_plan_id.get(expired.plan_id)
+                in {"proactive_message", "followup"}
+                and expired.receipt_world_revision > first_proactive_expectation_revision
+            ):
                 continue
             opportunity = await self._from_source(
                 source_kind="expired_expectation",
@@ -1926,13 +2146,22 @@ class SocialInitiativeCompiler:
         excluded_consideration_ids: frozenset[str],
         allow_future: bool = False,
     ):
+        latest_message_revision = (
+            projection.message_observations[-1].world_revision
+            if getattr(projection, "message_observations", ())
+            else 0
+        )
         candidates: list[tuple[datetime, object]] = []
         for thread in getattr(projection, "threads", ()):
             values = getattr(thread, "values", None)
             due = getattr(values, "due_window", None)
+            conversation_ref = str(getattr(values, "conversation_ref", "") or "")
+            subject_ref = str(getattr(values, "subject_ref", "") or "")
             if (
                 getattr(values, "status", None) != "open"
                 or due is None
+                or conversation_ref.startswith("clock:")
+                or subject_ref.startswith("event:life-aftermath:settlement:")
                 or (not allow_future and logical_time < due.opens_at)
                 or logical_time >= due.closes_at
                 or self._leftover_already_materialized(projection, thread=thread)
@@ -1959,6 +2188,30 @@ class SocialInitiativeCompiler:
             if consideration_id in excluded_consideration_ids:
                 continue
             if self._terminal_consideration(projection, consideration_id):
+                continue
+            all_thread_consideration_refs = {
+                "proactive-consideration:" + due_thread_consideration_id(thread.thread_id),
+                *(
+                    "proactive-consideration:"
+                    + due_thread_consideration_id(
+                        thread.thread_id, schedule_event_ref=t.accepted_event_ref
+                    )
+                    for t in getattr(projection, "thread_transitions", ())
+                    if t.thread_id == thread.thread_id
+                ),
+            }
+            if any(
+                getattr(item, "process_kind", None) == "proactive_action_deliberation"
+                and getattr(item, "state", None) == "terminal"
+                and getattr(item, "trigger_ref", None) in all_thread_consideration_refs
+                and str(getattr(item, "runtime_outcome_ref", "") or "").startswith(
+                    "proactive:authorized:"
+                )
+                and getattr(item, "source_evidence_ref", None)
+                and self._source_world_revision(projection, str(item.source_evidence_ref))
+                > latest_message_revision
+                for item in getattr(projection, "trigger_processes", ())
+            ):
                 continue
             # Old ledgers keyed a due process by entity alone. Its original
             # source still identifies which accepted schedule was considered;
@@ -2202,6 +2455,40 @@ class SocialInitiativeCompiler:
             seen_considerations.add(consideration_id)
             yield process, consideration_id
 
+    def _shared_outreach_effective_time(
+        self, projection, process
+    ) -> datetime | None:
+        candidates: list[datetime] = []
+        source_ref = next(
+            (
+                item
+                for item in projection.committed_world_event_refs
+                if item.event_id == process.source_evidence_ref
+            ),
+            None,
+        )
+        if source_ref is not None and isinstance(source_ref.logical_time, datetime):
+            candidates.append(source_ref.logical_time)
+        outcome = str(getattr(process, "runtime_outcome_ref", "") or "")
+        if outcome.startswith("proactive:authorized:"):
+            action_id = outcome.removeprefix("proactive:authorized:")
+            action = next(
+                (
+                    item
+                    for item in getattr(projection, "actions", ())
+                    if getattr(item, "action_id", None) == action_id
+                ),
+                None,
+            )
+            action_at = getattr(action, "logical_time", None) if action is not None else None
+            if isinstance(action_at, datetime):
+                candidates.append(action_at)
+        lease = getattr(process, "claim_lease", None)
+        acquired_at = getattr(lease, "acquired_at", None) if lease is not None else None
+        if isinstance(acquired_at, datetime):
+            candidates.append(acquired_at)
+        return max(candidates) if candidates else None
+
     def _shared_outreach_uses_on_local_day(
         self, projection, logical_time: datetime
     ) -> int:
@@ -2210,18 +2497,11 @@ class SocialInitiativeCompiler:
         )
         count = 0
         for process, _consideration_id in self._shared_outreach_processes(projection):
-            source_ref = next(
-                (
-                    item
-                    for item in projection.committed_world_event_refs
-                    if item.event_id == process.source_evidence_ref
-                ),
-                None,
-            )
-            if source_ref is None:
+            effective_at = self._shared_outreach_effective_time(projection, process)
+            if effective_at is None:
                 continue
             if _local_day_key(
-                source_ref.logical_time, timezone_name=self._policy.local_timezone
+                effective_at, timezone_name=self._policy.local_timezone
             ) == day:
                 count += 1
         return count
@@ -2229,18 +2509,11 @@ class SocialInitiativeCompiler:
     def _last_shared_outreach_at(self, projection) -> datetime | None:
         latest: datetime | None = None
         for process, _consideration_id in self._shared_outreach_processes(projection):
-            source_ref = next(
-                (
-                    item
-                    for item in projection.committed_world_event_refs
-                    if item.event_id == process.source_evidence_ref
-                ),
-                None,
-            )
-            if source_ref is None:
+            effective_at = self._shared_outreach_effective_time(projection, process)
+            if effective_at is None:
                 continue
-            if latest is None or source_ref.logical_time > latest:
-                latest = source_ref.logical_time
+            if latest is None or effective_at > latest:
+                latest = effective_at
         return latest
 
     def _shared_outreach_silent_streak(self, projection) -> int:
@@ -2261,17 +2534,23 @@ class SocialInitiativeCompiler:
     ) -> bool:
         if self._policy.shared_outreach_daily_limit <= 0:
             return False
-        if (
-            self._shared_outreach_uses_on_local_day(projection, logical_time)
-            >= self._policy.shared_outreach_daily_limit
-        ):
+        uses_today = self._shared_outreach_uses_on_local_day(projection, logical_time)
+        if uses_today >= self._policy.shared_outreach_daily_limit:
             return False
         last_at = self._last_shared_outreach_at(projection)
         if last_at is not None:
             required = self._policy.shared_outreach_min_interval_seconds
-            streak = self._shared_outreach_silent_streak(projection)
-            if streak >= self._policy.shared_outreach_silent_streak_threshold:
+            silent_streak = self._shared_outreach_silent_streak(projection)
+            if silent_streak >= self._policy.shared_outreach_silent_streak_threshold:
                 required += self._policy.shared_outreach_silent_extra_cooldown_seconds
+            elif unanswered_proactive_outreach_count(projection) >= 1:
+                profile = self._context.compile(
+                    projection=projection, logical_time=logical_time
+                )
+                if "affect:guarded" in profile.reason_codes:
+                    required = max(required, profile.consideration_band_seconds[1])
+                elif "affect:neutral" in profile.reason_codes:
+                    required = max(required, profile.consideration_band_seconds[0])
             if (logical_time - last_at).total_seconds() < required:
                 return False
         return True
@@ -2499,23 +2778,40 @@ class SocialInitiativeCompiler:
             raise ValueError("long silence cadence draw did not select a delay")
         if delay_seconds not in candidates:
             raise ValueError("long silence cadence draw selected an unknown delay")
-        scheduled_for = source[0].logical_time + timedelta(
-            seconds=self._policy.spontaneous_expiry_seconds + delay_seconds
-        )
-        if logical_time < scheduled_for and not allow_future:
+        chosen_scheduled_for: datetime | None = None
+        chosen_local_day: str | None = None
+        chosen_consideration_id: str | None = None
+        for epoch in range(4):
+            candidate_scheduled = source[0].logical_time + timedelta(
+                seconds=self._policy.spontaneous_expiry_seconds + delay_seconds * (epoch + 1)
+            )
+            if logical_time < candidate_scheduled and not allow_future:
+                break
+            candidate_day = _local_day_key(
+                candidate_scheduled, timezone_name=self._policy.local_timezone
+            )
+            candidate_cid = long_silence_consideration_id(
+                observation_id=latest.observation_id,
+                local_day=candidate_day,
+                delay_seconds=delay_seconds if epoch == 0 else delay_seconds * (epoch + 1),
+            )
+            if candidate_cid in excluded_consideration_ids:
+                continue
+            if self._terminal_consideration(projection, candidate_cid):
+                continue
+            chosen_scheduled_for = candidate_scheduled
+            chosen_local_day = candidate_day
+            chosen_consideration_id = candidate_cid
+            break
+        if (
+            chosen_scheduled_for is None
+            or chosen_local_day is None
+            or chosen_consideration_id is None
+        ):
             return None
-        local_day = _local_day_key(
-            scheduled_for, timezone_name=self._policy.local_timezone
-        )
-        consideration_id = long_silence_consideration_id(
-            observation_id=latest.observation_id,
-            local_day=local_day,
-            delay_seconds=delay_seconds,
-        )
-        if consideration_id in excluded_consideration_ids:
-            return None
-        if self._terminal_consideration(projection, consideration_id):
-            return None
+        scheduled_for = chosen_scheduled_for
+        local_day = chosen_local_day
+        consideration_id = chosen_consideration_id
         clock_ref = min(
             (
                 item
@@ -2540,6 +2836,42 @@ class SocialInitiativeCompiler:
                 LONG_SILENCE_OCCASION_REASON,
             ),
         )
+
+    def _is_hot_chat_dropoff(
+        self, projection, *, latest_obs, latest_source_time: datetime
+    ) -> bool:
+        if (
+            self._policy.hot_chat_continuation_seconds is None
+            or self._policy.consideration_band_override_seconds is not None
+            or len(projection.message_observations) < 2
+        ):
+            return False
+        prev_obs = projection.message_observations[-2]
+        prev_ref = next(
+            (
+                item
+                for item in projection.committed_world_event_refs
+                if item.world_revision == prev_obs.world_revision
+                and item.event_type == "ObservationRecorded"
+            ),
+            None,
+        )
+        if prev_ref is None:
+            return False
+        turn_gap = (latest_source_time - prev_ref.logical_time).total_seconds()
+        if not (0 <= turn_gap <= 600):
+            return False
+        replied_after_latest = any(
+            getattr(action, "kind", None) == "reply"
+            and getattr(action, "state", None) not in {"failed", "cancelled", "expired"}
+            and getattr(action, "world_revision", 0) > latest_obs.world_revision
+            for action in getattr(projection, "actions", ())
+        )
+        if not replied_after_latest:
+            return False
+        if unfinished_revisits(projection, due_only=False):
+            return False
+        return True
 
     async def _spontaneous_contact(
         self,
@@ -2573,7 +2905,21 @@ class SocialInitiativeCompiler:
         if source is None or source[0].event_type != "ObservationRecorded":
             return None
         elapsed = (logical_time - source[0].logical_time).total_seconds()
-        if elapsed < self._policy.spontaneous_idle_seconds:
+        try:
+            pending = pending_response_expectation(projection)
+        except (TypeError, ValueError, AttributeError):
+            pending = None
+        if pending is not None:
+            return None
+        hot_dropoff = (
+            elapsed < self._policy.spontaneous_idle_seconds
+            and self._is_hot_chat_dropoff(
+                projection,
+                latest_obs=latest,
+                latest_source_time=source[0].logical_time,
+            )
+        )
+        if not hot_dropoff and elapsed < self._policy.spontaneous_idle_seconds:
             return None
         if elapsed >= self._policy.spontaneous_expiry_seconds:
             # Test/qualification overrides pin a deterministic band and do not
@@ -2585,13 +2931,28 @@ class SocialInitiativeCompiler:
         # Expiry switches the source_kind to ambient_presence below for the
         # first wake after the spontaneous window closes; later stale context
         # is dropped, never backfilled.
-        try:
-            pending = pending_response_expectation(projection)
-        except (TypeError, ValueError, AttributeError):
-            pending = None
-        if pending is not None:
-            return None
         profile = self._context.compile(projection=projection, logical_time=logical_time)
+        if hot_dropoff and self._policy.hot_chat_continuation_seconds is not None:
+            hot_low, hot_high = self._policy.hot_chat_continuation_seconds
+            if elapsed < hot_low and not allow_future:
+                return None
+            hot_mid = (hot_low + hot_high) // 2
+            hot_candidates = tuple(dict.fromkeys((hot_low, hot_mid, hot_high)))
+            hot_weights = (
+                {
+                    f"delay:{hot_candidates[0]}": 3_500,
+                    f"delay:{hot_candidates[1]}": 4_500,
+                    f"delay:{hot_candidates[2]}": 2_000,
+                }
+                if len(hot_candidates) == 3
+                else {f"delay:{sec}": 10_000 // len(hot_candidates) for sec in hot_candidates}
+            )
+            profile = SocialInitiativeDecisionProfile(
+                consideration_band_seconds=(hot_low, hot_high),
+                delay_candidates_seconds=hot_candidates,
+                candidate_weights=hot_weights,
+                reason_codes=("conversation:hot_dropoff", *profile.reason_codes),
+            )
         attempt_id = social_initiative_attempt_id(
             source_event_ref=source[0].event_id,
             profile=profile,
@@ -2614,6 +2975,25 @@ class SocialInitiativeCompiler:
         draw = await self._recorded_random_draw(projection, attempt_id)
         if draw is None:
             if not record_draw:
+                if hot_dropoff and allow_future and self._policy.hot_chat_continuation_seconds is not None:
+                    hot_low = self._policy.hot_chat_continuation_seconds[0]
+                    consideration_id = social_initiative_consideration_id(
+                        attempt_id=attempt_id,
+                        delay_seconds=hot_low,
+                        epoch=0,
+                        source_kind="spontaneous_contact",
+                    )
+                    if not self._terminal_consideration(projection, consideration_id):
+                        return await self._from_source(
+                            source_kind="spontaneous_contact",
+                            source_id=latest.observation_id,
+                            source_event_ref=source[0].event_id,
+                            source_world_revision=latest.world_revision,
+                            consideration_id=consideration_id,
+                            consideration_epoch=0,
+                            scheduled_for=source[0].logical_time + timedelta(seconds=hot_low),
+                            cadence_reason_codes=profile.reason_codes,
+                        )
                 return None
             draw = (
                 await asyncio.to_thread(self._random.draw, **draw_kwargs)
@@ -2628,7 +3008,9 @@ class SocialInitiativeCompiler:
             raise ValueError("social initiative cadence draw selected an unknown delay")
         if elapsed < delay_seconds and not allow_future:
             return None
-        consideration_epoch = max(0, int(elapsed // delay_seconds) - 1)
+        consideration_epoch = (
+            0 if hot_dropoff else max(0, int(elapsed // delay_seconds) - 1)
+        )
         ambient = elapsed >= self._policy.spontaneous_expiry_seconds
         consideration_id = social_initiative_consideration_id(
             attempt_id=attempt_id,
@@ -2783,6 +3165,7 @@ __all__ = [
     "SocialInitiativeOpportunity",
     "SocialInitiativePolicy",
     "SocialInitiativeSourceKind",
+    "effective_contact_cooldown_seconds",
     "is_shared_outreach_consideration_id",
     "living_private_impression",
     "long_silence_consideration_id",
@@ -2798,4 +3181,5 @@ __all__ = [
     "post_silent_consideration_id",
     "post_silent_prior_trigger_id",
     "technical_failure_point",
+    "unanswered_proactive_outreach_count",
 ]

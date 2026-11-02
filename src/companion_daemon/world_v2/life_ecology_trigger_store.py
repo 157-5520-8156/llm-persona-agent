@@ -372,7 +372,7 @@ class LedgerLifeEcologyTriggerStore:
                 outcome in _SEMANTIC_STIMULUS_OUTCOMES
                 and schedule is not None
                 and schedule.last_outcome_ref.removeprefix("life-ecology:")
-                in _SEMANTIC_STIMULUS_OUTCOMES
+                in (_SEMANTIC_STIMULUS_OUTCOMES | _AMBIENT_CADENCE_OUTCOMES)
                 and completed_at < schedule.next_consideration_at
             )
             cadence_candidates = (
@@ -458,15 +458,28 @@ class LedgerLifeEcologyTriggerStore:
             if await self._try_commit(events, projection=projection):
                 after = await self._project()
                 after_schedule = getattr(after, "life_ecology_schedule", None)
+                prior_overlay = self._leases.overlay()
+                next_due = (
+                    after_schedule.next_consideration_at
+                    if after_schedule is not None
+                    else None
+                )
+                if (
+                    outcome in _SEMANTIC_STIMULUS_OUTCOMES
+                    and prior_overlay is not None
+                    and prior_overlay.next_consideration_at is not None
+                    and completed_at < prior_overlay.next_consideration_at
+                ):
+                    next_due = (
+                        max(next_due, prior_overlay.next_consideration_at)
+                        if next_due is not None
+                        else prior_overlay.next_consideration_at
+                    )
                 self._leases.complete(
                     trigger_id=trigger_id,
                     outcome=outcome,
                     completed_at=completed_at,
-                    next_consideration_at=(
-                        after_schedule.next_consideration_at
-                        if after_schedule is not None
-                        else None
-                    ),
+                    next_consideration_at=next_due,
                 )
                 return
         raise ConcurrencyConflict("life ecology trigger completion did not converge")

@@ -44,7 +44,7 @@ async def test_onebot_explicit_release_profile_owns_metered_whole_reviewer(tmp_p
     try:
         assert captured["visible_source_review_required"] is bool(profile)
         assert captured["visible_author_tool_version"] == (
-            "slim2" if profile == "grounded_review_v25" else "3" if profile else "1"
+            "slim4" if profile == "grounded_review_v25" else "3" if profile else "1"
         )
         assert captured["visible_source_review_version"] == (profile.rsplit("_v", 1)[1] if profile else "1")
         assert captured["usage_observer"] is not None

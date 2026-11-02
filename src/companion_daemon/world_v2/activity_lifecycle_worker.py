@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime
+import os
+from datetime import datetime, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo
 
@@ -499,6 +500,14 @@ class ActivityLifecycleWorker:
             return ActivityLifecycleModelDraft(decision="no_op"), None
         if len(completes) == 1 and all(item.operation == "complete" for item in openings):
             return _timing_closure_draft(completes[0].opening_token), None
+        if (
+            new_plan_opportunity is None
+            and not renewed_plan_catalog
+            and not closed_window_abandon_only
+            and not completes
+            and self._discretionary_activity_cooldown_active(projection)
+        ):
+            return ActivityLifecycleModelDraft(decision="no_op"), None
         # day_open is the one ordinary first-chance of a local day.  It must
         # not also be the last chance: a plan committed later the same wake,
         # or an activity that has become legally completable, is new catalog
@@ -745,6 +754,7 @@ class ActivityLifecycleWorker:
                 occasion=occasion,
             )
         )
+        self._last_choice_logical_time = projection.logical_time
         if result.status == "technical_failure":
             failure_code = result.failure_code or "character_interior_technical_failure"
             if new_plan_opportunity is not None:
@@ -849,6 +859,34 @@ class ActivityLifecycleWorker:
             ),
             None,
         )
+
+    def _discretionary_activity_cooldown_active(self, projection) -> bool:
+        raw = os.environ.get("WORLD_V2_ACTIVITY_MIN_INTERVAL_SECONDS", "").strip()
+        if not raw:
+            return False
+        try:
+            min_interval = int(raw)
+        except ValueError:
+            return False
+        if min_interval <= 0:
+            return False
+        last_transition = max(
+            (
+                p.last_transitioned_at
+                for p in projection.plans
+                if p.owner_actor_ref == self._owner_actor_ref
+                and p.last_transitioned_at is not None
+            ),
+            default=None,
+        )
+        candidates = [
+            t
+            for t in (getattr(self, "_last_choice_logical_time", None), last_transition)
+            if t is not None
+        ]
+        if not candidates:
+            return False
+        return projection.logical_time < max(candidates) + timedelta(seconds=min_interval)
 
     def _fresh_activity_causes(self, projection, catalog, bound_openings, retry_cutoff=None):
         """Exact source identity, not a new wake, Plan revision or elapsed delay.

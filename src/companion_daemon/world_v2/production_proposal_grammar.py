@@ -209,12 +209,16 @@ class ProductionProposalGrammar:
         ):
             raise ProductionProposalGrammarError("action_not_reachable")
 
-    @staticmethod
-    def _validate_interaction_appraisal(proposal: DecisionProposal) -> None:
-        """Close appraisal lanes to appraisal plus optional exactly-bound affect."""
+    def _validate_interaction_appraisal(self, proposal: DecisionProposal) -> None:
+        """Close appraisal lanes to appraisal plus optional bound affect/relationship."""
 
+        allows_relationship_signal = any(
+            item.change_kind == "relationship_signal" and item.transition == "suggest"
+            for item in self.capabilities
+        )
         appraisals = []
         affects = []
+        relationship_signals = []
         for change in proposal.proposed_changes:
             if change.kind == "appraisal_transition" and change.transition == "activate":
                 appraisals.append(change)
@@ -225,6 +229,12 @@ class ProductionProposalGrammar:
                 "supersede",
             }:
                 affects.append(change)
+            elif (
+                allows_relationship_signal
+                and change.kind == "relationship_signal"
+                and change.transition == "suggest"
+            ):
+                relationship_signals.append(change)
             else:
                 raise ProductionProposalGrammarError("interaction_change_not_reachable")
 
@@ -232,6 +242,8 @@ class ProductionProposalGrammar:
             raise ProductionProposalGrammarError("interaction_appraisal_count_invalid")
         if len(affects) > 1:
             raise ProductionProposalGrammarError("interaction_affect_count_invalid")
+        if len(relationship_signals) > 1:
+            raise ProductionProposalGrammarError("interaction_relationship_signal_count_invalid")
         if proposal.action_intents:
             raise ProductionProposalGrammarError("action_not_reachable")
 
@@ -473,7 +485,7 @@ _EXPECTED_PRODUCTION_PROPOSAL_GRAMMARS: Mapping[
         # optional character-chosen lasting Affect bound to that appraisal.
         "silence_appraisal": ProductionProposalGrammar(
             lane_id="silence_appraisal",
-            capabilities=(_APPRAISAL, _AFFECT),
+            capabilities=(_APPRAISAL, _AFFECT, _RELATIONSHIP_SIGNAL),
             allows_no_change_decision=True,
         ),
         "plan_disruption_appraisal": ProductionProposalGrammar(

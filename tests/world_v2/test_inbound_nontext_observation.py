@@ -577,3 +577,19 @@ def test_sticker_provider_summary_is_copied_as_a_render_name() -> None:
     blob = json.dumps(trigger.model_dump(mode="json"), ensure_ascii=False)
     assert "[无语]" in blob
     assert "通常表示" not in blob
+    from companion_daemon.world_v2.recent_dialogue import observation_dialogue_text
+
+    assert observation_dialogue_text(observation) == "[无语]"
+
+
+def test_outbound_cq_reply_tag_normalizes_to_native_onebot_reply_segment() -> None:
+    from companion_daemon.onebot_adapter import _normalize_outbound_onebot_message
+
+    assert _normalize_outbound_onebot_message("普通文字气泡") == "普通文字气泡"
+    assert _normalize_outbound_onebot_message(
+        "[CQ:reply,id=qq-message:29] 那句明明是你先说的"
+    ) == [
+        {"type": "reply", "data": {"id": "29"}},
+        {"type": "text", "data": {"text": "那句明明是你先说的"}},
+    ]
+

@@ -43,7 +43,7 @@ def test_day_sheet_labels_seed_windows_as_routine_background() -> None:
         ),
     )
 
-    assert "今天是2026-09-07，当地11:00" in sheet
+    assert "今天是2026-09-07（周一），当地11:00" in sheet
     assert "惯常作息（背景，不代表今天的计划或实际活动）" in sheet
     assert "09:00–12:00 看书 @ 图书馆" in sheet
     assert "惯常周安排（背景，不代表已采纳的计划）" in sheet
@@ -62,4 +62,4 @@ def test_clock_and_biography_do_not_supply_weather_evidence() -> None:
         season="autumn",
     )
 
-    assert sheet == "今天是2026-09-07，当地11:00。21岁，第3学年term，autumn。"
+    assert sheet == "今天是2026-09-07（周一），当地11:00。21岁，第3学年term，autumn。"

@@ -11,6 +11,7 @@ from ..world_consequence_contract import WORLD_CONSEQUENCE_CONTRACTS
 
 import hashlib
 import json
+import re
 from datetime import datetime, timedelta
 from collections.abc import Iterable, Mapping
 from zoneinfo import ZoneInfo
@@ -1504,6 +1505,43 @@ def compile_inner_life_snapshot(
             for item in _slice_items(slices, lane)
             if (entry := compile_entry(item, fields=fields))
         ]
+        if output == "perception" and entries and dialogue_items:
+            actor_ref = str(context.get("actor_ref") or "")
+            companion_texts = [
+                str(val.get("text") or val.get("content") or "")
+                for d_item in dialogue_items
+                if isinstance((val := d_item.get("value")), dict)
+                and (
+                    val.get("speaker") == "companion"
+                    or str(val.get("speaker_ref") or val.get("author_ref") or "").startswith(
+                        "companion:"
+                    )
+                    or (
+                        actor_ref
+                        and str(val.get("speaker_ref") or val.get("author_ref") or "")
+                        == actor_ref
+                    )
+                )
+            ]
+            if companion_texts:
+                for p_entry in entries:
+                    if not isinstance(p_entry, dict):
+                        continue
+                    c_url = str(p_entry.get("canonical_url") or "")
+                    summary_txt = " ".join(
+                        str(p_entry.get(k) or "")
+                        for k in ("summary", "licensed_summary", "subjective_summary", "headline")
+                    )
+                    bv_match = re.search(r"BV[A-Za-z0-9]{10}", f"{c_url} {summary_txt}")
+                    bvid = bv_match.group(0) if bv_match else ""
+                    up_match = re.search(r"UP主：([^）；\s]+)", summary_txt)
+                    up_name = up_match.group(1).strip() if up_match else ""
+                    if (
+                        (c_url and any(c_url in txt for txt in companion_texts))
+                        or (bvid and any(bvid in txt for txt in companion_texts))
+                        or (len(up_name) >= 2 and any(up_name in txt for txt in companion_texts))
+                    ):
+                        p_entry["already_shared_in_chat"] = True
         if entries:
             materials[output] = entries
     appraisal_fields = (

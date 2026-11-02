@@ -39,6 +39,75 @@ _CAPSULE_SLICE_NAMES = (
 _CURRENT_PRESENCE_AUTHORITY_HORIZON = timedelta(minutes=5)
 
 
+def active_capability_npc_refs(
+    projection: object,
+    *,
+    owner_actor_ref: str,
+    relationships: Sequence[object] | None = None,
+) -> set[str]:
+    if relationships is None:
+        relationships = npc_relationship_readings(
+            projection,
+            protagonist_actor_ref=owner_actor_ref,
+        )
+    mandatory_ephemeral_npc_refs: set[str] = set()
+    for plan in getattr(projection, "plans", ()):
+        if getattr(plan, "status", None) in {"planned", "active", "paused"}:
+            for ref in getattr(plan, "participant_refs", ()):
+                if isinstance(ref, str) and ref.startswith("npc:open-life-npc:"):
+                    mandatory_ephemeral_npc_refs.add(ref)
+    for occ in getattr(projection, "occurrences", ()):
+        if getattr(occ, "status", None) not in {"completed", "abandoned", "failed"}:
+            for ref in getattr(occ, "participant_refs", ()):
+                if isinstance(ref, str) and ref.startswith("npc:open-life-npc:"):
+                    mandatory_ephemeral_npc_refs.add(ref)
+    optional_ephemeral_npc_refs: set[str] = {
+        ref
+        for reading in relationships
+        if isinstance((ref := getattr(reading, "counterparty_actor_ref", None)), str)
+        and ref.startswith("npc:open-life-npc:")
+    }
+    for occ in getattr(projection, "occurrences", ())[-12:]:
+        for ref in getattr(occ, "participant_refs", ()):
+            if isinstance(ref, str) and ref.startswith("npc:open-life-npc:"):
+                optional_ephemeral_npc_refs.add(ref)
+    for exp in getattr(projection, "experiences", ())[-12:]:
+        for ref in getattr(exp, "participant_refs", ()):
+            if isinstance(ref, str) and ref.startswith("npc:open-life-npc:"):
+                optional_ephemeral_npc_refs.add(ref)
+    active_ephemeral_npc_refs = [
+        f"npc:{item.npc_id}"
+        for item in getattr(projection, "npcs", ())
+        if getattr(item, "status", None) == "active"
+        and isinstance(getattr(item, "npc_id", None), str)
+        and item.npc_id.startswith("open-life-npc:")
+    ]
+    kept_optional_ephemeral = set(
+        [
+            ref
+            for ref in active_ephemeral_npc_refs
+            if ref in optional_ephemeral_npc_refs and ref not in mandatory_ephemeral_npc_refs
+        ][-8:]
+    )
+    if len(kept_optional_ephemeral) < 8:
+        for ref in reversed(active_ephemeral_npc_refs):
+            if len(kept_optional_ephemeral) >= 8:
+                break
+            if ref not in mandatory_ephemeral_npc_refs:
+                kept_optional_ephemeral.add(ref)
+    kept_ephemeral_npc_refs = mandatory_ephemeral_npc_refs | kept_optional_ephemeral
+    return {
+        f"npc:{item.npc_id}"
+        for item in getattr(projection, "npcs", ())
+        if getattr(item, "status", None) == "active"
+        and isinstance(getattr(item, "npc_id", None), str)
+        and (
+            not item.npc_id.startswith("open-life-npc:")
+            or f"npc:{item.npc_id}" in kept_ephemeral_npc_refs
+        )
+    }
+
+
 class ProjectionLifeCapabilityManifestCompiler:
     """Expose pinned facts and affordances without choosing a story candidate."""
 
@@ -226,25 +295,29 @@ class ProjectionLifeCapabilityManifestCompiler:
         unique_location_capabilities = {
             item.model_dump_json(): item for item in location_capabilities
         }
-        entity_refs = {
-            f"npc:{item.npc_id}"
-            for item in getattr(projection, "npcs", ())
-            if getattr(item, "status", None) == "active"
-            and isinstance(getattr(item, "npc_id", None), str)
-        }
+        relationships = npc_relationship_readings(
+            projection,
+            protagonist_actor_ref=self._owner,
+        )
+        entity_refs = active_capability_npc_refs(
+            projection,
+            owner_actor_ref=self._owner,
+            relationships=relationships,
+        )
         identity_views = (
-            npc_identity_views(
-                projection,
-                content_store=self._content_store,
-                relationships=npc_relationship_readings(
+            tuple(
+                view
+                for view in npc_identity_views(
                     projection,
-                    protagonist_actor_ref=self._owner,
-                ),
-                reviewed_identity_summaries={
-                    item.stable_identity_ref: item.identity_summary
-                    for item in self._catalog.reviewed_npcs
-                    if item.identity_summary is not None
-                },
+                    content_store=self._content_store,
+                    relationships=relationships,
+                    reviewed_identity_summaries={
+                        item.stable_identity_ref: item.identity_summary
+                        for item in self._catalog.reviewed_npcs
+                        if item.identity_summary is not None
+                    },
+                )
+                if view.npc_ref in entity_refs
             )
             if self._content_store is not None
             else ()
@@ -266,6 +339,8 @@ class ProjectionLifeCapabilityManifestCompiler:
             )
         for npc in getattr(projection, "npcs", ()):
             if getattr(npc, "status", None) != "active":
+                continue
+            if f"npc:{getattr(npc, 'npc_id', '')}" not in entity_refs:
                 continue
             registration_ref = getattr(npc, "registration_event_ref", None)
             if isinstance(registration_ref, str) and registration_ref:
@@ -297,15 +372,12 @@ class ProjectionLifeCapabilityManifestCompiler:
             for evidence in getattr(plan, "evidence_refs", ())
             if getattr(evidence, "ref_id", None) in committed_ids
         }
-        anchor_refs = tuple(
-            sorted(
-                {
-                    wake.event_id,
-                    *current_situation_refs,
-                    *active_plan_refs,
-                }
-            )
-        )
+        prioritized_anchor_refs = [
+            wake.event_id,
+            *sorted(current_situation_refs - {wake.event_id}),
+            *sorted(active_plan_refs - current_situation_refs - {wake.event_id}),
+        ][:16]
+        anchor_refs = tuple(sorted(prioritized_anchor_refs))
         return LifeDevelopmentCapabilityManifest(
             # Fresh requests use the separated World/character authorship
             # contract. Recovery reads the original persisted manifest; the

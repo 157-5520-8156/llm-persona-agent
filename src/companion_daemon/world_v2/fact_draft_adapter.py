@@ -658,6 +658,17 @@ def materialize_fact_observation_draft(
     if evaluated_world_revision < source_world_revision:
         raise ValueError("FactDraft evaluation cannot precede its source observation")
     draft = _parse(raw)
+    if (
+        set(draft) == {"decisions"}
+        and isinstance(draft.get("decisions"), list)
+        and len(draft["decisions"]) == 1
+        and isinstance(draft["decisions"][0], dict)
+        and draft["decisions"][0].get("observation_id") in {None, observation.observation_id}
+        and isinstance(draft["decisions"][0].get("result"), dict)
+    ):
+        draft = draft["decisions"][0]["result"]
+    elif set(draft) == {"result"} and isinstance(draft.get("result"), dict):
+        draft = draft["result"]
     if draft.get("decision") == "withdraw":
         fields = {
             "decision",

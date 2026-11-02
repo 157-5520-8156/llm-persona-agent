@@ -51,6 +51,7 @@ from .expression_draft import (
     ExpressionDraft,
     ExpressionDraftCapabilities,
     PrivateTurnStateValidationError,
+    _bound_context_event_evidence,
     bind_proactive_expression_wire,
     bind_proactive_world_claims,
     compile_proactive_world_claim_source_lanes,
@@ -81,6 +82,7 @@ from .delayed_trigger_policies import TECHNICAL_RETRY_BACKOFF_SECONDS
 from .schemas import ClaimLease, ProjectionCursor, TriggerProcess, WorldEvent
 from .shared_private_invitation import pending_shared_private_invitation_advisories
 from .response_expectation_view import (
+    EXPIRED_EXPECTATION_GRACE,
     answerable_receipt_history,
     counterpart_last_spoke_facts,
     expired_hope_advisory_value,
@@ -252,21 +254,23 @@ def _unanswered_outbound_message_facts(projection: object, *, action_ids=None) -
 
 def _living_hope_facts(
     projection: object, *, action_ids=None,
-) -> tuple[tuple[str, str, datetime, datetime], ...]:
+) -> tuple[tuple[str, str, datetime, datetime, str | None, str | None, str | None], ...]:
     """Living declared hopes without a terminal assessment, soonest wake first."""
 
     try:
         logical_time = projection.logical_time
         if logical_time is None:
             return ()
-        answerable_plan_ids = {
-            item.plan_id
+        unanswered_by_plan = {
+            item.plan_id: item
             for item in unanswered_response_expectations(projection, due_only=False)
         }
-        facts: list[tuple[str, str, datetime, datetime]] = []
+        facts: list[tuple[str, str, datetime, datetime, str | None, str | None, str | None]] = []
         for manifest in getattr(projection, "expression_plan_manifests", ()):
             expectation = getattr(manifest, "response_expectation", None)
-            if expectation is None or getattr(manifest, "plan_id", "") not in answerable_plan_ids:
+            plan_id = getattr(manifest, "plan_id", "")
+            unanswered_item = unanswered_by_plan.get(plan_id)
+            if expectation is None or unanswered_item is None:
                 continue
             if action_ids is not None and not any(
                 beat.beat_id == expectation.source_beat_id and beat.action.action_id in action_ids
@@ -284,14 +288,47 @@ def _living_hope_facts(
                 or not hoped.strip()
                 or not isinstance(acceptance_ref, str)
                 or not acceptance_ref
-                or logical_time >= expires_at
+                or logical_time >= expires_at + EXPIRED_EXPECTATION_GRACE
             ):
                 continue
-            facts.append((acceptance_ref, hoped.strip(), not_before, expires_at))
+            facts.append(
+                (
+                    acceptance_ref,
+                    hoped.strip(),
+                    not_before,
+                    expires_at,
+                    getattr(unanswered_item, "pressure", None),
+                    getattr(unanswered_item, "importance", None),
+                    getattr(unanswered_item, "inviting_beat_text", None),
+                )
+            )
         facts.sort(key=lambda item: (item[2], item[0]))
         return tuple(facts)
     except (TypeError, ValueError, AttributeError):
         return ()
+
+
+def _photos_delivered_since_last_inbound(projection: object) -> int:
+    """Count of confirmed photo deliveries since the latest counterpart inbound."""
+
+    try:
+        observations = getattr(projection, "message_observations", ()) or ()
+        latest_inbound_at = (
+            getattr(observations[-1], "received_at", None)
+            if observations
+            else None
+        )
+        deliveries = getattr(projection, "media_deliveries", ()) or ()
+        if not isinstance(latest_inbound_at, datetime):
+            return len(deliveries)
+        return sum(
+            1
+            for item in deliveries
+            if isinstance(getattr(item, "shared_at", None), datetime)
+            and item.shared_at >= latest_inbound_at
+        )
+    except (TypeError, ValueError, AttributeError):
+        return 0
 
 
 def compile_proactive_self_history_advisories(
@@ -315,6 +352,7 @@ def compile_proactive_self_history_advisories(
                   if actor_ref is not None and target is not None else None)
     outbound = _unanswered_outbound_message_facts(projection, action_ids=action_ids)
     hopes = _living_hope_facts(projection, action_ids=action_ids)
+    photos_since_inbound = _photos_delivered_since_last_inbound(projection)
     candidates: list[InnerAdvisoryCandidate] = []
     candidate_refs: list[str] = []
     source_refs: list[str] = []
@@ -337,7 +375,8 @@ def compile_proactive_self_history_advisories(
                 candidates.append(InnerAdvisoryCandidate(
                     candidate_ref="self-history:reply_gap",
                     value=(f"Last counterpart message {gap['seconds_since_last_counterpart_message']}s ago; "
-                           f"{gap['unanswered_expression_groups']} expression(s) without a later inbound; "
+                           f"{gap['unanswered_expression_groups']} expression(s) without a later inbound "
+                           f"({photos_since_inbound} photo(s) delivered); "
                            f"first {gap['seconds_since_first_unanswered_expression']}s ago, "
                            f"latest {gap['seconds_since_latest_unanswered_expression']}s ago. "
                            "No read status or motive inferred. Interpretation and next choice are yours."),
@@ -357,7 +396,8 @@ def compile_proactive_self_history_advisories(
         )
         value = (
             f"Since his last inbound you have {len(outbound)} outgoing messages "
-            f"currently acknowledged or delivered, with no later inbound{repeat_clause}: {shown}. "
+            f"currently acknowledged or delivered ({photos_since_inbound} photo(s) delivered), "
+            f"with no later inbound{repeat_clause}: {shown}. "
             "Facts only; she still decides."
         )[:_SELF_HISTORY_CANDIDATE_MAX]
         candidates.append(
@@ -372,20 +412,35 @@ def compile_proactive_self_history_advisories(
         source_refs.extend(ref for ref, _text in outbound[-_SELF_HISTORY_TEXTS_SHOWN:])
     if hopes:
         shown_hopes: list[str] = []
-        for _ref, hoped, not_before, _expires_at in hopes[:_SELF_HISTORY_HOPES_SHOWN]:
+        for (
+            _ref,
+            hoped,
+            not_before,
+            _expires_at,
+            pressure,
+            importance,
+            sent_text,
+        ) in hopes[:_SELF_HISTORY_HOPES_SHOWN]:
             wait_seconds = int((not_before - logical_time).total_seconds())
             wake_clause = (
                 f"wakes in ~{max(0, wait_seconds) // 60}m"
                 if wait_seconds > 0
                 else "wait already ran out"
             )
-            shown_hopes.append(f"'{hoped[:48]}' ({wake_clause})")
-        value = (
-            f"You are holding {len(hopes)} waiting hope(s): "
-            + "; ".join(shown_hopes)
-            + ". Declared wait times, not a command to contact him. "
+            extras = [wake_clause]
+            if pressure and importance:
+                extras.append(f"p={pressure}/i={importance}")
+            if isinstance(sent_text, str) and sent_text.strip():
+                extras.append(f"sent='{sent_text.strip()[:18]}'")
+            hope_cap = 32 if len(extras) > 1 else 48
+            shown_hopes.append(f"'{hoped[:hope_cap]}' ({', '.join(extras)})")
+        prefix = f"You are holding {len(hopes)} waiting hope(s): "
+        suffix = (
+            ". Declared wait times, not a command to contact him. "
             "Facts only; she still decides."
-        )[:_SELF_HISTORY_CANDIDATE_MAX]
+        )
+        max_hopes_len = max(1, _SELF_HISTORY_CANDIDATE_MAX - len(prefix) - len(suffix))
+        value = prefix + "; ".join(shown_hopes)[:max_hopes_len] + suffix
         candidates.append(
             InnerAdvisoryCandidate(
                 candidate_ref="self-history:living_hopes",
@@ -395,7 +450,9 @@ def compile_proactive_self_history_advisories(
             )
         )
         candidate_refs.append("self-history:living_hopes")
-        source_refs.extend(ref for ref, _hoped, _nb, _exp in hopes[:_SELF_HISTORY_HOPES_SHOWN])
+        source_refs.extend(
+            ref for ref, _hoped, _nb, _exp, _p, _i, _sent in hopes[:_SELF_HISTORY_HOPES_SHOWN]
+        )
     if not candidates:
         return ()
     # Totals are computed over the complete actor/target-scoped pinned view.
@@ -468,10 +525,14 @@ def _proactive_opportunity_context(
             }
         )
     if kind == "spontaneous_contact":
-        text = (
-            "Verified latest inbound message before the idle gap: "
-            + str(event.payload().get("text") or "[content unavailable]")[:1_024]
+        reasons = tuple(getattr(opportunity, "cadence_reason_codes", ()) or ())
+        prefix = (
+            "Active back-and-forth exchange went quiet for a few minutes after her reply; "
+            "verified latest inbound message before the pause: "
+            if "conversation:hot_dropoff" in reasons
+            else "Verified latest inbound message before the idle gap: "
         )
+        text = prefix + str(event.payload().get("text") or "[content unavailable]")[:1_024]
         if opportunity.stimulus_event_refs:
             text = (
                 text
@@ -544,12 +605,19 @@ def _proactive_opportunity_context(
                 "without a verified reply from him."
             )
         if hope_text:
-            return expired_hope_advisory_value(
-                hoped_response=hope_text,
-                seconds_since_he_last_spoke=seconds,
-                spoken_since_declared=spoken_since,
-                projection=projection,
-            ) + chase_clause
+            return (
+                expired_hope_advisory_value(
+                    hoped_response=hope_text,
+                    seconds_since_he_last_spoke=seconds,
+                    spoken_since_declared=spoken_since,
+                    projection=projection,
+                    pressure=getattr(expired, "pressure", None),
+                    importance=getattr(expired, "importance", None),
+                    inviting_beat_text=getattr(expired, "inviting_beat_text", None),
+                    chase_count=chase_count,
+                )
+                + chase_clause
+            )
         return (
             "A reply she hoped for did not arrive before that hope expired. "
             "Timing evidence only; she still decides."
@@ -636,16 +704,8 @@ class _ProactiveGroundingViolation(ValueError):
         self.path = path
 
 
-class _ProactiveSourceAuthorityUnavailable(RuntimeError):
-    pass
 
 
-class _UnavailableProactiveSourceAuthority:
-    """Never substitutes the role author for an independent truth authority."""
-
-    async def complete_json(self, _messages, *, temperature=0.0):  # type: ignore[no-untyped-def]
-        del temperature
-        raise _ProactiveSourceAuthorityUnavailable
 
 
 def _caused_by(exc: BaseException, error_type: type[BaseException]) -> bool:
@@ -855,6 +915,11 @@ class _CharacterInteriorProactiveTransport:
         faculty = self._interior._registry.for_purpose("proactive_contact")  # noqa: SLF001
         operation = getattr(faculty, "visible_review_protocol", None)
         return operation() if callable(operation) else None
+
+    def ordinary_text_review_mode(self):
+        faculty = self._interior._registry.for_purpose("proactive_contact")  # noqa: SLF001
+        operation = getattr(faculty, "ordinary_text_review_mode", None)
+        return operation() if callable(operation) else "blocking"
 
     def source_closure_review_enabled(self) -> bool:
         return self._visible_source_review_required or self._source_closure_reviewer is not None or self._inventory_model is not None
@@ -1258,11 +1323,26 @@ def _materialize_interior_proactive_draft(
         ),
         decision_origin=("grounding_gate" if grounding_outcome == "rejected" else "model"),
     )
+    evidence_by_ref = {item.ref_id: item for item in request.trigger_evidence}
+    effective_media_source_refs = draft.media_source_refs
+    if draft.media_source_refs:
+        try:
+            media_evidence = _bound_context_event_evidence(
+                cited=set(draft.media_source_refs),
+                request=request,
+            )
+        except ValueError:
+            media_evidence = ()
+        for item in media_evidence:
+            evidence_by_ref.setdefault(item.ref_id, item)
+        effective_media_source_refs = tuple(
+            ref for ref in draft.media_source_refs if ref in evidence_by_ref
+        )
     common = dict(
         proposal_id=f"proposal:proactive:{identity}",
         trigger_ref=request.trigger_ref,
         evaluated_world_revision=request.evaluated_world_revision,
-        evidence_refs=request.trigger_evidence,
+        evidence_refs=tuple(evidence_by_ref.values()),
         confidence=draft.confidence,
         brief_rationale=draft.brief_rationale,
         private_turn_state=draft.private_turn_state,
@@ -1296,23 +1376,27 @@ def _materialize_interior_proactive_draft(
         # Its JSON dump turns tuples into lists; FrozenModel is strict, so
         # model_validate() would reject that equivalent shape. Keep the
         # typed object instead of round-tripping through JSON.
-        appraisal_proposal = materialize_appraisal_proposal(
-            raw=appraisal_raw, request=request
-        )
-        state_changes = tuple(
-            item
-            for item in appraisal_proposal.proposed_changes
-            if item.kind
-            in {
-                "appraisal_transition",
-                "affect_transition",
-                "relationship_signal",
-                "relationship_commitment",
-            }
-        )
-        appraisals = appraisal_proposal.appraisals
-        affect_tendencies = appraisal_proposal.affect_tendencies
-        affect_decision = appraisal_proposal.affect_decision
+        try:
+            appraisal_proposal = materialize_appraisal_proposal(
+                raw=appraisal_raw, request=request
+            )
+        except (TypeError, ValueError):
+            appraisal_proposal = None
+        if appraisal_proposal is not None:
+            state_changes = tuple(
+                item
+                for item in appraisal_proposal.proposed_changes
+                if item.kind
+                in {
+                    "appraisal_transition",
+                    "affect_transition",
+                    "relationship_signal",
+                    "relationship_commitment",
+                }
+            )
+            appraisals = appraisal_proposal.appraisals
+            affect_tendencies = appraisal_proposal.affect_tendencies
+            affect_decision = appraisal_proposal.affect_decision
     common.update(
         appraisals=appraisals,
         affect_tendencies=affect_tendencies,
@@ -1366,6 +1450,14 @@ def _materialize_interior_proactive_draft(
             target_ref=target,
         ).model_dump(mode="json"),
         "world_claims": [item.model_dump(mode="json") for item in draft.world_claims],
+        **(
+            {
+                "media_request": draft.media_request,
+                "media_source_refs": list(effective_media_source_refs),
+            }
+            if draft.media_request != "none"
+            else {}
+        ),
     }
     if request.visible_source_requirement_json is not None:
         from .visible_source_runtime import REQUIRED_POLICY
@@ -1397,106 +1489,8 @@ def _materialize_interior_proactive_draft(
     )
 
 
-def _proactive_lived_context(
-    model_content_json: str,
-) -> tuple[dict[str, object], dict[str, object]]:
-    """Separate the role's lived view from ledger and validation transport.
-
-    The complete pinned Capsule stays on ``ModelInput`` for source closure and
-    Acceptance.  The role sees the same compact semantic view as interactive
-    cognition, with its source-bound working self promoted beside the current
-    opportunity instead of being buried inside serialized audit material.
-    """
-
-    compacted = compact_chat_model_facing_context(model_content_json)
-    try:
-        context = json.loads(compacted)
-    except (TypeError, json.JSONDecodeError) as exc:
-        raise ValueError("proactive lived context requires Context JSON") from exc
-    if not isinstance(context, dict):
-        raise ValueError("proactive lived context requires a Context object")
-    inner_life_snapshot = context.pop("inner_life_snapshot", None)
-    if not isinstance(inner_life_snapshot, dict):
-        raise ValueError("proactive lived context requires inner_life_snapshot")
-    return context, inner_life_snapshot
 
 
-def _proactive_binding_request(
-    *,
-    request: ModelInput,
-    lived_context: dict[str, object],
-) -> ModelInput:
-    """Retain exact authority only for semantic items visible to the role.
-
-    The role's compact view intentionally omits cryptographic and event-store
-    transport.  The binder and reviewer need that transport, but must not gain
-    facts the role never saw.  Selection is therefore joined back to the full
-    Capsule by the compact item's stable semantic source ref.
-    """
-
-    try:
-        full = json.loads(request.model_content_json)
-    except (TypeError, json.JSONDecodeError) as exc:
-        raise ValueError("proactive binding requires Context JSON") from exc
-    full_slices = full.get("slices") if isinstance(full, dict) else None
-    visible_slices = lived_context.get("slices")
-    if not isinstance(full, dict) or not isinstance(full_slices, dict):
-        raise ValueError("proactive binding requires Context slices")
-    if not isinstance(visible_slices, dict):
-        raise ValueError("proactive binding requires lived Context slices")
-
-    selected_slices: dict[str, object] = {}
-    for name, visible_lane in visible_slices.items():
-        full_lane = full_slices.get(name)
-        if not isinstance(visible_lane, dict):
-            continue
-        if not isinstance(full_lane, dict):
-            full_lane = {}
-        visible_items = visible_lane.get("items")
-        full_items = full_lane.get("items")
-        if not isinstance(visible_items, list) or not isinstance(full_items, list):
-            continue
-        visible_refs = {
-            item.get("source_ref")
-            for item in visible_items
-            if isinstance(item, dict) and isinstance(item.get("source_ref"), str)
-        }
-        retained = [
-            item
-            for item in full_items
-            if isinstance(item, dict)
-            and (item.get("item_ref") in visible_refs or item.get("source_ref") in visible_refs)
-        ]
-        retained_refs = {
-            (
-                item.get("item_ref")
-                if isinstance(item.get("item_ref"), str)
-                else item.get("source_ref")
-            )
-            for item in retained
-        }
-        semantic_only = [
-            {
-                **item,
-                "authority_transport_availability": "semantic_only_no_world_claim_authority",
-            }
-            for item in visible_items
-            if isinstance(item, dict) and item.get("source_ref") not in retained_refs
-        ]
-        if retained or semantic_only:
-            selected_slices[name] = {
-                "availability": "available",
-                "items": [*retained, *semantic_only],
-            }
-    selected = {key: value for key, value in full.items() if key != "slices"}
-    selected["slices"] = selected_slices
-    pinned_time = lived_context.get("pinned_time")
-    if isinstance(pinned_time, dict):
-        selected["pinned_time"] = {
-            **pinned_time,
-            "authority_transport_availability": "semantic_only_no_world_claim_authority",
-        }
-    return request.model_copy(update={"model_content_json": _canonical(selected)})
 
 
 def _proactive_source_kind(model_content_json: str) -> str | None:
@@ -1563,45 +1557,6 @@ def _proactive_source_frame(model_content_json: str) -> dict[str, object] | None
     return frames[0] if len(frames) == 1 else None
 
 
-def _proactive_memory_cue(model_content_json: str) -> str:
-    """Build one non-behavioral semantic cue from the present situation.
-
-    The cue intentionally excludes recalled memories, user facts and dialogue
-    so old material cannot query itself into the result. Current situation,
-    Affect, appraisals, life and the verified opportunity are attention
-    conditions only; the character still decides whether the association
-    matters and what, if anything, to do with it.
-    """
-
-    try:
-        context = json.loads(model_content_json)
-    except (TypeError, json.JSONDecodeError) as exc:
-        raise ValueError("proactive memory cue requires Context JSON") from exc
-    slices = context.get("slices") if isinstance(context, dict) else None
-    if not isinstance(slices, dict):
-        raise ValueError("proactive memory cue requires Context slices")
-    attention: dict[str, object] = {}
-    for name in (
-        "current_situation",
-        "affect_episodes",
-        "appraisals",
-        "world_life",
-        "open_threads",
-        "advisories",
-    ):
-        lane = slices.get(name)
-        if not isinstance(lane, dict) or lane.get("availability") == "unavailable":
-            continue
-        items = lane.get("items")
-        if isinstance(items, list) and items:
-            attention[name] = items[:4]
-    cue = _canonical(
-        {
-            "logical_time": context.get("logical_time"),
-            "present_attention": attention,
-        }
-    )
-    return cue[:1_024]
 
 
 class ProactiveOpportunity(FrozenModel):
@@ -2707,11 +2662,6 @@ class ProactiveActionRuntime:
         if located is None:
             return
         source_event = located[0]
-        # Continuity settlement is Observation-bound. Ambient/life sources
-        # still let her write us_deltas onto the proposal; they do not open
-        # a message-continuity trigger.
-        if source_event.event_type != "ObservationRecorded":
-            return
         audit_located = await self._lookup(audit.event_ref)
         if audit_located is None:
             return
@@ -2907,6 +2857,10 @@ class ProactiveActionRuntime:
         return (
             audit.get("status") == "recovery_failed"
             or audit.get("failure_code") in cls._TERMINAL_VALIDATION_FAILURE_CODES
+            or (
+                audit.get("status") in {"main_invalid", "main_exception", "main_timeout"}
+                and audit.get("model_id") is None
+            )
         )
 
     @staticmethod

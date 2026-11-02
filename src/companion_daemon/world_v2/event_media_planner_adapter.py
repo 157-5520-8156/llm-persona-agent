@@ -178,6 +178,39 @@ class SQLiteEventMediaPlanningResultStore:
         if stored != result:
             raise ValueError("planning request id is already bound to a different immutable terminal result")
 
+    def recent_plan_payloads(
+        self, *, exclude_planning_request_id: str = "", limit: int = 12
+    ) -> tuple[dict[str, object], ...]:
+        if limit <= 0:
+            return ()
+        with self._lock:
+            rows = self._connection.execute(
+                """
+                SELECT planning_request_id, result_hash, result_json
+                FROM world_v2_event_media_planning_result
+                WHERE world_id = ? AND planning_request_id != ?
+                ORDER BY rowid DESC
+                LIMIT ?
+                """,
+                (self._world_id, exclude_planning_request_id, int(limit)),
+            ).fetchall()
+        plans: list[dict[str, object]] = []
+        for req_id, result_hash, result_json in reversed(rows):
+            try:
+                decoded = _decode_result(
+                    planning_request_id=str(req_id),
+                    result_hash=str(result_hash),
+                    result_json=str(result_json),
+                )
+                if decoded.plan_payload is None:
+                    continue
+                payload = json.loads(decoded.plan_payload.body)
+                if isinstance(payload, dict):
+                    plans.append(payload)
+            except Exception:
+                continue
+        return tuple(plans)
+
 
 def _encode_result(*, planning_request_id: str, result: MediaPlanningResult) -> str:
     """Encode the closed ``MediaPlanningResult`` union with explicit wire version."""
@@ -374,9 +407,17 @@ class EventMediaPlannerAdapter:
                 else ()
             ),
         )
+        recent_loader = getattr(self._result_store, "recent_plan_payloads", None)
+        recent_media = (
+            recent_loader(exclude_planning_request_id=planning_request_id, limit=12)
+            if callable(recent_loader)
+            else ()
+        )
         try:
             self._provider_call_count += 1
-            legacy_result = await self._legacy_planner.plan(legacy_opportunity, recent_media=())
+            legacy_result = await self._legacy_planner.plan(
+                legacy_opportunity, recent_media=recent_media
+            )
         except Exception:
             return await self._store_terminal(
                 planning_request_id=planning_request_id,

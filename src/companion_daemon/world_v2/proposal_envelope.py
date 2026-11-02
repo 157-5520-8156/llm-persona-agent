@@ -1221,8 +1221,8 @@ class ResponseExpectationDraftPayload(FrozenModel):
     hoped_response: str = Field(min_length=1, max_length=128)
     pressure_bp: int = Field(ge=0, le=10_000)
     importance_bp: int = Field(ge=0, le=10_000)
-    wait_seconds: int = Field(ge=30, le=86_400)
-    expires_after_seconds: int = Field(ge=60, le=172_800)
+    wait_seconds: int = Field(ge=5, le=86_400)
+    expires_after_seconds: int = Field(ge=15, le=172_800)
 
     @model_validator(mode="after")
     def expiry_follows_wait(self) -> "ResponseExpectationDraftPayload":
@@ -1235,8 +1235,8 @@ class RevisitDraftPayload(FrozenModel):
     """Model-proposed leftover; acceptance supplies the wake window."""
 
     thought: str = Field(min_length=1, max_length=160)
-    wait_seconds: int = Field(ge=30, le=86_400)
-    expires_after_seconds: int = Field(ge=60, le=172_800)
+    wait_seconds: int = Field(ge=5, le=604_800)
+    expires_after_seconds: int = Field(ge=15, le=691_200)
 
     @model_validator(mode="after")
     def expiry_follows_wait(self) -> "RevisitDraftPayload":

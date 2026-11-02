@@ -17,7 +17,7 @@ INDEPENDENT_EVIDENCE_CONTRACT = "visible-source-runtime-evidence.3"
 # request and the accepted receipt.  Successful records reached 423KB, so the
 # former 512KB carrier bound rejected otherwise-valid, already-billed reviews.
 # Align the evidence with the 1MB visible-review audit carrier instead.
-MAX_EVIDENCE_BYTES = 1_048_576
+MAX_EVIDENCE_BYTES = 2_097_152
 REQUIRED_CAPABILITY_PREFIX = "inbound-reviewed-turn-capability:sha256:"
 
 
@@ -524,11 +524,22 @@ def verify_evidence(*, raw, proposal, requirement, author_call, author_request_h
         if len(matching) != 1:
             raise ValueError("grounded review requires its original provider subcall")
         pin = json.loads(receipt.prepared_json)
+        sys_msg_content = pin.get("request", {}).get("messages", [{}])[0].get("content", "")
+        legacy_reasoned = (
+            (
+                True
+                if "expression-sticker.1" not in sys_msg_content
+                else ("sticker_only" if "[CQ:reply,id=...]" not in sys_msg_content else False)
+            )
+            if pin.get("wire_carrier") == "grounded-review-ordered-wire.5"
+            else False
+        )
         expected_prepared = prepare_grounded_review(
             candidate=proposal, source_table=table, source_ref_aliases=aliases,
             protocol=pinned_protocol, ordered_native=pin.get("wire_carrier", False),
             faithful_proposition=pin.get("faithful_proposition", False), reference_wire=pin.get("reference_wire", False),
             material_presentation=pin.get("material_presentation"),
+            legacy_reasoned_instruction=legacy_reasoned,
         )
         if pin.get("wire_feedback"):
             feedback = pin["wire_feedback"]

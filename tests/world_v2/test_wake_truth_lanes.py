@@ -430,6 +430,26 @@ def test_spontaneous_contact_hitches_living_hope(monkeypatch) -> None:
     assert "her words, not a world event" in value
 
 
+def test_hot_chat_dropoff_spontaneous_contact_surfaces_mid_exchange_pause(monkeypatch) -> None:
+    from types import SimpleNamespace
+    import companion_daemon.world_v2.proactive_action as proactive_action_module
+
+    monkeypatch.setattr(proactive_action_module, "living_unanswered_hope", lambda _p: None)
+    context = _proactive_opportunity_context(
+        opportunity=SimpleNamespace(
+            source_kind="spontaneous_contact",
+            cadence_reason_codes=("conversation:hot_dropoff",),
+            stimulus_event_refs=(),
+        ),
+        event=SimpleNamespace(payload=lambda: {"text": "我刚刚还在想那个问题"}),
+        head=None,
+        projection=object(),
+    )
+    assert "Active back-and-forth exchange went quiet for a few minutes after her reply" in context
+    assert "我刚刚还在想那个问题" in context
+
+
+
 def test_post_silent_states_she_chose_not_to_reply_and_hitches(monkeypatch) -> None:
     context, value = _hitch_context(monkeypatch, source_kind="post_silent")
 

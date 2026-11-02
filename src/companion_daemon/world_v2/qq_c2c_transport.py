@@ -64,7 +64,7 @@ class _ReactionPayload(FrozenModel):
 
 
 class _StickerPayload(FrozenModel):
-    sticker_id: str = Field(pattern=r"^qq-face:[0-9]{1,10}$")
+    sticker_id: str = Field(pattern=r"^(?:qq-face:[0-9]{1,10}|meme:[a-z0-9_-]{1,64})$")
     version: str = Field(pattern=r"^expression-sticker\.1$")
 
 

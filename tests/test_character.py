@@ -45,18 +45,20 @@ def test_character_persona_has_her_own_attention_instead_of_a_question_seeking_r
     character = load_character("configs/character.yaml")
 
     assert character.personality is not None
-    assert "有自己的想法、日子和情绪" in character.personality
-    assert "不会为了把天聊下去" in character.personality
+    assert "有自己的好恶、兴趣和价值观" in character.personality
     assert "俏皮" in character.personality
-    assert "不会把对方的话拆开分析" in character.personality
+    assert "不必一一对应" in character.personality
+    assert "自主决定" in character.personality
+    assert "朋友跟她倒苦水时" not in character.personality
+    assert "会站在朋友这边" not in character.personality
+    assert "被惹毛时会" not in character.personality
     assert "整活" not in character.personality
     assert "抽象" not in character.personality
     assert all("像人" not in rule for rule in character.style_rules)
     assert all("语气平实" not in rule for rule in character.style_rules)
     assert character.speech is not None
-    assert "怎么说看当时心情和关系" in character.speech
     assert "QQ 私聊" in character.speech
-    assert "填对话的材料" in character.speech
+    assert "没有固定的句式或频率要求" in character.speech
     assert "我与地坛" not in "\n".join(character.daily_life)
     assert "汪曾祺" not in "\n".join(character.daily_life)
     assert "刚认识时语气礼貌、轻松、带一点好奇" not in character.speech
@@ -82,19 +84,26 @@ def test_persona_leaves_the_full_emotional_range_open() -> None:
         assert suppression not in (character.speech or "")
 
 
-def test_voice_material_carries_real_chat_habits() -> None:
-    """Her ledger voice was 68% full stops, zero emoji, and one tic in five."""
+def test_voice_material_keeps_description_without_prescribed_reply_examples() -> None:
+    """The profile supplies a voice, not a minimum quota of model replies."""
+
+    from companion_daemon.world_v2.companion_identity import CompanionIdentityFrame
+    from companion_daemon.world_v2.present_prompt import identity_prose
 
     character = load_character("configs/character.yaml")
 
     assert character.speech is not None
-    assert "不打句号" in character.speech
     assert "emoji" in character.speech or "颜文字" in character.speech
-    assert len(character.speech_examples) >= 12
-    unpunctuated = [
-        example
-        for example in character.speech_examples
-        if not example.rstrip().endswith("。")
-    ]
-    assert len(unpunctuated) >= len(character.speech_examples) - 2
-    assert any(len(example) <= 4 for example in character.speech_examples)
+    assert character.speech_examples == []
+    assert character.style_rules == []
+    assert character.first_message is None
+    frame = CompanionIdentityFrame(
+        companion_name=character.name, counterpart_name="测试者",
+        personality_frame=character.personality, speech_frame=character.speech,
+        speech_examples=tuple(character.speech_examples), style_rules=tuple(character.style_rules),
+    )
+    instruction = identity_prose(frame)
+    assert character.personality.strip() in instruction
+    assert character.speech.strip() in instruction
+    assert "她说话的样子（示例" not in instruction
+    assert "写法：" not in instruction

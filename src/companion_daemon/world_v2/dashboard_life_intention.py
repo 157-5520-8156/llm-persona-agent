@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Literal
 
 from .life_events import ActivityPlannedPayload
+from .projection_lookup import lookup_first
 from .schemas import LedgerProjection, PlanStateProjection, WorldEvent, validate_plan_authority_state
 
 
@@ -114,9 +115,9 @@ def read_dashboard_life_intention(
 
 
 def _event_at(ledger, projection, event_ref, event_type) -> WorldEvent | None:
-    reference = next((
-        item for item in projection.committed_world_event_refs if item.event_id == event_ref
-    ), None)
+    reference = lookup_first(
+        projection.committed_world_event_refs, "event_id", event_ref
+    )
     located = ledger.lookup_event_commit(event_ref)
     if reference is None or located is None:
         return None

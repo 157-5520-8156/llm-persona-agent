@@ -15,6 +15,18 @@ _APPRAISAL_COLUMNS = ("ref", "conf", "since", "until", "readings", "excerpts")
 _READING_ATTR_KEYS = ("attribution", "controllability", "severity")
 
 
+def sanitize_inner_thought_prose(text: str) -> str:
+    """Return role-authored inner thought prose unchanged without regex or word replacements."""
+
+    return text.strip() if isinstance(text, str) else text
+
+
+def sanitize_model_view_inner_materials(materials: dict[str, object]) -> dict[str, object]:
+    """Return materials without rewriting role-authored inner-thought prose."""
+
+    return dict(materials)
+
+
 def _instant(value: object) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None
@@ -53,6 +65,7 @@ def _reading_entry(hypothesis: Mapping[str, object]) -> list[object]:
     meaning = hypothesis.get("meaning")
     if not isinstance(meaning, str) or not meaning:
         return []
+    meaning = sanitize_inner_thought_prose(meaning)
     weight = hypothesis.get("weight_bp")
     attrs = {
         key: hypothesis[key]
@@ -120,9 +133,9 @@ def compact_appraisals_for_model_view(
     if not isinstance(appraisals, list) or not appraisals:
         return appraisals
     subjects: set[str] = set()
-    rows: list[list[object]] = []
+    indexed_rows: list[tuple[tuple[int, float, int], list[object]]] = []
     has_excerpts = False
-    for entry in appraisals:
+    for index, entry in enumerate(appraisals):
         if not isinstance(entry, dict):
             continue
         subject = entry.get("subject_ref")
@@ -133,9 +146,16 @@ def compact_appraisals_for_model_view(
             continue
         if len(row) > 5:
             has_excerpts = True
-        rows.append(row)
-    if not rows:
+        accepted = _instant(entry.get("accepted_at"))
+        sort_key = (
+            (1, accepted.timestamp(), index)
+            if accepted is not None
+            else (0, 0.0, index)
+        )
+        indexed_rows.append((sort_key, row))
+    if not indexed_rows:
         return appraisals
+    rows = [row for _, row in sorted(indexed_rows, key=lambda item: item[0])]
     payload: dict[str, object] = {
         "columns": list(_APPRAISAL_COLUMNS[:5] + (("excerpts",) if has_excerpts else ())),
         "rows": rows,
@@ -188,4 +208,9 @@ def appraisal_meanings(material: object) -> list[str]:
     return meanings
 
 
-__all__ = ["appraisal_meanings", "compact_appraisals_for_model_view"]
+__all__ = [
+    "appraisal_meanings",
+    "compact_appraisals_for_model_view",
+    "sanitize_inner_thought_prose",
+    "sanitize_model_view_inner_materials",
+]

@@ -491,3 +491,54 @@ def test_new_life_compaction_preserves_each_source_scope_with_original_count_bou
         {'source_ref': 'exp:0', 'scope': f'scope:{i}', 'privacy_class': 'private'} for i in range(1000)
     ]
     assert len(slice_background_inner_life_snapshot(snapshot, life_source_profile('life-source-review.24'))['source_inventory']) == 96
+
+
+@pytest.mark.parametrize("cache_split", [False, True])
+def test_background_dialogue_budget_retains_last_counterpart_when_tail_is_all_companion(
+    cache_split: bool,
+) -> None:
+    snapshot = _sample_snapshot()
+    entries = [
+        {"source_ref": "dlg:counterpart:1", "speaker": "counterpart", "text": "那你先看视频吧"},
+        *[
+            {
+                "source_ref": f"dlg:companion:{index}",
+                "speaker": "companion",
+                "text": f"我连发的第 {index} 条",
+            }
+            for index in range(16)
+        ],
+    ]
+    snapshot["materials"]["recent_dialogue"] = (
+        {"stable_turns": entries[:-1], "volatile_last_turn": entries[-1]}
+        if cache_split
+        else entries
+    )
+    snapshot["source_refs"] = [item["source_ref"] for item in entries]
+    sliced = slice_background_inner_life_snapshot(
+        snapshot, background_context_profile_for_purpose("proactive_contact")
+    )
+    delivered = recent_dialogue_material_entries(sliced["materials"]["recent_dialogue"])
+    assert len(delivered) == 12
+    assert delivered[0]["source_ref"] == "dlg:counterpart:1"
+    assert delivered[0]["speaker"] == "counterpart"
+    assert [item["source_ref"] for item in delivered[1:]] == [
+        f"dlg:companion:{index}" for index in range(5, 16)
+    ]
+    assert "dlg:counterpart:1" in sliced["source_refs"]
+
+
+def test_lean_value_preserves_speaker_ref_identity_instead_of_aliasing_source_id() -> None:
+    from companion_daemon.world_v2.present_prompt import _lean_value
+
+    aliases = {"agent:companion": "s0", "event:msg:1": "s1"}
+    value = {
+        "source_ref": "event:msg:1",
+        "speaker_ref": "agent:companion",
+        "speaker": "companion",
+        "text": "先自曝一个 我小时候被《走近科学》片头吓得关电视",
+    }
+    leaned = _lean_value(value, aliases)
+    assert leaned["source_ref"] == "s1"
+    assert leaned["speaker_ref"] == "agent:companion"
+

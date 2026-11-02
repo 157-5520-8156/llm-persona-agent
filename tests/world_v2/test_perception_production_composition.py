@@ -680,3 +680,55 @@ def test_forged_perception_result_content_is_rejected() -> None:
             result_hash="sha256:" + "0" * 64,
             text="model claims it saw content that the provider did not return",
         )
+
+
+@pytest.mark.asyncio
+async def test_perception_before_expression_exposes_perception_result_in_same_turn_context(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "perception-same-turn.sqlite"
+    main_model = _NoChangeModel()
+    provider = _DurablePerceptionProvider()
+    cfg = WorldV2TurnApplicationConfig(
+        world_id="world:perception-production-composition",
+        companion_actor_ref="agent:companion",
+        reply_target="user:primary",
+        action_pump_owner="pump:perception-production",
+        character_memory_enabled=False,
+        perception_budget_limit=5,
+        perception_before_expression=True,
+    )
+    app = build_sqlite_world_v2_test_application(
+        path=path,
+        config=cfg,
+        identities=_Identities(),
+        router=_Router(),
+        character_interior=compose_fixture_character_interior(
+            inbound_author=main_model,
+            purpose_faculties=(_PerceptionPurposeFaculty(select=True),),
+        ),
+        transport=_Platform(),
+        perception_input_source=_Inputs(),
+        perception_transport=provider,
+        now=NOW,
+    )
+    _copy_perception_authority(monkeypatch, ledger=app._ledger)  # noqa: SLF001
+    try:
+        outcome = await app.inbound(
+            platform="test",
+            platform_user_id="primary",
+            platform_message_id="attachment:same-turn",
+            text=None,
+            observed_at=NOW,
+            trace_id="trace:attachment:same-turn",
+            attachment_refs=("attachment:image:opaque:same-turn",),
+        )
+        assert outcome.status == "observed_only"
+        assert provider.calls == 1
+        same_turn = main_model.requests[-1]
+        model_context = json.loads(same_turn.model_content_json)
+        result_value = model_context["slices"]["perception_results"]["items"][0]["value"]
+        assert result_value["text"] == _DurablePerceptionProvider.body
+    finally:
+        app.close()
+

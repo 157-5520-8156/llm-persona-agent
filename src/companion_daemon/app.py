@@ -799,6 +799,44 @@ async def world_v2_dashboard_home(
     return JSONResponse(content=result.snapshot.to_payload(), headers=headers)
 
 
+@app.get("/world-v2/dashboard/media/{preview_id}/image")
+async def world_v2_dashboard_media_image(
+    preview_id: str,
+    request: Request,
+    x_world_v2_internal_token: str | None = Header(default=None),
+) -> Response:
+    _require_world_v2_dashboard_access(request, x_world_v2_internal_token)
+    safe_name = preview_id.replace(":", "-") + ".png"
+    preview_dir = Path("output/media-preview").resolve()
+    candidate = (preview_dir / safe_name).resolve()
+    if candidate.parent != preview_dir or not candidate.is_file():
+        raise HTTPException(status_code=404, detail="preview image is unavailable")
+    return FileResponse(
+        str(candidate),
+        media_type="image/png",
+        headers={"Cache-Control": "private, max-age=3600"},
+    )
+
+
+@app.get("/world-v2/dashboard/cost")
+async def world_v2_dashboard_cost(
+    request: Request,
+    x_world_v2_internal_token: str | None = Header(default=None),
+) -> Response:
+    _require_world_v2_dashboard_access(request, x_world_v2_internal_token)
+    from .world_v2.dashboard_cost_meter import build_dashboard_cost_snapshot
+
+    settings = _http_v2_settings(request.app)
+    payload = await asyncio.to_thread(
+        build_dashboard_cost_snapshot, settings.database_path
+    )
+    return JSONResponse(
+        content=payload,
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
+
 @app.post("/messages", response_model=None)
 async def post_message(
     message: IncomingMessage,

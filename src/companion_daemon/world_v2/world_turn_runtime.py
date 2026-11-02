@@ -69,6 +69,9 @@ class WorldTurnRuntime:
     def expression_episode_diagnostics(self) -> dict[str, object]:
         return self._runtime.expression_episode_diagnostics()
 
+    def set_fact_background_commit_gate(self, gate) -> None:
+        self._runtime.set_fact_background_commit_gate(gate)
+
     async def cancel_superseded_expression_streams(
         self, current_trigger_ref: str
     ) -> None:

@@ -84,15 +84,21 @@ class LifeContentExcerpt(FrozenModel):
     def bounded(self, max_characters: int) -> LifeContentExcerpt:
         if self.world_consequence is None:
             assert self.text is not None
+            if len(self.text) <= max_characters:
+                return self
             return self.model_copy(update={
                 "text": self.text[:max_characters],
-                "truncated": self.truncated or len(self.text) > max_characters,
+                "truncated": True,
             })
         reading = LifeContentReading(
             world_consequence=self.world_consequence, character_response=self.character_response,
         ).bounded(max_characters)
+        if (
+            reading.world_consequence is self.world_consequence
+            and reading.character_response is self.character_response
+        ):
+            return self
         return self.model_copy(update={
-            **reading.model_dump(mode="python"),
             "world_consequence": reading.world_consequence,
             "character_response": reading.character_response,
             "truncated": self.truncated or reading.truncated,
@@ -157,7 +163,8 @@ class LifeContentCompiler:
 
     def current_planning(self, *, projection, actor_ref, viewer_privacy_ceiling, user_channel_limited_content_refs):
         """Current arrangements and near-term instances from exact published sources."""
-        from datetime import timedelta
+        from datetime import datetime, time, timedelta
+        from zoneinfo import ZoneInfo
         from .world_planning import planning_publications, expand_planning, WorldPlanningReading
         if self._store is None or projection.logical_time is None:
             return {}
@@ -187,11 +194,18 @@ class LifeContentCompiler:
                 descriptor_payload_hash=descriptor.descriptor_payload_hash, world_consequence=reading.world_consequence,
             )
             planning = publication.planning
+            zone = ZoneInfo(planning.timezone_name)
+            local_today_start = datetime.combine(
+                projection.logical_time.astimezone(zone).date(),
+                time(),
+                zone,
+            )
             result[publication.occurrence_ref] = (WorldPlanningReading(
                 title=planning.title, summary=planning.summary, starts_on=planning.starts_on, ends_on=planning.ends_on,
                 phases=planning.phases, detailed_through=planning.detailed_through,
                 upcoming=expand_planning(planning, world_id=projection.world_id,
-                    starts_at=projection.logical_time, ends_at=projection.logical_time + timedelta(days=7),
+                    starts_at=min(projection.logical_time, local_today_start),
+                    ends_at=projection.logical_time + timedelta(days=7),
                     effective_from=publication.published_at, effective_until=publication.effective_until, limit=12),
             ), excerpt)
         return result
@@ -505,7 +519,10 @@ class LifeContentCompiler:
             if descriptor.source_kind == "experience":
                 compiled_item = RecentExperienceContextItem.model_validate(
                     {
-                        **experience.model_dump(mode="python"),
+                        **{
+                            field_name: getattr(experience, field_name)
+                            for field_name in ExperienceProjection.model_fields
+                        },
                         "content": excerpt,
                     }
                 )
@@ -561,8 +578,9 @@ class LifeContentCompiler:
                             reason="structured_content_unavailable",
                         ))
                         continue
-                    item = (item.model_copy(update={"content": bounded})
-                            if isinstance(item, RecentExperienceContextItem) else bounded)
+                    if bounded is not original:
+                        item = (item.model_copy(update={"content": bounded})
+                                if isinstance(item, RecentExperienceContextItem) else bounded)
                 if remaining is not None and remaining <= 0:
                     content_id = (
                         item.content.content_id
@@ -592,7 +610,7 @@ class LifeContentCompiler:
                         ))
                         continue
                     if isinstance(item, RecentExperienceContextItem):
-                        view = item.model_copy(update={"content": content})
+                        view = item if content is original else item.model_copy(update={"content": content})
                         if remaining is not None:
                             remaining -= content.text_characters()
                         experiences_out.append(view)

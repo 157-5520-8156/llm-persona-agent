@@ -22,6 +22,7 @@ from ..affect_target_bounds import (
     STANDARD_DECAY_SCHEMA_VERSION,
     STANDARD_RESIDUE_OBJECT_REF,
     STANDARD_RESIDUE_SCHEMA_VERSION,
+    select_decay_object_ref,
     validate_model_authored_targets,
 )
 from ..deliberation import ModelInput
@@ -913,12 +914,21 @@ def _base_decision_proposal_from_draft(*, raw: str, request: ModelInput) -> Deci
         else:
             affect_payload["component_targets"] = components
         if affect in {"open", "supersede"}:
+            peak_intensity_bp = max(
+                (
+                    int(item["target_intensity_bp"])
+                    for item in components
+                    if isinstance(item, dict) and isinstance(item.get("target_intensity_bp"), int)
+                ),
+                default=0,
+            )
+            decay_object_ref = select_decay_object_ref(peak_intensity_bp)
             affect_payload.update(
                 {
                     "decay_config": {
-                        "object_ref": STANDARD_DECAY_OBJECT_REF,
+                        "object_ref": decay_object_ref,
                         "schema_version": STANDARD_DECAY_SCHEMA_VERSION,
-                        "payload_hash": "sha256:" + _digest(STANDARD_DECAY_OBJECT_REF),
+                        "payload_hash": "sha256:" + _digest(decay_object_ref),
                     },
                     "residue_config": {
                         "object_ref": STANDARD_RESIDUE_OBJECT_REF,

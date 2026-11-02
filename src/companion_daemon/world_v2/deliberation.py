@@ -73,7 +73,7 @@ MAX_MODEL_OUTPUT_NODES = 16_384
 MAX_COMPLETED_INBOUND_OUTPUT_BYTES = 4_000_000
 # The visible-review evidence itself is independently bounded; this is the
 # carrier for it.  It must never truncate an accepted, already-billed review.
-MAX_VISIBLE_SOURCE_REVIEW_BYTES = 1_048_576
+MAX_VISIBLE_SOURCE_REVIEW_BYTES = 2_097_152
 MAX_ROUTE_REASON_CHARACTERS = 128
 MAX_REPORTED_TOKENS = 10_000_000
 # Process-wide ceilings cover unrelated lanes and detached cancellation audit.
@@ -983,12 +983,25 @@ class TurnAttentionAdvisory(_FrozenModel):
 
     continuation_probability_bp: int = Field(ge=0, le=10_000)
     confidence_bp: int = Field(ge=0, le=10_000)
+    compact_reply_hint_bp: int | None = Field(
+        default=None,
+        ge=0,
+        le=10_000,
+        exclude_if=lambda value: value is None,
+    )
     typing_active: bool
     status: Literal["predicted", "fallback"]
     model_id: str | None = Field(default=None, min_length=1, max_length=256)
     evidence_summary: str = Field(min_length=1, max_length=512)
     reason_codes: tuple[str, ...] = Field(default=(), max_length=8)
     authority: Literal["advisory_only"] = "advisory_only"
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_reason_codes_tuple(cls, data: object) -> object:
+        if isinstance(data, dict) and isinstance(data.get("reason_codes"), list):
+            return {**data, "reason_codes": tuple(data["reason_codes"])}
+        return data
 
     @model_validator(mode="after")
     def reason_codes_are_bounded(self) -> "TurnAttentionAdvisory":
@@ -1037,6 +1050,9 @@ class TriggerMessage(_FrozenModel):
         default=(), max_length=16, exclude_if=lambda value: not value
     )
     reply_refs: tuple[str, ...] = Field(
+        default=(), max_length=16, exclude_if=lambda value: not value
+    )
+    quoted_reply_texts: tuple[str, ...] = Field(
         default=(), max_length=16, exclude_if=lambda value: not value
     )
     inbound_surfaces: tuple[InboundSurfaceFact, ...] = Field(
@@ -1101,7 +1117,7 @@ class ModelInput(_FrozenModel):
     visible_source_recall_traces: tuple[TrustedRecallTrace, ...] = Field(
         default=(), max_length=2, exclude=True,
     )
-    visible_source_requirement_json: str | None = Field(default=None, max_length=512_000, exclude_if=lambda v: v is None)
+    visible_source_requirement_json: str | None = Field(default=None, max_length=2_097_152, exclude_if=lambda v: v is None)
     visible_review_participants: VisibleReviewParticipantBinding | None = Field(
         default=None, exclude_if=lambda value: value is None,
     )
@@ -1113,7 +1129,7 @@ class ModelInput(_FrozenModel):
     evaluated_world_revision: int = Field(ge=0)
     evaluated_deliberation_revision: int = Field(default=0, ge=0)
     evaluated_ledger_sequence: int = Field(default=0, ge=0)
-    model_content_json: str = Field(min_length=2, max_length=512_000)
+    model_content_json: str = Field(min_length=2, max_length=2_097_152)
     trigger_evidence: tuple[ProposalEvidenceRef, ...] = Field(default=(), max_length=8)
     trigger_message: TriggerMessage | None = None
     affect_target_bounds: AffectTargetLowerBounds | None = Field(

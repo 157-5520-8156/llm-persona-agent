@@ -276,6 +276,7 @@ def compile_paid_private_impression_draft(
     reflection_summary: str,
     offered_source_refs: tuple[str, ...],
     keep_impression: bool | None = None,
+    predecessor_refs: tuple[str, ...] = (),
 ) -> PrivateImpressionDraft | None:
     if keep_impression is not True:
         return None
@@ -283,9 +284,10 @@ def compile_paid_private_impression_draft(
     sources = tuple(dict.fromkeys(item for item in offered_source_refs if item))
     if not summary or not sources:
         return None
+    predecessors = tuple(dict.fromkeys(item for item in predecessor_refs if item))
     return PrivateImpressionDraft(
-        decision="retain",
-        predecessor_refs=(),
+        decision="supersede" if predecessors else "retain",
+        predecessor_refs=predecessors,
         source_refs=sources[:8],
         reflection_summary=summary,
         confidence_bp=5_000,
@@ -1170,7 +1172,42 @@ def private_impression_opportunity(projection) -> tuple[str, str] | None:
                 private_impression_trigger_identity(projection.world_id, source_ref),
                 source_ref,
             )
-    for appraisal in reversed(projection.appraisals):
+    event_revisions = {
+        ref.event_id: ref.world_revision
+        for ref in projection.committed_world_event_refs
+    }
+    newest_by_subject: dict[str, str] = {}
+    ordered_appraisals = sorted(
+        enumerate(projection.appraisals),
+        key=lambda pair: (
+            event_revisions.get(
+                pair[1].origin.accepted_event_ref if pair[1].origin is not None else "",
+                0,
+            ),
+            pair[0],
+        ),
+        reverse=True,
+    )
+    for _, appraisal in ordered_appraisals:
+        subject_ref = getattr(appraisal, "subject_ref", None) or getattr(
+            getattr(appraisal, "values", None), "subject_ref", None
+        )
+        origin = getattr(appraisal, "origin", None)
+        accepted_ref = getattr(origin, "accepted_event_ref", None)
+        if isinstance(subject_ref, str) and isinstance(accepted_ref, str):
+            newest_by_subject.setdefault(subject_ref, accepted_ref)
+    for _, appraisal in ordered_appraisals:
+        subject_ref = getattr(appraisal, "subject_ref", None) or getattr(
+            getattr(appraisal, "values", None), "subject_ref", None
+        )
+        origin = getattr(appraisal, "origin", None)
+        accepted_ref = getattr(origin, "accepted_event_ref", None)
+        if (
+            isinstance(subject_ref, str)
+            and isinstance(accepted_ref, str)
+            and newest_by_subject.get(subject_ref) != accepted_ref
+        ):
+            continue
         source_ref = eligible(appraisal)
         if source_ref is None:
             continue
@@ -1385,17 +1422,23 @@ def _private_impression_capability(
         "expiry_conditions": list(EXPIRY_CONDITIONS),
         "decision_meanings": {
             "no_change": "这次先不动印象：不开新的，也不搁下已有的。省略也完全正常。",
-            "retain": "记下一条新的、仍可改的私人印象。",
+            "retain": (
+                "记下一条新的、仍可改的私人印象（可以是挂念、好奇、觉得好笑暖心的瞬间，"
+                "也可以是还在意的别扭、委屈、不服气或没着落的事，如实按自己的性子想，直接写第一人称心里话）。"
+            ),
             **(
                 {
                     "consolidate": (
-                        "只把同一件事或同一种理解的已有印象收拢；"
-                        "不同的人、事情和感受可以分别留下，不必合成一条总心得。"
+                        "只把关于同一件事或同一个人的几条零散印象合成一条自然的当前想法；"
+                        "直接写第一人称心里话，不要加『把XX收拢一下』『记一笔』之类台账式前缀，"
+                        "也不要续抄旧印象末尾的套话。"
                     ),
-                    "supersede": "用一条新的印象替代旧的；旧的不再作为未了结的心事。",
+                    "supersede": (
+                        "用一条新的真实想法替代旧印象（例如原本觉得没所谓、后来等久了越想越委屈或越发挂念，"
+                        "用更新后的第一人称想法与 confidence_bp 顶替旧印象）。"
+                    ),
                     "release": (
-                        "这件事我已经说过或做过，可以搁下了。"
-                        "仍记得，只是不再占着未了结的位置。选或不选都正常。"
+                        "这件事已经过去或说开了，可以搁下了。选或不选都正常。"
                     ),
                 }
                 if existing_impression_short_tokens
@@ -1405,6 +1448,7 @@ def _private_impression_capability(
         "reflection_guidance": (
             "感受是你的理解，不是新增的外部经历；写下它与哪些证据有关。"
             "不需要每件小事都形成长期心得，短感受和 no_change 都正常。"
+            "用自然平实的日常第一人称大白话直接写你对具体人和事的真实想法，切勿使用『受用』『余温』『收拢』『收口』『这条线』『框架不变』等书面词或台账黑话，也不要写『先这么记着』『不用急着消化』这类旁白。"
             "已有理解没有实质变化时可以不更新，不必反复换句话抄写；"
             "新的证据也可以让你犹豫、改观或搁下旧理解，由你决定。"
         ),

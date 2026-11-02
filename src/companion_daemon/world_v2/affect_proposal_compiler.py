@@ -17,6 +17,8 @@ from .affect_acceptance_runtime import affect_mutation_event_id
 from .affect_events import AffectComponentUpdate, affect_mutation_hash
 from .affect_math import DecayAnchor, DecayProfile, decay_intensity_bp
 from .affect_target_bounds import (
+    DEEP_DECAY_HALF_LIFE_SECONDS,
+    DEEP_DECAY_OBJECT_REF,
     STANDARD_DECAY_DELAY_SECONDS,
     STANDARD_DECAY_FLOOR_BP,
     STANDARD_DECAY_HALF_LIFE_SECONDS,
@@ -25,6 +27,8 @@ from .affect_target_bounds import (
     STANDARD_RESIDUE_BP,
     STANDARD_RESIDUE_OBJECT_REF,
     STANDARD_RESIDUE_SCHEMA_VERSION,
+    SUSTAINED_DECAY_HALF_LIFE_SECONDS,
+    SUSTAINED_DECAY_OBJECT_REF,
     lower_bounds_from_projection,
 )
 from .decision_proposal_authority import DecisionProposalAuthorityReader
@@ -55,6 +59,16 @@ _MERGE_WINDOW_SECONDS = 900
 _DECAY_SELECTORS = {
     (STANDARD_DECAY_OBJECT_REF, STANDARD_DECAY_SCHEMA_VERSION): (
         STANDARD_DECAY_HALF_LIFE_SECONDS,
+        STANDARD_DECAY_FLOOR_BP,
+        STANDARD_DECAY_DELAY_SECONDS,
+    ),
+    (SUSTAINED_DECAY_OBJECT_REF, STANDARD_DECAY_SCHEMA_VERSION): (
+        SUSTAINED_DECAY_HALF_LIFE_SECONDS,
+        STANDARD_DECAY_FLOOR_BP,
+        STANDARD_DECAY_DELAY_SECONDS,
+    ),
+    (DEEP_DECAY_OBJECT_REF, STANDARD_DECAY_SCHEMA_VERSION): (
+        DEEP_DECAY_HALF_LIFE_SECONDS,
         STANDARD_DECAY_FLOOR_BP,
         STANDARD_DECAY_DELAY_SECONDS,
     ),

@@ -51,8 +51,7 @@ async def test_configured_split_has_one_logical_author_and_actual_provider_linea
         assert comp.character_interior._turn_lease_seconds >= 6 * 90
         for purpose in BACKGROUND_CHARACTER_PURPOSES:
             assert registry.for_purpose(purpose) is background
-        for purpose in ('proactive_contact','expression_reconsideration','qq_attachment_perception',
-                        'external_perception_attention','media_selection'):
+        for purpose in ('proactive_contact','expression_reconsideration','qq_attachment_perception'):
             assert registry.for_purpose(purpose) is interactive
         assert registry.for_purpose('inbound_turn') is not background
         assert comp.character_interior_health()['background_compute']['usage']['cny_cost'] is None

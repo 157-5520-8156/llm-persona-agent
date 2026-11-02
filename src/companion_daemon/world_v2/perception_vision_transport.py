@@ -14,7 +14,9 @@ role author.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import base64
 import hashlib
+import io
 import json
 import logging
 from pathlib import Path
@@ -24,12 +26,14 @@ from time import monotonic
 from typing import Any
 
 import httpx
+from PIL import Image
 
 from companion_daemon.llm import ModelCallUsage
 from companion_daemon.usage_metrics import estimate_model_cost
 
 from .model_usage_budget import WorldV2UsageStore
 from .perception_result_context import PerceptionResultContent
+from .sticker_vault import harvest_inbound_meme_from_data_url
 
 
 _LOG = logging.getLogger(__name__)
@@ -49,17 +53,76 @@ _PERCEPTION_USAGE_PURPOSE = "qq_attachment_perception"
 _IDENTITY_CLAIMS = ("用户本人", "这是用户", "图中是用户", "用户的自拍", "用户自拍", "theuser")
 
 _SYSTEM_PROMPT = (
-    "你在帮一位虚拟伴侣理解对方刚发来的一张图片。"
-    "用中文输出一段自然、克制的描述（不超过120字）：只说画面里可见的内容、"
-    "画面类型（表情包/截图/照片/自拍/物品/风景/文字等）和可能的情绪线索。"
-    "如果图里有文字，摘录关键的一两句。"
-    "不要编造画面外的信息；不要断言图中人物的身份。"
+    "你在帮一位虚拟伴侣看清对方刚在QQ发来的一张图片或表情包。"
+    "用中文输出一段自然、准确的画面描述（不超过120字）："
+    "1. 先标明类型（静态表情包/GIF动图表情包/无厘头抽象梗图/聊天截图/日常照片/自拍等）；"
+    "2. 若是表情包或梗图，重点描述可见的主体、动作姿态、神态、清晰可见的配字，以及画面传递的直观氛围（若属于将不同素材拼贴P图、无实际字面意义的搞怪/抽象整活，直接如实说明其拼贴画面与滑稽整活感）；"
+    "3. 对低分辨率或缩略表情包，结合五官轮廓与四肢动作辨认主体（如猫狗动物头、火柴人、动漫小人等），看不清的细节或极小字不要硬猜；"
+    "4. 不要编造画面外的信息，不要替接收者预设回复话术，不要断言真人照片的身份。"
 )
 
 _USER_PROMPT = (
-    "请概括这张图，方便她之后在聊天里自然地回应。"
-    "如果像表情包，说明表情大意；如果像自拍或人物照，只描述可见特征，不认定身份。"
+    "请客观概括这张图的可见画面、动作神态与配字（若是表情包/抽象梗图请说明动作与搞怪氛围）。"
+    "若像真人自拍或人物照，只描述可见特征，不认定身份。"
 )
+
+_ANIMATED_USER_PROMPT = (
+    "这是一张GIF动态表情包/动图按时间顺序抽取的4帧关键画面（左上→右上→左下→右下）。"
+    "请结合4帧变化描述它的连贯动作、角色神态、配字（留意后几帧出现的文字或动作变化）与整体氛围，不要把4宫格当成4张独立的图。"
+)
+
+
+def _prepare_vision_input(body: str) -> tuple[str, str]:
+    """Render multi-frame GIFs as a 2x2 keyframe sheet and upscale tiny stickers."""
+
+    if not body.startswith("data:image/") or ";base64," not in body:
+        return body, _USER_PROMPT
+    try:
+        _, encoded = body.split(";base64,", 1)
+        raw_bytes = base64.b64decode(encoded, validate=False)
+        if not raw_bytes:
+            return body, _USER_PROMPT
+        with Image.open(io.BytesIO(raw_bytes)) as im:
+            n_frames = int(getattr(im, "n_frames", 1) or 1)
+            is_animated = bool(getattr(im, "is_animated", False)) and n_frames >= 3
+            if is_animated:
+                indices = [0, n_frames // 3, (2 * n_frames) // 3, n_frames - 1]
+                cell = 220
+                pad = 20
+                canvas = Image.new("RGBA", (cell * 2 + pad * 3, cell * 2 + pad * 3), (246, 246, 246, 255))
+                positions = [
+                    (pad, pad),
+                    (cell + pad * 2, pad),
+                    (pad, cell + pad * 2),
+                    (cell + pad * 2, cell + pad * 2),
+                ]
+                for idx, (ox, oy) in zip(indices, positions, strict=True):
+                    im.seek(idx)
+                    frame = im.convert("RGBA")
+                    w, h = frame.size
+                    if w > 0 and h > 0:
+                        scale = min(cell / w, cell / h)
+                        nw = max(1, int(round(w * scale)))
+                        nh = max(1, int(round(h * scale)))
+                        frame = frame.resize((nw, nh), Image.Resampling.LANCZOS)
+                        canvas.alpha_composite(frame, (ox + (cell - nw) // 2, oy + (cell - nh) // 2))
+                out = io.BytesIO()
+                canvas.convert("RGB").save(out, format="PNG", optimize=True)
+                grid_b64 = base64.b64encode(out.getvalue()).decode("ascii")
+                return f"data:image/png;base64,{grid_b64}", _ANIMATED_USER_PROMPT
+            w, h = im.size
+            if 0 < max(w, h) < 256:
+                scale = 320.0 / max(w, h)
+                nw = max(1, int(round(w * scale)))
+                nh = max(1, int(round(h * scale)))
+                upscaled = im.convert("RGBA").resize((nw, nh), Image.Resampling.LANCZOS)
+                out = io.BytesIO()
+                upscaled.save(out, format="PNG", optimize=True)
+                up_b64 = base64.b64encode(out.getvalue()).decode("ascii")
+                return f"data:image/png;base64,{up_b64}", _USER_PROMPT
+    except Exception:
+        return body, _USER_PROMPT
+    return body, _USER_PROMPT
 
 
 def _digest(value: object) -> str:
@@ -175,6 +238,14 @@ class SQLiteDurableVisionPerceptionTransport:
                 raise ValueError("perception idempotency key was rebound to another input")
             return self._tuple(stored)
         text, provider_ref = await self._call_provider(body, idempotency_key=idempotency_key)
+        try:
+            harvest_inbound_meme_from_data_url(
+                data_url=body,
+                input_hash=input_hash,
+                vl_description=text,
+            )
+        except Exception:
+            _LOG.debug("inbound meme harvest skipped", exc_info=True)
         received_at = datetime.now(UTC)
         result_ref = "perception-vision:" + _digest(
             {"key": idempotency_key, "input_hash": input_hash, "text": text}
@@ -245,6 +316,7 @@ class SQLiteDurableVisionPerceptionTransport:
             options["proxy"] = self._proxy_url
         if self._transport is not None:
             options["transport"] = self._transport
+        prepared_body, user_prompt = _prepare_vision_input(body)
         payload: dict[str, Any] = {
             "model": self._model,
             "messages": [
@@ -252,8 +324,8 @@ class SQLiteDurableVisionPerceptionTransport:
                 {
                     "role": "user",
                     "content": [
-                        {"type": "text", "text": _USER_PROMPT},
-                        {"type": "image_url", "image_url": {"url": body}},
+                        {"type": "text", "text": user_prompt},
+                        {"type": "image_url", "image_url": {"url": prepared_body}},
                     ],
                 },
             ],
@@ -263,7 +335,7 @@ class SQLiteDurableVisionPerceptionTransport:
         if self._thinking_disabled:
             payload["enable_thinking"] = False
         prompt_tokens = (
-            _IMAGE_TOKEN_RESERVE + len((_SYSTEM_PROMPT + _USER_PROMPT).encode("utf-8")) + 256
+            _IMAGE_TOKEN_RESERVE + len((_SYSTEM_PROMPT + user_prompt).encode("utf-8")) + 256
         )  # Conservative text/framing allowance; never includes image bytes.
         estimate = estimate_model_cost(
             model=self._model,
@@ -277,7 +349,7 @@ class SQLiteDurableVisionPerceptionTransport:
             actor="agent:companion",
             provider=self.provider,
             model=self._model,
-            prompt_characters=len(_SYSTEM_PROMPT + _USER_PROMPT),
+            prompt_characters=len(_SYSTEM_PROMPT + user_prompt),
             estimated_cny=estimate.cny,
             world_id=self._world_id,
             # The transport receives the accepted Action's effect-once key,

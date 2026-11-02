@@ -27,8 +27,29 @@ def history_query_text(*, context, current_outlook):
         "world_life": (
             ("content", "text"),
             ("content", "world_consequence", "environment", "text"),
+            ("content", "world_consequence", "authorized_attempt_result", "text"),
+            ("content", "character_response", "response_text"),
+            ("content", "character_response", "text"),
             ("premise", "text"),
             ("accepted_intention", "text"),
+        ),
+        "recent_experiences": (
+            ("content", "text"),
+            ("content", "world_consequence", "environment", "text"),
+            ("content", "world_consequence", "authorized_attempt_result", "text"),
+            ("content", "character_response", "response_text"),
+            ("content", "character_response", "text"),
+            ("summary",),
+        ),
+        "private_impressions": (
+            ("reflection_summary",),
+            ("values", "reflection_summary"),
+        ),
+        "perception_results": (
+            ("summary",),
+            ("licensed_summary",),
+            ("subjective_summary",),
+            ("headline",),
         ),
         "recent_dialogue": (("text",),),
         "relevant_facts": (("source_excerpt",),),
@@ -50,6 +71,20 @@ def history_query_text(*, context, current_outlook):
                     value = value.get(key)
                 if isinstance(value, str) and value.strip() and value not in parts:
                     parts.append(value)
+            item_value = item.get("value")
+            if name == "world_life" and isinstance(item_value, dict) and item_value.get("context_kind") == "biographical_context":
+                if item_value.get("privacy_class") == "withhold":
+                    continue
+                for coord in item_value.get("settled_biographical_coordinates", ()) or ():
+                    if isinstance(coord, dict) and coord.get("privacy_class") != "withhold":
+                        summary = coord.get("summary")
+                        if isinstance(summary, str) and summary.strip() and summary not in parts:
+                            parts.append(summary)
+                for arc in item_value.get("active_life_arcs", ()) or ():
+                    if isinstance(arc, dict) and arc.get("privacy_class") != "withhold":
+                        summary = arc.get("context_summary")
+                        if isinstance(summary, str) and summary.strip() and summary not in parts:
+                            parts.append(summary)
     for thread in current_outlook["threads"]:
         if thread.get("status", "open") == "closed":
             continue

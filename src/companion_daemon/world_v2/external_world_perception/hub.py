@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 from pathlib import Path
+import re
 import sqlite3
 from threading import RLock
 from typing import Any
@@ -801,6 +802,48 @@ class SQLiteWorldPerceptionHub:
         ).fetchone()
         return str(row["cursor_value"]) if row is not None and row["cursor_value"] else None
 
+    @staticmethod
+    def _strip_bilibili_volatile_stats(summary: str) -> str:
+        return re.sub(r"数据：播放[^；。]*[；。]?\s*", "", summary or "").strip()
+
+    @classmethod
+    def _is_equivalent_or_less_rich_bilibili_revision(
+        cls,
+        *,
+        source_id: str,
+        latest_normalized_json: str | None,
+        item: ExternalSignalSourceItem,
+    ) -> ExternalSignalSourceItem | None:
+        if (
+            source_id != "cn.social.bilibili.popular.v1"
+            or not latest_normalized_json
+            or item.correction_of_upstream_item_id is not None
+        ):
+            return None
+        try:
+            previous = ExternalSignalSourceItem.model_validate_json(str(latest_normalized_json))
+        except Exception:
+            return None
+        if previous.headline != item.headline:
+            return None
+        rich_markers = (
+            "视频画面与声音实看：",
+            "视频内容实看：",
+            "故事板抽帧实看",
+            "视频内容与字幕实读：",
+            "时间轴弹幕：",
+            "高赞神评：",
+        )
+        prev_has_rich = any(marker in previous.licensed_summary for marker in rich_markers)
+        new_has_rich = any(marker in item.licensed_summary for marker in rich_markers)
+        if prev_has_rich and not new_has_rich:
+            return previous
+        if cls._strip_bilibili_volatile_stats(
+            previous.licensed_summary
+        ) == cls._strip_bilibili_volatile_stats(item.licensed_summary):
+            return previous
+        return None
+
     def _record_item(
         self,
         *,
@@ -824,7 +867,7 @@ class SQLiteWorldPerceptionHub:
         latest = self._connection.execute(
             """
             SELECT signal_revision_ref, revision, normalized_hash,
-                   source_policy_revision
+                   source_policy_revision, normalized_json
             FROM external_signal_revisions
             WHERE source_id = ? AND upstream_item_id = ?
             ORDER BY revision DESC LIMIT 1
@@ -836,10 +879,26 @@ class SQLiteWorldPerceptionHub:
             item.expires_at or configured_expiry,
             configured_expiry,
         )
+        preserved_bilibili_item = (
+            self._is_equivalent_or_less_rich_bilibili_revision(
+                source_id=source_id,
+                latest_normalized_json=(
+                    str(latest["normalized_json"])
+                    if latest is not None and latest["normalized_json"] is not None
+                    else None
+                ),
+                item=item,
+            )
+            if latest is not None and latest["source_policy_revision"] == policy.policy_revision
+            else None
+        )
         if (
             latest is not None
-            and latest["normalized_hash"] == normalized_hash
             and latest["source_policy_revision"] == policy.policy_revision
+            and (
+                latest["normalized_hash"] == normalized_hash
+                or preserved_bilibili_item is not None
+            )
         ):
             self._record_signal_observation(
                 signal_id=signal_id,
@@ -853,7 +912,7 @@ class SQLiteWorldPerceptionHub:
             )
             self._index_signal_revision(
                 signal_revision_ref=str(latest["signal_revision_ref"]),
-                item=item,
+                item=preserved_bilibili_item or item,
                 policy=policy,
                 observed_at=observed_at,
             )

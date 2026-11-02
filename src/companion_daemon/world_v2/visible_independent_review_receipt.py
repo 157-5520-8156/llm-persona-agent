@@ -36,7 +36,7 @@ def independent_review_protocol(version):
 
 CANDIDATE_CONTRACT = "visible-independent-candidate.1"
 RECEIPT_CONTRACT = "visible-source-review-receipt.9"
-MAX_BYTES = 1_048_576
+MAX_BYTES = 2_097_152
 
 
 def _hash(raw: str) -> str:

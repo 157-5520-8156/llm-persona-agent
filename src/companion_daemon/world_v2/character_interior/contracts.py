@@ -13,7 +13,10 @@ from dataclasses import asdict
 from datetime import datetime
 from types import MappingProxyType
 
-from .appraisal_model_view import compact_appraisals_for_model_view
+from .appraisal_model_view import (
+    compact_appraisals_for_model_view,
+    sanitize_model_view_inner_materials,
+)
 from .life_source_origin import LifeSourceOrigin
 from .affect_model_view import compact_affect_for_model_view
 from .life_context_presentation import (
@@ -340,6 +343,7 @@ def _rendered_conversation(
         logical_time = None
     rows: list[tuple[int, str, str, str]] = []
     seen_photo: set[str] = set()
+    oldest_dialogue_occurred: datetime | None = None
     for entry in entries:
         if not isinstance(entry, dict):
             continue
@@ -348,6 +352,10 @@ def _rendered_conversation(
             continue
         speaker = _TRANSCRIPT_SPEAKERS.get(str(entry.get("speaker")), "?")
         occurred = _instant(entry.get("occurred_at"))
+        if occurred is not None and (
+            oldest_dialogue_occurred is None or occurred < oldest_dialogue_occurred
+        ):
+            oldest_dialogue_occurred = occurred
         age = _conversation_age(occurred, logical_time)
         body = text.strip()
         line = f"{speaker}（{age}）：{body}" if age and age != "刚刚" else f"{speaker}：{body}"
@@ -379,6 +387,14 @@ def _rendered_conversation(
             marker = about_text or body.strip("[]")
             if marker in seen_photo:
                 continue
+            occurred = _instant(photo.get("shared_at"))
+            if (
+                rows
+                and oldest_dialogue_occurred is not None
+                and occurred is not None
+                and occurred < oldest_dialogue_occurred
+            ):
+                continue
             when = photo.get("when")
             age = when if isinstance(when, str) and when.strip() else None
             line = (
@@ -386,7 +402,6 @@ def _rendered_conversation(
                 if age and age != "刚刚"
                 else f"我：{body}"
             )
-            occurred = _instant(photo.get("shared_at"))
             if (
                 occurred is not None
                 and logical_time is not None
@@ -394,7 +409,10 @@ def _rendered_conversation(
             ):
                 occurred = logical_time
             occurred_key = occurred.isoformat() if occurred is not None else ""
-            seq = max((item[0] for item in rows), default=0)
+            seq = max(
+                (item[0] for item in rows if not occurred_key or item[1] <= occurred_key),
+                default=max((item[0] for item in rows), default=0),
+            )
             rows.append((seq, occurred_key, line, body))
             seen_photo.add(marker)
     rows.sort(key=lambda item: (item[0], item[1], item[2]))
@@ -407,8 +425,25 @@ LIVED_MOMENT_MATERIAL_KEY = "lived_moment"
 def _walking_in_residue(appraisals: object, logical_time: datetime | None = None) -> str | None:
     if not isinstance(appraisals, list):
         return None
-    for entry in appraisals:
-        if not isinstance(entry, dict):
+    dict_entries = [entry for entry in appraisals if isinstance(entry, dict)]
+    if not dict_entries:
+        return None
+    # Sort chronologically newest-first by accepted_at so hex-sorted SHA256
+    # source_refs (e.g. "028d...") do not pin stale overnight appraisals ahead of
+    # fresh ones.
+    epoch = _instant("1970-01-01T00:00:00Z")
+    ordered_entries = sorted(
+        dict_entries,
+        key=lambda e: _instant(e.get("accepted_at")) or epoch,  # type: ignore[arg-type, return-value]
+        reverse=True,
+    )
+    for entry in ordered_entries:
+        accepted = _instant(entry.get("accepted_at"))
+        if (
+            accepted is not None
+            and logical_time is not None
+            and (logical_time - accepted).total_seconds() > 6 * 3600
+        ):
             continue
         meaning = None
         hypotheses = entry.get("hypotheses")
@@ -428,7 +463,6 @@ def _walking_in_residue(appraisals: object, logical_time: datetime | None = None
                 if isinstance(item, str) and item.strip():
                     excerpt = item.strip()[:80]
                     break
-        accepted = _instant(entry.get("accepted_at"))
         age = (
             _elapsed_phrase(accepted, logical_time)
             if accepted is not None and logical_time is not None
@@ -449,6 +483,7 @@ def _walking_in_impression(
 ) -> str | None:
     if not isinstance(impressions, list):
         return None
+    parts: list[str] = []
     for entry in impressions:
         if not isinstance(entry, dict):
             continue
@@ -465,9 +500,439 @@ def _walking_in_impression(
             else None
         )
         if age and age != "刚刚":
-            return f"心里还搁着（{age}记下的）：{summary.strip()[:80]}"
-        return f"心里还搁着：{summary.strip()[:80]}"
+            parts.append(f"心里还搁着（{age}记下的）：{summary.strip()[:80]}")
+        else:
+            parts.append(f"心里还搁着：{summary.strip()[:80]}")
+        if len(parts) >= 3:
+            break
+    if not parts:
+        return None
+    return "；".join(parts)
+
+
+def _walking_in_activity(
+    *,
+    current_activities: object,
+    recently_ended_activities: object,
+    situation: object,
+    logical_time: datetime | None = None,
+    actor_ref: str | None = None,
+) -> str | None:
+    parts: list[str] = []
+    if isinstance(current_activities, list):
+        for entry in current_activities:
+            if not isinstance(entry, dict):
+                continue
+            intention = entry.get("accepted_intention")
+            if isinstance(intention, Mapping):
+                intention = intention.get("text") or intention.get("summary")
+            kind = entry.get("activity_kind")
+            label = (
+                intention.strip()[:60]
+                if isinstance(intention, str) and intention.strip()
+                else (kind.strip() if isinstance(kind, str) and kind.strip() else "")
+            )
+            if not label:
+                continue
+            meta: list[str] = []
+            started = _instant(entry.get("active_since"))
+            age = (
+                _elapsed_phrase(started, logical_time)
+                if started is not None and logical_time is not None
+                else None
+            )
+            if age and age != "刚刚":
+                meta.append(f"{age}开始")
+            participants = entry.get("participant_refs")
+            if isinstance(participants, list):
+                companions = [
+                    p.strip()
+                    for p in participants
+                    if isinstance(p, str)
+                    and p.strip()
+                    and p.strip() != actor_ref
+                    and not p.strip().startswith("companion:")
+                ]
+                if companions:
+                    meta.append("同处：" + "、".join(companions[:3]))
+            suffix = f"（{'，'.join(meta)}）" if meta else ""
+            parts.append(f"此刻正在：{label}{suffix}")
+            break
+    if isinstance(recently_ended_activities, list) and logical_time is not None:
+        latest_sleep_end: datetime | None = None
+        for entry in recently_ended_activities:
+            if not isinstance(entry, dict):
+                continue
+            kind = str(entry.get("activity_kind") or "")
+            ended = _instant(entry.get("ended_at"))
+            if ended is not None and ended <= logical_time and kind.startswith("sleep"):
+                if latest_sleep_end is None or ended > latest_sleep_end:
+                    latest_sleep_end = ended
+        if latest_sleep_end is not None:
+            awake_hours = int((logical_time - latest_sleep_end).total_seconds() // 3600)
+            if awake_hours >= 1:
+                parts.append(f"已连续清醒 {awake_hours} 小时")
+    if isinstance(situation, list) and situation and isinstance(situation[0], dict):
+        pressure = situation[0].get("resource_pressure")
+        if isinstance(pressure, dict):
+            loads: list[str] = []
+            for key, label in (
+                ("cognitive_load_bp", "脑力负荷"),
+                ("social_energy_pressure_bp", "社交消耗"),
+                ("time_pressure_bp", "时间压力"),
+            ):
+                val = pressure.get(key)
+                if isinstance(val, int) and not isinstance(val, bool) and val >= 6000:
+                    loads.append(f"{label} {val}bp")
+            if loads:
+                parts.append("当前状态负荷：" + "、".join(loads))
+    if not parts:
+        return None
+    return "；".join(parts)
+
+
+def _walking_in_environment(
+    recent_experiences: object, logical_time: datetime | None = None
+) -> str | None:
+    items = (
+        recent_experiences.get("items")
+        if isinstance(recent_experiences, dict)
+        else recent_experiences
+        if isinstance(recent_experiences, list)
+        else None
+    )
+    if not isinstance(items, list):
+        return None
+    today = (
+        logical_time.astimezone(ZoneInfo("Asia/Shanghai")).date().isoformat()
+        if logical_time is not None
+        else None
+    )
+    epoch = _instant("1970-01-01T00:00:00Z")
+    ordered_items = sorted(
+        (entry for entry in items if isinstance(entry, dict)),
+        key=lambda e: (
+            _instant(e.get("settled_at") or e.get("occurred_to") or e.get("occurred_from"))
+            or epoch
+        ),
+        reverse=True,
+    )
+    for entry in ordered_items:
+        if isinstance(entry.get("world_planning"), dict) and entry.get("world_planning"):
+            continue
+        stamp = _instant(entry.get("settled_at") or entry.get("occurred_to") or entry.get("occurred_from"))
+        if logical_time is not None and stamp is not None:
+            elapsed_sec = (logical_time - stamp).total_seconds()
+            if elapsed_sec < 0 or (
+                elapsed_sec > 2 * 3600
+                and stamp.astimezone(ZoneInfo("Asia/Shanghai")).date().isoformat() != today
+            ):
+                continue
+        content = entry.get("content")
+        if not isinstance(content, dict):
+            continue
+        consequence = content.get("world_consequence")
+        if not isinstance(consequence, dict):
+            continue
+        recent_enough_for_attempt = (
+            logical_time is None
+            or stamp is None
+            or 0 <= (logical_time - stamp).total_seconds() <= 5400
+        )
+        recent_enough_for_env = (
+            logical_time is None
+            or stamp is None
+            or 0 <= (logical_time - stamp).total_seconds() <= 5400
+        )
+        attempt_part: str | None = None
+        attempt = consequence.get("authorized_attempt_result")
+        if (
+            recent_enough_for_attempt
+            and isinstance(attempt, dict)
+            and isinstance(attempt.get("text"), str)
+            and attempt.get("text").strip()
+        ):
+            attempt_part = f"刚经历：{attempt['text'].strip()[:80]}"
+        env_part: str | None = None
+        env = consequence.get("environment")
+        if recent_enough_for_env:
+            if (
+                isinstance(env, str)
+                and env.strip()
+                and not env.strip().startswith(("#", "{"))
+            ):
+                env_part = f"当下环境：{env.strip()[:80]}"
+            elif isinstance(env, dict):
+                pieces = [
+                    str(env[k]).strip()
+                    for k in ("setting", "weather", "lighting", "ambient", "sensory", "summary", "text")
+                    if isinstance(env.get(k), str)
+                    and str(env.get(k)).strip()
+                    and not str(env.get(k)).strip().startswith(("#", "{"))
+                ]
+                if pieces:
+                    env_part = "当下环境：" + "，".join(pieces)[:80]
+        combined = [part for part in (attempt_part, env_part) if part]
+        if combined:
+            return "；".join(combined)
     return None
+
+
+_RESIDENCE_TAG_LABELS: dict[str, str] = {
+    "residence:campus_dorm": "校内宿舍起居空间",
+    "residence:off_campus": "校外住处起居空间",
+    "residence:family_home": "家中起居空间",
+}
+
+_SEASON_LABELS: dict[str, str] = {
+    "spring": "春季",
+    "summer": "夏季",
+    "autumn": "秋季",
+    "winter": "冬季",
+}
+
+
+def _time_of_day_phrase(logical_time: datetime | None) -> str | None:
+    if logical_time is None:
+        return None
+    hour = logical_time.astimezone(ZoneInfo("Asia/Shanghai")).hour
+    if 5 <= hour < 8:
+        return "清晨时段"
+    if 8 <= hour < 12:
+        return "上午时段"
+    if 12 <= hour < 14:
+        return "午间时段"
+    if 14 <= hour < 18:
+        return "下午时段"
+    if 18 <= hour < 22:
+        return "晚间时段"
+    return "深夜时段"
+
+
+def _walking_in_ambient_scene(
+    biographical_context: object,
+    *,
+    logical_time: datetime | None = None,
+) -> str | None:
+    """Collapse pinned biographical scene coordinates into a zero-latency ambient glance."""
+    if isinstance(biographical_context, list):
+        biographical_context = next(
+            (item for item in biographical_context if isinstance(item, Mapping)),
+            None,
+        )
+    if not isinstance(biographical_context, Mapping):
+        return None
+    if biographical_context.get("privacy_class") == "withhold":
+        return None
+    raw_coords = biographical_context.get("settled_biographical_coordinates")
+    coord_summaries: list[str] = []
+    if isinstance(raw_coords, list):
+        ordered_coords = sorted(
+            (item for item in raw_coords if isinstance(item, Mapping)),
+            key=lambda item: (
+                0
+                if "roommate" in str(item.get("coordinate_ref") or "")
+                or "室友" in str(item.get("summary") or "")
+                or "宿舍" in str(item.get("summary") or "")
+                else 1
+            ),
+        )
+        for item in ordered_coords:
+            if item.get("privacy_class") == "withhold" or item.get("shared_in_chat") is False:
+                continue
+            coord_ref = str(item.get("coordinate_ref") or "").lower()
+            category = str(item.get("category") or "").lower()
+            summary = str(item.get("summary") or "").strip().rstrip("。；，")
+            is_physical_scene = (
+                category in {"residence", "environment", "roommate", "dorm"}
+                or any(k in coord_ref for k in ("dorm", "residence"))
+                or any(k in summary for k in ("同住", "四人间", "书桌", "床铺"))
+            )
+            if not is_physical_scene:
+                continue
+            if summary and not summary.startswith(("#", "{")):
+                cleaned = summary.replace("。", "，").replace("；", "，")[:72]
+                if cleaned not in coord_summaries:
+                    coord_summaries.append(cleaned)
+            if len(coord_summaries) >= 3:
+                break
+    raw_arcs = biographical_context.get("active_life_arcs")
+    arc_summaries: list[str] = []
+    if isinstance(raw_arcs, list):
+        for item in raw_arcs:
+            if (
+                not isinstance(item, Mapping)
+                or item.get("privacy_class") == "withhold"
+                or item.get("shared_in_chat") is False
+            ):
+                continue
+            summary = str(item.get("context_summary") or "").strip().rstrip("。；，")
+            if not any(k in summary for k in ("桌", "宿舍", "房间", "窗", "床")):
+                continue
+            if summary and not summary.startswith(("#", "{")):
+                cleaned = summary.replace("。", "，").replace("；", "，")[:72]
+                if cleaned not in arc_summaries:
+                    arc_summaries.append(cleaned)
+            if len(arc_summaries) >= 1:
+                break
+    if not coord_summaries and not arc_summaries:
+        return None
+    scene_pieces: list[str] = []
+    raw_tags = biographical_context.get("current_residence_context_tags")
+    if isinstance(raw_tags, list):
+        for tag in raw_tags:
+            if isinstance(tag, str) and tag.strip():
+                label = _RESIDENCE_TAG_LABELS.get(tag.strip())
+                if label and label not in scene_pieces:
+                    scene_pieces.append(label)
+    season = biographical_context.get("season")
+    season_label = _SEASON_LABELS.get(str(season).strip()) if isinstance(season, str) else None
+    time_label = _time_of_day_phrase(logical_time)
+    if season_label and time_label:
+        scene_pieces.append(f"{season_label}{time_label}")
+    elif time_label:
+        scene_pieces.append(time_label)
+    elif season_label:
+        scene_pieces.append(season_label)
+    scene_pieces.extend(coord_summaries)
+    for arc in arc_summaries:
+        if arc not in scene_pieces:
+            scene_pieces.append(f"近期脉络：{arc}")
+    if not scene_pieces:
+        return None
+    return "眼前环境余光：" + "，".join(scene_pieces)
+
+
+_AFFECT_CN_LABELS: dict[str, str] = {
+    "hurt": "委屈/受伤",
+    "anger": "恼火/生气",
+    "sadness": "低落/难过",
+    "loneliness": "孤单/想念",
+    "anxiety": "悬心/不安",
+    "resentment": "郁结/闷气",
+    "warmth": "温暖/熨帖",
+    "joy": "雀跃/愉快",
+}
+
+
+def _walking_in_life_weight(
+    *,
+    biographical_context: object = None,
+    affect: object = None,
+    world_planning: object = None,
+    logical_time: datetime | None = None,
+) -> list[str]:
+    """Surface ongoing non-furniture life circumstances, active affect, and today's class schedule."""
+
+    clauses: list[str] = []
+    bio = biographical_context
+    if isinstance(bio, list):
+        bio = next((item for item in bio if isinstance(item, Mapping)), None)
+    if isinstance(bio, Mapping) and bio.get("privacy_class") != "withhold":
+        raw_coords = bio.get("settled_biographical_coordinates")
+        if isinstance(raw_coords, list):
+            weight_summaries: list[str] = []
+            for item in reversed(raw_coords):
+                if not isinstance(item, Mapping) or item.get("privacy_class") == "withhold":
+                    continue
+                coord_ref = str(item.get("coordinate_ref") or "").lower()
+                category = str(item.get("category") or "").lower()
+                summary = str(item.get("summary") or "").strip().rstrip("。；，")
+                is_physical_scene = (
+                    category in {"residence", "environment", "roommate", "dorm"}
+                    or any(k in coord_ref for k in ("dorm", "residence"))
+                    or any(k in summary for k in ("同住", "四人间", "书桌", "床铺"))
+                )
+                if is_physical_scene or not summary or summary.startswith(("#", "{")):
+                    continue
+                cleaned = summary.replace("。", "，").replace("；", "，")[:68]
+                if item.get("shared_in_chat") is False:
+                    cleaned += "（私下处境，未在聊天提过）"
+                if cleaned not in weight_summaries:
+                    weight_summaries.append(cleaned)
+                if len(weight_summaries) >= 2:
+                    break
+            if weight_summaries:
+                clauses.append("近期身上悬着的处境：" + "｜".join(weight_summaries))
+
+    affect_entries = _material_entries({"affect": affect}, "affect") if affect is not None else []
+    dim_peak: dict[str, int] = {}
+    for episode in affect_entries:
+        if not _is_live(episode):
+            continue
+        components = episode.get("components")
+        if not isinstance(components, list):
+            continue
+        for comp in components:
+            if not isinstance(comp, Mapping):
+                continue
+            dim = str(comp.get("dimension") or "")
+            val = comp.get("intensity_bp")
+            if (
+                dim in _AFFECT_CN_LABELS
+                and isinstance(val, int)
+                and not isinstance(val, bool)
+                and val >= 600
+            ):
+                dim_peak[dim] = max(dim_peak.get(dim, 0), val)
+    if dim_peak:
+        top_affect = sorted(dim_peak.items(), key=lambda kv: (-kv[1], kv[0]))[:3]
+        clauses.append(
+            "此刻情绪余波："
+            + "、".join(f"{_AFFECT_CN_LABELS[dim]}({val}bp)" for dim, val in top_affect)
+        )
+
+    if logical_time is not None and isinstance(world_planning, list):
+        zone = ZoneInfo("Asia/Shanghai")
+        local_now = logical_time.astimezone(zone)
+        today = local_now.date()
+        schedule_items: list[tuple[datetime, str]] = []
+        for entry in world_planning:
+            if not isinstance(entry, Mapping):
+                continue
+            wp = entry.get("world_planning")
+            if not isinstance(wp, Mapping):
+                continue
+            upcoming = wp.get("upcoming")
+            if not isinstance(upcoming, list):
+                continue
+            for inst in upcoming:
+                if not isinstance(inst, Mapping) or inst.get("status") != "scheduled":
+                    continue
+                starts_at = _instant(inst.get("starts_at"))
+                ends_at = _instant(inst.get("ends_at"))
+                title = str(inst.get("title") or "").strip()
+                if starts_at is None or ends_at is None or not title:
+                    continue
+                starts_local = starts_at.astimezone(zone)
+                ends_local = ends_at.astimezone(zone)
+                if starts_local.date() != today and ends_local.date() != today:
+                    continue
+                if starts_at <= logical_time <= ends_at:
+                    tag = "正在进行"
+                elif 0 < (starts_at - logical_time).total_seconds() <= 6 * 3600:
+                    tag = "即将开始"
+                elif starts_at > logical_time:
+                    tag = "今日稍晚"
+                elif 0 < (logical_time - ends_at).total_seconds() <= 3600:
+                    tag = "刚结束"
+                elif ends_at < logical_time:
+                    tag = "今日较早时段"
+                else:
+                    continue
+                label = f"{starts_local.strftime('%H:%M')}–{ends_local.strftime('%H:%M')} {title[:28]}（{tag}）"
+                schedule_items.append((starts_at, label))
+        if schedule_items:
+            schedule_items.sort(key=lambda item: item[0])
+            deduped: list[str] = []
+            for _, label in schedule_items:
+                if label not in deduped:
+                    deduped.append(label)
+                if len(deduped) >= 4:
+                    break
+            clauses.append("今日近期课表/日程：" + "｜".join(deduped))
+
+    return clauses
 
 
 def _lived_moment(
@@ -476,6 +941,14 @@ def _lived_moment(
     logical_time: datetime | None,
     appraisals: object = None,
     impressions: object = None,
+    current_activities: object = None,
+    recently_ended_activities: object = None,
+    situation: object = None,
+    recent_self_experiences: object = None,
+    biographical_context: object = None,
+    affect: object = None,
+    world_planning: object = None,
+    actor_ref: str | None = None,
 ) -> str | None:
     parts: list[str] = []
     if logical_time is not None:
@@ -490,6 +963,32 @@ def _lived_moment(
             if clipped:
                 parts.append("今天已经过的：" + "；".join(clipped))
             break
+    activity_line = _walking_in_activity(
+        current_activities=current_activities,
+        recently_ended_activities=recently_ended_activities,
+        situation=situation,
+        logical_time=logical_time,
+        actor_ref=actor_ref,
+    )
+    if activity_line:
+        parts.append(activity_line)
+    env_line = _walking_in_environment(recent_self_experiences, logical_time)
+    if env_line:
+        parts.append(env_line)
+    ambient_line = _walking_in_ambient_scene(
+        biographical_context,
+        logical_time=logical_time,
+    )
+    if ambient_line:
+        parts.append(ambient_line)
+    parts.extend(
+        _walking_in_life_weight(
+            biographical_context=biographical_context,
+            affect=affect,
+            world_planning=world_planning,
+            logical_time=logical_time,
+        )
+    )
     residue = _walking_in_residue(appraisals, logical_time)
     if residue:
         parts.append(residue)
@@ -502,7 +1001,10 @@ def _lived_moment(
 
 
 def _rendered_lived_moment(
-    materials: Mapping[str, object], logical_time: datetime | None
+    materials: Mapping[str, object],
+    logical_time: datetime | None,
+    *,
+    actor_ref: str | None = None,
 ) -> str | None:
     """Render already-redacted experiences, residue, and impression.
 
@@ -528,6 +1030,14 @@ def _rendered_lived_moment(
         logical_time=logical_time,
         appraisals=materials.get("appraisals"),
         impressions=materials.get("private_impressions"),
+        current_activities=materials.get("current_activities"),
+        recently_ended_activities=materials.get("recently_ended_activities"),
+        situation=materials.get("situation"),
+        recent_self_experiences=materials.get("recent_self_experiences"),
+        biographical_context=materials.get("biographical_context"),
+        affect=materials.get("affect"),
+        world_planning=materials.get("world_planning"),
+        actor_ref=actor_ref,
     )
 
 
@@ -776,18 +1286,64 @@ def _rendered_since_he_last_spoke(
     if logical_time is None or logical_time.tzinfo is None or logical_time.utcoffset() is None:
         return None
     latest: datetime | None = None
+    latest_is_current_turn = False
+    counterpart_times: list[datetime] = []
+    companion_times: list[datetime] = []
     for entry in _material_entries(materials, "recent_dialogue"):
-        if entry.get("speaker") != "counterpart":
+        occurred = _instant(entry.get("occurred_at"))
+        if occurred is None:
+            continue
+        speaker = entry.get("speaker")
+        if speaker == "companion":
+            companion_times.append(occurred)
+            continue
+        if speaker != "counterpart":
+            continue
+        counterpart_times.append(occurred)
+        reasons = entry.get("continuity_reasons")
+        is_current = isinstance(reasons, (list, tuple)) and "current_turn" in reasons
+        if latest is None or occurred > latest or (occurred == latest and is_current):
+            latest = occurred
+            latest_is_current_turn = is_current
+    for entry in _material_entries(materials, "folded_dialogue"):
+        line = entry.get("line")
+        if not isinstance(line, str):
             continue
         occurred = _instant(entry.get("occurred_at"))
         if occurred is None:
             continue
+        if line.startswith("companion: "):
+            companion_times.append(occurred)
+            continue
+        if not line.startswith("counterpart: "):
+            continue
+        counterpart_times.append(occurred)
         if latest is None or occurred > latest:
             latest = occurred
+            latest_is_current_turn = False
     if latest is None:
         return None
     elapsed = int((logical_time - latest).total_seconds())
-    return {"seconds": elapsed} if elapsed >= 0 else None
+    if elapsed < 0:
+        return None
+    rendered: dict[str, object] = {"seconds": elapsed}
+    if latest_is_current_turn:
+        earlier_counterpart = [t for t in counterpart_times if t < latest]
+        if earlier_counterpart:
+            prev_counterpart = max(earlier_counterpart)
+            prior_silence = int((latest - prev_counterpart).total_seconds())
+            if prior_silence > 0:
+                rendered["prior_silence_seconds"] = prior_silence
+            unanswered_companion = [
+                t for t in companion_times if prev_counterpart < t < latest
+            ]
+        else:
+            unanswered_companion = [t for t in companion_times if t < latest]
+        if unanswered_companion:
+            wait_seconds = int((latest - min(unanswered_companion)).total_seconds())
+            if wait_seconds > 0:
+                rendered["unanswered_companion_wait_seconds"] = wait_seconds
+    return rendered
 
 
 INNER_RETENTION_MATERIAL_KEY = "我最近留下的"
@@ -803,7 +1359,20 @@ def _material_entries(materials: Mapping[str, object], key: str) -> list[Mapping
         return affect_material_entries(materials.get(key))
     value = materials.get(key)
     if isinstance(value, dict):
-        value = value.get("items")
+        if "items" in value:
+            value = value.get("items")
+        elif "stable_turns" in value or "volatile_last_turn" in value:
+            turns = [
+                item
+                for item in (value.get("stable_turns") or [])
+                if isinstance(item, dict)
+            ]
+            last = value.get("volatile_last_turn")
+            if isinstance(last, dict):
+                turns.append(last)
+            return turns
+        else:
+            value = None
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, dict)]
@@ -1212,7 +1781,7 @@ class _InteriorCapabilityManifest(FrozenModel):
     capability_kind: str = Field(min_length=1, max_length=128)
     payload_json: str = Field(min_length=2, max_length=262_144)
     payload_hash: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
-    source_refs: tuple[str, ...] = Field(min_length=1, max_length=64)
+    source_refs: tuple[str, ...] = Field(min_length=1, max_length=256)
 
     @property
     def payload(self) -> Mapping[str, object]:
@@ -1563,6 +2132,7 @@ class InnerLifeSnapshot(FrozenModel):
         if not include_lifecycle_states:
             materials.pop("activity_lifecycle_states", None)
         materials = _refresh_stimulus_excerpts(materials)
+        materials = sanitize_model_view_inner_materials(materials)
         day_sheet = _rendered_day_sheet(
             materials, self.logical_time,
             include_seed_routines=self.routine_background is None,
@@ -1601,7 +2171,9 @@ class InnerLifeSnapshot(FrozenModel):
         transcript = _rendered_conversation(materials, self.logical_time)
         if transcript:
             materials = {**materials, "conversation": transcript}
-        lived = _rendered_lived_moment(materials, self.logical_time)
+        lived = _rendered_lived_moment(
+            materials, self.logical_time, actor_ref=self.actor_ref
+        )
         if lived:
             materials = {**materials, LIVED_MOMENT_MATERIAL_KEY: lived}
         compact_appraisals = compact_appraisals_for_model_view(

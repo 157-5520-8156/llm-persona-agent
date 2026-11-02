@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .world_planning import WorldPlanningIndex
 from .event_detail_contract import EventDetailProgramIndex
+from .immutable_value_cache import immutable_value_cache
 from .projection_lookup import lookup_first, lookup_last
 
 from .character_prehistory import PrehistoryArchiveProjection, PrehistoryRecordProjection, validate_prehistory_state
@@ -2243,6 +2244,7 @@ class ExperienceOrigin(FrozenModel):
     accepted_event_ref: str = Field(min_length=1)
 
 
+@immutable_value_cache(maxsize=4096)
 def experience_semantic_fingerprint(
     *, values: ExperienceValues, policy_refs: tuple[str, ...]
 ) -> str:

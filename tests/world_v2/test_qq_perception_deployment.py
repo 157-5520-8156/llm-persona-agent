@@ -206,7 +206,7 @@ def _settings(tmp_path: Path, **overrides: object) -> Settings:
         "PRIMARY_USER_ID": "geoff",
     }
     values.update(overrides)
-    return Settings(**values)  # type: ignore[arg-type]
+    return Settings(_env_file=None, **values)  # type: ignore[arg-type]
 
 
 def test_factory_disables_without_prerequisites(tmp_path: Path) -> None:

@@ -36,7 +36,7 @@ _RECEIPTS = {
     PROTOCOL: RECEIPT_CONTRACT,
     PROTOCOL_V2: RECEIPT_CONTRACT_V2,
 }
-MAX_BYTES = 1_048_576
+MAX_BYTES = 2_097_152
 _MAX_RESPONSE_BYTES = 131_072
 
 _INSTRUCTION = """你是只读的完整表达审核者，不是角色作者。结合当前用户消息、完整对话语境、全部原气泡和来源材料，一次判断表达是否有来源或属于无需记录的自然表达；不要先把原话拆成脱离语境的模式再推断。
@@ -262,7 +262,8 @@ class PreparedGroundedReview:
 
 
 def prepare_grounded_review(*, candidate, source_table, source_ref_aliases, protocol=PROTOCOL,
-                            ordered_native=False, faithful_proposition=False, reference_wire=False, material_presentation=None):
+                            ordered_native=False, faithful_proposition=False, reference_wire=False,
+                            material_presentation=None, legacy_reasoned_instruction=False):
     from .proposal_envelope import DecisionProposal
     if not isinstance(candidate, DecisionProposal) or not isinstance(source_table, VisibleSourceTable):
         raise ValueError("grounded review requires a typed decision and source table")
@@ -272,12 +273,14 @@ def prepare_grounded_review(*, candidate, source_table, source_ref_aliases, prot
     return PreparedGroundedReview(_compiled_grounded_bytes(
         candidate.model_dump_json(), source_table.payload_json, _json(dict(source_ref_aliases)),
         protocol, ordered_native, faithful_proposition, reference_wire, material_presentation,
+        legacy_reasoned_instruction if isinstance(legacy_reasoned_instruction, str) else bool(legacy_reasoned_instruction),
     ))
 
 
 @lru_cache(maxsize=8)
 def _compiled_grounded_bytes(candidate_json, source_table_json, aliases_json,
-                            protocol, ordered_native, faithful_proposition, reference_wire, material_presentation):
+                            protocol, ordered_native, faithful_proposition, reference_wire,
+                            material_presentation, legacy_reasoned_instruction=False):
     # Exact immutable inputs include candidate, full source pin/permissions and
     # protocol options. Cache compilation only, NEVER a semantic verdict.
     from .proposal_envelope import DecisionProposal
@@ -286,11 +289,13 @@ def _compiled_grounded_bytes(candidate_json, source_table_json, aliases_json,
         source_table=VisibleSourceTable(source_table_json), source_ref_aliases=json.loads(aliases_json),
         protocol=protocol, ordered_native=ordered_native, faithful_proposition=faithful_proposition,
         reference_wire=reference_wire, material_presentation=material_presentation,
+        legacy_reasoned_instruction=legacy_reasoned_instruction,
     ).payload_json
 
 
 def _compile_grounded_review(*, candidate, source_table, source_ref_aliases, protocol,
-                            ordered_native, faithful_proposition, reference_wire, material_presentation):
+                            ordered_native, faithful_proposition, reference_wire, material_presentation,
+                            legacy_reasoned_instruction=False):
     if protocol not in _PROTOCOLS:
         raise ValueError("grounded review protocol is unsupported")
     material = compile_visible_candidate_material(
@@ -349,7 +354,9 @@ def _compile_grounded_review(*, candidate, source_table, source_ref_aliases, pro
             raise ValueError("ordered carrier requires grounded review v25")
         from .grounded_review_wire import (
             CONTRACT, V3_CONTRACT, V2_CONTRACT, LEGACY_CONTRACT, REASONED_CONTRACT,
-            INSTRUCTION, LEGACY_INSTRUCTION, REASONED_INSTRUCTION, tool_request,
+            INSTRUCTION, LEGACY_INSTRUCTION, REASONED_INSTRUCTION, REASONED_LEGACY_INSTRUCTION,
+            REASONED_STICKER_INSTRUCTION,
+            tool_request,
         )
 
         carrier_id = CONTRACT if ordered_native is True else ordered_native
@@ -366,8 +373,15 @@ def _compile_grounded_review(*, candidate, source_table, source_ref_aliases, pro
         # global segment numbering is replaced by the single native array.
         lifecycle_start = instruction.index(" 新来源边界：", len(_INSTRUCTION))
         native_instruction += instruction[lifecycle_start:]
-        wire_instruction = (LEGACY_INSTRUCTION if carrier_id == LEGACY_CONTRACT else
-                            REASONED_INSTRUCTION if carrier_id == REASONED_CONTRACT else INSTRUCTION)
+        wire_instruction = (
+            LEGACY_INSTRUCTION if carrier_id == LEGACY_CONTRACT else
+            (
+                REASONED_STICKER_INSTRUCTION
+                if legacy_reasoned_instruction == "sticker_only"
+                else (REASONED_LEGACY_INSTRUCTION if legacy_reasoned_instruction else REASONED_INSTRUCTION)
+            )
+            if carrier_id == REASONED_CONTRACT else INSTRUCTION
+        )
         native_instruction += "\n以上 facts/non_record_expressions 是审核概念；实际传输以如下规则为准：" + wire_instruction
         if carrier_id in {V3_CONTRACT, CONTRACT, REASONED_CONTRACT}:
             native_instruction += (
@@ -443,6 +457,16 @@ def _verified_prepared_bytes(raw):
     pin = prepared.as_dict()
     if pin.get("protocol") not in _PROTOCOLS:
         raise ValueError("grounded review protocol differs")
+    sys_msg_content = pin.get("request", {}).get("messages", [{}])[0].get("content", "")
+    legacy_reasoned = (
+        (
+            True
+            if "expression-sticker.1" not in sys_msg_content
+            else ("sticker_only" if "[CQ:reply,id=...]" not in sys_msg_content else False)
+        )
+        if pin.get("wire_carrier") == "grounded-review-ordered-wire.5"
+        else False
+    )
     expected = prepare_grounded_review(
         candidate=DecisionProposal.model_validate_json(pin["candidate_json"], strict=True),
         source_table=VisibleSourceTable(payload_json=pin["source_table_json"]),
@@ -450,6 +474,7 @@ def _verified_prepared_bytes(raw):
         protocol=pin["protocol"], faithful_proposition=pin.get("faithful_proposition", False),
         ordered_native=pin.get("wire_carrier", False), reference_wire=pin.get("reference_wire", False),
         material_presentation=pin.get("material_presentation"),
+        legacy_reasoned_instruction=legacy_reasoned,
     )
     if pin.get("wire_feedback"):
         feedback = pin["wire_feedback"]

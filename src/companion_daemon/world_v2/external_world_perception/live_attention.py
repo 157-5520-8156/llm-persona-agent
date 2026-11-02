@@ -68,6 +68,7 @@ class SQLiteLiveAttentionCoordinator(SQLiteShadowAttentionCoordinator):
     """Live-only coordinator with a durable acceptance outbox."""
 
     _runtime: LiveAttentionRuntime
+    _requires_durable_snapshot: bool = True
 
     def _create_schema(self) -> None:
         super()._create_schema()
@@ -1023,14 +1024,30 @@ class SQLiteLiveAttentionCoordinator(SQLiteShadowAttentionCoordinator):
                     (_iso_utc(observed_at), opportunity["opportunity_id"]),
                 )
                 window = LivePerceptionWindow.model_validate_json(str(opportunity["window_json"]))
-                for dossier in window.candidates:
-                    for revision_ref in dossier.exact_signal_revisions:
-                        self._record_exposure(
-                            signal_revision_ref=revision_ref,
-                            attention_attempt_id=attention_attempt_id,
-                            result="perception_committed",
-                            observed_at=observed_at,
-                        )
+                exposed_revisions: set[str] = {
+                    revision_ref
+                    for dossier in window.candidates
+                    for revision_ref in dossier.exact_signal_revisions
+                }
+                member_rows = self._connection.execute(
+                    """
+                    SELECT signal_revision_ref
+                    FROM external_perception_opportunity_membership
+                    WHERE opportunity_id = ?
+                    """,
+                    (opportunity["opportunity_id"],),
+                ).fetchall()
+                for m_row in member_rows:
+                    rev_ref = str(m_row["signal_revision_ref"])
+                    if rev_ref:
+                        exposed_revisions.add(rev_ref)
+                for revision_ref in sorted(exposed_revisions):
+                    self._record_exposure(
+                        signal_revision_ref=revision_ref,
+                        attention_attempt_id=attention_attempt_id,
+                        result="perception_committed",
+                        observed_at=observed_at,
+                    )
                 self._connection.execute("COMMIT")
                 return True
             except Exception:

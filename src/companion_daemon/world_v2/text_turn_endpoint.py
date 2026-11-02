@@ -129,18 +129,15 @@ class ChatSemanticEndpointModel:
             {
                 "role": "system",
                 "content": (
-                    "You are a typed-conversation endpoint estimator. Estimate only the "
-                    "probability that the same user will add another message bubble to the "
-                    "current thought soon, and how suitable a short single reply would be. "
-                    "You have no authority over whether or how the "
-                    "character replies, waits, interrupts, or stays silent. Return exactly "
-                    "one JSON object with continuation_probability_bp (integer 0..10000), "
-                    "confidence_bp (integer 0..10000), evidence_summary (brief text), and "
-                    "compact_reply_hint_bp (integer 0..10000: how well a short single text "
-                    "reply fits this message; high for greetings, small talk, and simple "
-                    "questions, low for questions that need a factual answer or a story, "
-                    "or messages with complex content). "
-                    "Do not return a reply decision, response wording, motive, or character state."
+                    "你是聊天轮次终点估计器（typed-conversation endpoint estimator）。"
+                    "只判断用户在当前这波气泡之后是否很可能马上继续发下一条气泡（例如话刚起头、"
+                    "半句悬置、讲长故事铺垫中、或者连续分段输入），以及简短单条回复是否适合当前消息。"
+                    "You have no authority over whether or how the character replies. "
+                    "严禁带 Markdown 代码块，只输出一行合法 JSON 对象，必须且只能包含这4个字段："
+                    '{"continuation_probability_bp":0..10000,'
+                    '"confidence_bp":0..10000,'
+                    '"evidence_summary":"8字内极简原因",'
+                    '"compact_reply_hint_bp":0..10000} /no_think'
                 ),
             },
             {
@@ -175,8 +172,18 @@ class ChatSemanticEndpointModel:
             if callable(complete_json)
             else self._model.complete(messages, temperature=0.0)
         )
+        cleaned = raw.strip() if isinstance(raw, str) else raw
+        if isinstance(cleaned, str) and "</think>" in cleaned:
+            cleaned = cleaned.rsplit("</think>", 1)[-1].strip()
+        if isinstance(cleaned, str) and cleaned.startswith("```"):
+            lines = [
+                line
+                for line in cleaned.splitlines()
+                if not line.strip().startswith("```")
+            ]
+            cleaned = "\n".join(lines).strip()
         try:
-            value = json.loads(raw)
+            value = json.loads(cleaned)
         except (TypeError, json.JSONDecodeError) as exc:
             raise ValueError("endpoint model must return JSON") from exc
         if not isinstance(value, dict) or set(value) != self._OUTPUT_KEYS:
@@ -229,10 +236,10 @@ class TextTurnEndpointController:
         self,
         *,
         model: SemanticEndpointModel | None,
-        timeout_seconds: float = 0.55,
+        timeout_seconds: float = 2.0,
     ) -> None:
-        if not 0.01 <= timeout_seconds <= 1.0:
-            raise ValueError("endpoint timeout must be between 10ms and one second")
+        if not 0.01 <= timeout_seconds <= 3.0:
+            raise ValueError("endpoint timeout must be between 10ms and three seconds")
         self._model = model
         self._timeout_seconds = timeout_seconds
         self._evaluations = 0

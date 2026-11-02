@@ -23,10 +23,22 @@ MOOD_LABELS = {
 _NOTICEABLE_BP = 600
 
 
-def active_mood_intensities(affect_episodes: tuple[object, ...]) -> dict[str, int]:
-    """Aggregate active accepted Affect components to one bounded reading."""
+def active_mood_intensities(
+    affect_episodes: tuple[object, ...],
+    affect_baselines: tuple[object, ...] = (),
+) -> dict[str, int]:
+    """Aggregate active accepted Affect components and tonic baselines to one bounded reading."""
 
     intensities: dict[str, int] = {}
+    for baseline in affect_baselines:
+        dimension = str(getattr(baseline, "dimension", ""))
+        value = getattr(baseline, "baseline_bp", 0)
+        if (
+            dimension in MOOD_LABELS
+            and isinstance(value, int)
+            and 0 <= value <= 10_000
+        ):
+            intensities[dimension] = max(intensities.get(dimension, 0), value)
     for episode in affect_episodes:
         if getattr(episode, "status", None) != "active":
             continue
@@ -42,7 +54,10 @@ def active_mood_intensities(affect_episodes: tuple[object, ...]) -> dict[str, in
     return intensities
 
 
-def mood_summary_prose(affect_episodes: tuple[object, ...]) -> str:
+def mood_summary_prose(
+    affect_episodes: tuple[object, ...],
+    affect_baselines: tuple[object, ...] = (),
+) -> str:
     """Render the strongest current feelings as one short advisory sentence.
 
     Returns an empty string when nothing rises above the noticeable floor, so
@@ -51,7 +66,9 @@ def mood_summary_prose(affect_episodes: tuple[object, ...]) -> str:
 
     intensities = {
         dimension: value
-        for dimension, value in active_mood_intensities(affect_episodes).items()
+        for dimension, value in active_mood_intensities(
+            affect_episodes, affect_baselines
+        ).items()
         if value >= _NOTICEABLE_BP
     }
     if not intensities:

@@ -102,3 +102,41 @@ def test_already_open_candidate_stays_photographable_but_not_redeclared() -> Non
     )
     assert fact.photographable is True
     assert fact.reason == "already_open"
+
+
+def test_self_directed_active_plan_is_photographable_even_when_catalog_has_no_opening() -> None:
+    fact = inspect_present_moment(
+        projection=SimpleNamespace(
+            plans=(
+                _plan(
+                    kind="self_directed.d2c85c6ca914e2f4b2dd6a9a",
+                    source="event:activity-lifecycle-effect:started-self",
+                ),
+            ),
+            photo_candidates=(),
+            logical_time=NOW,
+        ),
+        catalog=SimpleNamespace(opening_for_activity=lambda kind: None),
+        logical_time=NOW,
+    )
+    assert fact.photographable is True
+    assert fact.reason == "active"
+    assert fact.source_ref == "event:activity-lifecycle-effect:started-self"
+
+    already_open = inspect_present_moment(
+        projection=SimpleNamespace(
+            plans=(
+                _plan(
+                    kind="self_directed.d2c85c6ca914e2f4b2dd6a9a",
+                    source="event:activity-lifecycle-effect:started-self",
+                ),
+            ),
+            photo_candidates=(),
+            logical_time=NOW,
+        ),
+        catalog=SimpleNamespace(opening_for_activity=lambda kind: None),
+        logical_time=NOW,
+        declared_sources=frozenset({"event:activity-lifecycle-effect:started-self"}),
+    )
+    assert already_open.photographable is True
+    assert already_open.reason == "already_open"

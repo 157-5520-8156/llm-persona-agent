@@ -17,7 +17,7 @@ from companion_daemon.llm import provider_invocation_request_hash
 
 AUTHOR_REQUEST_CONTRACT = "visible-source-author-request.1"
 PROACTIVE_AUTHOR_REQUEST_CONTRACT = "visible-source-proactive-author-request.1"
-_MAX_BYTES = 512_000
+_MAX_BYTES = 2_097_152
 _PARAMETER_KEYS = {"messages", "temperature", "tools", "tool_choice", "identity_extras"}
 
 

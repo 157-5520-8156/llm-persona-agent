@@ -152,13 +152,13 @@ def test_slim_wait_without_waiting_for_is_a_visible_failure() -> None:
 
 def test_slim_declared_wait_below_the_floor_still_wakes_at_thirty_seconds() -> None:
     compiled = compile_slim_consider_payload(
-        _slim_payload(waiting_for="想听你怎么看这件事", wait=10)
+        _slim_payload(waiting_for="想听你怎么看这件事", wait=2)
     )
 
     assert compiled is not None
     expectation = compiled["expression_draft"]["response_expectation"]
-    assert expectation["wait_seconds"] == 30
-    assert expectation["expires_after_seconds"] == 90
+    assert expectation["wait_seconds"] == 5
+    assert expectation["expires_after_seconds"] == 65
 
 
 def test_slim_max_wait_is_not_an_open_hope() -> None:
@@ -262,6 +262,241 @@ def test_silence_consider_reads_the_pending_expectation_she_declared() -> None:
     assert advisories[0]["kind"] == "response_expectation"
     assert HOPED in advisories[0]["candidates"][0]["value"]
     assert "he has not spoken" in advisories[0]["candidates"][0]["value"]
+
+
+def test_inbound_turn_snapshot_reads_pending_expectation_within_grace_window() -> None:
+    from types import SimpleNamespace
+    from companion_daemon.world_v2.response_expectation_view import (
+        attach_pending_expectation_advisory,
+        pending_response_expectation_manifest,
+    )
+
+    # Slim wait=60 compiles expires_after_seconds=120; user replies 10 minutes later.
+    projection = _fake_projection(
+        logical_time=EXPECTATION_NOW + timedelta(minutes=10),
+        expectation=_expectation(expires_at=EXPECTATION_NOW + timedelta(seconds=120)),
+    )
+    projection.message_observations = (
+        SimpleNamespace(
+            observation_id="event:observation:reply:1",
+            world_revision=6,
+        ),
+    )
+    context = {
+        "world_id": "world:h13-inbound",
+        "actor_ref": "character:zhizhi",
+        "world_revision": 6,
+        "deliberation_revision": 0,
+        "ledger_sequence": 2,
+        "logical_time": (EXPECTATION_NOW + timedelta(minutes=10)).isoformat(),
+        "consumer_scope": "deliberation_internal",
+        "viewer_privacy_ceiling": "private",
+        "context_compiler_version": "context-capsule-compiler:test",
+        "truncation": {},
+        "slices": {},
+    }
+
+    attached = attach_pending_expectation_advisory(
+        context,
+        projection,
+        anchor_event_ref="event:observation:reply:1",
+    )
+    snapshot = compile_inner_life_snapshot(attached)
+    advisories = snapshot.materials.get("advisories")
+
+    assert isinstance(advisories, list)
+    assert advisories
+    assert advisories[0]["kind"] == "response_expectation"
+    assert HOPED in advisories[0]["candidates"][0]["value"]
+    assert "he has since spoken" in advisories[0]["candidates"][0]["value"]
+
+    manifest = pending_response_expectation_manifest(
+        projection,
+        before_world_revision=6,
+        at_logical_time=EXPECTATION_NOW + timedelta(minutes=10),
+    )
+    assert manifest is not None
+    assert manifest.plan_id == "plan:invite"
+
+
+def test_accumulated_still_pending_expectations_surface_in_backlog_until_fulfilled() -> None:
+    from types import SimpleNamespace
+    from companion_daemon.world_v2.response_expectation_view import (
+        attach_pending_expectation_advisory,
+        pending_response_expectation_manifest,
+        unfulfilled_expectation_backlog_advisory,
+    )
+
+    projection = _fake_projection(
+        logical_time=EXPECTATION_NOW + timedelta(minutes=45),
+        expectation=_expectation(expires_at=EXPECTATION_NOW + timedelta(minutes=2)),
+    )
+    projection.response_expectation_assessments = (
+        SimpleNamespace(
+            assessment_id="assessment:1",
+            source_plan_id="plan:invite",
+            inbound_observation_id="obs:1",
+            status="still_pending",
+            reason="他只敷衍地回了个哦，根本没有哄我",
+            event_ref="event:assessment:1",
+            world_revision=4,
+        ),
+    )
+    projection.message_observations = (
+        SimpleNamespace(observation_id="obs:1", world_revision=3),
+        SimpleNamespace(observation_id="obs:2", world_revision=6),
+    )
+    context = {
+        "world_id": "world:h13-backlog",
+        "actor_ref": "character:zhizhi",
+        "world_revision": 6,
+        "deliberation_revision": 0,
+        "ledger_sequence": 3,
+        "logical_time": (EXPECTATION_NOW + timedelta(minutes=45)).isoformat(),
+        "consumer_scope": "deliberation_internal",
+        "viewer_privacy_ceiling": "private",
+        "context_compiler_version": "context-capsule-compiler:test",
+        "truncation": {},
+        "slices": {},
+    }
+
+    attached = attach_pending_expectation_advisory(
+        context,
+        projection,
+        anchor_event_ref="obs:2",
+    )
+    snapshot = compile_inner_life_snapshot(attached)
+    advisories = snapshot.materials.get("advisories")
+    assert isinstance(advisories, list)
+    kinds = {item["kind"] for item in advisories}
+    assert "response_expectation" in kinds
+    assert "unfulfilled_expectation_backlog" in kinds
+    backlog_entry = next(
+        item for item in advisories if item["kind"] == "unfulfilled_expectation_backlog"
+    )
+    values = " ".join(c["value"] for c in backlog_entry["candidates"])
+    assert HOPED in values
+    assert "他只敷衍地回了个哦，根本没有哄我" in values
+
+    # She can still settle the lingering still_pending expectation on the new reply:
+    manifest = pending_response_expectation_manifest(
+        projection,
+        before_world_revision=6,
+        at_logical_time=EXPECTATION_NOW + timedelta(minutes=45),
+    )
+    assert manifest is not None
+    assert manifest.plan_id == "plan:invite"
+
+    # Once fulfilled on the new reply, the unfulfilled backlog clears:
+    projection.response_expectation_assessments = (
+        *projection.response_expectation_assessments,
+        SimpleNamespace(
+            assessment_id="assessment:2",
+            source_plan_id="plan:invite",
+            inbound_observation_id="obs:2",
+            status="fulfilled",
+            reason="他终于认真哄我了",
+            event_ref="event:assessment:2",
+            world_revision=7,
+        ),
+    )
+    assert unfulfilled_expectation_backlog_advisory(projection) is None
+
+
+def test_long_ignored_expectation_remains_visible_on_late_inbound_and_proactive_backlog() -> None:
+    from types import SimpleNamespace
+    from companion_daemon.world_v2.response_expectation_view import (
+        attach_pending_expectation_advisory,
+        pending_response_expectation_manifest,
+        unfulfilled_expectation_backlog_advisory,
+    )
+
+    # Left unanswered for 10 days (no arbitrary 48h/72h cutoff before she settles it).
+    late_time = EXPECTATION_NOW + timedelta(days=10)
+    projection = _fake_projection(
+        logical_time=late_time,
+        expectation=_expectation(expires_at=EXPECTATION_NOW + timedelta(minutes=5)),
+    )
+    # 1) Proactive check before he replies sees the long-unanswered expectation in backlog:
+    proactive_backlog = unfulfilled_expectation_backlog_advisory(projection)
+    assert proactive_backlog is not None
+    assert proactive_backlog.kind == "unfulfilled_expectation_backlog"
+    assert any("long_unanswered" in c.value for c in proactive_backlog.candidates)
+
+    # 2) When he finally replies 6 hours later, she still sees both response_expectation and backlog:
+    projection.message_observations = (
+        SimpleNamespace(observation_id="obs:late", world_revision=6),
+    )
+    context = {
+        "world_id": "world:h13-late",
+        "actor_ref": "character:zhizhi",
+        "world_revision": 6,
+        "deliberation_revision": 0,
+        "ledger_sequence": 2,
+        "logical_time": late_time.isoformat(),
+        "consumer_scope": "deliberation_internal",
+        "viewer_privacy_ceiling": "private",
+        "context_compiler_version": "context-capsule-compiler:test",
+        "truncation": {},
+        "slices": {},
+    }
+    attached = attach_pending_expectation_advisory(
+        context,
+        projection,
+        anchor_event_ref="obs:late",
+    )
+    snapshot = compile_inner_life_snapshot(attached)
+    advisories = snapshot.materials.get("advisories")
+    assert isinstance(advisories, list)
+    kinds = {item["kind"] for item in advisories}
+    assert "response_expectation" in kinds
+    assert "unfulfilled_expectation_backlog" in kinds
+    assert (
+        pending_response_expectation_manifest(
+            projection, before_world_revision=6, at_logical_time=late_time
+        )
+        is not None
+    )
+
+
+def test_stepped_reconciliation_still_pending_history_surfaces_in_backlog() -> None:
+    from companion_daemon.world_v2.response_expectation_view import (
+        unfulfilled_expectation_backlog_advisory,
+    )
+
+    projection = _fake_projection(
+        logical_time=EXPECTATION_NOW + timedelta(hours=3),
+        expectation=_expectation(expires_at=EXPECTATION_NOW + timedelta(minutes=30)),
+    )
+    projection.response_expectation_assessments = (
+        SimpleNamespace(
+            assessment_id="assess:step1",
+            source_plan_id="plan:invite",
+            inbound_observation_id="obs:1",
+            status="still_pending",
+            reason="他只回了个忙，根本没哄我",
+            assessed_at=EXPECTATION_NOW + timedelta(hours=1),
+            world_revision=6,
+            event_ref="event:assess:step1",
+        ),
+        SimpleNamespace(
+            assessment_id="assess:step2",
+            source_plan_id="plan:invite",
+            inbound_observation_id="obs:2",
+            status="still_pending",
+            reason="他开始道歉解释了，但我还想嘴硬拿乔一下看他怎么补偿我",
+            assessed_at=EXPECTATION_NOW + timedelta(hours=2),
+            world_revision=7,
+            event_ref="event:assess:step2",
+        ),
+    )
+    backlog = unfulfilled_expectation_backlog_advisory(projection, before_world_revision=8)
+    assert backlog is not None
+    detail_values = " | ".join(c.value for c in backlog.candidates)
+    assert "still_pending x2" in detail_values
+    assert "他开始道歉解释了" in detail_values
+    assert "prev: 他只回了个忙" in detail_values
+
 
 
 def test_slim_how_it_landed_becomes_an_assessment_on_the_same_inbound() -> None:
@@ -498,7 +733,7 @@ def test_slim_invalid_later_fails_closed_instead_of_sending_now() -> None:
     with pytest.raises(ValueError, match=SLIM_LATER_NOT_A_DURATION):
         compile_slim_consider_payload(_slim_payload(later=True))
     with pytest.raises(ValueError, match=SLIM_LATER_NOT_A_DURATION):
-        compile_slim_consider_payload(_slim_payload(later=10))
+        compile_slim_consider_payload(_slim_payload(later=3))
     with pytest.raises(ValueError, match=SLIM_LATER_REQUIRES_TEXT):
         compile_slim_consider_payload(_slim_payload(later=45, photo=True))
     with pytest.raises(ValueError, match=SLIM_LATER_REQUIRES_TEXT):
@@ -655,12 +890,14 @@ def test_slim_authored_meaning_is_kept_as_her_reading() -> None:
 
 
 def test_slim_does_not_invent_a_reading_when_she_omits_meaning() -> None:
-    with pytest.raises(ValueError, match="meaning_of_this"):
-        compile_slim_consider_payload(
-            {
-                "messages": ["嗯"],
-                "my_state": "我现在没什么特别感觉",
-                "stuck_with_me": "他好像没说完",
-                "photo": False,
-            }
-        )
+    compiled = compile_slim_consider_payload(
+        {
+            "messages": ["嗯"],
+            "my_state": "我现在没什么特别感觉",
+            "stuck_with_me": "他好像没说完",
+            "photo": False,
+        }
+    )
+    assert compiled is not None
+    assert compiled["appraisal_draft"]["appraise"] is False
+    assert "meanings" not in compiled["appraisal_draft"]

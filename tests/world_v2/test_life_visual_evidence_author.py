@@ -152,12 +152,19 @@ def _catalog(tmp_path: Path) -> ReviewedLifeSeedCatalog:
     )
 
 
-def _event(*, event_id: str, event_type: str, at: datetime = NOW) -> WorldEvent:
+def _event(
+    *,
+    event_id: str,
+    event_type: str,
+    at: datetime = NOW,
+    payload: dict[str, object] | None = None,
+) -> WorldEvent:
     return WorldEvent.from_payload(
         schema_version="world-v2.1", event_id=event_id, event_type=event_type,
         world_id=WORLD, logical_time=at, created_at=at, actor=CHARACTER,
         source="test", trace_id="trace:visual", causation_id="cause:visual",
-        correlation_id="correlation:visual", idempotency_key=event_id, payload={},
+        correlation_id="correlation:visual", idempotency_key=event_id,
+        payload=payload or {},
     )
 
 
@@ -1268,3 +1275,190 @@ def test_catalog_rejects_visual_evidence_on_a_visually_silent_opening(tmp_path: 
         ReviewedLifeSeedCatalog.from_yaml(
             path=seed, chronology=LocalChronology("Asia/Shanghai")
         )
+
+
+def test_self_directed_active_plan_declares_present_moment_on_the_spot(
+    tmp_path: Path,
+) -> None:
+    started = _event(
+        event_id="event:activity-lifecycle-effect:self-directed-start",
+        event_type="ActivityStarted",
+    )
+    plan = SimpleNamespace(
+        plan_id="plan:day-open-life-intent:75d03f75",
+        activity_kind="self_directed.d2c85c6ca914e2f4b2dd6a9a",
+        status="active",
+        privacy_class="private",
+        participant_refs=(),
+        last_transitioned_at=NOW,
+        authority_origin=SimpleNamespace(accepted_event_ref=started.event_id),
+    )
+    ledger = _Ledger(_timeline_event(), started, plans=(plan,))
+    author = LifeVisualEvidenceAuthor(
+        ledger=ledger,
+        catalog=_catalog(tmp_path),
+        content_store=_ContentStore(),
+        character_ref=CHARACTER,
+        recipient_ref=RECIPIENT,
+        life_development_proposals=SimpleNamespace(
+            read_for_plan=lambda *, plan_id: SimpleNamespace(
+                character_intention="去教务楼柜台核验综测返工材料并排队领号"
+            )
+            if plan_id == "plan:day-open-life-intent:75d03f75"
+            else None,
+            read_for_occurrence=lambda *, occurrence: None,
+        ),
+    )
+
+    result = author.request_once(
+        source_refs=("event:day-open-life-intent:75d03f75",),
+        trace_id="trace:self-directed",
+        correlation_id="corr:self-directed",
+    )
+
+    assert result.status == "declared"
+    assert result.reason_code == "visual_evidence.present_moment_declared"
+    assert result.declared_source_ref == started.event_id
+    declarations = ledger.events_of_type("ImageEvidenceDeclared")
+    assert len(declarations) == 1
+    evidence = declarations[0].payload()["image_evidence"]
+    assert evidence["summary"] == "去教务楼柜台核验综测返工材料并排队领号"
+    assert evidence["activity"]["description"] == "去教务楼柜台核验综测返工材料并排队领号"
+    assert evidence["character_media"]["capture_capabilities"] == ["character_front_camera"]
+    opened = ledger.events_of_type("PhotoCandidateOpened")
+    assert len(opened) == 1
+    assert opened[0].payload()["candidate"]["character_media_contract"]["kind"] == "selfie"
+
+
+def test_settled_world_consequence_occurrence_declares_visual_evidence(
+    tmp_path: Path,
+) -> None:
+    import json
+
+    settlement = _event(
+        event_id="event:settlement:world-consequence",
+        event_type="WorldOccurrenceSettled",
+        at=NOW - timedelta(minutes=20),
+    )
+    consequence_json = json.dumps(
+        {
+            "contract": "world-consequence.2",
+            "environment_text": "上午九点半后，教务楼补核窗口外排队的消息陆续更新进群，队尾排到了走廊拐角。",
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    occurrence = SimpleNamespace(
+        occurrence_id="occurrence:world-outlook:7d0169d3",
+        status="settled",
+        settled_at=NOW - timedelta(minutes=20),
+        settlement_event_ref=settlement.event_id,
+        settled_outcome_ref="candidate:outlook:7d0169d3",
+        trigger_ref="event:world-outlook:execution:7d0169d3",
+        visibility="private",
+        participant_refs=(CHARACTER,),
+        result_payload_ref="payload:outlook:7d0169d3",
+        result_payload_hash="sha256:" + life_content_payload_hash(consequence_json),
+    )
+    ledger = _Ledger(_timeline_event(), settlement, occurrences=(occurrence,))
+    author = _author(ledger, tmp_path, content_text=consequence_json)
+
+    result = author.request_once(
+        source_refs=(),
+        trace_id="trace:outlook-consequence",
+        correlation_id="corr:outlook-consequence",
+    )
+
+    assert result.status == "declared"
+    assert result.declared_source_ref == settlement.event_id
+    evidence = ledger.events_of_type("ImageEvidenceDeclared")[0].payload()["image_evidence"]
+    assert evidence["summary"] == "上午九点半后，教务楼补核窗口外排队的消息陆续更新进群，队尾排到了走廊拐角。"
+    assert (
+        evidence["activity"]["description"]
+        == "上午九点半后，教务楼补核窗口外排队的消息陆续更新进群，队尾排到了走廊拐角。"
+    )
+    assert len(ledger.events_of_type("PhotoCandidateOpened")) == 1
+
+
+def test_self_directed_private_moment_with_live_declared_display_opens_p3_candidates(
+    tmp_path: Path,
+) -> None:
+    started = _event(
+        event_id="event:activity-lifecycle-effect:self-directed-mirror",
+        event_type="ActivityStarted",
+    )
+    observation = _event(
+        event_id="event:observation:flirt-mirror",
+        event_type="ObservationRecorded",
+    )
+    display = _event(
+        event_id="event:declared-display:flirt-mirror",
+        event_type="DeclaredDisplayRecorded",
+        payload={
+            "source_event_ref": observation.event_id,
+            "source_event_payload_hash": observation.payload_hash,
+            "source_event_type": "ObservationRecorded",
+            "recipient_ref": RECIPIENT,
+            "media_intent": "sexual_suggestive",
+            "declared_at": NOW.isoformat(),
+        },
+    )
+    plan = SimpleNamespace(
+        plan_id="plan:day-open-life-intent:mirror-tryon",
+        activity_kind="self_directed.mirror_tryon",
+        status="active",
+        privacy_class="private",
+        participant_refs=(),
+        last_transitioned_at=NOW,
+        authority_origin=SimpleNamespace(accepted_event_ref=started.event_id),
+    )
+    ledger = _Ledger(
+        _timeline_event(),
+        started,
+        observation,
+        display,
+        plans=(plan,),
+        relationship_states=(SimpleNamespace(subject_ref=RECIPIENT, stage="friend"),),
+    )
+    author = LifeVisualEvidenceAuthor(
+        ledger=ledger,
+        catalog=_catalog(tmp_path),
+        content_store=_ContentStore(),
+        character_ref=CHARACTER,
+        recipient_ref=RECIPIENT,
+        life_development_proposals=SimpleNamespace(
+            read_for_plan=lambda *, plan_id: SimpleNamespace(
+                character_intention="在房间全身镜前试穿新买的吊带睡裙，欣赏合身的线条"
+            )
+            if plan_id == "plan:day-open-life-intent:mirror-tryon"
+            else None,
+            read_for_occurrence=lambda *, occurrence: None,
+        ),
+    )
+
+    result = author.advance_once(
+        wake_event_ref=display.event_id,
+        trace_id="trace:flirt-mirror",
+        correlation_id="corr:flirt-mirror",
+    )
+
+    assert result.status == "declared"
+    assert result.lane == "private"
+    declarations = ledger.events_of_type("RecipientScopedImageEvidenceDeclared")
+    assert len(declarations) == 1
+    evidence = declarations[0].payload()["image_evidence"]
+    assert evidence["visibility"] == "private"
+    assert evidence["activity"]["private_transition"] is True
+    assert evidence["location"]["kind"] == "private"
+    assert evidence["location"]["mirror_available"] is True
+    assert set(evidence["character_media"]["capture_capabilities"]) == {
+        "character_front_camera",
+        "mirror",
+    }
+    kinds = {
+        opened.payload()["candidate"]["character_media_contract"]["kind"]
+        for opened in ledger.events_of_type("PhotoCandidateOpened")
+    }
+    assert kinds == {"selfie", "mirror"}
+

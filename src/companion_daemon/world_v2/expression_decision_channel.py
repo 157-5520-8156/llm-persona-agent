@@ -217,6 +217,86 @@ def _prove_slim_specimen_advertises_relationship_commitment() -> None:
         raise AssertionError("relationship usage specimen does not bind its visible line")
 
 
+def _require_sticker_on_head(envelope: dict[str, object], *, expected_sticker_id: str) -> None:
+    events = envelope.get("events")
+    if not isinstance(events, list) or not events:
+        raise AssertionError("compiled envelope has no head event")
+    head = events[0]
+    if not isinstance(head, dict):
+        raise AssertionError("compiled envelope head is not an object")
+    candidates: list[object] = []
+    if isinstance(head.get("beat"), dict):
+        candidates.append(head["beat"])
+    if isinstance(head.get("beats"), list):
+        candidates.extend(head["beats"])
+    for event in events[1:-1]:
+        if isinstance(event, dict) and isinstance(event.get("beat"), dict):
+            candidates.append(event["beat"])
+    if not any(
+        isinstance(item, dict)
+        and item.get("modality") == "sticker"
+        and item.get("sticker_id") == expected_sticker_id
+        for item in candidates
+    ):
+        raise AssertionError(
+            f"sticker beat {expected_sticker_id!r} was dropped or left as literal text: {candidates!r}"
+        )
+
+
+def _prove_sticker_beat_reply_only_slim() -> None:
+    slim = {
+        "messages": ["你少来这套", "[sticker:meme:cat_smug]"],
+        "meaning_of_this": "他在故意逗我斗图",
+        "my_state": "觉得好笑，想甩张猫猫表情包怼回去",
+    }
+    envelope = compile_slim_interior_envelope(slim, reply_only=True)
+    if envelope is None:
+        raise AssertionError("reply_only slim inline sticker did not compile")
+    _require_sticker_on_head(envelope, expected_sticker_id="meme:cat_smug")
+
+
+def _prove_sticker_beat_reply_only_events() -> None:
+    slim = {
+        "messages": [{"sticker_id": "meme:cat_eyeroll"}],
+        "meaning_of_this": "他又在发抽象图",
+        "my_state": "想回个白眼猫猫表情包",
+    }
+    envelope = compile_slim_interior_envelope(slim, reply_only=True)
+    if envelope is None:
+        raise AssertionError("reply_only sticker_id object did not compile")
+    _require_sticker_on_head(envelope, expected_sticker_id="meme:cat_eyeroll")
+
+
+def _prove_sticker_beat_full_turn() -> None:
+    slim = {
+        "messages": ["哼", {"sticker_id": "meme:cat_bonk"}],
+        "meaning_of_this": "他在欠揍地开玩笑",
+        "my_state": "想敲他一下",
+    }
+    envelope = compile_slim_interior_envelope(slim, reply_only=False)
+    if envelope is None:
+        raise AssertionError("full_turn sticker beat did not compile")
+    _require_sticker_on_head(envelope, expected_sticker_id="meme:cat_bonk")
+
+
+def _prove_sticker_beat_later_is_visible_reject() -> None:
+    slim = {
+        "messages": [{"sticker_id": "meme:cat_peek"}],
+        "meaning_of_this": "晚点再发表情包",
+        "my_state": "想延后发表情包",
+        "later": 60,
+    }
+    try:
+        compile_slim_interior_envelope(slim, reply_only=True)
+    except ValueError as exc:
+        if "exceeds text-only capability" not in str(exc) and "later" not in str(exc).lower():
+            raise AssertionError(
+                f"later+sticker must fail visibly, got: {exc}"
+            ) from exc
+        return
+    raise AssertionError("later+sticker on reply_only must be a visible failure")
+
+
 # Decisions that are allowed when their capability is on, and that every listed
 # format must be able to carry without silent drop.  Adding a new role-owned
 # effect here without a prove() that succeeds on each format turns the gate red.
@@ -224,6 +304,7 @@ _MEDIA_FORMATS = frozenset({"reply_only_slim", "reply_only_events", "full_turn"}
 _RELATIONSHIP_FORMATS = frozenset(
     {"reply_only_slim", "reply_only_events", "full_turn"}
 )
+_STICKER_FORMATS = frozenset({"reply_only_slim", "reply_only_events", "full_turn"})
 
 INSTALLED_DECISION_CHANNELS: tuple[DecisionChannel, ...] = (
     DecisionChannel(
@@ -279,6 +360,30 @@ INSTALLED_DECISION_CHANNELS: tuple[DecisionChannel, ...] = (
         formats=frozenset({"reply_only_slim"}),
         prove=_prove_slim_specimen_advertises_relationship_commitment,
         notes="slim schema and concrete usage specimen advertise the triplet",
+    ),
+    DecisionChannel(
+        decision_id="sticker_beat",
+        formats=_STICKER_FORMATS,
+        prove=_prove_sticker_beat_reply_only_slim,
+        notes="reply_only slim inline [sticker:<id>] compiles to sticker beat",
+    ),
+    DecisionChannel(
+        decision_id="sticker_beat",
+        formats=_STICKER_FORMATS,
+        prove=_prove_sticker_beat_reply_only_events,
+        notes="reply_only slim {\"sticker_id\":...} compiles to sticker beat",
+    ),
+    DecisionChannel(
+        decision_id="sticker_beat",
+        formats=_STICKER_FORMATS,
+        prove=_prove_sticker_beat_full_turn,
+        notes="full_turn slim sticker beat compiles to sticker beat",
+    ),
+    DecisionChannel(
+        decision_id="sticker_beat_later_visible_reject",
+        formats=frozenset({"reply_only_slim"}),
+        prove=_prove_sticker_beat_later_is_visible_reject,
+        notes="later+sticker remains a visible reject, not a silent strip",
     ),
 )
 

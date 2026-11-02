@@ -231,6 +231,11 @@ class WorldV2PlatformHost:
 
         return await self.respond(message)
 
+    def set_background_commit_priority_gate(self, gate) -> None:
+        install = getattr(self._application, "set_background_commit_priority_gate", None)
+        if callable(install):
+            install(gate)
+
     async def respond(self, message: PlatformInbound):
         """Forward a message without granting the host runtime or ledger access."""
 

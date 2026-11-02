@@ -225,11 +225,30 @@ class MediaRequestRuntime:
                 else:
                     supply(**supply_kwargs)
 
+            current_projection = await self._project()
+            current_logical_time = current_projection.logical_time or logical_time
             preview = await self._conductor.advance_once(
-                logical_time=logical_time,
+                logical_time=current_logical_time,
                 trace_id=trace_id,
                 correlation_id=request_correlation,
             )
+            if preview.status == "blocked" and any(
+                token in (preview.reason_code or "")
+                for token in (
+                    "cursor_stale",
+                    "logical_time_not_current",
+                    "projection_cursor_mismatch",
+                    "projection_logical_time_mismatch",
+                    "invalid_projection",
+                )
+            ):
+                current_projection = await self._project()
+                current_logical_time = current_projection.logical_time or current_logical_time
+                preview = await self._conductor.advance_once(
+                    logical_time=current_logical_time,
+                    trace_id=trace_id,
+                    correlation_id=request_correlation,
+                )
             outcome = self._terminal_outcome(preview)
             if outcome is None:
                 return MediaRequestAdvanceResult(
@@ -250,9 +269,11 @@ class MediaRequestRuntime:
                         preview=preview,
                         reason_code="media_request.terminal_not_bound_to_request",
                     )
+            current_projection = await self._project()
+            current_logical_time = current_projection.logical_time or current_logical_time
             completed = await self._complete(
                 process=claimed,
-                logical_time=logical_time,
+                logical_time=current_logical_time,
                 outcome_ref=outcome,
                 trace_id=trace_id,
                 correlation_id=request_correlation,

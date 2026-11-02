@@ -12,7 +12,6 @@ from companion_daemon.world_v2.change_phase_view import (
     change_phase_readings,
     change_phase_summary_prose,
 )
-from companion_daemon.world_v2.life_author_weight_policy import LifeAuthorWeightPolicy
 from companion_daemon.world_v2.schemas import (
     AffectComponentProjection,
     AffectDecayProfileProjection,
@@ -251,74 +250,3 @@ def test_advisory_is_source_bound_and_bounded() -> None:
     ) == ()
 
 
-def test_life_author_weight_policy_senses_change_phase() -> None:
-    from companion_daemon.world_v2.life_author_seed import ReviewedLifeSeedCandidate, ReviewedLifeSeedOpening
-
-    def _candidate(opening_id: str, domain: str) -> ReviewedLifeSeedCandidate:
-        return ReviewedLifeSeedCandidate(
-            token="0" * 64 if opening_id == "rest" else "1" * 64,
-            opening=ReviewedLifeSeedOpening(
-                id=opening_id,
-                activity_kind=f"kind.{opening_id}",
-                source="routine",
-                domain=domain,
-                local_windows=("08:00-23:00",),
-                weekdays=(0, 1, 2, 3, 4, 5, 6),
-                duration_minutes=60,
-                importance_bp=5_000,
-            ),
-            availability_hash="2" * 64,
-        )
-
-    rest = _candidate("rest", "rest_recovery")
-    study = _candidate("study", "study_class")
-    policy = LifeAuthorWeightPolicy()
-    assert policy.version == "life-author-weight.5"
-
-    def _weights(last_stimulus: datetime, intensity: int, anchor: int) -> dict[str, int]:
-        episodes = (
-            _episode(
-                components=(
-                    _component(
-                        intensity_bp=intensity,
-                        anchor_bp=anchor,
-                        last_stimulus_at=last_stimulus,
-                        opened_at=last_stimulus,
-                    ),
-                ),
-                opened_at=last_stimulus,
-            ),
-        )
-        return policy.compile(
-            candidates=(rest, study),
-            plans=(),
-            logical_time=NOW,
-            affect_episodes=episodes,
-        )
-
-    departing = _weights(NOW - timedelta(minutes=15), 5_000, 5_000)
-    returning = _weights(NOW - timedelta(hours=9), 3_000, 6_000)
-    # Freshly departing heaviness leans further into rest than mid-recovery
-    # does; the visible return restores some appetite for demanding work.
-    assert departing[rest.token] / departing[study.token] > (
-        returning[rest.token] / returning[study.token]
-    )
-    phases = change_phase_by_dimension(
-        change_phase_readings(
-            (
-                _episode(
-                    components=(
-                        _component(
-                            intensity_bp=3_000,
-                            anchor_bp=6_000,
-                            last_stimulus_at=NOW - timedelta(hours=9),
-                            opened_at=NOW - timedelta(hours=9),
-                        ),
-                    ),
-                    opened_at=NOW - timedelta(hours=9),
-                ),
-            ),
-            logical_time=NOW,
-        )
-    )
-    assert phases == {"sadness": "returning"}

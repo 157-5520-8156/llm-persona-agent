@@ -71,6 +71,67 @@ def escape_unescaped_quotes_in_json_strings(text: str) -> str:
     return "".join(repaired)
 
 
+def merge_split_object_arrays(text: str) -> str:
+    """Merge adjacent ``["a"], ["b"]`` array fragments on an object property.
+
+    DeepSeek occasionally serializes a multi-bubble ``messages`` array inside
+    ``payload_json`` as ``"messages":["a"],["b"]``—closing the array after the
+    first item and writing the next item as a bare ``[...]`` after a comma at
+    object depth.  In JSON grammar an object member after ``,`` at
+    ``depth_array == 0`` must begin with a quoted key, never ``[``, so merging
+    ``], [`` at ``depth_object > 0`` and ``depth_array == 0`` is lossless and
+    never alters nested arrays or string contents.
+    """
+
+    repaired: list[str] = []
+    depth_object = 0
+    depth_array = 0
+    in_string = False
+    escaped = False
+    index = 0
+    length = len(text)
+    while index < length:
+        character = text[index]
+        if in_string:
+            repaired.append(character)
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            index += 1
+            continue
+        if character == '"':
+            in_string = True
+            repaired.append(character)
+            index += 1
+            continue
+        if character == "{":
+            depth_object += 1
+        elif character == "}":
+            depth_object = max(0, depth_object - 1)
+        elif character == "[":
+            depth_array += 1
+        elif character == "]":
+            if depth_array == 1 and depth_object > 0:
+                look = index + 1
+                while look < length and text[look].isspace():
+                    look += 1
+                if look < length and text[look] == ",":
+                    look += 1
+                    while look < length and text[look].isspace():
+                        look += 1
+                    if look < length and text[look] == "[":
+                        repaired.append(", ")
+                        index = look + 1
+                        continue
+            depth_array = max(0, depth_array - 1)
+        repaired.append(character)
+        index += 1
+    return "".join(repaired)
+
+
 def close_unclosed_json_containers(text: str) -> str:
     """Append missing ``}`` / ``]`` after a complete last field.
 
@@ -135,6 +196,10 @@ def loads_one_json_object(
     repaired = escape_unescaped_quotes_in_json_strings(candidate)
     if repaired != candidate:
         texts.append(repaired)
+    for text in list(texts):
+        merged = merge_split_object_arrays(text)
+        if merged != text:
+            texts.append(merged)
     for text in list(texts):
         closed = close_unclosed_json_containers(text)
         if closed != text:

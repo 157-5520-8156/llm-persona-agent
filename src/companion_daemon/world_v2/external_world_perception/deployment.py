@@ -241,7 +241,18 @@ def build_external_world_perception_deployment(
             registry_health=registry_health,
         )
 
-    world_ledger: SQLiteWorldLedger | None = None
+    candidate_ledger = getattr(life, "_ledger", None)
+    shared_ledger = (
+        candidate_ledger
+        if isinstance(candidate_ledger, SQLiteWorldLedger)
+        and candidate_ledger.world_id == world_id
+        and getattr(candidate_ledger, "_database_path", None)
+        == Path(settings.database_path).expanduser().absolute()
+        and getattr(candidate_ledger, "_accepted_batch_issuer", None) is not None
+        else None
+    )
+    owns_world_ledger = shared_ledger is None
+    world_ledger: SQLiteWorldLedger | None = shared_ledger
     if mode == "live" and channel_port is None:
         source_ids = [
             item.source_id
@@ -256,14 +267,16 @@ def build_external_world_perception_deployment(
             if registry is not None
             else "sha256:" + hashlib.sha256("\0".join(accessible_source_ids).encode()).hexdigest()
         )
-        world_ledger = SQLiteWorldLedger(path=Path(settings.database_path), world_id=world_id)
+        if world_ledger is None:
+            world_ledger = SQLiteWorldLedger(path=Path(settings.database_path), world_id=world_id)
         automatic_channel = LedgerPublicInformationChannelPort(
             ledger=world_ledger,
             accessible_source_ids=accessible_source_ids,
             registry_content_hash=registry_authority_hash,
         )
         if not automatic_channel.authority_is_available(actor_ref=actor_ref):
-            world_ledger.close()
+            if owns_world_ledger:
+                world_ledger.close()
             return ExternalPerceptionDeployment(
                 status="disabled",
                 reason="channel_not_configured",
@@ -306,7 +319,8 @@ def build_external_world_perception_deployment(
     registry_hash = registry.content_hash if registry is not None else None
     registry_revision = registry.registry_revision if registry is not None else "internal-only"
     if mode == "shadow" and channel_port is not None:
-        world_ledger = SQLiteWorldLedger(path=Path(settings.database_path), world_id=world_id)
+        if world_ledger is None:
+            world_ledger = SQLiteWorldLedger(path=Path(settings.database_path), world_id=world_id)
         compiler = context_capsule_compiler_from_ledger(ledger=world_ledger)
         shadow_model = character_interior_shadow_attention_port(character_interior)
         shadow_revision = _policy_revision_suffix(
@@ -346,17 +360,26 @@ def build_external_world_perception_deployment(
         )
     elif mode == "live":
         producer = ExternalPerceptionDeliveryProducer()
-        acceptance = ExternalPerceptionAcceptanceRuntime.open(
-            path=Path(settings.database_path),
-            world_id=world_id,
-            delivery_producer=producer,
+        acceptance = (
+            ExternalPerceptionAcceptanceRuntime(
+                ledger=shared_ledger,
+                batch_issuer=shared_ledger._accepted_batch_issuer,
+                delivery_producer=producer,
+            )
+            if shared_ledger is not None and shared_ledger._accepted_batch_issuer is not None
+            else ExternalPerceptionAcceptanceRuntime.open(
+                path=Path(settings.database_path),
+                world_id=world_id,
+                delivery_producer=producer,
+            )
         )
         if world_ledger is None:
             world_ledger = acceptance.ledger
         elif acceptance.ledger is not world_ledger:
             # The acceptance runtime owns a second handle to the same file;
             # use its handle consistently and close the preflight handle.
-            world_ledger.close()
+            if owns_world_ledger:
+                world_ledger.close()
             world_ledger = acceptance.ledger
             if isinstance(channel_port, LedgerPublicInformationChannelPort):
                 channel_port = LedgerPublicInformationChannelPort(
@@ -421,7 +444,7 @@ def build_external_world_perception_deployment(
         hub=_OwnedWorldPerceptionHub(
             hub=hub,
             http_client=http_client,
-            world_ledger=world_ledger,
+            world_ledger=world_ledger if owns_world_ledger else None,
         ),
         registry_revision=(registry.registry_revision if registry is not None else None),
         registry_content_hash=(registry.content_hash if registry is not None else None),

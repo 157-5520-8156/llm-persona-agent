@@ -11,6 +11,7 @@ import json
 
 from .context_capsule import ContextCapsule
 from .deliberation import ModelInput
+from .recent_dialogue import trigger_dialogue_text
 from .selected_source_context import compile_selected_fact_dialogue_context
 
 
@@ -41,12 +42,13 @@ def _counterpart_actor(request: ModelInput, entries: list[dict]) -> str | None:
         if not matching:
             continue
         claim = matching[0]
+        expected_text = trigger_dialogue_text(trigger)
         if (
             value["dialogue_id"] != f"dialogue:observation:{trigger.observation_ref}"
             or value.get("speaker_ref") != trigger.actor
             or value["speaker"] != "counterpart"
             or value["delivery_state"] != "observed"
-            or value["text"] != trigger.text
+            or value["text"] != expected_text
             or claim["authority_world_revision"] != trigger.source_world_revision
             or "sha256:" + claim["authority_payload_hash"] != trigger.event_payload_hash
         ):

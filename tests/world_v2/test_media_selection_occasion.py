@@ -386,3 +386,100 @@ def test_occurrence_world_fact_slice_is_coordinates_not_a_share_reason() -> None
     assert slice_["location_ref"] == "location:shanghai-old-book-market"
     assert "reason" not in slice_
     assert "worth_sharing" not in slice_
+
+
+def test_character_proactive_speech_and_active_expectation_offer_fresh_candidate() -> None:
+    candidate = _candidate(opened_at=NOW)
+    occasion = compile_candidate_occasion(
+        projection=SimpleNamespace(
+            logical_time=NOW + timedelta(minutes=10),
+            message_observations=(
+                SimpleNamespace(actor="user:geoff", source_event_id="event:old"),
+            ),
+            committed_world_event_refs=(
+                SimpleNamespace(
+                    event_id="event:old",
+                    logical_time=NOW - timedelta(hours=9),
+                ),
+                SimpleNamespace(
+                    event_id="event:proactive:accept:1",
+                    logical_time=NOW - timedelta(hours=3),
+                ),
+            ),
+            trigger_processes=(),
+            expression_plan_manifests=(
+                SimpleNamespace(
+                    acceptance_event_ref="event:proactive:accept:1",
+                    media_request="none",
+                    response_expectation=SimpleNamespace(
+                        expires_at=NOW + timedelta(hours=2),
+                    ),
+                ),
+            ),
+            threads=(),
+            conversation_threads=(),
+        ),
+        candidate=candidate,
+        logical_time=NOW + timedelta(minutes=10),
+        character_actor_ref="agent:companion",
+    )
+    assert occasion is not None
+    assert occasion.kind == "live_conversation_fresh_candidate"
+    assert "event:proactive:accept:1" in occasion.source_refs
+
+
+def test_unreciprocated_monologue_suppresses_character_speech_occasion() -> None:
+    candidate = _candidate(opened_at=NOW)
+    occasion = compile_candidate_occasion(
+        projection=SimpleNamespace(
+            logical_time=NOW + timedelta(minutes=10),
+            message_observations=(
+                SimpleNamespace(actor="user:geoff", source_event_id="event:old"),
+            ),
+            committed_world_event_refs=(
+                SimpleNamespace(
+                    event_id="event:old",
+                    logical_time=NOW - timedelta(hours=18),
+                ),
+                SimpleNamespace(
+                    event_id="event:proactive:accept:1",
+                    logical_time=NOW - timedelta(hours=5),
+                ),
+                SimpleNamespace(
+                    event_id="event:proactive:accept:2",
+                    logical_time=NOW - timedelta(minutes=20),
+                ),
+            ),
+            trigger_processes=(),
+            expression_plan_manifests=(
+                SimpleNamespace(
+                    acceptance_event_ref="event:proactive:accept:1",
+                    media_request="none",
+                    response_expectation=SimpleNamespace(
+                        expires_at=NOW + timedelta(hours=2),
+                    ),
+                ),
+                SimpleNamespace(
+                    acceptance_event_ref="event:proactive:accept:2",
+                    media_request="none",
+                    response_expectation=SimpleNamespace(
+                        expires_at=NOW + timedelta(hours=2),
+                    ),
+                ),
+            ),
+            affect_episodes=(
+                SimpleNamespace(
+                    status="active",
+                    components=(
+                        SimpleNamespace(dimension="hurt", intensity_bp=6_500),
+                    ),
+                ),
+            ),
+            threads=(),
+            conversation_threads=(),
+        ),
+        candidate=candidate,
+        logical_time=NOW + timedelta(minutes=10),
+        character_actor_ref="agent:companion",
+    )
+    assert occasion is None

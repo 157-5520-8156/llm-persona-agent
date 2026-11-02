@@ -387,6 +387,21 @@ class MediaSelectionWorker:
                 {
                     "token": token,
                     "entity_revision": tokens[token].entity_revision,
+                    "family": tokens[token].family,
+                    "capture_modes": (
+                        list(tokens[token].character_media_contract.allowed_capture_modes)
+                        if tokens[token].character_media_contract is not None
+                        else ["character_rear_camera"]
+                    ),
+                    "character_visibility": (
+                        list(tokens[token].character_media_contract.allowed_character_visibility)
+                        if tokens[token].character_media_contract is not None
+                        else ["absent", "body_detail"]
+                    ),
+                    "accompanied_by_text": any(
+                        fact.get("kind") == "her_media_request"
+                        for fact in candidate_facts[tokens[token].candidate_id]
+                    ),
                     "safe_summary": safe_summary_from_lived_facts(
                         candidate_facts[tokens[token].candidate_id]
                     ),
@@ -441,7 +456,7 @@ class MediaSelectionWorker:
                 "payload_json": payload_json,
                 "payload_hash": "sha256:"
                 + hashlib.sha256(payload_json.encode("utf-8")).hexdigest(),
-                "source_refs": source_refs,
+                "source_refs": source_refs[:256],
             },
             opportunity_ref="opportunity:" + attempt_id,
         )

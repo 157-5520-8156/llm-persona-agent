@@ -118,6 +118,77 @@ def _bound_location_ref(projection: object, candidate: object) -> str | None:
     return None
 
 
+def _bound_what_happened(
+    projection: object, candidate: object, *, ledger: object | None = None
+) -> str | None:
+    """Short source-bound description of what the candidate photo depicts."""
+
+    from .media_selection_occasion import clip_fact_text
+
+    bound = {
+        ref
+        for ref in getattr(candidate, "source_event_refs", ()) or ()
+        if isinstance(ref, str) and ref
+    }
+    bound.update(
+        getattr(source, "event_ref", None)
+        for source in getattr(candidate, "source_events", ()) or ()
+        if isinstance(getattr(source, "event_ref", None), str)
+    )
+    for declared in getattr(projection, "declared_image_evidence", ()) or ():
+        event_ref = getattr(declared, "declaration_event_ref", None)
+        if not isinstance(event_ref, str) or event_ref not in bound:
+            continue
+        evidence = getattr(declared, "image_evidence", None)
+        activity = getattr(evidence, "activity", None)
+        act_desc = (
+            activity.get("description")
+            if isinstance(activity, dict)
+            else getattr(activity, "description", None)
+        )
+        description = clip_fact_text(act_desc, limit=200)
+        if description:
+            return description
+        summary = clip_fact_text(getattr(evidence, "summary", None), limit=200)
+        if summary:
+            return summary
+    lookup = getattr(ledger, "lookup_event_commit", None) if ledger is not None else None
+    if callable(lookup):
+        for ref in sorted(bound):
+            located = lookup(ref)
+            if located is None:
+                continue
+            event, _commit = located
+            if getattr(event, "event_type", None) not in {
+                "ImageEvidenceDeclared",
+                "RecipientScopedImageEvidenceDeclared",
+            }:
+                continue
+            try:
+                payload = event.payload()
+            except Exception:
+                continue
+            evidence = payload.get("image_evidence") if isinstance(payload, dict) else None
+            if not isinstance(evidence, dict):
+                continue
+            activity = evidence.get("activity")
+            act_desc = activity.get("description") if isinstance(activity, dict) else None
+            description = clip_fact_text(act_desc, limit=200)
+            if description:
+                return description
+            summary = clip_fact_text(evidence.get("summary"), limit=200)
+            if summary:
+                return summary
+    for occurrence in getattr(projection, "world_occurrences", ()) or ():
+        settlement = getattr(occurrence, "settlement_event_ref", None)
+        if not isinstance(settlement, str) or settlement not in bound:
+            continue
+        summary = clip_fact_text(getattr(occurrence, "settled_summary", None), limit=200)
+        if summary:
+            return summary
+    return None
+
+
 def _candidate_hold_reason(
     projection: object, candidate: object, logical_time: datetime | None
 ) -> ShareableHoldReason | None:
@@ -135,6 +206,16 @@ def _candidate_hold_reason(
         and expires_at <= logical_time
     ):
         return "expired"
+    declined = {
+        (getattr(item, "candidate_id", None), getattr(item, "entity_revision", None))
+        for item in getattr(projection, "media_declined_candidate_revisions", ()) or ()
+    }
+    if (
+        isinstance(candidate_id, str)
+        and candidate_id
+        and (candidate_id, getattr(candidate, "entity_revision", None)) in declined
+    ):
+        return "skipped"
     status = getattr(candidate, "status", None)
     if status == "available":
         return None
@@ -154,7 +235,10 @@ MAX_HELD_PHOTO_MOMENTS = 2
 
 
 def shareable_photo_facts(
-    projection: object, *, logical_time: datetime | None
+    projection: object,
+    *,
+    logical_time: datetime | None,
+    ledger: object | None = None,
 ) -> tuple[PhotographableMomentFact, ...]:
     """One fact per opened candidate, including bounded recent held items."""
 
@@ -176,6 +260,7 @@ def shareable_photo_facts(
                 privacy_class=privacy,
                 expires_at=expires_at if isinstance(expires_at, datetime) else None,
                 location_ref=_bound_location_ref(projection, item),
+                what_happened=_bound_what_happened(projection, item, ledger=ledger),
                 hold_reason=hold,
                 family=family if isinstance(family, str) else None,
                 candidate_id=candidate_id if isinstance(candidate_id, str) else None,
@@ -212,12 +297,15 @@ def _event_source_binding(projection: object, event_id: str) -> dict[str, object
 
 
 def shareable_photo_slice_items(
-    projection: object, *, logical_time: datetime | None
+    projection: object,
+    *,
+    logical_time: datetime | None,
+    ledger: object | None = None,
 ) -> list[dict[str, object]]:
     """Capsule-shaped items for ``shareable_photos``.  Empty list is a fact."""
 
     items: list[dict[str, object]] = []
-    for fact in shareable_photo_facts(projection, logical_time=logical_time):
+    for fact in shareable_photo_facts(projection, logical_time=logical_time, ledger=ledger):
         value: dict[str, object] = {
             "photo_in_hand": fact.photo_in_hand,
             "privacy_class": fact.privacy_class,
@@ -232,6 +320,8 @@ def shareable_photo_slice_items(
             value["hold_reason"] = fact.hold_reason
         if fact.location_ref:
             value["location_ref"] = fact.location_ref
+        if fact.what_happened:
+            value["what_happened"] = fact.what_happened
         if fact.expires_at is not None:
             value["expires_at"] = fact.expires_at.isoformat()
         row: dict[str, object] = {
@@ -249,14 +339,19 @@ def shareable_photo_slice_items(
 
 
 def install_shareable_photos_context(
-    context: Mapping[str, object], projection: object
+    context: Mapping[str, object],
+    projection: object,
+    *,
+    ledger: object | None = None,
 ) -> dict[str, object]:
     """Pin opened photo candidates into Context.  The capsule may omit world_life."""
 
     result = dict(context)
     slices = dict(context.get("slices") or {})
     logical_time = getattr(projection, "logical_time", None)
-    items = shareable_photo_slice_items(projection, logical_time=logical_time)
+    items = shareable_photo_slice_items(
+        projection, logical_time=logical_time, ledger=ledger
+    )
     slices["shareable_photos"] = {
         "availability": "available",
         "source_refs": [item["source_ref"] for item in items],

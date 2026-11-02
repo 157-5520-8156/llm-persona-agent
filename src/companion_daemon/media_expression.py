@@ -715,6 +715,7 @@ def build_complete_candidates(
                     )
                     or family == "life_share"
                     else 1,
+                    0 if item.legal_capture_modes == ("character_front_camera",) else 1,
                     preferred.index(item.legal_visual_forms[0])
                     if item.legal_visual_forms[0] in preferred
                     else len(preferred),
@@ -728,6 +729,34 @@ def build_complete_candidates(
     modes = sorted({mode for item in candidates for mode in item.legal_capture_modes})
     for mode in modes:
         take(next(item for item in candidates if mode in item.legal_capture_modes))
+    if family == "character_media":
+        for priority_family in (
+            "frustrated_complaint",
+            "comic_self_exposure",
+            "tired_access",
+            "neutral_evidence",
+            "present_and_available",
+            "mock_defiance",
+        ):
+            family_matches = [
+                item
+                for item in candidates
+                if item.subject_presentation
+                and (item.subject_presentation.get("facial_display_strategy") or {}).get(
+                    "strategy_family"
+                )
+                == priority_family
+            ]
+            if family_matches:
+                take(
+                    min(
+                        family_matches,
+                        key=lambda item: (
+                            0 if item.legal_capture_modes == ("character_front_camera",) else 1,
+                            _stable_rank(opportunity_id, item.candidate_id),
+                        ),
+                    )
+                )
     selected.extend(item for item in candidates if item.candidate_id not in selected_ids)
     return tuple(selected[:limit])
 
@@ -845,7 +874,11 @@ def _preferred_forms(tactic: str, family: str) -> tuple[str, ...]:
         "demonstration": ("body_detail", "portrait_context", "full_body"),
         "question": ("portrait_context", "full_body", "body_detail"),
         "comparison": ("body_detail", "portrait_context", "full_body"),
-        "celebration": ("portrait_context", "full_body", "portrait_closeup"),
+        "celebration": ("portrait_closeup", "portrait_context", "full_body"),
+        "comic_hook": ("portrait_closeup", "portrait_context", "body_detail"),
+        "vulnerability": ("portrait_closeup", "portrait_context"),
+        "affection": ("portrait_closeup", "portrait_context"),
+        "contrast": ("portrait_closeup", "portrait_context", "body_detail"),
         # Attraction exists only on invite_desire charged/veiled packages.
         # portrait_context means "still belong to the activity and place";
         # ranking it first turned a higher adult declaration into a modest
@@ -864,26 +897,59 @@ def _perceptual_overlap(signature: str, recent: Sequence[str]) -> int:
 def _geometry_for(
     capture: str, variant: int, family: str
 ) -> tuple[CameraGeometry | None, tuple[str, ...]]:
+    front_distance = (
+        "intimate_close"
+        if variant % 4 == 0
+        else "medium"
+        if variant % 4 == 3
+        else "close"
+    )
+    front_height = (
+        ("low" if variant % 8 == 4 else "eye")
+        if variant % 4 == 0
+        else "chest"
+        if variant % 4 == 1
+        else ("high" if variant % 8 == 6 else "eye")
+        if variant % 4 == 2
+        else ("chest" if variant % 8 == 3 else "eye")
+    )
+    front_occupancy = "balanced" if front_distance == "medium" else "dominant"
+    front_environment = (
+        "minimal"
+        if front_distance == "intimate_close"
+        else "balanced"
+        if front_distance == "medium"
+        else "supporting"
+    )
+    front_imperfection = (
+        ("clean_intentional" if variant % 8 == 0 else "partial_crop")
+        if variant % 4 == 0
+        else "clean_intentional"
+        if variant % 4 == 1
+        else "casual_offset"
+        if variant % 4 == 2
+        else ("foreground_interrupt" if variant % 8 == 3 else "clean_intentional")
+    )
     table: dict[str, tuple[dict[str, str], tuple[str, ...]]] = {
         "character_front_camera": (
             _geo(
-                "close" if variant % 2 else "medium",
-                "high" if variant % 3 == 0 else "eye",
-                "front"
+                front_distance,
+                front_height,
+                "left_three_quarter"
                 if variant % 3 == 0
-                else "left_three_quarter"
+                else "front"
                 if variant % 3 == 1
                 else "right_three_quarter",
                 "portrait",
-                "dominant" if variant % 2 else "balanced",
-                "center"
+                front_occupancy,
+                "left_third"
                 if variant % 3 == 0
-                else "left_third"
+                else "center"
                 if variant % 3 == 1
                 else "right_third",
-                "supporting",
+                front_environment,
                 "out_of_frame",
-                "casual_offset",
+                front_imperfection,
             ),
             ("portrait_closeup", "portrait_context"),
         ),
@@ -977,7 +1043,7 @@ def _geometry_for(
             ),
             ("wide_scene",)
             if variant % 3 == 0
-            else ("contextual_still_life", "process_pov", "subject_closeup"),
+            else ("body_detail", "contextual_still_life", "process_pov", "subject_closeup"),
         ),
         "existing_artifact": (
             _geo(
@@ -1108,7 +1174,8 @@ def _identity_selection(
     angle_candidates = tuple(
         item
         for item in available
-        if usage(item) in {"canonical_identity", "angle_support"}
+        if item != canonical
+        and usage(item) in {"canonical_identity", "angle_support"}
         and target_yaw is not None
         and metadata.get(item, {}).get("head_yaw") == target_yaw
         and not (
@@ -1122,14 +1189,19 @@ def _identity_selection(
     # *eligible* angle support deterministically; the canonical identity
     # anchor remains first and is always present.
     if (
-        not angle_candidates
-        and geometry.view_axis in {"reflection_oblique", "over_shoulder"}
+        (not angle_candidates or set(angle_candidates) == {canonical})
+        and geometry.view_axis in {"front", "reflection_oblique", "over_shoulder"}
         and geometry.subject_occupancy not in {"detail", "trace", "absent"}
     ):
         angle_candidates = tuple(
             item
             for item in available
-            if item != canonical and usage(item) == "angle_support"
+            if item != canonical
+            and usage(item) == "angle_support"
+            and not (
+                _is_close_identifiable_face(geometry)
+                and metadata.get(item, {}).get("expression") == "glance_back"
+            )
         )
     # Do not always reuse the first file with the requested yaw.  The choice
     # is deterministic for replay, but varies between opportunities and lets

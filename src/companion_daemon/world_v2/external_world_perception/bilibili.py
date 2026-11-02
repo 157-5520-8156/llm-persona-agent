@@ -38,7 +38,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import httpx
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from ._source_http import fetch_source_bytes
 from .contracts import (
@@ -65,14 +65,18 @@ _DANMAKU_PATTERN = re.compile(r'<d p="([^"]+)">([^<]+)</d>')
 _BILI_EMOJI_PATTERN = re.compile(r"\[([^\]]{1,24}_[^\]]{1,24})\]")
 _BILI_SHORT_EMOJI_PATTERN = re.compile(r"\[[^\]]{1,12}\]")
 _COVER_WIDTH = 512
-_FRAME_MAX = 3
+_FRAME_MAX = 9
 _TILE_W_DEFAULT = 480
 _TILE_H_DEFAULT = 270
+_CONTACT_SHEET_COLS = 3
+_CONTACT_TILE_W = 320
+_CONTACT_TILE_H = 180
+_TIMED_TOKEN_PATTERN = re.compile(r"\[(\d+)s\]([^\[]+)")
 _MAX_IMAGE_BYTES = 1_500_000
 _MAX_VIDEO_DIRECT_BYTES = 4_200_000
 _MAX_VIDEO_RANGE_BYTES = 2_500_000
 _OMNI_MODEL_DEFAULT = "qwen3.5-omni-flash"
-_MAX_DEEP_INSPECT_PER_FETCH = 2
+_MAX_DEEP_INSPECT_PER_FETCH = 4
 _FFMPEG_FALLBACK_PATHS = (
     "/opt/homebrew/bin/ffmpeg",
     "/usr/local/bin/ffmpeg",
@@ -235,6 +239,139 @@ def _crop_tile(
     return buf.getvalue()
 
 
+def _tile_sharpness(tile_bytes: bytes) -> float:
+    """Estimate frame sharpness via 2D discrete Laplacian variance (dsh-video-storyboard pattern).
+
+    Downsamples to a 64x36 grayscale grid in pure Pillow (zero OpenCV/NumPy dependency)
+    and penalizes near-black / near-white fade frames so storyboard tile selection
+    avoids motion-blurred transitions and black fades.
+    """
+    try:
+        gray = Image.open(io.BytesIO(tile_bytes)).convert("L").resize((64, 36))
+    except Exception:
+        return 0.0
+    w, h = gray.size
+    px = gray.tobytes()
+    if not px:
+        return 0.0
+    mean_luma = sum(px) / len(px)
+    if mean_luma < 14.0 or mean_luma > 246.0:
+        return 0.1
+    lap_vals: list[float] = []
+    for y in range(1, h - 1):
+        row_off = y * w
+        for x in range(1, w - 1):
+            idx = row_off + x
+            lap = (
+                px[idx - w]
+                + px[idx + w]
+                + px[idx - 1]
+                + px[idx + 1]
+                - 4 * px[idx]
+            )
+            lap_vals.append(float(lap))
+    if not lap_vals:
+        return 0.0
+    mean_lap = sum(lap_vals) / len(lap_vals)
+    variance = sum((v - mean_lap) ** 2 for v in lap_vals) / len(lap_vals)
+    return round(variance, 2)
+
+
+def _format_mmss(sec: float) -> str:
+    total = max(0, int(round(sec)))
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
+def _compose_storyboard_contact_sheet(
+    frames: tuple[_CroppedStoryboardFrame, ...],
+    *,
+    cols: int = _CONTACT_SHEET_COLS,
+    tile_w: int = _CONTACT_TILE_W,
+    tile_h: int = _CONTACT_TILE_H,
+) -> str | None:
+    """Compose cropped storyboard frames into a numbered 3x3 contact sheet data URL.
+
+    Adopts ``SAOS-3624/dsh-video-storyboard``'s core visual-compression design:
+    instead of sending many separate image blocks to the VLM, pack up to 9 frames
+    across the full video timeline into one grid image with high-contrast
+    ``#k MM:SS`` cell badges in the top-left corner of each tile.
+    """
+    if not frames:
+        return None
+    decoded_images: list[tuple[int, float, Image.Image]] = []
+    for idx, frame in enumerate(frames[:9], start=1):
+        prefix = "base64,"
+        pos = frame.data_url.find(prefix)
+        if pos < 0:
+            continue
+        try:
+            raw = base64.b64decode(frame.data_url[pos + len(prefix) :])
+            im = Image.open(io.BytesIO(raw)).convert("RGB").resize((tile_w, tile_h))
+            decoded_images.append((idx, frame.got_sec, im))
+        except Exception:
+            continue
+    if not decoded_images:
+        return None
+    actual_cols = max(1, min(cols, len(decoded_images)))
+    rows = (len(decoded_images) + actual_cols - 1) // actual_cols
+    pad = 2
+    sheet_w = actual_cols * tile_w + (actual_cols + 1) * pad
+    sheet_h = rows * tile_h + (rows + 1) * pad
+    canvas = Image.new("RGB", (sheet_w, sheet_h), (18, 18, 18))
+    draw = ImageDraw.Draw(canvas)
+    for cell_pos, (cell_no, sec, tile_im) in enumerate(decoded_images):
+        c = cell_pos % actual_cols
+        r = cell_pos // actual_cols
+        x0 = pad + c * (tile_w + pad)
+        y0 = pad + r * (tile_h + pad)
+        canvas.paste(tile_im, (x0, y0))
+        label = f"#{cell_no} {_format_mmss(sec)}"
+        badge_w = max(56, len(label) * 7 + 10)
+        badge_h = 18
+        draw.rectangle((x0 + 4, y0 + 4, x0 + 4 + badge_w, y0 + 4 + badge_h), fill=(0, 0, 0))
+        draw.text((x0 + 8, y0 + 7), label, fill=(255, 230, 64))
+    buf = io.BytesIO()
+    canvas.save(buf, format="JPEG", quality=84)
+    raw_sheet = buf.getvalue()
+    if len(raw_sheet) > _MAX_IMAGE_BYTES:
+        return None
+    return "data:image/jpeg;base64," + base64.b64encode(raw_sheet).decode("ascii")
+
+
+def _build_storyboard_cell_manifest(
+    frames: tuple[_CroppedStoryboardFrame, ...],
+    subtitle_excerpt: str,
+    danmaku_highlights: tuple[str, ...],
+) -> str:
+    """Align subtitle and danmaku snippets to each numbered storyboard cell ``#1..#N``."""
+    if not frames:
+        return ""
+    sub_items = [
+        (int(m.group(1)), m.group(2).strip())
+        for m in _TIMED_TOKEN_PATTERN.finditer(subtitle_excerpt or "")
+        if m.group(2).strip()
+    ]
+    dm_items: list[tuple[int, str]] = []
+    for raw_dm in danmaku_highlights:
+        m = _TIMED_TOKEN_PATTERN.match(raw_dm.strip())
+        if m and m.group(2).strip():
+            dm_items.append((int(m.group(1)), m.group(2).strip()))
+    boundaries = [f.got_sec for f in frames[:9]]
+    lines: list[str] = []
+    for idx, sec in enumerate(boundaries):
+        lo = 0.0 if idx == 0 else (boundaries[idx - 1] + sec) / 2.0
+        hi = float("inf") if idx == len(boundaries) - 1 else (sec + boundaries[idx + 1]) / 2.0
+        cell_subs = [txt for ts, txt in sub_items if lo <= ts < hi][:2]
+        cell_dms = [txt for ts, txt in dm_items if lo <= ts < hi][:2]
+        parts = [f"#{idx + 1}[{_format_mmss(sec)}]"]
+        if cell_subs:
+            parts.append("字幕:" + "/".join(cell_subs))
+        if cell_dms:
+            parts.append("弹幕:" + "/".join(cell_dms))
+        lines.append(" ".join(parts))
+    return " ； ".join(lines)[:600]
+
+
 def _should_inspect_frames(
     *,
     entry: dict[str, Any],
@@ -301,10 +438,16 @@ class BilibiliPopularAdapter:
         self._upstream_publisher_ref = upstream_publisher_ref
         self._gateway_ref = f"bilibili-api:{feed_url}"
         is_mock = isinstance(getattr(http_client, "_transport", None), httpx.MockTransport)
+        vision_enabled = os.environ.get("WORLD_V2_BILIBILI_VISION_ENABLED", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
         self._vision_api_key = (
             vision_api_key
             if vision_api_key is not None
-            else (os.environ.get("QWEN_API_KEY", "") if not is_mock else "")
+            else (os.environ.get("QWEN_API_KEY", "") if (not is_mock and vision_enabled) else "")
         )
         self._vision_base_url = vision_base_url.rstrip("/")
         self._vision_model = vision_model
@@ -367,7 +510,6 @@ class BilibiliPopularAdapter:
                     not is_mock
                     and bvid_key
                     and cache_key in _VIDEO_ITEM_CACHE
-                    and enrichment.inspection_mode != "card_only"
                 ):
                     items.append(_VIDEO_ITEM_CACHE[cache_key])
                     continue
@@ -378,7 +520,7 @@ class BilibiliPopularAdapter:
                     upstream_publisher_ref=self._upstream_publisher_ref,
                     enrichment=enrichment,
                 )
-                if not is_mock and bvid_key and enrichment.inspection_mode != "card_only":
+                if not is_mock and bvid_key:
                     if len(_VIDEO_ITEM_CACHE) >= _MAX_CACHE_ENTRIES:
                         _VIDEO_ITEM_CACHE.pop(next(iter(_VIDEO_ITEM_CACHE)))
                     _VIDEO_ITEM_CACHE[cache_key] = built_item
@@ -397,7 +539,7 @@ class BilibiliPopularAdapter:
     async def _enrich_entries(
         self, entries: list[Any]
     ) -> tuple[_BilibiliVideoContentEnrichment, ...]:
-        """Funnel-based lazy enrichment: reuse cache and deep-inspect at most K new videos."""
+        """Funnel-based enrichment: reuse cache for seen videos, fetch text tracks for all new videos, and run multimodal vision/Omni on up to K new videos."""
         is_mock = isinstance(getattr(self._http_client, "_transport", None), httpx.MockTransport)
         if is_mock and not self._vision_api_key and not self._bili_sessdata:
             return tuple(_BilibiliVideoContentEnrichment() for _ in entries)
@@ -413,7 +555,8 @@ class BilibiliPopularAdapter:
         results: list[_BilibiliVideoContentEnrichment] = [
             _BilibiliVideoContentEnrichment() for _ in entries
         ]
-        to_inspect: list[tuple[int, dict[str, Any], str]] = []
+        to_inspect: list[tuple[int, dict[str, Any], str, bool]] = []
+        vision_allocated = 0
         for idx, entry in enumerate(entries):
             if not isinstance(entry, dict):
                 continue
@@ -424,30 +567,38 @@ class BilibiliPopularAdapter:
             if cached is not None:
                 results[idx] = cached
                 continue
-            if len(to_inspect) < self._max_deep_inspect_per_fetch:
-                to_inspect.append((idx, entry, bvid))
+            allow_vision = vision_allocated < self._max_deep_inspect_per_fetch
+            if not allow_vision and cached is not None:
+                results[idx] = cached
+                continue
+            if allow_vision:
+                vision_allocated += 1
+            to_inspect.append((idx, entry, bvid, allow_vision))
 
         if not to_inspect:
             return tuple(results)
 
-        semaphore = asyncio.Semaphore(2)
+        semaphore = asyncio.Semaphore(4)
 
         async def _inspect_one(
-            idx: int, entry: dict[str, Any], bvid: str
+            idx: int, entry: dict[str, Any], bvid: str, allow_vision: bool
         ) -> None:
             async with semaphore:
-                enrichment = await self._enrich_single_video(entry, bvid=bvid)
-                if enrichment.inspection_mode != "card_only":
-                    if len(_VIDEO_ENRICHMENT_CACHE) >= _MAX_CACHE_ENTRIES:
-                        _VIDEO_ENRICHMENT_CACHE.pop(next(iter(_VIDEO_ENRICHMENT_CACHE)))
-                    _VIDEO_ENRICHMENT_CACHE[bvid] = enrichment
+                enrichment = await self._enrich_single_video(
+                    entry, bvid=bvid, allow_vision=allow_vision
+                )
+                if len(_VIDEO_ENRICHMENT_CACHE) >= _MAX_CACHE_ENTRIES:
+                    _VIDEO_ENRICHMENT_CACHE.pop(next(iter(_VIDEO_ENRICHMENT_CACHE)))
+                _VIDEO_ENRICHMENT_CACHE[bvid] = enrichment
                 results[idx] = enrichment
 
-        await asyncio.gather(*(_inspect_one(idx, entry, bvid) for idx, entry, bvid in to_inspect))
+        await asyncio.gather(
+            *(_inspect_one(idx, entry, bvid, allow_vision) for idx, entry, bvid, allow_vision in to_inspect)
+        )
         return tuple(results)
 
     async def _enrich_single_video(
-        self, entry: dict[str, Any], *, bvid: str
+        self, entry: dict[str, Any], *, bvid: str, allow_vision: bool = True
     ) -> _BilibiliVideoContentEnrichment:
         aid = entry.get("aid")
         cid = entry.get("cid")
@@ -488,7 +639,9 @@ class BilibiliPopularAdapter:
         vision_summary = ""
         frame_timestamps: tuple[float, ...] = ()
         used_omni_video = False
-        need_frames = _should_inspect_frames(entry=entry, subtitle_excerpt=subtitle_excerpt)
+        need_frames = allow_vision and _should_inspect_frames(
+            entry=entry, subtitle_excerpt=subtitle_excerpt
+        )
         is_mock = isinstance(getattr(self._http_client, "_transport", None), httpx.MockTransport)
         if self._vision_api_key and need_frames:
             if not is_mock and isinstance(cid, int) and cid > 0:
@@ -789,8 +942,8 @@ class BilibiliPopularAdapter:
         """Use Qwen-Omni on actual video+audio stream for objective audiovisual perception."""
         prompt_lines = [
             f"这是B站视频《{title}》（UP主：{owner_name}）。"
-            "请用150字以内如实描述你在这段视频里实际看到的画面（人物/角色形象、动作节奏、场景细节、画面内嵌文字或AI水印）"
-            "以及听到的声音（背景音乐风格、节奏、人声台词或唱词）。只描述客观看到的和听到的视听内容，不要猜测观众反应或总结笑点。",
+            "请像普通观众看完视频后那样，用150字以内自然概括这段视频实际在讲什么或展示什么（主题、核心画面/情节、关键台词/旁白、整体氛围或有趣的地方）。"
+            "只概括视频本身的视听内容，不要描述播放器界面、鼠标光标、AI生成角标/平台水印，也不要按秒写成机械的监控分镜流水账。",
         ]
         if desc:
             prompt_lines.append(f"UP主简介参考：{desc}")
@@ -922,6 +1075,7 @@ class BilibiliPopularAdapter:
             cap = max(1, (first_im.width // tw) * (first_im.height // th))
 
             out: list[_CroppedStoryboardFrame] = []
+            used_positions: set[tuple[int, int]] = set()
             for want_sec, got_sec, tile_idx in picked:
                 sheet_no, pos = tile_idx // cap, tile_idx % cap
                 sheet_bytes = await _get_sheet(sheet_no)
@@ -931,6 +1085,30 @@ class BilibiliPopularAdapter:
                     raw_tile = _crop_tile(sheet_bytes, pos, tw, th)
                 except Exception:
                     continue
+                # Laplacian sharpness selection (dsh-video-storyboard pattern):
+                # when the target tile is a dark fade or motion-blurred frame, check
+                # immediate neighbor tiles on the same sprite sheet at zero extra HTTP cost.
+                base_sharpness = _tile_sharpness(raw_tile)
+                if base_sharpness < 18.0:
+                    best_tile = raw_tile
+                    best_sharp = base_sharpness
+                    best_pos = pos
+                    for delta in (-1, 1):
+                        cand_pos = pos + delta
+                        if cand_pos < 0 or cand_pos >= cap or (sheet_no, cand_pos) in used_positions:
+                            continue
+                        try:
+                            cand_bytes = _crop_tile(sheet_bytes, cand_pos, tw, th)
+                        except Exception:
+                            continue
+                        cand_sharp = _tile_sharpness(cand_bytes)
+                        if cand_sharp > best_sharp * 1.25 and cand_sharp > 8.0:
+                            best_tile = cand_bytes
+                            best_sharp = cand_sharp
+                            best_pos = cand_pos
+                    raw_tile = best_tile
+                    pos = best_pos
+                used_positions.add((sheet_no, pos))
                 if len(raw_tile) > _MAX_IMAGE_BYTES:
                     continue
                 out.append(
@@ -973,17 +1151,28 @@ class BilibiliPopularAdapter:
         content: list[dict[str, Any]] = []
         if cover_data_url:
             content.append({"type": "image_url", "image_url": {"url": cover_data_url}})
-        for frame in cropped_frames:
-            content.append({"type": "image_url", "image_url": {"url": frame.data_url}})
-        frame_labels = "、".join(f"第{i + 1}帧({int(f.got_sec)}s)" for i, f in enumerate(cropped_frames))
+        contact_sheet_url = (
+            _compose_storyboard_contact_sheet(cropped_frames)
+            if len(cropped_frames) >= 2
+            else None
+        )
+        if contact_sheet_url:
+            content.append({"type": "image_url", "image_url": {"url": contact_sheet_url}})
+        else:
+            for frame in cropped_frames:
+                content.append({"type": "image_url", "image_url": {"url": frame.data_url}})
+        cell_manifest = _build_storyboard_cell_manifest(
+            cropped_frames, subtitle_excerpt, danmaku_highlights
+        )
         prompt_lines = [
-            f"请结合512px封面与故事板裁出的单帧画面（{frame_labels or '无抽帧'}，每帧480x270），"
-            f"用120字以内如实描述这个B站视频《{title}》（UP主：{owner_name}）画面里实际拍了什么（人物/角色形象、场景、画面内嵌文字或水印）。"
-            "只描述客观看到的画面内容，不要根据静态抽帧猜测动作帧率，也不要脑补观众反应或总结笑点。",
+            f"请结合封面、带编号时间轴故事板拼接图（#1~#{len(cropped_frames)}，按时间顺序排列）、标题与简介，用120字以内自然概括这个B站视频《{title}》（UP主：{owner_name}）实际在拍什么或讲什么（核心人物/事物、前中后画面推进、画面花字大意）。"
+            "请直接概括视频内容本身，忽略播放器UI、鼠标光标、左上角黄字#编号角标、平台或AI水印、抽帧秒数与分辨率等无关细节，不要写成逐格报幕流水账。",
         ]
         if desc:
             prompt_lines.append(f"UP主简介参考：{desc}")
-        if subtitle_excerpt:
+        if cell_manifest:
+            prompt_lines.append(f"分镜时间轴对齐参考：{cell_manifest}")
+        elif subtitle_excerpt:
             prompt_lines.append(f"已知字幕片段：{subtitle_excerpt[:300]}")
         content.append({"type": "text", "text": "\n".join(prompt_lines)})
         try:
@@ -1090,12 +1279,7 @@ def _source_item(
             if "omni_video" in enrichment.inspection_mode:
                 summary_parts.append(f"视频画面与声音实看：{enrichment.vision_summary}")
             else:
-                ts_label = (
-                    "（抽帧时刻：" + "/".join(f"{int(t)}s" for t in enrichment.frame_timestamps_sec) + "）"
-                    if enrichment.frame_timestamps_sec
-                    else ""
-                )
-                summary_parts.append(f"故事板抽帧实看{ts_label}：{enrichment.vision_summary}")
+                summary_parts.append(f"视频内容实看：{enrichment.vision_summary}")
         if enrichment.danmaku_highlights:
             summary_parts.append(
                 "时间轴弹幕：" + " / ".join(enrichment.danmaku_highlights[:8])
@@ -1187,9 +1371,15 @@ async def inspect_bilibili_video_by_bvid(
             entry = body.get("data") if isinstance(body, dict) and body.get("code") == 0 else None
             if not isinstance(entry, dict):
                 return None
+            is_mock = isinstance(getattr(client, "_transport", None), httpx.MockTransport)
+            effective_vision_key = (
+                vision_api_key
+                if vision_api_key is not None
+                else (os.environ.get("QWEN_API_KEY", "") if not is_mock else "")
+            )
             adapter = BilibiliPopularAdapter(
                 http_client=client,
-                vision_api_key=vision_api_key,
+                vision_api_key=effective_vision_key,
                 bili_sessdata=bili_sessdata,
             )
             enrichment = _VIDEO_ENRICHMENT_CACHE.get(bvid)
@@ -1256,12 +1446,15 @@ async def enrich_qq_fragment_with_bilibili_video(
 __all__ = [
     "BILIBILI_POPULAR_URL",
     "BilibiliPopularAdapter",
+    "_build_storyboard_cell_manifest",
+    "_compose_storyboard_contact_sheet",
     "_cover_url",
     "_crop_tile",
     "_https",
     "_image_headers",
     "_should_inspect_frames",
     "_snapshot_entries",
+    "_tile_sharpness",
     "_unpack_pvdata_entries",
     "enrich_qq_fragment_with_bilibili_video",
     "extract_or_resolve_bvid",

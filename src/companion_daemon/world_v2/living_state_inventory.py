@@ -233,7 +233,23 @@ def living_impression_slice_items(
                 "value": {key: item for key, item in value.items() if item is not None},
             }
         )
-    items.sort(key=lambda item: str(item["source_ref"]))
+
+    def _impression_sort_key(item: dict[str, object]) -> tuple[float, str]:
+        val = item.get("value")
+        stamp = (
+            (val.get("last_supported") or val.get("first_seen"))
+            if isinstance(val, dict)
+            else None
+        )
+        epoch = 0.0
+        if isinstance(stamp, str) and stamp:
+            try:
+                epoch = datetime.fromisoformat(stamp.replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                epoch = 0.0
+        return (-epoch, str(item["source_ref"]))
+
+    items.sort(key=_impression_sort_key)
     return items
 
 

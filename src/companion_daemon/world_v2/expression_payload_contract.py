@@ -65,10 +65,21 @@ def validate_materialized_expression_payload(
             raise ValueError("reaction payload token is not installed")
         return
     if action_kind == "sticker":
-        if value != {
-            "sticker_id": value.get("sticker_id"),
-            "version": "expression-sticker.1",
-        } or value.get("sticker_id") not in {item[0] for item in QQ_STICKER_OPTIONS}:
+        from .sticker_vault import is_valid_sticker_vault_id
+
+        sticker_id = value.get("sticker_id")
+        valid_token = isinstance(sticker_id, str) and (
+            sticker_id in {item[0] for item in QQ_STICKER_OPTIONS}
+            or is_valid_sticker_vault_id(sticker_id)
+        )
+        if (
+            value
+            != {
+                "sticker_id": sticker_id,
+                "version": "expression-sticker.1",
+            }
+            or not valid_token
+        ):
             raise ValueError("sticker payload token is not installed")
         return
     if action_kind == "typing":

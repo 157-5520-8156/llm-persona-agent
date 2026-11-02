@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import base64
+import json
 import logging
+import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -11,6 +14,157 @@ import httpx
 from companion_daemon.models import IncomingMessage, MessageAttachment
 
 logger = logging.getLogger(__name__)
+
+_BILIBILI_URL_RE = re.compile(
+    r"https?://(?:www\.|m\.)?bilibili\.com/video/(BV1[A-Za-z0-9]{9})(?:[/?#][^\s\u4e00-\u9fff，。！？；：”’）\]》]*)?",
+    re.IGNORECASE,
+)
+_STANDALONE_BV_RE = re.compile(r"(?<![A-Za-z0-9])(BV1[A-Za-z0-9]{9})(?![A-Za-z0-9])")
+_BILIBILI_META_CACHE: dict[str, tuple[str, str, str]] = {}
+_RECENT_MINIAPP_SENT: dict[tuple[str, str], float] = {}
+
+
+def _extract_bilibili_bvid_and_clean_text(text: str) -> tuple[str | None, str]:
+    """Extract a Bilibili BV ID from outbound text and strip raw URL clutter."""
+
+    if not text:
+        return None, text
+    url_match = _BILIBILI_URL_RE.search(text)
+    if url_match is not None:
+        bvid = url_match.group(1)
+        cleaned = _BILIBILI_URL_RE.sub("", text)
+        # Also remove any duplicate bare BV ID if she wrote both URL and BV ID
+        cleaned = re.sub(
+            rf"[（(]?\s*{re.escape(bvid)}\s*[)）]?",
+            "",
+            cleaned,
+        )
+        cleaned = re.sub(r"(?:链接|网址|地址|指路)\s*[：:]\s*$", "", cleaned.strip())
+        cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" \t\n，,：:；;-—")
+        return bvid, cleaned
+    bv_match = _STANDALONE_BV_RE.search(text)
+    if bv_match is not None:
+        bvid = bv_match.group(1)
+        cleaned = _STANDALONE_BV_RE.sub("", text)
+        cleaned = re.sub(r"[（(]\s*[)）]", "", cleaned)
+        cleaned = re.sub(r"(?:BV号|链接|指路)\s*[：:]\s*$", "", cleaned.strip())
+        cleaned = re.sub(r"\s{2,}", " ", cleaned).strip(" \t\n，,：:；;-—")
+        return bvid, cleaned
+    return None, text
+
+
+async def _fetch_bilibili_card_meta(bvid: str) -> tuple[str, str, str]:
+    """Return (title, owner_name, pic_url) for a Bilibili BV ID."""
+
+    cached = _BILIBILI_META_CACHE.get(bvid)
+    if cached is not None:
+        return cached
+    default_pic = "https://i0.hdslb.com/bfs/app/8920e6741fc2808cce5b81bc27abdbda291655d3.png"
+    try:
+        async with httpx.AsyncClient(
+            timeout=3.0,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                ),
+                "Referer": "https://www.bilibili.com/",
+            },
+        ) as client:
+            resp = await client.get(
+                "https://api.bilibili.com/x/web-interface/view",
+                params={"bvid": bvid},
+            )
+            data = resp.json().get("data") if resp.status_code == 200 else None
+            if isinstance(data, dict):
+                title = str(data.get("title") or "").strip() or f"哔哩哔哩视频 {bvid}"
+                owner = data.get("owner") if isinstance(data.get("owner"), dict) else {}
+                owner_name = str(owner.get("name") or "").strip()
+                pic = str(data.get("pic") or "").strip() or default_pic
+                if pic.startswith("http://"):
+                    pic = "https://" + pic.removeprefix("http://")
+                result = (title, owner_name, pic)
+                _BILIBILI_META_CACHE[bvid] = result
+                return result
+    except Exception:
+        pass
+    return (f"哔哩哔哩视频 {bvid}", "", default_pic)
+
+
+def _ensure_clickable_bilibili_url(text: str, bvid: str) -> str:
+    """Ensure a bare BV ID is expanded into a clickable Bilibili URL when card signing is unavailable."""
+
+    if _BILIBILI_URL_RE.search(text) is not None:
+        return text
+    canonical_url = f"https://www.bilibili.com/video/{bvid}"
+    return _STANDALONE_BV_RE.sub(canonical_url, text, count=1)
+
+
+_LEADING_CQ_REPLY_RE = re.compile(
+    r"^\s*\[CQ:reply,id=(?:qq-message:)?([^\],]+)\]\s*(.+)\Z",
+    re.DOTALL,
+)
+
+
+def _normalize_outbound_onebot_message(
+    message: str | list[dict[str, Any]],
+) -> str | list[dict[str, Any]]:
+    """Convert a leading ``[CQ:reply,id=...]`` tag into a native OneBot reply segment."""
+
+    if not isinstance(message, str):
+        return message
+    match = _LEADING_CQ_REPLY_RE.match(message)
+    if match is None:
+        return message
+    reply_id = match.group(1).strip()
+    remainder = match.group(2).strip()
+    if not reply_id or not remainder:
+        return message
+    return [
+        {"type": "reply", "data": {"id": reply_id}},
+        {"type": "text", "data": {"text": remainder}},
+    ]
+
+
+def _extract_signed_ark_json(response: dict[str, Any] | None) -> str | None:
+    """Return a server-signed Ark JSON string from NapCat ``/get_mini_app_ark`` or None.
+
+    Unsigned locally constructed ``com.tencent.miniapp_01`` JSON lacks a
+    Tencent-issued ``config.token`` signature and is rejected by QQ clients with
+    "发送端版本过低". Only accept payloads signed by ``/get_mini_app_ark``.
+    """
+
+    if not isinstance(response, dict):
+        return None
+    status = str(response.get("status") or "").lower()
+    retcode = response.get("retcode")
+    if status == "failed" or (retcode is not None and int(str(retcode)) != 0):
+        return None
+    data = response.get("data")
+    raw_ark: str | None = None
+    if isinstance(data, str) and data.strip():
+        raw_ark = data.strip()
+    elif isinstance(data, dict):
+        nested = data.get("ark") or data.get("data")
+        if isinstance(nested, str) and nested.strip():
+            raw_ark = nested.strip()
+        elif isinstance(nested, dict):
+            raw_ark = json.dumps(nested, ensure_ascii=False)
+        elif "app" in data and "meta" in data:
+            raw_ark = json.dumps(data, ensure_ascii=False)
+    if not raw_ark:
+        return None
+    try:
+        parsed = json.loads(raw_ark)
+    except Exception:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    config = parsed.get("config")
+    token = config.get("token") if isinstance(config, dict) else None
+    if not isinstance(token, str) or not token.strip():
+        return None
+    return raw_ark
 
 
 @dataclass
@@ -22,10 +176,81 @@ class OneBotReplyTarget:
     group_id: int | None = None
     access_token: str | None = None
 
+    async def _request_signed_bilibili_miniapp_ark(self, bvid: str) -> str | None:
+        title, owner_name, pic_url = await _fetch_bilibili_card_meta(bvid)
+        card_title = f"{title} · UP主：{owner_name}" if owner_name else title
+        canonical_url = f"https://www.bilibili.com/video/{bvid}"
+        endpoint = f"{self.api_url.rstrip('/')}/get_mini_app_ark"
+        resp = await _post(
+            endpoint,
+            {
+                "type": "bili",
+                "title": card_title[:120],
+                "desc": (owner_name or title)[:120],
+                "picUrl": pic_url,
+                # Mini-app navigation uses its video page route; browser
+                # fallback remains the canonical URL for the same video.
+                "jumpUrl": f"pages/video/video?bvid={bvid}",
+                "webUrl": canonical_url,
+            },
+            self.access_token,
+        )
+        return _extract_signed_ark_json(resp)
+
     async def reply(self, **kwargs: object) -> dict[str, Any]:
         content = str(kwargs.get("content", ""))
         if not content:
             return {}
+        from companion_daemon.world_v2.qq_voice import (
+            extract_voice_tag_and_clean_text,
+            synthesize_companion_voice_note,
+        )
+
+        is_voice, voice_cleaned = extract_voice_tag_and_clean_text(content)
+        if is_voice and voice_cleaned:
+            try:
+                synthesized = await synthesize_companion_voice_note(voice_cleaned)
+                if synthesized is not None and synthesized.audio_bytes:
+                    voice_resp = await self.send_voice(synthesized.audio_bytes)
+                    retcode = voice_resp.get("retcode") if isinstance(voice_resp, dict) else None
+                    status = (
+                        str(voice_resp.get("status") or "").lower()
+                        if isinstance(voice_resp, dict)
+                        else ""
+                    )
+                    if status != "failed" and (retcode is None or int(str(retcode)) == 0):
+                        return voice_resp
+            except Exception:
+                pass
+            content = voice_cleaned
+        bvid, cleaned_text = _extract_bilibili_bvid_and_clean_text(content)
+        if bvid is not None:
+            recipient_key = (str(self.user_id or self.group_id or ""), bvid)
+            now_mono = time.monotonic()
+            last_sent = _RECENT_MINIAPP_SENT.get(recipient_key)
+            already_sent_recently = last_sent is not None and (now_mono - last_sent) < 600.0
+            card_resp: dict[str, Any] | None = None
+            if not already_sent_recently:
+                try:
+                    ark_json = await self._request_signed_bilibili_miniapp_ark(bvid)
+                    if ark_json is not None:
+                        card_resp = await self._send_message(
+                            [{"type": "json", "data": {"data": ark_json}}]
+                        )
+                        retcode = card_resp.get("retcode") if isinstance(card_resp, dict) else None
+                        status = str(card_resp.get("status") or "").lower() if isinstance(card_resp, dict) else ""
+                        if status == "failed" or (retcode is not None and int(str(retcode)) != 0):
+                            card_resp = None
+                        else:
+                            _RECENT_MINIAPP_SENT[recipient_key] = now_mono
+                except Exception:
+                    card_resp = None
+            if card_resp is not None or already_sent_recently:
+                if cleaned_text:
+                    return await self._send_message(cleaned_text)
+                if card_resp is not None:
+                    return card_resp
+            return await self._send_message(_ensure_clickable_bilibili_url(content, bvid))
         return await self._send_message(content)
 
     async def send_image(self, image_path: Path) -> dict[str, Any]:
@@ -33,6 +258,15 @@ class OneBotReplyTarget:
         return await self._send_message([
             {"type": "image", "data": {"file": f"base64://{b64}"}}
         ])
+
+    async def send_voice(self, audio_bytes: bytes) -> dict[str, Any]:
+        """Send one synthesized voice note as a native OneBot ``record`` segment."""
+        if not audio_bytes:
+            raise ValueError("OneBot send_voice requires non-empty audio bytes")
+        b64 = base64.b64encode(audio_bytes).decode("ascii")
+        return await self._send_message(
+            [{"type": "record", "data": {"file": f"base64://{b64}"}}]
+        )
 
     async def react_with_emoji(self, message_id: str, emoji_id: str) -> dict[str, Any]:
         """Attach a QQ emoji reaction to a received message (NapCat set_msg_emoji_like)."""
@@ -87,7 +321,7 @@ class OneBotReplyTarget:
         )
 
     async def _send_message(self, message: str | list[dict[str, Any]]) -> dict[str, Any]:
-        payload: dict[str, Any] = {"message": message}
+        payload: dict[str, Any] = {"message": _normalize_outbound_onebot_message(message)}
         if self.group_id:
             payload["group_id"] = self.group_id
             endpoint = f"{self.api_url.rstrip('/')}/send_group_msg"
@@ -149,6 +383,32 @@ async def get_onebot_image(
         raise ValueError("OneBot get_image requires the segment file identifier")
     endpoint = f"{api_url.rstrip('/')}/get_image"
     response = await _post(endpoint, {"file": file}, access_token)
+    data = response.get("data")
+    return data if isinstance(data, dict) else {}
+
+
+async def get_onebot_record(
+    api_url: str,
+    *,
+    file: str,
+    out_format: str = "wav",
+    access_token: str | None = None,
+) -> dict[str, Any]:
+    """Resolve one received voice segment through the OneBot ``get_record`` API.
+
+    NapCat decodes QQ's proprietary SILK/AMR voice format into ``out_format``
+    (e.g. ``wav``) and returns a ``data`` object with ``base64``, local ``file``
+    path, or ``url``.
+    """
+
+    if not file:
+        raise ValueError("OneBot get_record requires the segment file identifier")
+    endpoint = f"{api_url.rstrip('/')}/get_record"
+    response = await _post(
+        endpoint,
+        {"file": file, "out_format": out_format},
+        access_token,
+    )
     data = response.get("data")
     return data if isinstance(data, dict) else {}
 

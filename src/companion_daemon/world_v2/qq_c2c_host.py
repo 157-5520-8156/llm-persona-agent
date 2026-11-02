@@ -79,6 +79,7 @@ from .text_turn_endpoint import (
     TextTurnEndpointSchedule,
 )
 from .expression_draft import qq_expression_capabilities
+from .beat_composition_pacing import composition_seconds
 from .external_world_perception import SourceProfile, WorldPerceptionHub
 from .external_world_perception.deployment import (
     build_external_world_perception_deployment,
@@ -103,6 +104,7 @@ from .life_development_model_adapter import RoleBoundLifeDevelopmentModelAdapter
 from .recall_embedding import configured_recall_embedding
 from .recall_index import RecallEmbedding
 from .replay_evidence import ReplayEvidence
+from .social_initiative import SocialInitiativePolicy
 
 
 _LOG = logging.getLogger(__name__)
@@ -322,6 +324,8 @@ class QQC2CHost:
         action_due_sleep: Callable[[float], Awaitable[None]] | None = None,
         interactive_turn_budget_policy: InteractiveTurnBudgetPolicy | None = None,
         endpoint_controller: TextTurnEndpointController | None = None,
+        endpoint_inline_wait_seconds: float | None = None,
+        attention_presence_pacing_enabled: bool = False,
         recorded_cadence_mode: str = "off",
         idle_heartbeat_seconds: float = 0.0,
         barge_in_enabled: bool = True,
@@ -333,6 +337,7 @@ class QQC2CHost:
         system_notice_dispatcher: SQLiteSystemNoticeDispatcher | None = None,
         dashboard_request_issuer: CompositionDashboardRequestIssuer | None = None,
         dashboard_public_request_issuer: CompositionDashboardRequestIssuer | None = None,
+        followup_composition_pacing: bool = False,
     ) -> None:
         if not recipient_id or not canonical_user_id:
             raise ValueError("QQ C2C host requires recipient and canonical user ids")
@@ -382,6 +387,13 @@ class QQC2CHost:
         self._action_due_sleep = action_due_sleep or asyncio.sleep
         self._interactive_turn_budget_policy = interactive_turn_budget_policy
         self._endpoint_controller = endpoint_controller
+        self._endpoint_inline_wait_seconds = (
+            endpoint_inline_wait_seconds
+            if endpoint_inline_wait_seconds is not None
+            else self._ENDPOINT_INLINE_WAIT_SECONDS
+        )
+        self._attention_presence_pacing_enabled = attention_presence_pacing_enabled
+        self._last_character_delivery_at: datetime | None = None
         self._barge_in_enabled = barge_in_enabled
         self._barge_in_probe_seconds = barge_in_probe_seconds
         self._endpoint_task: asyncio.Task[TextTurnEndpointSchedule] | None = None
@@ -399,6 +411,12 @@ class QQC2CHost:
         self._exchange_id_by_action_id: dict[str, str] = {}
         self._recorded_delivered_text_action_ids: deque[str] = deque(maxlen=64)
         self._recorded_delivered_text_action_id_set: set[str] = set()
+        # Provider-local typing gap before an already-authored follow-up beat
+        # (see ``beat_composition_pacing``).  Process memory only: a restart
+        # forgets it and the next beat dispatches without a pause, which is
+        # safe because the pause never carried authority.
+        self._followup_composition_pacing = followup_composition_pacing
+        self._recent_beat_dispatches: deque[tuple[str, datetime]] = deque(maxlen=16)
         if idle_heartbeat_seconds < 0:
             raise ValueError("idle heartbeat seconds must not be negative")
         self._idle_heartbeat_seconds = idle_heartbeat_seconds
@@ -446,6 +464,9 @@ class QQC2CHost:
         # volley and trigger the 650ms continuation hold.
         self._visible_turn_depth = 0
         self._provider_reconciliation_gate = _VisibleTurnReconciliationGate()
+        install_priority_gate = getattr(self._host, "set_background_commit_priority_gate", None)
+        if callable(install_priority_gate):
+            install_priority_gate(self._provider_reconciliation_gate)
         self._closed = False
         self._close_task: asyncio.Task[None] | None = None
         self._deferred_semantic_close_task: asyncio.Task[None] | None = None
@@ -607,8 +628,71 @@ class QQC2CHost:
         # mutex only serializes provider handoffs, not background cognition.
         async with self._action_pump_lock:
             result = await self._host.drain_action(action_id)
+        self._note_beat_dispatch(result)
         await self._record_delivered_text_unit(result)
         return result
+
+    def _note_beat_dispatch(self, result: object) -> None:
+        """Remember when a visible beat reached the provider (pacing only)."""
+
+        if not self._followup_composition_pacing:
+            return
+        action_id = getattr(result, "action_id", None)
+        if (
+            getattr(result, "status", None) == "settled"
+            and getattr(result, "action_kind", None) in USER_VISIBLE_PLATFORM_ACTION_KINDS
+            and getattr(result, "provider_status", None) in {"provider_accepted", "delivered"}
+            and isinstance(action_id, str)
+        ):
+            self._recent_beat_dispatches.append((action_id, self._ingress_now()))
+
+    async def _pace_followup_beat(self) -> None:
+        """Wait out the typing gap before an authored follow-up beat.
+
+        Runs before the scheduled drain takes the provider mutex, so a
+        targeted visible reply can still overtake it and a new user bubble
+        that lands meanwhile is durably pending when ``ActionDispatchStarted``
+        re-checks ingress.  Selection, authority and dispatch remain entirely
+        ActionPump's; this only delays when it is asked to look.
+        """
+
+        if not self._followup_composition_pacing or not self._recent_beat_dispatches:
+            return
+        dispatched_at = dict(self._recent_beat_dispatches)
+        try:
+            projection = await self._read_action_due_projection()
+        except Exception:
+            return
+        actions = tuple(getattr(projection, "actions", ()) or ())
+        by_id = {getattr(item, "action_id", None): item for item in actions}
+        pause = 0.0
+        for action in actions:
+            if getattr(action, "state", None) not in {"authorized", "scheduled"}:
+                continue
+            plan_id = getattr(action, "expression_plan_id", None)
+            if plan_id is None:
+                continue
+            for dependency_id in getattr(action, "dependencies", ()) or ():
+                previous_at = dispatched_at.get(dependency_id)
+                previous = by_id.get(dependency_id)
+                if previous_at is None or getattr(previous, "expression_plan_id", None) != plan_id:
+                    continue
+                character_count: int | None = None
+                if getattr(action, "kind", None) in {"reply", "followup", "proactive_message"}:
+                    resolve_length = getattr(self._host, "delivered_text_character_count", None)
+                    if callable(resolve_length):
+                        try:
+                            character_count = await resolve_length(action.action_id)
+                        except (TypeError, ValueError, LookupError):
+                            character_count = None
+                needed = composition_seconds(
+                    character_count=character_count,
+                    jitter_key=action.action_id,
+                )
+                elapsed = (self._ingress_now() - previous_at).total_seconds()
+                pause = max(pause, needed - max(0.0, elapsed))
+        if pause > 0.0:
+            await self._ingress_sleep(pause)
 
     async def _drain_scheduled_action_once(self) -> object:
         """Run one passive ActionPump unit without locking background work."""
@@ -663,6 +747,7 @@ class QQC2CHost:
             self._recorded_delivered_text_action_id_set.discard(evicted)
         self._recorded_delivered_text_action_ids.append(action_id)
         self._recorded_delivered_text_action_id_set.add(action_id)
+        self._last_character_delivery_at = self._ingress_now()
         self._recent_character_message_character_counts.append(character_count)
         exchange_id = self._exchange_id_by_action_id.get(action_id)
         if exchange_id is not None:
@@ -678,6 +763,12 @@ class QQC2CHost:
                     break
 
     async def _drain_scheduled_action_once_unowned(self) -> object:
+        await self._pace_followup_beat()
+        result = await self._drain_scheduled_action_once_locked()
+        self._note_beat_dispatch(result)
+        return result
+
+    async def _drain_scheduled_action_once_locked(self) -> object:
         async with self._action_pump_lock:
             for retry_ordinal in range(len(_ACTION_PUMP_CONFLICT_BACKOFF_SECONDS) + 1):
                 try:
@@ -953,7 +1044,17 @@ class QQC2CHost:
     # the listening opportunity when semantic and provider evidence says that
     # another bubble is likely.
     _TEMPO_WINDOW_SECONDS = 600.0
-    _TEMPO_SAMPLE_CEILING_SECONDS = 8.0
+    # Phone typing of one Chinese bubble routinely takes 3-10 seconds; the
+    # 2026-10-26 volley measured 2-11s between continuing bubbles. Gaps up to
+    # this ceiling inside one witnessed volley are typing cadence, not a lull.
+    _TEMPO_SAMPLE_CEILING_SECONDS = 12.0
+    # Observed in-volley cadence may extend one listening opportunity up to
+    # this bound. It applies only after the sender has *already* continued at
+    # least once in the current volley (direct provider evidence), never to a
+    # first bubble, and it carries no reply/silence/wording authority: new
+    # input still invalidates the hold and the role decides on the full batch.
+    _VOLLEY_CADENCE_MAX_HOLD_SECONDS = 8.0
+    _VOLLEY_CADENCE_SCALE = 1.3
     # The durable coalescing floor already absorbs 100ms of adjacent bubbles.
     # Sender-rhythm courtesy remains subsecond; only the bounded semantic
     # endpoint controller may extend the opportunity beyond it.
@@ -1203,6 +1304,99 @@ class QQC2CHost:
                 )
         return gap
 
+    def _volley_cadence_hold_seconds(self) -> float | None:
+        """Listening opportunity sized by the sender's own in-volley cadence.
+
+        ``_quiet_gap_seconds`` deliberately treats only subsecond gaps as live
+        burst cadence, which fits pasted or rapid-fire bubbles but not a person
+        thumb-typing one story bubble by bubble. Once the current volley has
+        at least one witnessed continuation gap, wait about as long as this
+        sender has actually been taking between bubbles (bounded). The
+        estimate inspects no wording and authors no reply; it only keeps the
+        batch open long enough to observe whether the measured rhythm holds.
+        """
+
+        if not self._recent_gap_seconds:
+            return None
+        ordered = sorted(self._recent_gap_seconds)
+        median = ordered[len(ordered) // 2]
+        cadence = max(median, self._recent_gap_seconds[-1])
+        return min(
+            self._VOLLEY_CADENCE_MAX_HOLD_SECONDS,
+            max(self._BURST_CONTINUATION_QUIET_GAP_SECONDS, cadence * self._VOLLEY_CADENCE_SCALE),
+        )
+
+    @staticmethod
+    def _derive_companion_attention_mode(projection: object) -> str | None:
+        """Read explicit v2_attention or derive presence mode from active World V2 plans."""
+
+        attention_map = getattr(projection, "v2_attention", None)
+        companion_attention = (
+            attention_map.get("agent:companion")
+            if isinstance(attention_map, Mapping)
+            else None
+        )
+        mode = getattr(companion_attention, "mode", None)
+        if isinstance(mode, str) and mode:
+            return mode
+        plans = getattr(projection, "plans", None) or ()
+        active_kinds = {
+            str(getattr(plan, "activity_kind", "") or "").strip().lower()
+            for plan in plans
+            if getattr(plan, "status", None) == "active"
+            and getattr(plan, "actor_ref", "agent:companion") in {None, "agent:companion"}
+        }
+        active_kinds.discard("")
+        if not active_kinds:
+            return None
+        if active_kinds & {"sleep", "class", "exam"}:
+            return "do_not_disturb"
+        if active_kinds & {"study", "work", "exercise", "errand", "social"}:
+            return "occupied"
+        if active_kinds & {"meal", "creative", "chore", "hygiene"}:
+            return "glancing"
+        return "available"
+
+    async def _attention_presence_hold_seconds(
+        self,
+        *,
+        now: datetime,
+        burst_fragment_count: int,
+    ) -> float:
+        """Size the phone-pickup / listening window from her live attention state.
+
+        When she just sent a message (phone in hand), she sees new messages
+        immediately. When she is occupied or in deep focus, she does not stare
+        at the chat screen every 100ms, so an incoming volley has room to land
+        multiple bubbles before she glances at her phone — unless rapid
+        multi-bubble bombardment wakes her attention early.
+        """
+
+        if not self._attention_presence_pacing_enabled:
+            return 0.0
+        if (
+            self._last_character_delivery_at is not None
+            and 0.0 <= (now - self._last_character_delivery_at).total_seconds() <= 180.0
+        ):
+            return 0.0
+        reader = self._action_due_projection_reader
+        if reader is None:
+            return 0.0
+        try:
+            projection = await reader()
+        except Exception:
+            return 0.0
+        mode = self._derive_companion_attention_mode(projection)
+        if burst_fragment_count >= 3:
+            return 0.0 if mode == "available" else 0.6
+        if mode in {"glancing", "recovering_attention"}:
+            return 1.2
+        if mode == "occupied":
+            return 2.5
+        if mode in {"deep_focus", "do_not_disturb"}:
+            return 3.8
+        return 0.0
+
     async def _hold_for_sender_rhythm(
         self,
         *,
@@ -1227,18 +1421,50 @@ class QQC2CHost:
         "typing…" pulses; it is never a post-input delay.
         """
 
-        quiet_gap = self._quiet_gap_seconds(fragment.text, burst=burst_continuation)
-        endpoint_gap, observed_endpoint_task = await self._endpoint_wait_seconds(
-            timeout_seconds=min(self._ENDPOINT_INLINE_WAIT_SECONDS, quiet_gap)
-        )
-        if endpoint_gap is not None:
-            quiet_gap = max(quiet_gap, endpoint_gap)
-        if burst_continuation:
-            quiet_gap = max(quiet_gap, self._BURST_CONTINUATION_QUIET_GAP_SECONDS)
-        hard_cap = received_at + timedelta(seconds=self._BURST_HOLD_CAP_SECONDS)
-        yielded_at_quiet_edge = False
         self._rhythm_holds += 1
         try:
+            quiet_gap = self._quiet_gap_seconds(fragment.text, burst=burst_continuation)
+            presence_gap = await self._attention_presence_hold_seconds(
+                now=received_at,
+                burst_fragment_count=len(self._endpoint_fragments),
+            )
+            phone_in_hand = (
+                self._last_character_delivery_at is not None
+                and 0.0 <= (received_at - self._last_character_delivery_at).total_seconds() <= 180.0
+            )
+            if self._endpoint_inline_wait_seconds > self._ENDPOINT_INLINE_WAIT_SECONDS:
+                inline_wait = (
+                    min(self._endpoint_inline_wait_seconds, 0.35)
+                    if (
+                        phone_in_hand
+                        and not burst_continuation
+                        and len(self._endpoint_fragments) <= 1
+                        and not self._typing_is_active(now=received_at)
+                    )
+                    else self._endpoint_inline_wait_seconds
+                )
+            else:
+                inline_wait = min(self._ENDPOINT_INLINE_WAIT_SECONDS, quiet_gap)
+            endpoint_gap, observed_endpoint_task = await self._endpoint_wait_seconds(
+                timeout_seconds=inline_wait
+            )
+            if endpoint_gap is not None:
+                if (
+                    self._attention_presence_pacing_enabled
+                    and not phone_in_hand
+                    and endpoint_gap >= 1.2
+                ):
+                    endpoint_gap = min(endpoint_gap * 1.35, 3.2)
+                quiet_gap = max(quiet_gap, endpoint_gap)
+            if presence_gap > 0.0:
+                quiet_gap = max(quiet_gap, presence_gap)
+            if burst_continuation:
+                quiet_gap = max(quiet_gap, self._BURST_CONTINUATION_QUIET_GAP_SECONDS)
+                volley_hold = self._volley_cadence_hold_seconds()
+                if volley_hold is not None:
+                    quiet_gap = max(quiet_gap, volley_hold)
+            hard_cap = received_at + timedelta(seconds=self._BURST_HOLD_CAP_SECONDS)
+            yielded_at_quiet_edge = False
             while True:
                 now = self._ingress_now()
                 latest = self._last_content_received_at or received_at
@@ -1247,13 +1473,17 @@ class QQC2CHost:
                         0.0,
                         quiet_gap - max(0.0, (now - latest).total_seconds()),
                     )
+                    next_inline_wait = (
+                        self._endpoint_inline_wait_seconds
+                        if self._endpoint_inline_wait_seconds > self._ENDPOINT_INLINE_WAIT_SECONDS
+                        else min(self._ENDPOINT_INLINE_WAIT_SECONDS, remaining_gap)
+                    )
                     endpoint_gap, observed_endpoint_task = await self._endpoint_wait_seconds(
-                        timeout_seconds=min(
-                            self._ENDPOINT_INLINE_WAIT_SECONDS,
-                            remaining_gap,
-                        )
+                        timeout_seconds=next_inline_wait
                     )
                     if endpoint_gap is not None:
+                        if self._attention_presence_pacing_enabled and endpoint_gap >= 1.2:
+                            endpoint_gap = min(endpoint_gap * 1.35, 3.2)
                         quiet_gap = max(
                             self._quiet_gap_seconds(
                                 self._last_content_text,
@@ -1270,6 +1500,8 @@ class QQC2CHost:
                         timeout_seconds=0.0
                     )
                     if endpoint_gap is not None:
+                        if self._attention_presence_pacing_enabled and endpoint_gap >= 1.2:
+                            endpoint_gap = min(endpoint_gap * 1.35, 3.2)
                         quiet_gap = max(
                             self._quiet_gap_seconds(
                                 self._last_content_text,
@@ -1277,12 +1509,35 @@ class QQC2CHost:
                             ),
                             endpoint_gap,
                         )
-                if latest > received_at:
+                if latest > received_at or (
+                    self._attention_presence_pacing_enabled
+                    and len(self._endpoint_fragments) > 1
+                ):
                     # A newer bubble landed during this hold, so the volley is
                     # still going: let the newest bubble's shape and the
                     # just-measured cadence decide how much longer to wait.
                     cadence_gap = self._quiet_gap_seconds(self._last_content_text, burst=True)
-                    quiet_gap = max(cadence_gap, endpoint_gap or 0.0)
+                    multi_bubble_floor = 1.6 if self._attention_presence_pacing_enabled else 0.0
+                    quiet_gap = max(cadence_gap, endpoint_gap or 0.0, multi_bubble_floor)
+                    volley_hold = self._volley_cadence_hold_seconds()
+                    if (
+                        self._attention_presence_pacing_enabled
+                        and len(self._endpoint_fragments) >= 3
+                        and (endpoint_gap is None or endpoint_gap < 1.2)
+                        and volley_hold is None
+                    ):
+                        quiet_gap = min(quiet_gap, 0.9)
+                    if volley_hold is not None:
+                        # Measured sender rhythm outranks the subsecond
+                        # bombardment heuristic: a volley typed at 5s per
+                        # bubble is still one continuing thought.
+                        quiet_gap = max(quiet_gap, volley_hold)
+                elif burst_continuation:
+                    # Endpoint refreshes above may recompute a shorter gap;
+                    # they must not erase already-measured volley rhythm.
+                    volley_hold = self._volley_cadence_hold_seconds()
+                    if volley_hold is not None:
+                        quiet_gap = max(quiet_gap, volley_hold)
                 # A provider "peer is typing" pulse counts as not-quiet: she
                 # can see the person still composing, so she keeps waiting
                 # (within the same absolute cap) instead of answering half a
@@ -1723,6 +1978,7 @@ class QQC2CHost:
                     # when the model chose typing plus several text beats.
                     record_visible_reply()
                     visible_reply_recorded = True
+                    self._last_character_delivery_at = self._ingress_now()
                     first_visible_reply_ns = self._observation_clock_ns()
             # Process-observed first fragment arrival to the first positively
             # accepted visible reply. The scheduler/pacing clock is excluded:
@@ -1836,6 +2092,25 @@ class QQC2CHost:
 
         projection = await self._read_action_due_projection()
         actions = tuple(getattr(projection, "actions", ()) or ())
+        if getattr(projection, "trigger_processes", None) is not None:
+            from .expression_reconsideration import expression_beat_is_gated
+
+            def is_blocked_unsent_expression(action: object) -> bool:
+                if getattr(action, "state", None) not in {"authorized", "scheduled", "claimed"}:
+                    return False
+                plan_id = getattr(action, "expression_plan_id", None)
+                beat_id = getattr(action, "expression_beat_id", None)
+                if plan_id is None or beat_id is None:
+                    return False
+                return expression_beat_is_gated(projection=projection, plan_id=plan_id, beat_id=beat_id)
+
+            # An explicit interjection gate makes only the unsent beat
+            # ineligible. Do not repeatedly arm its already-due timer while
+            # the role is still deciding; retain dispatch/ACK recovery timers.
+            actions = tuple(
+                action for action in actions
+                if not is_blocked_unsent_expression(action)
+            )
         if self._system_notice_dispatcher is None:
             return _QQDueWakeProjection(actions=actions)
         notice_markers = tuple(
@@ -1924,7 +2199,7 @@ class QQC2CHost:
             return False
         return self._system_notice_authority(projection)
 
-    async def _wake_due_actions(self) -> None:
+    async def _wake_due_actions(self) -> object | None:
         """Advance only clock + ActionPump; never background cognition."""
 
         if self._closed:
@@ -1997,6 +2272,11 @@ class QQC2CHost:
         # unrelated unbounded model call delay an already-due external effect.
         for _ in range(8):
             result = await self._drain_scheduled_action_once()
+            if getattr(result, "status", None) == "deferred_ingress":
+                # The durable fragment will be committed as an Observation by
+                # ingress.  Do not busy-poll an already due Action; ingress
+                # refreshes the wake after its own final authority decision.
+                return result
             if getattr(result, "status", None) == "deferred_visible_turn":
                 # Release the ActionPump/provider mutex before waiting.  The
                 # visible turn's targeted dispatch must be free to overtake
@@ -2422,27 +2702,6 @@ class QQC2CHost:
         # clock projection or ActionPump; only immutable refs and local budget
         # counters cross it.
         async with self._scheduled_work_lock:
-            if (
-                self._external_world_perception_hub is not None
-                and background_remaining > 0
-                and not self._visible_turn_in_flight()
-            ):
-                try:
-                    perception_result = await self._external_world_perception_hub.advance_once(
-                        observed_at=observed_at
-                    )
-                except Exception:
-                    # The Hub owns durable retry and health state.  An
-                    # unexpected adapter/sidecar failure must not suppress
-                    # Action recovery, Life, or visible QQ work in this pass.
-                    _LOG.exception("external world perception scheduler unit failed")
-                    background_remaining -= 1
-                    pre_background.append("external-perception:technical-failure")
-                else:
-                    units = min(background_remaining, perception_result.progressed_units)
-                    background_remaining -= units
-                    if perception_result.status != "idle":
-                        pre_background.append("external-perception:" + perception_result.status)
             if callable(due_projection_reader):
                 due_projection = await due_projection_reader()
 
@@ -2476,6 +2735,36 @@ class QQC2CHost:
                 and retry_logical_from < retry_due_before_tick
                 and background_remaining > 0
             )
+            retry_due_now = (
+                retry_logical_from is not None
+                and retry_due_before_tick is not None
+                and retry_due_before_tick <= retry_logical_from
+            )
+            if (
+                self._external_world_perception_hub is not None
+                and not retry_due_now
+                and (background_remaining - post_tick_retry_reserve) > 0
+                and not self._visible_turn_in_flight()
+            ):
+                try:
+                    perception_result = await self._external_world_perception_hub.advance_once(
+                        observed_at=observed_at
+                    )
+                except Exception:
+                    # The Hub owns durable retry and health state.  An
+                    # unexpected adapter/sidecar failure must not suppress
+                    # Action recovery, Life, or visible QQ work in this pass.
+                    _LOG.exception("external world perception scheduler unit failed")
+                    background_remaining -= 1
+                    pre_background.append("external-perception:technical-failure")
+                else:
+                    units = min(
+                        background_remaining - post_tick_retry_reserve,
+                        perception_result.progressed_units,
+                    )
+                    background_remaining -= units
+                    if perception_result.status != "idle":
+                        pre_background.append("external-perception:" + perception_result.status)
             for _ in range(background_remaining - post_tick_retry_reserve):
                 # Do not begin another multi-second background unit while a
                 # visible turn is in flight. The visible turn does not share a
@@ -3225,12 +3514,12 @@ def build_qq_c2c_host(
         # A configured profile fixes one whole-candidate reviewer; the slim
         # carrier keeps that same reviewer and changes only the author envelope,
         # so it must not be silently rewritten back to the strict dual draft.
-        if visible_author_tool_version not in {"1", "3", "slim", "slim2"} or visible_source_review_version not in {"1", configured_review_version}:
+        if visible_author_tool_version not in {"1", "3", "slim", "slim2", "slim3", "slim4"} or visible_source_review_version not in {"1", configured_review_version}:
             raise ValueError("explicit wire versions conflict with configured visible expression profile")
         visible_source_review_required = True
         if visible_author_tool_version == "1":
             visible_author_tool_version = (
-                ("slim" if settings.world_v2_native_slim_core else "slim2")
+                ("slim" if settings.world_v2_native_slim_core else "slim4")
                 if settings.world_v2_visible_expression_profile == "grounded_review_v25"
                 else "3"
             )
@@ -3262,7 +3551,7 @@ def build_qq_c2c_host(
         raise TypeError("schema references flag must be a boolean")
     if visible_author_schema_references and visible_author_tool_version != "3":
         raise ValueError("schema references require strict atomic v3")
-    if visible_author_tool_version not in {"1", "2", "3", "slim", "slim2"}:
+    if visible_author_tool_version not in {"1", "2", "3", "slim", "slim2", "slim3", "slim4"}:
         raise ValueError("unsupported visible author tool version")
     if visible_author_tool_version != "1" and not visible_source_review_required:
         raise ValueError("versioned whole author requires explicit visible source review")
@@ -3281,6 +3570,7 @@ def build_qq_c2c_host(
         settings.qq_adapter,
         recorded_cadence_mode=getattr(settings, "world_v2_recorded_cadence_mode", "off"),
         media_request_available=media_preview is not None,
+        include_sticker_vault=(model is None),
     )
     interactive_turn_budget_policy = interactive_turn_budget_policy or InteractiveTurnBudgetPolicy(
         total_seconds=float(
@@ -3382,6 +3672,11 @@ def build_qq_c2c_host(
             ),
             adult_media_enabled=settings.world_v2_adult_media_enabled,
             perception_budget_limit=perception_budget_limit,
+            perception_before_expression=(
+                model is None
+                and perception_input_source is not None
+                and perception_transport is not None
+            ),
             interactive_turn_budget_policy=interactive_turn_budget_policy,
             background_budget_paused=_background_budget_paused(usage_store),
             expression_episode_mode=expression_episode_mode,
@@ -3404,6 +3699,11 @@ def build_qq_c2c_host(
             ),
             private_impression_idle_after_user_seconds=(
                 settings.world_v2_private_impression_idle_after_user_seconds
+            ),
+            social_initiative_policy=(
+                SocialInitiativePolicy(hot_chat_continuation_seconds=(120, 240))
+                if model is None
+                else SocialInitiativePolicy()
             ),
         ),
         identities=QQC2CIdentityResolver(
@@ -3491,6 +3791,12 @@ def build_qq_c2c_host(
         external_world_perception_disabled_reason=(external_world_perception_disabled_reason),
         external_world_perception_registry_health=(external_world_perception_registry_health),
         endpoint_controller=semantic_chat.text_endpoint_controller,
+        endpoint_inline_wait_seconds=(
+            settings.world_v2_text_endpoint_timeout_seconds
+            if semantic_chat.text_endpoint_controller is not None and model is None
+            else None
+        ),
+        attention_presence_pacing_enabled=(model is None and ingress_sleep is None),
         recorded_cadence_mode=getattr(settings, "world_v2_recorded_cadence_mode", "off"),
         idle_heartbeat_seconds=settings.qq_c2c_idle_heartbeat_seconds,
         barge_in_enabled=settings.qq_c2c_barge_in_enabled,
@@ -3498,6 +3804,13 @@ def build_qq_c2c_host(
         system_notice_dispatcher=system_notice_dispatcher,
         dashboard_request_issuer=dashboard.room_issuer,
         dashboard_public_request_issuer=dashboard.public_issuer,
+        # Same production-only posture as presence pacing: injected fake
+        # models or virtual sleeps (offline audits/tests) keep instant beats.
+        followup_composition_pacing=(
+            getattr(settings, "qq_c2c_followup_composition_pacing_enabled", False)
+            and model is None
+            and ingress_sleep is None
+        ),
     )
 
 

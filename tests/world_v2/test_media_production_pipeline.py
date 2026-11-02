@@ -149,10 +149,11 @@ class _Renderer:
 
 
 class _Delivery:
-    def __init__(self) -> None:
+    def __init__(self, *, lookup_ready: bool = True) -> None:
         self.texts: list[tuple[str, str]] = []
         self.images: list[tuple[str, bytes]] = []
         self.lookups: list[tuple[str, str]] = []
+        self.lookup_ready = lookup_ready
 
     async def send_text(self, recipient_id: str, text: str) -> dict[str, object]:
         self.texts.append((recipient_id, text))
@@ -175,6 +176,8 @@ class _Delivery:
         self, recipient_id: str, *, message_id: str
     ) -> dict[str, object]:
         self.lookups.append((recipient_id, message_id))
+        if not self.lookup_ready:
+            return {"status": "failed", "retcode": 100}
         return {
             "status": "ok",
             "retcode": 0,
@@ -226,8 +229,9 @@ def _config() -> WorldV2TurnApplicationConfig:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("initially_verified", [True, False])
 async def test_full_media_pipeline_delivers_through_world_owned_policy_without_an_operator(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, initially_verified: bool,
 ) -> None:
     monkeypatch.setenv("WORLD_V2_ENABLE_INSECURE_TEST_ROOT", "1")
     monkeypatch.setattr(
@@ -238,7 +242,7 @@ async def test_full_media_pipeline_delivers_through_world_owned_policy_without_a
     path = tmp_path / "media-production-pipeline.sqlite"
     image = tmp_path / "render.png"
     image.write_bytes(b"\x89PNG\r\n\x1a\npipeline-image-bytes")
-    delivery = _Delivery()
+    delivery = _Delivery(lookup_ready=initially_verified)
     planner = _PlanningDouble()
     renderer = _Renderer(image)
 
@@ -414,13 +418,13 @@ async def test_full_media_pipeline_delivers_through_world_owned_policy_without_a
         assert outcome is not None and outcome.status == "delivered_attempted"
         assert outcome.action_id is not None
 
-        # A second pass continues the same already-made decision (idempotent
-        # redrive of the in-flight Action); it must not send a duplicate.
+        # A second pass may encounter either an immediately verified receipt
+        # or a still-pending acknowledgement; neither can resend the image.
         second = await app.drain_media_auto_delivery_once(
             trace_id="trace:pipeline:auto-delivery-2",
             correlation_id="correlation:pipeline",
         )
-        assert second is not None and second.status == "delivered_attempted"
+        assert second is not None and second.status == ("idle" if initially_verified else "delivered_attempted")
         assert len(delivery.images) == 1
         provider_accepted = app._ledger.project()  # noqa: SLF001 - test assertion
         observed = app.media_preview_operator(
@@ -433,11 +437,12 @@ async def test_full_media_pipeline_delivers_through_world_owned_policy_without_a
     delivery_action = next(
         item for item in provider_accepted.actions if item.kind == "media_delivery"
     )
-    assert delivery_action.state == "provider_accepted"
+    assert delivery_action.state == ("delivered" if initially_verified else "provider_accepted")
 
     # Restart after the dispatch lease expires.  Recovery may only verify the
     # acknowledged provider message via read-only ``get_msg``; it must never
     # send the image a second time.
+    delivery.lookup_ready = True
     app, transport = build()
     try:
         await app.tick(
@@ -452,8 +457,9 @@ async def test_full_media_pipeline_delivers_through_world_owned_policy_without_a
         )
         recovered = await app.drain_action(delivery_action.action_id)
         assert recovered is not None
-        assert recovered.status == "settled"
-        assert recovered.provider_status == "delivered"
+        assert recovered.status == ("idle" if initially_verified else "settled")
+        if not initially_verified:
+            assert recovered.provider_status == "delivered"
 
         # Replaying both the targeted Action and the world-owned delivery lane
         # is terminal/effect-once across restart.
@@ -473,7 +479,7 @@ async def test_full_media_pipeline_delivers_through_world_owned_policy_without_a
     assert len(delivery.images) == 1
     assert delivery.images[0][0] == RECIPIENT
     assert delivery.images[0][1] == image.read_bytes()
-    assert delivery.lookups == [(RECIPIENT, "qq-image-1")]
+    assert delivery.lookups == [(RECIPIENT, "qq-image-1")] * (1 if initially_verified else 2)
     final_delivery_action = next(
         item for item in after.actions if item.action_id == delivery_action.action_id
     )

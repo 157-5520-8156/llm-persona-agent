@@ -37,7 +37,7 @@ def test_habits_remain_available_outside_the_dated_day_sheet(monkeypatch):
     ))
     snapshot = compile_inner_life_snapshot(CONTEXT)
     materials = snapshot.model_view()["materials"]
-    assert "今天是2026-09-07，当地11:00" in materials["day_sheet"]
+    assert "今天是2026-09-07（周一），当地11:00" in materials["day_sheet"]
     assert "整理课程笔记" not in materials["day_sheet"]
     background = materials["routine_background"]
     assert background["authority"] == "habit_background_not_a_plan_or_experience"

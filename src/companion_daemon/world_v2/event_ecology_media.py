@@ -82,6 +82,7 @@ _ECOLOGY_WAKE_EVENT_TYPES = frozenset({
     "ActivityStarted", "ActivityPaused", "ActivityResumed", "ActivityCompleted",
     "ActivityAbandoned",
     "WorldOccurrenceSettled", "ExperienceCommitted", "FactCommitted", "FactCorrected",
+    "ExternalPerceptionRecorded",
     "ImageEvidenceDeclared",
     "VisualFactRecorded",
     "NpcRegistered",
@@ -522,7 +523,11 @@ class EventEcologyMediaCandidateRuntime:
     def _discover(self, *, projection: _ProjectionLike, logical_time: datetime) -> tuple[EcologyCandidate, ...]:
         refs = {item.event_id: item for item in projection.committed_world_event_refs}
         declarations = self._declared_visual_sources(projection=projection, refs=refs)
-        existing_sources = {item.source_event_refs for item in projection.photo_candidates}
+        existing_sources = {
+            item.source_event_refs
+            for item in projection.photo_candidates
+            if getattr(item, "family", "life_share") == "life_share"
+        }
         historical = self._historical_categories(projection=projection)
         daily = sum(
             1 for category, at in historical

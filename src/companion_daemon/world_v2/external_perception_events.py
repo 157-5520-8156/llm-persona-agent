@@ -248,6 +248,20 @@ class _ExternalPerceptionProjectionView(Protocol):
     external_perceptions: tuple[ExternalPerceptionProjection, ...]
 
 
+def _has_deep_bilibili_inspection(summary: str) -> bool:
+    return any(
+        marker in (summary or "")
+        for marker in (
+            "视频画面与声音实看：",
+            "视频内容实看：",
+            "故事板抽帧实看",
+            "视频内容与字幕实读：",
+            "时间轴弹幕：",
+            "高赞神评：",
+        )
+    )
+
+
 def compile_external_perception_life_influences(
     projection: _ExternalPerceptionProjectionView,
 ) -> tuple[ExternalPerceptionLifeInfluenceView, ...]:
@@ -255,30 +269,47 @@ def compile_external_perception_life_influences(
 
     snapshots = {item.snapshot_ref: item for item in projection.external_signal_snapshots}
     influences: list[ExternalPerceptionLifeInfluenceView] = []
+    index_by_upstream_key: dict[tuple[str, str], int] = {}
     for perception in projection.external_perceptions:
         snapshot = snapshots.get(perception.snapshot_ref)
         if snapshot is None or snapshot.accepted_event_ref != perception.snapshot_event_ref:
             raise ValueError("external perception projection lost its adopted snapshot")
-        influences.append(
-            ExternalPerceptionLifeInfluenceView(
-                influence_id=f"life-influence:{perception.perception_id}",
-                source_event_ref=perception.accepted_event_ref,
-                source_event_payload_hash=perception.accepted_event_payload_hash,
-                source_world_revision=perception.accepted_world_revision,
-                perception_id=perception.perception_id,
-                signal_revision_ref=snapshot.signal_revision_ref,
-                source_id=snapshot.source_id,
-                headline=(snapshot.headline if snapshot.may_quote else ""),
-                licensed_summary=(snapshot.licensed_summary if snapshot.may_quote else ""),
-                canonical_url=(snapshot.canonical_url if snapshot.may_quote else None),
-                may_quote=snapshot.may_quote,
-                source_uncertainty=perception.epistemic_notes,
-                correction_lineage_refs=snapshot.correction_lineage_refs,
-                channel=perception.channel,
-                subjective_summary=perception.subjective_summary,
-                attended_context_refs=perception.attended_context_refs,
-            )
+        view = ExternalPerceptionLifeInfluenceView(
+            influence_id=f"life-influence:{perception.perception_id}",
+            source_event_ref=perception.accepted_event_ref,
+            source_event_payload_hash=perception.accepted_event_payload_hash,
+            source_world_revision=perception.accepted_world_revision,
+            perception_id=perception.perception_id,
+            signal_revision_ref=snapshot.signal_revision_ref,
+            source_id=snapshot.source_id,
+            headline=(snapshot.headline if snapshot.may_quote else ""),
+            licensed_summary=(snapshot.licensed_summary if snapshot.may_quote else ""),
+            canonical_url=(snapshot.canonical_url if snapshot.may_quote else None),
+            may_quote=snapshot.may_quote,
+            source_uncertainty=perception.epistemic_notes,
+            correction_lineage_refs=snapshot.correction_lineage_refs,
+            channel=perception.channel,
+            subjective_summary=perception.subjective_summary,
+            attended_context_refs=perception.attended_context_refs,
         )
+        upstream_key = (snapshot.source_id, snapshot.upstream_item_id)
+        existing_idx = index_by_upstream_key.get(upstream_key)
+        if existing_idx is None:
+            index_by_upstream_key[upstream_key] = len(influences)
+            influences.append(view)
+            continue
+        existing = influences[existing_idx]
+        if snapshot.source_id == "cn.social.bilibili.popular.v1" and not snapshot.correction_lineage_refs:
+            # For fixed Bilibili videos that were redundantly re-committed on stat ticks,
+            # upgrade only if the later snapshot acquired deep multimodal inspection while
+            # the earlier one did not; otherwise keep the earlier commit so duplicate
+            # stat-tick commits do not crowd out genuinely newer videos.
+            if _has_deep_bilibili_inspection(view.licensed_summary) and not _has_deep_bilibili_inspection(
+                existing.licensed_summary
+            ):
+                influences[existing_idx] = view
+        else:
+            influences[existing_idx] = view
     return tuple(influences)
 
 

@@ -107,7 +107,7 @@ def test_checked_in_bilibili_registry_loads_and_builds_live_profiles() -> None:
         and item.policy.may_freeze_durable_snapshot
         for item in enabled
     )
-    client = httpx.AsyncClient()
+    client = httpx.AsyncClient(trust_env=False)
     try:
         result = build_production_source_profiles(
             deployment_mode="live",
@@ -578,6 +578,331 @@ def test_bilibili_popular_signal_deduplicates_across_stat_revisions() -> None:
         "INSERT INTO external_perception_attention_exposures VALUES ('rev:bili:1', 'policy:1', 'deploy:1', 'attempt:1', 'selected', '2026-10-25T09:01:00Z')"
     )
     assert coord._eligible_signal_rows(observed_at=now) == ()
+
+
+def test_external_attention_rejects_copied_prior_perception_summary() -> None:
+    from types import SimpleNamespace
+    from companion_daemon.world_v2.character_interior.structured_role import (
+        StructuredCharacterRoleFaculty,
+        StructuredRoleResultError,
+    )
+
+    manifest = SimpleNamespace(
+        payload={
+            "deployment_mode": "live",
+            "candidates": [
+                {
+                    "candidate_ref": "cand:new:1",
+                    "candidate_token": "cand:new:1",
+                    "exact_signal_revisions": ["rev:new:1"],
+                    "accessible_channels": [
+                        {
+                            "channel_ref": "chan:bili",
+                            "accessible_source_ids": ["cn.social.bilibili.popular.v1"],
+                            "evidence_refs": ["cap:bili"],
+                        }
+                    ],
+                    "model_visible_material": [
+                        {
+                            "signal_revision_ref": "rev:new:1",
+                            "source_id": "cn.social.bilibili.popular.v1",
+                        }
+                    ],
+                }
+            ],
+            "durable_snapshots": [
+                {
+                    "signal_revision_ref": "rev:new:1",
+                    "may_quote": True,
+                    "headline": "【日常】另一个视频",
+                    "licensed_summary": "另一个视频的摘要",
+                }
+            ],
+        }
+    )
+    request = SimpleNamespace(
+        capability_manifest=manifest,
+        snapshot=SimpleNamespace(
+            source_refs=("cap:bili",),
+            materials_json=json.dumps(
+                {
+                    "perception": [
+                        {
+                            "subjective_summary": "帝国时代4这种长局解说正好陪我站着耗时间，金朝那套铁浮屠加弓床弩的偏门打法听着就有意思。",
+                            "epistemic_notes": "旧备注",
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+        ),
+    )
+    payload = {
+        "selections": [
+            {
+                "candidate_ref": "cand:new:1",
+                "exact_signal_revision_refs": ["rev:new:1"],
+                "selected_channel_ref": "chan:bili",
+                "subjective_summary": "帝国时代4这种长局解说正好陪我站着耗时间，金朝那套铁浮屠加弓床弩的偏门打法听着就有意思。",
+                "epistemic_notes": "这条只有标题和简介，没看到实看画面。",
+                "attended_context_refs": [],
+                "privacy_class": "public",
+            }
+        ]
+    }
+    with pytest.raises(StructuredRoleResultError) as exc_info:
+        StructuredCharacterRoleFaculty._validate_external_attention_payload(
+            payload,
+            decision_source_refs=frozenset({"cap:bili"}),
+            request=request,  # type: ignore[arg-type]
+            response_hash="0" * 64,
+        )
+    assert "copied an earlier perception" in (exc_info.value.detail or "")
+
+
+def test_storyboard_contact_sheet_sharpness_and_residue_recency() -> None:
+    import base64
+    import io
+    from PIL import Image, ImageDraw
+    from companion_daemon.world_v2.character_interior.contracts import _walking_in_residue
+    from companion_daemon.world_v2.external_world_perception.bilibili import (
+        _CroppedStoryboardFrame,
+        _build_storyboard_cell_manifest,
+        _compose_storyboard_contact_sheet,
+        _tile_sharpness,
+    )
+    from companion_daemon.world_v2.model_context_reading import present_context_evidence
+
+    # 1. Black frame vs sharp checkerboard frame sharpness
+    black_im = Image.new("RGB", (160, 90), (2, 2, 2))
+    b_buf = io.BytesIO()
+    black_im.save(b_buf, format="JPEG")
+
+    sharp_im = Image.new("RGB", (160, 90), (20, 20, 20))
+    draw = ImageDraw.Draw(sharp_im)
+    for x in range(0, 160, 16):
+        draw.rectangle((x, 10, x + 8, 80), fill=(240, 240, 240))
+    s_buf = io.BytesIO()
+    sharp_im.save(s_buf, format="JPEG")
+    assert _tile_sharpness(s_buf.getvalue()) > _tile_sharpness(b_buf.getvalue()) * 10
+
+    # 2. Contact sheet composition & cell-aligned manifest
+    raw_b64 = "data:image/jpeg;base64," + base64.b64encode(s_buf.getvalue()).decode("ascii")
+    frames = tuple(
+        _CroppedStoryboardFrame(want_sec=float(i * 15), got_sec=float(i * 15), data_url=raw_b64, kb=4.0)
+        for i in range(1, 5)
+    )
+    sheet_url = _compose_storyboard_contact_sheet(frames, cols=2, tile_w=160, tile_h=90)
+    assert sheet_url is not None and sheet_url.startswith("data:image/jpeg;base64,")
+    manifest = _build_storyboard_cell_manifest(
+        frames,
+        "[12s]老板你看这个蓝瓶子 [46s]合法合规童叟无欺",
+        ("[14s]哈哈哈神tm合法合规", "[45s]王老菊良心当铺"),
+    )
+    assert "#1[00:15]" in manifest
+    assert "字幕:老板你看这个蓝瓶子" in manifest
+    assert "弹幕:哈哈哈神tm合法合规" in manifest
+
+    # 3. _walking_in_residue picks newest appraisal and ignores >6h stale overnight residue
+    now = datetime(2026, 10, 29, 12, 5, tzinfo=UTC)
+    appraisals = [
+        {
+            "source_ref": "appraisal:compiled:028d606e",
+            "accepted_at": "2026-10-28T17:34:08Z",
+            "stimulus_excerpts": ["求求吱吱啦"],
+            "hypotheses": [{"meaning": "快一点半了，说好要睡的人还赖着"}],
+        },
+        {
+            "source_ref": "appraisal:compiled:ff0b9999",
+            "accepted_at": "2026-10-29T12:02:00Z",
+            "stimulus_excerpts": ["什么呀"],
+            "hypotheses": [{"meaning": "他在问刚聊到的那个当铺老板视频"}],
+        },
+    ]
+    residue = _walking_in_residue(appraisals, now)
+    assert residue is not None
+    assert "当铺老板视频" in residue
+    assert "快一点半了" not in residue
+
+    # 4. present_context_evidence strips period-separated 还挂着 / 心里还搁着 / 今天已经过的
+    packet = {
+        "inner_life_snapshot": {
+            "contract": "inner-life-snapshot.1",
+            "materials": {
+                "appraisals": {"columns": ["ref"], "stable_rows": []},
+                "lived_moment": "刚经历：站在吧台后。还挂着（3分钟前）：什么呀 → 他在问当铺视频。心里还搁着：等他回复。今天已经过的：整理桌椅。",
+            },
+        }
+    }
+    presented = present_context_evidence(packet)
+    lived_nav = presented["inner_life_snapshot"]["materials"]["lived_moment"]
+    assert lived_nav["current_moment"] == "刚经历：站在吧台后"
+
+
+def test_perception_results_slice_retains_bilibili_external_perceptions_alongside_user_media() -> None:
+    from companion_daemon.world_v2.context_capsule import (
+        RESOLUTION_POLICY_DIGEST,
+        ContextCapsuleBudgetPolicy,
+        ResolvedItemMetadata,
+        ResolvedSlice,
+        ResolvedSourceBinding,
+        ResolverProof,
+        _compile_slice,
+        authority_refs_digest,
+        canonical_value_hash,
+        resolved_result_set_hash,
+        source_bindings_hash,
+    )
+    from companion_daemon.world_v2.external_perception_events import (
+        ExternalPerceptionChannelProof,
+        ExternalPerceptionLifeInfluenceView,
+    )
+    from companion_daemon.world_v2.perception_result_context import (
+        PerceptionResultContextItem,
+        PerceptionResultContextSource,
+    )
+
+    now = datetime(2026, 10, 31, 14, 0, tzinfo=UTC)
+    media_items = [
+        PerceptionResultContextItem(
+            result_id=f"perception-result:{idx}",
+            request_id=f"perception-request:{idx}",
+            analysis_kind="vision",
+            content_privacy_class="private",
+            accepted_at=now - timedelta(hours=idx),
+            result_ref=f"provider:vision:{idx}",
+            result_hash="sha256:" + f"{idx + 5}" * 64,
+            text="他发来一张猫咪表情包，画面里是一只歪头看镜头的橘猫，配文是问号。" * 4,
+            truncated=False,
+            source=PerceptionResultContextSource(
+                result_event_ref=f"event:perception-result:{idx}",
+                result_world_revision=110 + idx,
+                result_payload_hash=f"{idx + 3}" * 64,
+                receipt_event_ref=f"event:perception-receipt:{idx}",
+                receipt_world_revision=100 + idx,
+                receipt_payload_hash=f"{idx}" * 64,
+            ),
+        )
+        for idx in (1, 2)
+    ]
+    ext_items = [
+        ExternalPerceptionLifeInfluenceView(
+            influence_id=f"life-influence:external-perception:bili:{idx}",
+            source_event_ref=f"event:external-perception:bili:{idx}",
+            source_event_payload_hash=f"{idx}" * 64,
+            source_world_revision=200 + idx,
+            perception_id=f"external-perception:bili:{idx}",
+            signal_revision_ref=f"signal-revision:bili:{idx}",
+            source_id="cn.social.bilibili.popular.v1",
+            headline=f"【科学科普】【漫士】这可能是人类提出最深刻的数学/计算机问题 #{idx}（UP主：漫士沉思录）",
+            licensed_summary=(
+                "分区：科学科普；时长：18分20秒；播放：86.4万；弹幕：4320；"
+                "视频画面与声音实看：开头用扫雷游戏演示验证一个解容易而找出解困难，"
+                "中段用天平称重对比多项式时间与指数爆炸，高赞神评都在讨论软件工程算法课被支配的恐惧。"
+            )
+            * 2,
+            canonical_url=f"https://www.bilibili.com/video/BV1Ntxr6xE7{idx}",
+            may_quote=True,
+            source_uncertainty="从B站热门信息流刷到并点开实看，非亲历现场。",
+            correction_lineage_refs=(),
+            channel=ExternalPerceptionChannelProof(
+                channel_ref="channel:public_information_read:bili",
+                channel_kind="public_information_feed",
+                proof_refs=("event:cap:bili",),
+                proof_hash="7" * 64,
+                access_summary="public Bilibili popular feed",
+            ),
+            subjective_summary=(
+                "P vs NP，扫雷和天平那套视觉隐喻听着挺对我胃口，"
+                "软件工程的课上也碰过复杂度，看着会顺手想到他平时写代码。"
+            )
+            * 2,
+            attended_context_refs=("character-core:1",),
+        )
+        for idx in (1, 2)
+    ]
+    all_items = (*media_items, *ext_items)
+    metadata = []
+    for i, item in enumerate(all_items):
+        ref = (
+            item.source.result_event_ref
+            if isinstance(item, PerceptionResultContextItem)
+            else item.source_event_ref
+        )
+        item_id = (
+            item.result_id
+            if isinstance(item, PerceptionResultContextItem)
+            else item.influence_id
+        )
+        score = 9_950 - i * 10 if isinstance(item, PerceptionResultContextItem) else 9_900 - i
+        bindings = (
+            ResolvedSourceBinding(
+                source_kind="committed_event",
+                authority_type=(
+                    "PerceptionResultRecorded"
+                    if isinstance(item, PerceptionResultContextItem)
+                    else "ExternalPerceptionRecorded"
+                ),
+                ref=ref,
+                source_world_revision=200 + i,
+                immutable_hash=f"{i + 1}" * 64,
+            ),
+        )
+        metadata.append(
+            ResolvedItemMetadata(
+                item_ref=item_id,
+                rank_score_bp=score,
+                privacy_class="private",
+                source_bindings=bindings,
+                source_hash=source_bindings_hash(bindings),
+                value_hash=canonical_value_hash(item),
+            )
+        )
+    refs = tuple(sorted({b.ref for m in metadata for b in m.source_bindings}))
+    bound = ResolvedSlice(
+        world_id="world:test",
+        snapshot_id="projection:" + "a" * 64,
+        snapshot_hash="b" * 64,
+        pinned_world_revision=205,
+        value=all_items,
+        resolver_proof=ResolverProof(
+            resolver_id="context-capsule-resolver",
+            resolver_version="context-capsule-resolver.1",
+            policy_digest=RESOLUTION_POLICY_DIGEST,
+            world_id="world:test",
+            snapshot_id="projection:" + "a" * 64,
+            snapshot_hash="b" * 64,
+            pinned_world_revision=205,
+            slice_name="perception_results",
+            query_ref="event:trigger:test",
+            window_ref="cursor:205:1:205:scope:1234",
+            policy_version="context-capsule-resolution-policy.1",
+            completeness="complete",
+            privacy_floor="private",
+            explicit_authority_refs=refs,
+            authority_refs_digest=authority_refs_digest(refs),
+            result_set_hash=resolved_result_set_hash("perception_results", tuple(metadata)),
+        ),
+        item_metadata=tuple(metadata),
+    )
+    policy = ContextCapsuleBudgetPolicy()
+    compiled, log = _compile_slice(
+        slice_name="perception_results",
+        bound=bound,
+        limit=policy.perception_results,
+    )
+    retained_refs = [item.item_ref for item in compiled.items]
+    assert not log
+    assert "perception-result:1" in retained_refs
+    assert "life-influence:external-perception:bili:1" in retained_refs
+    assert "life-influence:external-perception:bili:2" in retained_refs
+    assert retained_refs[:2] == [
+        "perception-result:1",
+        "life-influence:external-perception:bili:1",
+    ]
+
+
+
 
 
 

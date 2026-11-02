@@ -22,9 +22,10 @@ class _ScriptedActionPump(ActionPump):
         self,
         *,
         target_action_id: str | None = None,
+        excluded_action_ids: set[str] | None = None,
         provider_accepted_reconciliation_gate: object | None = None,
     ) -> ActionPumpResult:
-        del target_action_id, provider_accepted_reconciliation_gate
+        del target_action_id, excluded_action_ids, provider_accepted_reconciliation_gate
         outcome = self.outcomes[self.calls]
         self.calls += 1
         if isinstance(outcome, Exception):

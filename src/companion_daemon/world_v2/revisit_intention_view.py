@@ -19,7 +19,7 @@ from .schema_core import FrozenModel
 
 
 REVISIT_INTENTION_ADVISORY_VERSION = "revisit-intention-view.1"
-REVISIT_INTENTION_GRACE = timedelta(hours=1)
+REVISIT_INTENTION_GRACE = timedelta(hours=2)
 _ANSWERABLE_RECEIPT_STATES = frozenset({"provider_accepted", "delivered"})
 
 
@@ -108,8 +108,18 @@ def _unfinished_revisits(projection, *, due_only: bool) -> list[DueUnfinishedRev
         for action_id, (ref, receipt) in latest_by_action.items()
         if receipt.observed_state in _ANSWERABLE_RECEIPT_STATES
     }
+    completed_refs = {
+        getattr(proc, "trigger_ref", None)
+        for proc in getattr(projection, "trigger_processes", ()) or ()
+        if getattr(proc, "process_kind", None) == "proactive_action_deliberation"
+        and getattr(proc, "state", None) in {"completed", "terminal"}
+    }
     candidates: list[DueUnfinishedRevisit] = []
     for manifest in getattr(projection, "expression_plan_manifests", ()):
+        if (
+            "proactive-consideration:" + due_revisit_consideration_id(manifest.plan_id)
+        ) in completed_refs:
+            continue
         leftover = getattr(manifest, "revisit", None)
         not_before = getattr(leftover, "not_before", None)
         thought = getattr(leftover, "thought", None)
@@ -136,6 +146,15 @@ def _unfinished_revisits(projection, *, due_only: bool) -> list[DueUnfinishedRev
             continue
         delivered_ref = delivered_by_action.get(beat.action.action_id)
         if delivered_ref is None:
+            continue
+        latest_delivered_revision = max(
+            (ref.world_revision for ref in delivered_by_action.values()),
+            default=0,
+        )
+        if (
+            logical_time > expires_at
+            and delivered_ref.world_revision < latest_delivered_revision
+        ):
             continue
         candidates.append(
             DueUnfinishedRevisit(
@@ -216,21 +235,37 @@ def revisit_intention_advisory(
     view: DueUnfinishedRevisit,
     *,
     logical_time,
+    extra_views: tuple[DueUnfinishedRevisit, ...] = (),
 ) -> InnerAdvisoryProjection:
     source_ref = view.receipt_event_id
+    all_views = (view, *(item for item in extra_views if item.plan_id != view.plan_id))
+    source_refs: list[str] = []
+    candidate_refs: list[str] = []
+    candidates: list[InnerAdvisoryCandidate] = []
+    for item in all_views:
+        ref = item.receipt_event_id
+        if ref not in source_refs:
+            source_refs.append(ref)
+        cref = (
+            "revisit-intention:" + _digest(ref)
+            if item.plan_id == view.plan_id
+            else "revisit-intention:" + _digest([ref, item.plan_id])
+        )
+        candidate_refs.append(cref)
+        candidates.append(
+            InnerAdvisoryCandidate(
+                candidate_ref=cref,
+                value=_revisit_summary(item, logical_time=logical_time),
+                weight_bp=10_000,
+                confidence_bp=10_000,
+            )
+        )
     return InnerAdvisoryProjection(
         advisory_id="advisory:revisit-intention:" + _digest(source_ref),
         kind="revisit_intention",
-        source_refs=(source_ref,),
-        candidate_refs=("revisit-intention:" + _digest(source_ref),),
-        candidates=(
-            InnerAdvisoryCandidate(
-                candidate_ref="revisit-intention:" + _digest(source_ref),
-                value=_revisit_summary(view, logical_time=logical_time),
-                weight_bp=10_000,
-                confidence_bp=10_000,
-            ),
-        ),
+        source_refs=tuple(source_refs),
+        candidate_refs=tuple(candidate_refs),
+        candidates=tuple(candidates),
         confidence_bp=10_000,
         expiry=logical_time + timedelta(days=1),
         producer_version=REVISIT_INTENTION_ADVISORY_VERSION,
@@ -245,6 +280,7 @@ def attach_open_revisit_advisory(
 
     try:
         view = open_unfinished_revisit(projection)
+        all_open = unfinished_revisits(projection, due_only=False)
     except (TypeError, ValueError):
         return context
     if view is None:
@@ -252,7 +288,10 @@ def attach_open_revisit_advisory(
     logical_time = getattr(projection, "logical_time", None)
     if logical_time is None:
         return context
-    advisory = revisit_intention_advisory(view, logical_time=logical_time)
+    extra = tuple(item for item in all_open if item.plan_id != view.plan_id)
+    advisory = revisit_intention_advisory(
+        view, logical_time=logical_time, extra_views=extra
+    )
     slices = context.get("slices")
     if isinstance(slices, dict):
         slices = dict(slices)

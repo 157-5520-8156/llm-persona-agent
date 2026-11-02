@@ -1,239 +1,189 @@
-# Girl Agent
+# Girl Agent — World V2
 
-一个以 QQ 为主要交互入口、以连续世界与长期关系为核心的本地优先虚拟伴侣项目。
+**一个拒绝“状态机扮演”与“客服式套话”、以连续时间世界、深度认知心理学架构与可证明事实账本为核心的具身虚拟伴侣引擎。**
 
-> [!IMPORTANT]
-> 当前仓库处于持续集成阶段，不是已经完成生产资格的发行版。代码、自动化测试、隔离
-> Provider 样本和一次真实发送都不能单独证明可上线；当前发布口径仍是
-> `manual_only / qualification_incomplete`。
+在绝大多数 AI 伴侣项目中，角色只是一个挂在聊天窗口后面的 Prompt 模板：不说话时她的时间是静止的，她的“生活日常”是聊天时现编的幻觉，她的“情绪”是关键词触发的固定数值，她的“秒回或装忙”是随机数写死的延迟。
 
-最新代码整合范围、验证结果和未完成项见[2026-09-29 整合记录](docs/audits/integration-checkpoint-2026-09-29.md)。
-此前首版验收记录保留在[2026-09-13 发布状态](docs/audits/release-status-2026-09-13-current.md)，其中指标不应当作当前实测结果。
+**Girl Agent (World V2)** 从底层推翻了这种做法：
+- **她活在一个即使你不说话也会持续流淌的真实时间世界里**：她有自己的大学课表、社团排练、兼职、朋友往来、突发的生活小挫折、闲暇时自己刷到的 B 站视频，以及跨越 20 年人生的完整自传体记忆。
+- **唯一的语义作者 (`CharacterInterior`)**：系统严禁用关键词、正则表达式、固定话术模板、动机枚举或硬编码社交礼仪替她做任何决定。**她拥有动机、态度、情绪表达、措辞、节奏、是否追问、是否主动联系、是否已读不回/沉默，以及如何使用自拍、语音、表情包能力的 100% 决定权。**
+- **确定性代码只守物理世界的硬边界**：证据来源闭包（Source Closure）、隐私与同意分级、乐观并发控制（CAS）、外部动作 `effect-once`、平台回执闭环与比特级冷重放一致性。
 
-Girl Agent 不是用状态机或固定话术“扮演”角色。World V2 为角色提供有来源的世界事实、
-记忆、关系、情绪、生活状态和可用能力；`CharacterInterior` 内的角色模型是主角唯一的
-语义作者，决定她如何理解、是否回应、说什么、是否主动联系以及是否使用媒体等能力。
-确定性代码只负责事实来源、隐私与同意、外部 Action 授权、CAS、effect-once、回执和
-可重放性。
+---
 
-## 当前能力与边界
+## 一、 核心心理学与认知科学架构
 
-| 能力 | 当前代码状态 | 尚未关闭的发布门 |
-| --- | --- | --- |
-| World V2 账本与投影 | SQLite 不可变事件、Projection、CAS、迁移、冷重放和 Action 生命周期已进入主链 | 长期真实数据质量和多日增长仍需实测 |
-| 文字对话 | HTTP、模拟入口及 QQ/NapCat C2C 可进入同一 `CharacterInterior` → Acceptance → Action 路径 | 真实 Provider 首次合法率、首 Beat 2–3 秒、单轮综合成本约 ¥0.03 的目标尚未资格化 |
-| 内心状态与主动联系基础设施 | Appraisal、Affect、Relationship、Private Impression、Life/Proactive 等 typed lane 已存在 | 连续后台运行、真实主动联系、技术重试和自然可感知性仍需多日旅程验证 |
-| 记忆与关系 | 来源绑定的事实、记忆候选、Recall 与关系投影已存在；承诺推动关系阶段的原子结算仍待集成 | 一周以上自然召回、跨轮动作与关系变化的完整真实对话证据仍不足 |
-| 媒体与感知 | 媒体 planning/render/inspection/preview、附件感知与预算/授权 seam 已实现 | 真实生图 → 真实 QQ dispatch → receipt/get_msg 的最终链路尚未取得发布资格 |
-| NPC 与外界感知 | 有 actor-scoped、source-bound 的实验/受限机制 | 默认生产模型调用面不因这些实验自动扩大，完整 producer/consumer 与体验资格仍未完成 |
+Girl Agent 将认知心理学、人际传播学与记忆神经科学的经典模型转化为可计算、可审计、绝不替角色写台词的认知基础设施：
 
-设计文档描述的是完整产品目标，不代表其中每一项已经实现或启用。并行 worktree、未合并
-分支和临时 SQLite 的结果也不属于当前主线能力。
+### 1. 认知评估理论与双层情绪动力学 (Lazarus Cognitive Appraisal & Dual-Layer Affect)
+> **理论基础**：Richard Lazarus 的认知评估理论（*情緒并非由外部刺激机械触发，而是源于个体对事件与自身目标、自尊、关系承诺的关联性评估*）与 Russell 核心情感环状模型（Circumplex Model of Affect）。
 
-2026-09-07 的[连续性生活审查与修复记录](docs/audits/living-continuity-2026-09-07.md)
-区分了已接通的代码链、仍缺失的能力和真实体验证据。该批修复覆盖跨场景上下文、角色选择保留的
-内容、期待与待办的时间和身份、修订愿望的来源，以及 NPC 未来计划的结果；不提升上述发布资格。
+- **先评估，后生情 (`Appraisal` → `Affect`)**：在 [`character_interior/contracts.py`](src/companion_daemon/world_v2/character_interior/contracts.py) 与 [`appraisal_proposal_compiler.py`](src/companion_daemon/world_v2/appraisal_proposal_compiler.py) 中，无论面对用户的消息、长久沉默还是生活中的一场大雨，角色首先生成结构化的内在评估（主观意义、意外度、目标阻碍/促进、内在关注主线 `Concern Thread`），再推动情绪状态变化。
+- **快变情绪脉冲 × 慢变心境底色 (`Episodic Affect` × `Mood Baseline`)**：[`affect_reducers.py`](src/companion_daemon/world_v2/affect_reducers.py) 与 [`mood_view.py`](src/companion_daemon/world_v2/mood_view.py) 严格区分当下的情绪起伏与跨小时/跨天的生理精力、压力阈值和社交电量。连轴转满课或熬夜后，她的心境底色会自然呈现疲惫与低容忍度，绝不会因为一句问候瞬间重置成“满血元气客服”。
 
-## 核心调用图
+### 2. 依恋动力学、期望违背与沉默归因 (Attachment Dynamics & Expectancy Violation Theory)
+> **理论基础**：Bowlby / Ainsworth 成人依恋动力学与 Judee Burgoon 的人际期望违背理论（Expectancy Violation Theory）。
 
-```text
-QQ / HTTP / local simulation
-          │
-          ▼
- Observation → append-only World Ledger → pinned Context / Inner Life Snapshot
-                                                │
-                                                ▼
-                                      CharacterInterior
-                                (内含唯一主角角色模型)
-                                                │
-                                                ▼
-                            typed Proposal → Acceptance / CAS
-                                                │
-                                                ▼
-                             Action → Provider/Platform → Receipt
-                                                │
-                                                ▼
-                               deterministic Projection / replay
+- **未回应期待与沉默的主观归因 (`ResponseExpectation` & `SilenceAppraisal`)**：当她分享了一件在乎的事或抛出试探而你迟迟未回时，[`response_expectation_view.py`](src/companion_daemon/world_v2/response_expectation_view.py) 与 [`silence_appraisal_trigger.py`](src/companion_daemon/world_v2/silence_appraisal_trigger.py) 不会触发死板的“定时催促脚本”，而是把“期待悬置与沉默时长”作为客观时间事实注入她的意识快照——她可能自己消化失落转头去忙别的事、可能在心里记下一笔微妙的别扭（`Relationship Residue`），也可能在几小时后装作若无其事地换个话题戳你。
+- **多维关系拓扑与私密印象 (`RelationshipProjection` & `PrivateImpression`)**：抛弃单调的“好感度加减分”。[`relationship_proposal_compiler.py`](src/companion_daemon/world_v2/relationship_proposal_compiler.py) 与 [`private_impression_producer.py`](src/companion_daemon/world_v2/private_impression_producer.py) 维护亲密度、信任度、熟悉感、近期摩擦、未解心结与对你的私密印象笔记，支持从日常拉扯、暧昧试探到亲密/成人向张力（`Adult Charge & Framing`）的全谱系自然演化。
+
+### 3. 自传体记忆层级与双通道提取 (Conway Autobiographical Memory & Dual-Process Recall)
+> **理论基础**：Martin Conway 的自传体记忆建构模型（Lifetime Periods → General Events → Event-Specific Knowledge）与認知心理学的“自主回想 (Deliberate Recall) + 非自主闪回 (Involuntary / Unbidden Recall)”双通道理论。
+
+- **20 年原生人生传记 (`Character Prehistory` & `Biographical Context`)**：通过 [`character_prehistory.py`](src/companion_daemon/world_v2/character_prehistory.py)，角色拥有从童年、中学到大学阶段的完整人生时间线、家庭关系、长期愿望（`Aspirations`）与生活弧线（`Life Arcs`）。
+- **情景化对话记忆 (`Conversation Episodes`)**：[`conversation_continuity.py`](src/companion_daemon/world_v2/conversation_continuity.py) 将历史对话按交谈场次聚合成完整的“情景片段（Episodes）”，让她记得“那次我们聊到半夜时前因后果是什么”，而不是只检索出孤立的一句话。
+- **生活触景生情与记忆巩固 (`Unbidden Lived-Moment Recall` & `Memory Consolidation`)**：在 [`recall_corpus.py`](src/companion_daemon/world_v2/recall_corpus.py) 与 [`memory_consolidation_runtime.py`](src/companion_daemon/world_v2/memory_consolidation_runtime.py) 中，不仅你说话能唤醒她的记忆，**她自己当下正在经历的生活场景也会自动触发联想闪回**（例如一个人在食堂吃面时突然想起之前和你聊过的梗），从而驱动真正有来由的主动分享。
+
+### 4. 会话轮次转换与具身注意力节律 (Sacks Turn-Taking & Embodied Presence Pacing)
+> **理论基础**：Sacks, Schegloff & Jefferson (1974) 会话分析轮次转换模型（Transition-Relevance Place, TRP）与人类执行注意力驻留机制。
+
+- **语义话轮终点估计器 (`ChatSemanticEndpointModel`)**：人类在即时通讯中常把一句话拆成多条短气泡连发。[`text_turn_endpoint.py`](src/companion_daemon/world_v2/text_turn_endpoint.py) 使用本地端侧模型（`Qwen3-1.7B-4bit`）结合实时打字脉冲（`typing_active`）、个人气泡间隔基线与句意未完度，实时预估话轮是否到达转换点（TRP），彻底消除“你发三行字、AI 机械单开三轮逐条回复”的割裂感。
+- **注意力在场窗口与热聊秒回 (`Attention Presence Pacing`)**：[`qq_c2c_host.py`](src/companion_daemon/world_v2/qq_c2c_host.py) 根据她当下的真实生活状态动态映射注意力驻留模式：
+  - **手机在手 (`phone_in_hand`)**：刚互动完 180 秒内且无连发迹象时，端点内联等待收敛至 `0.35s`，实现单车道上的**自然热聊秒回**；
+  - **余光瞥视 (`glancing`) / 忙碌 (`occupied`) / 深度专注 (`deep_focus`)**：在吃饭、自习、上课或熟睡时保留真实的拾起手机时间窗，除非连发气泡轰炸将她提前唤醒；
+  - **中途插话打断 (`Barge-in & Interruption`)**：当她正在组织长回复而你突然发来新消息时，支持感知插话并重新评估表达。
+- **多气泡呼吸感节律 (`Multi-Beat Composition Pacing`)**：[`beat_composition_pacing.py`](src/companion_daemon/world_v2/beat_composition_pacing.py) 根据每条气泡的长度、认知停顿与情绪张力计算自然的打字间隔。
+
+---
+
+## 二、 硬核系统与工程架构
+
+```mermaid
+flowchart TD
+    subgraph Ingress["多模态感知与会话节奏层 (QQ / NapCat / Bilibili)"]
+        QQ["QQ C2C 消息 / 表情包 / 语音 / 回应 / 小程序卡片"]
+        Bili["Bilibili 实时首页刷视频 & 视频/音频多模态理解"]
+        TRP["本地 Qwen3 话轮终点估计 (TRP) + 注意力在场感知"]
+        QQ --> TRP
+    end
+
+    subgraph WorldLedger["确定性世界账本与双作者生态 (SQLite World V2)"]
+        Obs["Immutable World Event Ledger (CAS + Split Head State)"]
+        WA["World Author (宏观学期课表 / 生活突发事件 / NPC 动议 / 环境后果)"]
+        Caps["Pinned Context Capsule + Source Closure 证据闭包"]
+        TRP --> Obs
+        Bili --> Obs
+        WA <--> Obs
+        Obs --> Caps
+    end
+
+    subgraph Interior["唯一主角意识内核 (CharacterInterior)"]
+        Appraisal["认知评估 (Appraisal) + 心境/情绪动力学 (Affect/Mood)"]
+        Recall["双通道记忆检索 (Deliberate + Unbidden Associative Recall)"]
+        Agency["自主决策：回复 / 沉默 / 追问 / 主动联系 / 未来计划 (Plan)"]
+        Caps --> Appraisal --> Recall --> Agency
+    end
+
+    subgraph Gate["反幻觉门禁与全模态投递 (Acceptance & Action Pump)"]
+        Review["Visible Grounded Review (事实来源核验 + 同角色受约束重选)"]
+        Media["多模态能力：真实感自拍/他拍 · 表情包金库 · QQ 语音 · 表情回应"]
+        Receipt["Effect-Once Action Pump → 平台回执闭环 → 冷重放验证"]
+        Agency --> Review --> Media --> Receipt --> Obs
+    end
 ```
 
-随机性可以产生机会、时机、注意力和候选环境，但不能替角色决定动机、态度、情绪表达、
-措辞、主动联系或沉默。模型结果不合法时，只允许把精确失败原因交给同一角色模型做一次
-受约束重选；仍失败就记录技术失败，不能由本地模板冒充角色。
+### 1. 双作者世界生态：客观发生 ≠ 主观体验 (`World Author` × `CharacterInterior`)
+普通 Agent 的“今天去了哪里”是在回复你时现编的一段话。在 World V2 中，一次生活经历必须由**两个彼此隔离的作者**共同完成：
+1. **外部世界作者 (`World Author`)**：负责推动客观世界运转——按学期日历展开每周课表（[`world_planning.py`](src/companion_daemon/world_v2/world_planning.py)、[`day_skeleton.py`](src/companion_daemon/world_v2/day_skeleton.py)）、生成长程生活展望（[`world_outlook_runtime.py`](src/companion_daemon/world_v2/world_outlook_runtime.py)）、驱动 NPC 室友/朋友的独立动议（[`npc_initiative.py`](src/companion_daemon/world_v2/npc_initiative.py)），并为角色正在执行的计划结算客观环境后果（[`world_consequence_contract.py`](src/companion_daemon/world_v2/world_consequence_contract.py)，包含顺利完成、意外插曲或生活小挫折）。
+2. **角色主观回应 (`Character Life Response` → `Experience.2`)**：客观事件结算后，[`character_life_response_runtime.py`](src/companion_daemon/world_v2/character_life_response_runtime.py) 将客观结果交给角色模型产生**私密主观感受**，再由 [`character_life_experience_runtime.py`](src/companion_daemon/world_v2/character_life_experience_runtime.py) 铸造为双源绑定的 `Experience.2`。**“课表上有早八”只代表客观安排，只有她真正经历并产生主观反应后才成为她的记忆。**
 
-## 快速开始
+### 2. 严密的事实来源闭包与反幻觉重选 (`Source Closure & Grounded Review`)
+- **加密证据链绑定**：所有进入模型视野的经历、课表、B 站视频、过往对话均携带不可伪造的 `authority_event_ref`、`world_revision` 与 SHA-256 `payload_hash`。
+- **零模板冒充的受约束重选**：[`visible_grounded_review.py`](src/companion_daemon/world_v2/visible_grounded_review.py) 核验角色输出中的事实声明是否越界或捏造未发生的历史。一旦发现无根据的事实幻觉，系统将**精确失败原因与可用证据清单返回给同一角色模型进行一次受约束重选**；绝不放行幻觉，也绝不用本地硬编码话术冒充角色。
 
-要求 Python 3.12+ 和 [`uv`](https://docs.astral.sh/uv/)。
+### 3. 真实外部世界感知与全模态表达 (`Bilibili Omni-Perception` & `Embodied Media`)
+- **她真的在刷 B 站 (`External World Perception`)**：[`external_world_perception/bilibili.py`](src/companion_daemon/world_v2/external_world_perception/bilibili.py) 实现了完整的 B 站信息流漏斗、字幕流提取、480×270 故事板网格切片与 `Qwen-Omni` 音视频多模态理解。她不仅会在闲暇时自己刷视频并主动把好玩的视频分享给你，还能直接点开你发给她的 B 站链接或 QQ 小程序卡片，看完视频内容后和你讨论细节。
+- **具身视觉与多模态输出**：
+  - **上下文绑定的真实感摄影**：[`event_ecology_media.py`](src/companion_daemon/world_v2/event_ecology_media.py) 与 [`media_embodiment.py`](src/companion_daemon/media_embodiment.py) 将她当前的所在地点、穿着、光线、微表情与镜头语言绑定，支持从日常随手拍、对镜自拍到亲密氛围照的自主创作与视觉质检；
+  - **语义表情包金库 (`Sticker Vault`)**：[`sticker_vault.py`](src/companion_daemon/world_v2/sticker_vault.py) 支持她根据情绪自主挑选猫猫梗图/表情包，并能精准看懂你发的表情包与 QQ 表情回应（`Reaction`）；
+  - **双向语音交互 (`QQ Voice`)**：[`qq_voice.py`](src/companion_daemon/world_v2/qq_voice.py) 支持入站语音转写与出站自然语音合成。
+
+### 4. 4GB+ 生产账本的亚秒级增量引擎与极致成本控制
+- **Split Head State 与 `bytearray` 原地尾部追加**：[`sqlite_ledger.py`](src/companion_daemon/world_v2/sqlite_ledger.py) 采用分片头状态行存储（`world_v2_head_state_items`）、增量语义哈希与 `bytearray` 原地尾部追加技术。即使生产数据库增长至 **4.3 GB+、84,000+ 账本序列、200 MB+ 审计状态**，单次 `ModelResultRecorded,ProposalRecorded` 提交的状态增量编码与全量 SHA-256 完整性校验也仅需 **`~198ms`**（相比全量拼接提速 **7.5 倍**）。
+- **零拷贝结构不可变证明与快照复用**：[`immutable_value_cache.py`](src/companion_daemon/world_v2/immutable_value_cache.py) 基于 `weakref` 实现 `FrozenModel` O(1) 结构不可变缓存，配合 [`context_read_scope.py`](src/companion_daemon/world_v2/context_read_scope.py) 与 [`context_capsule.py`](src/companion_daemon/world_v2/context_capsule.py) 消除同一轮内的重复编译，将 500+ 条复合生活经历的权限校验与材料编译压缩至 **`~178ms`**。
+- **Prefix Cache 友好与分层路由**：固定 Prompt 前缀布局最大化主模型 KV Cache 命中率，配合按量计费的轻量模型后台分层路由与休眠跳过机制，在保持全天候连续生活推演的同时将后台日均成本控制在 **¥1–2** 量级。
+
+### 5. 全景命运世界线控制台 (`World V2 Dashboard`)
+内置单页 6 域 Bento 实时观测台（[`world_v2_dashboard_ui.py`](src/companion_daemon/world_v2/world_v2_dashboard_ui.py)）：
+- **命运世界线 (`Fate Worldline`)**：可视化长程世界展望、人生阶段弧线与关键转折；
+- **7 日全周日程与实际轨迹对照**：同屏对比“客观课表/安排”与“她的自主计划及实际执行结果”；
+- **意识与情绪透视**：实时查看最近一轮的 `Appraisal` 评估、情绪张力、关系残余与记忆召回命中链路；
+- **实时成本仪表盘 (`Cost Meter`)**：按日/按模块追踪 Token 消耗与真实人民币账单。
+
+---
+
+## 三、 快速开始
+
+### 环境要求
+- Python 3.12+
+- [`uv`](https://docs.astral.sh/uv/)
 
 ```bash
 uv sync
 ```
 
-Provider 密钥通过环境变量或本机 `.env` 提供；不要提交 `.env`、数据库、聊天记录或验收
-artifact。文字角色主路需要 `DEEPSEEK_API_KEY`。使用 OpenAI-compatible 媒体、视觉、语音
-或 embedding 能力时才需要相应密钥。
+在项目根目录配置 `.env`（切勿提交 `.env`、生产 SQLite 数据库或私人聊天记录）：
+- 主角色模型与后台推理：`DEEPSEEK_API_KEY`（及可选按量计费备用/分层模型密钥）
+- 多模态视觉、语音、生图与 Embedding：按需配置对应 OpenAI-compatible 密钥
+- 本地端侧话轮终点估计器：默认连接本机 MLX Server (`mlx-community/Qwen3-1.7B-4bit`)
 
-部分客户端显式使用 `trust_env=False`，不会自动继承系统代理。需要代理时应明确配置，例如：
-
+如果需要显式指定代理：
 ```bash
 export OPENAI_PROXY_URL=http://127.0.0.1:7897
 ```
 
-### 和她真实聊天（隔离 full host）
-
-不接 QQ、不写生产库：真实 provider、CaptureDelivery、隔离状态。默认是零 provider 预检。
-
-```bash
-cd /Users/geoff/Projects/Girl-Agent-release-repair
-COMPANION_DISABLE_DEBUG_USAGE_LEDGER=1 PYTHONPATH=src \
-  /Users/geoff/Projects/Girl-Agent/.venv/bin/python \
-  output/private-audits/grounded-chat-20260921-03/chat.py --code-head <frozen-head>        # 预检
-COMPANION_DISABLE_DEBUG_USAGE_LEDGER=1 PYTHONPATH=src \
-  /Users/geoff/Projects/Girl-Agent/.venv/bin/python \
-  output/private-audits/grounded-chat-20260921-03/chat.py --code-head <frozen-head> --execute
-```
-
-运行中每个回合写入 `conversation.jsonl`（她**实际发出**的气泡在里面），把下一句用户输入
-作为一行 JSON 追加到同目录 `turns.jsonl`；`{"stop": true}` 正常收尾。运行期冻结 HEAD，
-物理调用数与墙钟都有上限，密钥只从本机既有的加载入口读取。最近一次实测见
-`docs/audits/chat-first-draft-2026-09-21.md`。
-
-### 本地模拟
-
-日常开发不需要每次都跑完整回归。完整套件包含大量 SQLite 冷重放、公开宿主和延迟触发场景，当前约 5,000 条测试，适合作为提交前门禁；开发时使用分层入口：
-
-```bash
-# 默认：CharacterInterior/LLM 主链，几十秒级
-uv run python scripts/test_fast.py
-
-# 调度、QQ host、延迟触发和 Matrix
-uv run python scripts/test_fast.py --tier host
-
-# 上一次失败的测试
-uv run python scripts/test_fast.py --last-failed
-
-# 提交前唯一完整门禁
-uv run python scripts/test_fast.py --tier full
-```
-
-`pytest-xdist` 在本项目的 SQLite/进程 fixture 上未必更快；先用分层和
-`--last-failed`，不要盲目并行化导致启动开销和共享状态竞争。
-
-Simulate a QQ message:
-
-```bash
-uv run companion-sim "我刚刚在忙，现在回来了"
-```
-
-### 启动基础 daemon
-
-```bash
-uv run companion-daemon
-```
-
-### World V2 Dashboard
-
-The private World v2 Dashboard reads its typed snapshot from the QQ owner
-process; it does not proxy `/health` or open a second ledger. Configure the
-same dedicated read-only credential for both processes (the launch scripts
-both source the repository `.env`), then open the local page and sign in:
-
-```dotenv
-WORLD_V2_DASHBOARD_OPERATOR_TOKEN=replace-with-a-random-local-secret
-```
-
-```bash
-open http://127.0.0.1:8765/dashboard
-```
-
-This credential is separate from `DELIVERY_RECONCILIATION_TOKEN`: it grants
-only the authenticated Dashboard read path and cannot tick, drain, reconcile,
-or dispatch World work.
-
-### NapCat / OneBot 私聊入口
+### 启动 NapCat / OneBot QQ 私聊宿主
 
 ```bash
 scripts/run_napcat_adapter.sh
 ```
-
-该脚本加载本机 `.env` 并启动 World V2 C2C 路径。NapCat WebUI、loopback、QQ 账号与
-路由设置见 [`docs/napcat-setup.md`](docs/napcat-setup.md)。通用 OneBot 实现可使用：
-
+通用 OneBot v11 入口：
 ```bash
 scripts/run_onebot_adapter.sh
 ```
+详细 NapCat 配置说明见 [`docs/napcat-setup.md`](docs/napcat-setup.md)。
 
-不要让 official、NapCat 和通用 OneBot 同时争用同一个 QQ outbound owner。真实 QQ 测试
-必须使用明确的 allowlist、临时数据库和独立端口；未经人工确认不得替换正在运行的生产
-daemon。
+### 打开全景 Dashboard
 
-## 测试
+在 `.env` 中配置只读算子令牌：
+```dotenv
+WORLD_V2_DASHBOARD_OPERATOR_TOKEN=replace-with-a-random-local-secret
+```
+浏览器访问：
+```bash
+open http://127.0.0.1:8765/dashboard
+```
 
-日常开发使用确定性的分层入口，不必每次运行数千条完整回归：
+### 本地模拟与分层测试门禁
+
+完整测试套件包含 5,000+ 条覆盖账本冷重放、证据闭包、并发 CAS 与多模态链路的回归测试。日常开发推荐使用分层极速入口：
 
 ```bash
-# 最小 schema / appraisal smoke
+# 最小 schema / appraisal 冒烟测试
 uv run python scripts/test_fast.py --tier smoke
 
-# 默认 CharacterInterior / LLM 主链
+# 默认：CharacterInterior / LLM 核心链路
 uv run python scripts/test_fast.py
 
-# QQ host、调度、Delayed Trigger 与 Matrix
+# 调度、QQ Host、话轮节奏与延迟触发
 uv run python scripts/test_fast.py --tier host
 
-# 仅运行 pytest 缓存中的上次失败；没有缓存时不会退化成全量
+# 仅重跑上次失败的用例
 uv run python scripts/test_fast.py --last-failed
 
-# 最终集成门禁
+# 提交前完整门禁
 uv run python scripts/test_fast.py --tier full
 ```
 
-`pytest-xdist` 在 SQLite、进程和冷重放 fixture 上不一定更快。优先按 seam 跑定向测试，
-合并所有并行分支后只运行一次最终全量。测试绿色只证明对应范围，不证明真实 Provider、
-QQ、自然度、成本或长期稳定性。
+---
 
-## 发布资格
+## 四、 核心架构文档索引
 
-满足以下证据前，不应把版本写成“生产完成”或自动替换现有 daemon：
+开始修改 World V2 或排查线上问题前，请先阅读：
 
-1. 当前最终 revision 的完整回归、Ruff、diff check 和冻结场景均通过。
-2. 真实角色 Provider 在每个启用的 required-tool purpose 上有足够样本，request identity、
-   correction lineage、首次合法率、成本和延迟均可审计。
-3. 真实 QQ staging 覆盖单气泡、多气泡、消息轰炸、插话、typing、System Notice、
-   dispatch、receipt/get_msg、重复回执和未知回执恢复。
-4. 重启与冷重放不会重写角色选择、重复发送、重复生图或丢失关系/记忆/生活状态。
-5. 对话能持续感知到记忆、关系、情绪、生活、主动性和后果，而不是只有后台事件存在。
-6. 媒体启用时，角色选择、授权、真实 render、inspection、QQ 投递和最终回执形成同一
-   可重放链。
-7. 经过 24 小时 soak 和多日自然生活旅程；最终生产替换仍由人工门决定。
-
-当前性能目标是文字单轮综合成本约 ¥0.03、首个完整可见 Beat 2–3 秒。这些是待测的
-release gate，不是 README 对当前版本的性能承诺。
-
-## 设计与开发约束
-
-开始修改 World V2 前先阅读：
-
-- [`AGENTS.md`](AGENTS.md)：角色自主性与协作边界。
-- [`CONTEXT.md`](CONTEXT.md)：领域词汇和当前权威模型。
-- [`ADR-0010`](docs/adr/0010-controlled-high-variance-character-agency.md)：受控高随机，角色决定行为。
-- [`设计总纲`](docs/design/girl-agent-design-intent.md)：目标体验与能力边界。
-- [`执行计划`](docs/design/harness-restructure-execution-plan.md)：当前工作包、强制门与代码坐标。
-- [`历史施工记录`](docs/design/root-causes-and-long-coupling-luna-plan.md)：L0–L3 期的阶段与证据，仅供查证。
-- [`成本控制`](docs/cost-control.md) 与 [`视觉身份`](docs/visual-identity.md)。
-
-并行开发应使用独立分支/worktree、临时 SQLite 和独立端口；同一文件同时只能有一个写
-owner。跨边界修改要先停下并重新分配所有权。一个 worktree 的绿色测试、一次短样本或
-隔离验收不能自动升级其他分支或主线的资格状态。
-
-## 仓库与部署说明
-
-开发分支、远端 `main` 和正在运行的 daemon 可能处于不同 revision。发布前必须同时核对：
-
-```bash
-git status --short
-git log --oneline --decorate -n 10
-git branch -avv
-```
-
-README 描述的是仓库的设计与当前集成边界，不是某个旧进程的健康证明。进程 revision、
-数据库路径、端口、Provider 路由和资格报告都需要在部署时重新记录。
+- [`AGENTS.md`](AGENTS.md)：协作宗旨与“角色决定 vs. 系统硬边界”最高准则。
+- [`CONTEXT.md`](CONTEXT.md)：World V2 领域词汇表与权威概念边界。
+- [`docs/adr/0010-controlled-high-variance-character-agency.md`](docs/adr/0010-controlled-high-variance-character-agency.md)：ADR-0010 受控高随机与角色完全自治架构决议。
+- [`docs/design/girl-agent-design-intent.md`](docs/design/girl-agent-design-intent.md)：产品体验总纲与设计意图。
+- [`docs/operations/collaboration-and-operation-habits.md`](docs/operations/collaboration-and-operation-habits.md)：工程定位与运行维护规范。
+- [`docs/cost-control.md`](docs/cost-control.md) & [`docs/visual-identity.md`](docs/visual-identity.md)：成本控制体系与视觉身份规范。

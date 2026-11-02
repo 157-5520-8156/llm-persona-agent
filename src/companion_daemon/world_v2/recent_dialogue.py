@@ -34,6 +34,38 @@ _LIVE_COUNTERPART_ATTENTION = 8
 _LIVE_COMPANION_ATTENTION = 8
 
 
+def surface_dialogue_text(surfaces: tuple[ object, ...] | list[object]) -> str | None:
+    """Render platform surface evidence into the exact recent-dialogue label."""
+
+    labels: list[str] = []
+    for surface in surfaces:
+        glyph = getattr(surface, "platform_render_glyph", None)
+        name = getattr(surface, "platform_render_name", None)
+        provider_ref = getattr(surface, "provider_ref", "")
+        if isinstance(glyph, str) and glyph.strip() and isinstance(name, str) and name.strip():
+            labels.append(f"{glyph.strip()} {name.strip()}")
+        elif isinstance(name, str) and name.strip():
+            stripped = name.strip()
+            if stripped.startswith("[") and stripped.endswith("]"):
+                labels.append(stripped)
+            else:
+                labels.append(f"[{stripped}]")
+        elif isinstance(provider_ref, str) and provider_ref:
+            labels.append(provider_ref)
+    joined = "、".join(labels)
+    return joined[:4_096] if joined else None
+
+
+def trigger_dialogue_text(trigger: object) -> str | None:
+    """Expected RecentDialogueItem.text for a TriggerMessage."""
+
+    text = getattr(trigger, "text", None)
+    if isinstance(text, str) and text.strip():
+        return text
+    surfaces = getattr(trigger, "inbound_surfaces", ()) or ()
+    return surface_dialogue_text(surfaces)
+
+
 def observation_dialogue_text(observation: Observation) -> str | None:
     """Visible counterpart line for one Observation, including non-text reactions.
 
@@ -57,21 +89,20 @@ def observation_dialogue_text(observation: Observation) -> str | None:
     )
     if not reaction_refs and not sticker_refs:
         return None
-    labels: list[str] = []
-    for surface in compile_inbound_surfaces(
-        reaction_refs=reaction_refs,
-        sticker_refs=sticker_refs,
-    ):
-        glyph = surface.platform_render_glyph
-        name = surface.platform_render_name
-        if isinstance(glyph, str) and glyph.strip() and isinstance(name, str) and name.strip():
-            labels.append(f"{glyph.strip()} {name.strip()}")
-        elif isinstance(name, str) and name.strip():
-            labels.append(name.strip())
-        else:
-            labels.append(surface.provider_ref)
-    joined = "、".join(labels)
-    return joined[:4_096] if joined else None
+    raw_sticker_labels = meta.get("sticker_provider_labels")
+    sticker_provider_labels: tuple[str | None, ...] = ()
+    if isinstance(raw_sticker_labels, (list, tuple)):
+        sticker_provider_labels = tuple(
+            item.strip()[:80] if isinstance(item, str) and item.strip() else None
+            for item in raw_sticker_labels[: len(sticker_refs)]
+        )
+    return surface_dialogue_text(
+        compile_inbound_surfaces(
+            reaction_refs=reaction_refs,
+            sticker_refs=sticker_refs,
+            sticker_provider_labels=sticker_provider_labels,
+        )
+    )
 
 
 def dialogue_causal_sequence(*, world_revision: int, position: int = 0) -> int:
@@ -82,6 +113,21 @@ def dialogue_causal_sequence(*, world_revision: int, position: int = 0) -> int:
     if not 0 <= position < _DIALOGUE_SEQUENCE_SCALE:
         raise ValueError("dialogue position exceeds sequence scale")
     return world_revision * _DIALOGUE_SEQUENCE_SCALE + position
+
+
+def _align_to_projection_timezone(
+    moment: datetime, projection: LedgerProjection
+) -> datetime:
+    """Present dialogue timestamps in the same timezone offset as logical_time."""
+
+    logical_time = getattr(projection, "logical_time", None)
+    if (
+        logical_time is not None
+        and logical_time.tzinfo is not None
+        and moment.tzinfo is not None
+    ):
+        return moment.astimezone(logical_time.tzinfo)
+    return moment
 
 
 class DialogueSourceClaim(FrozenModel):
@@ -241,7 +287,9 @@ class RecentDialogueCompiler:
                     speaker="counterpart",
                     speaker_ref=observation.actor,
                     text=text,
-                    occurred_at=observation.received_at,
+                    occurred_at=_align_to_projection_timezone(
+                        observation.received_at, projection
+                    ),
                     delivery_state="observed",
                     # Observation timestamps are only second-granularity on
                     # some platform paths.  Use the committed ledger revision
@@ -257,6 +305,10 @@ class RecentDialogueCompiler:
 
         companion: list[RecentDialogueItem] = []
         plans = {item.plan_id: item for item in projection.expression_plans}
+        beats_by_id = {
+            item.beat_id: item
+            for item in getattr(projection, "expression_beats", ())
+        }
         actions = {item.action_id: item for item in projection.actions}
         stored = {item.payload_ref: item for item in projection.stored_message_payloads}
         descriptors = {item.payload_ref: item for item in projection.expression_payload_descriptors}
@@ -352,12 +404,23 @@ class RecentDialogueCompiler:
             ),
             reverse=True,
         )[: max(1, self._max_companion)]
-        candidate_action_ids = {
-            str(beat["action_id"])
-            for _, _, _, _, beats in accepted_expressions
-            for beat in beats
-            if isinstance(beat.get("action_id"), str)
-        }
+        visible_beat_budget = max(1, self._max_companion) + 32
+        windowed_expressions: list[
+            tuple[str, str, str, str | None, list[dict[str, str | None]]]
+        ] = []
+        candidate_action_ids: set[str] = set()
+        for item in accepted_expressions:
+            windowed_expressions.append(item)
+            for beat in item[4]:
+                action_id = beat.get("action_id")
+                if (
+                    isinstance(action_id, str)
+                    and action_id in historically_visible_action_ids
+                ):
+                    candidate_action_ids.add(action_id)
+            if len(candidate_action_ids) >= visible_beat_budget:
+                break
+        accepted_expressions = windowed_expressions
         receipt_events: dict[
             str, tuple[CommittedWorldEventRef, ExecutionReceipt]
         ] = {}
@@ -444,7 +507,27 @@ class RecentDialogueCompiler:
                         ),
                         None,
                     )
-                    if terminal is None or terminal.event_ref not in refs:
+                    beat_state = beats_by_id.get(beat_id)
+                    beat_settled = (
+                        next(
+                            (
+                                item
+                                for item in reversed(beat_state.history)
+                                if item.state == "settled"
+                                and item.terminal_action_state == "delivered"
+                            ),
+                            None,
+                        )
+                        if beat_state is not None
+                        else None
+                    )
+                    plan_completed_valid = (
+                        terminal is not None and terminal.event_ref in refs
+                    )
+                    beat_settled_valid = (
+                        beat_settled is not None and beat_settled.event_ref in refs
+                    )
+                    if not (plan_completed_valid or beat_settled_valid):
                         continue
                 text: str | None = None
                 payload_ref = stored.get(payload_id)
@@ -485,7 +568,9 @@ class RecentDialogueCompiler:
                         speaker="companion",
                         speaker_ref=actor_ref,
                         text=text,
-                        occurred_at=visible_receipt.received_at,
+                        occurred_at=_align_to_projection_timezone(
+                            visible_receipt.received_at, projection
+                        ),
                         delivery_state=(
                             "delivered"
                             if action_id in historically_delivered_action_ids

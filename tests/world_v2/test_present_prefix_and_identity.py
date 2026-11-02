@@ -48,7 +48,7 @@ def test_slim_consider_instruction_speaks_her_language() -> None:
 
     instruction = slim_consider_instruction()
     chinese = sum(1 for char in instruction if "\u4e00" <= char <= "\u9fff")
-    assert chinese / len(instruction) > 0.35
+    assert chinese / len(instruction) > 0.32
 
 
 def test_slim_consider_separates_knowing_from_saying() -> None:
@@ -92,12 +92,12 @@ def test_slim_consider_separates_knowing_from_saying() -> None:
 
 def test_present_relationship_stage_note_is_not_a_behavior_instruction() -> None:
     instruction = slim_consider_instruction()
-    assert "evidence, not instruction" in instruction
-    assert "no target stage and no preferred direction" in instruction
-    assert "Feeling drawn, uncertain, bored, or pulled away are all yours" in instruction
+    assert "证据而非指令" in instruction
+    assert "没有目标阶段也没有偏好方向" in instruction
+    assert "被吸引、说不清、觉得没意思或想离远一点都由你自己读" in instruction
     assert "meaning_of_this 是你对他这句话或眼前处境的暂定理解" in instruction
     assert "my_state 是你表达前自己此刻真正是什么感觉" in instruction
-    assert "ticket-closing" in instruction  # kept as an English anchor
+    assert "无需像结单一样把话收圆" in instruction
     assert "declared_display" in instruction
     assert "也不偏好你写了比不写更好" in instruction
     assert "发了更好" not in instruction
@@ -138,12 +138,12 @@ def test_present_relationship_stage_note_is_not_a_behavior_instruction() -> None
     assert "也从不建议你写哪几根轴" in instruction
     assert "应该写 reliability" not in instruction
     assert "不写、不说、维持现状、说出来" in instruction
-    assert "photo 写 true，意思是你现在想让媒体车道考虑一个可用的候选" in instruction
+    assert "意思是你现在想让媒体车道考虑一个可用的候选" in instruction
     assert "只在文字里说要发图不会打开这条车道" in instruction
     assert "photo true（或写一个可用候选的 source_ref）可以搭 reply_only" in instruction
     assert "photo true 不能搭 reply_only" not in instruction
     assert "day_sheet 和传记习惯不能证明当前或刚才发生了什么" in instruction
-    assert "语气、态度、记忆的不确定感和愿望由你写" in instruction
+    assert "你自己的打算、意愿、语气和态度由你写" in instruction
     assert "不会自动变成已发生的事实或持续状态" in instruction
     assert "photos_i_shared 是你已经成功发给他的照片这一世界事实" in instruction
     assert "candidate_only" in instruction

@@ -1995,3 +1995,30 @@ async def test_retired_inner_reselection_never_emits_a_provider_request(transpor
         if transport == "metered":
             await model.aclose()
     assert calls == []
+
+
+def test_compact_gate_accepts_result_mode_alias_and_split_messages_array() -> None:
+    from companion_daemon.world_v2.character_interior.inbound_tool_contract import (
+        _expand_compact_gate_payload,
+        normalize_compact_gate_transport,
+    )
+
+    normalized = normalize_compact_gate_transport(
+        {
+            "result_mode": "reply_only",
+            "payload_json": (
+                '{"messages":["紧张倒还好 就是怕起不来"],["材料早装好了"],'
+                '"meaning_of_this":"他在关心明早核验材料",'
+                '"my_state":"心里挺踏实，顺口叮嘱他别熬夜",'
+                '"world_claims":[]}'
+            ),
+        }
+    )
+    assert normalized["result_kind"] == "reply_only"
+    expanded = _expand_compact_gate_payload(normalized)
+    assert expanded["result_kind"] == "reply_only"
+    head = expanded["events"][0]
+    assert [b["text"] for b in head["beats"]] == [
+        "紧张倒还好 就是怕起不来",
+        "材料早装好了",
+    ]

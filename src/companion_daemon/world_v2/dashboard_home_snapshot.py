@@ -76,6 +76,8 @@ _KIND_KEEP: Mapping[str, int] = MappingProxyType(
         "external_signal": 4,
         "photo_candidate": 4,
         "media_opportunity": 3,
+        "media_preview": 8,
+        "media_delivery": 8,
         "budget_account": 3,
         "budget_reservation": 2,
         "budget_settlement": 2,
@@ -1095,6 +1097,9 @@ class DashboardHomeSnapshotModule:
         self._capture_lock = asyncio.Lock()
         self._cached_key: tuple | None = None
         self._cached_snapshot: DashboardHomeSnapshot | None = None
+        self._cached_base_key: tuple | None = None
+        self._cached_base_sections: dict[str, object] | None = None
+        self._page_cache: dict[tuple[date, int | None], DashboardHomeSnapshot] = {}
 
     async def capture(
         self,
@@ -1139,6 +1144,16 @@ class DashboardHomeSnapshotModule:
             if runtime_observation is not None
             else None
         )
+        base_key = (
+            projection.world_id,
+            cursor,
+            projection.schema_version,
+            projection.reducer_bundle_version,
+            projection.semantic_hash,
+            runtime_key,
+            outlook_state,
+            outlook_head[0] if outlook_head else None,
+        )
         cache_key = (
             projection.world_id,
             cursor,
@@ -1149,40 +1164,72 @@ class DashboardHomeSnapshotModule:
         )
         if self._cached_key == cache_key and self._cached_snapshot is not None:
             return self._cached_snapshot
+        if self._cached_base_key != base_key:
+            self._cached_base_key = base_key
+            self._cached_base_sections = None
+            self._page_cache.clear()
+        elif (week, page) in self._page_cache:
+            cached = self._page_cache[(week, page)]
+            self._cached_key = cache_key
+            self._cached_snapshot = cached
+            return cached
 
         generated_at = sampled_clock or self._clock()
         if generated_at.tzinfo is None or generated_at.utcoffset() is None:
             raise ValueError("dashboard clock must be timezone-aware")
 
+        if self._cached_base_sections is None:
+            self._cached_base_sections = {
+                "overview_base": self._overview_life_base(
+                    projection=projection, cursor=cursor
+                ),
+                "room": self._room(projection=projection, cursor=cursor),
+                "facts_memory_inner": self._facts_memory_inner(
+                    projection=projection,
+                    cursor=cursor,
+                ),
+                "relationship_lifecycle": self._relationship_lifecycle(
+                    projection=projection,
+                    cursor=cursor,
+                ),
+                "operations": self._operations(projection=projection, cursor=cursor),
+                "perception_media": self._perception_media(
+                    projection=projection,
+                    cursor=cursor,
+                ),
+                "authority_privacy": self._authority_privacy(
+                    projection=projection,
+                    cursor=cursor,
+                ),
+                "ledger_qualification": self._ledger_qualification(
+                    projection=projection,
+                    cursor=cursor,
+                ),
+                "runtime_operations": self._runtime_operations(
+                    cursor=cursor,
+                    observation=runtime_observation,
+                ),
+            }
+
+        base_sections = self._cached_base_sections
         sections = DashboardHomeSections(
-            room=self._room(projection=projection, cursor=cursor),
-            overview_life=self._overview_life(projection=projection, cursor=cursor, week=week, page=page,
-                                              outlook_head=outlook_head, outlook_state=outlook_state),
-            facts_memory_inner=self._facts_memory_inner(
+            room=base_sections["room"],  # type: ignore[arg-type]
+            overview_life=self._overview_life(
                 projection=projection,
                 cursor=cursor,
+                week=week,
+                page=page,
+                outlook_head=outlook_head,
+                outlook_state=outlook_state,
+                overview_base=base_sections["overview_base"],  # type: ignore[arg-type]
             ),
-            relationship_lifecycle=self._relationship_lifecycle(
-                projection=projection,
-                cursor=cursor,
-            ),
-            operations=self._operations(projection=projection, cursor=cursor),
-            perception_media=self._perception_media(
-                projection=projection,
-                cursor=cursor,
-            ),
-            authority_privacy=self._authority_privacy(
-                projection=projection,
-                cursor=cursor,
-            ),
-            ledger_qualification=self._ledger_qualification(
-                projection=projection,
-                cursor=cursor,
-            ),
-            runtime_operations=self._runtime_operations(
-                cursor=cursor,
-                observation=runtime_observation,
-            ),
+            facts_memory_inner=base_sections["facts_memory_inner"],  # type: ignore[arg-type]
+            relationship_lifecycle=base_sections["relationship_lifecycle"],  # type: ignore[arg-type]
+            operations=base_sections["operations"],  # type: ignore[arg-type]
+            perception_media=base_sections["perception_media"],  # type: ignore[arg-type]
+            authority_privacy=base_sections["authority_privacy"],  # type: ignore[arg-type]
+            ledger_qualification=base_sections["ledger_qualification"],  # type: ignore[arg-type]
+            runtime_operations=base_sections["runtime_operations"],  # type: ignore[arg-type]
         )
         payload_without_hash = {
             "schema_version": "world-v2-dashboard-home.1",
@@ -1203,6 +1250,9 @@ class DashboardHomeSnapshotModule:
             logical_time=projection.logical_time,
             sections=sections,
         )
+        if len(self._page_cache) >= 16:
+            self._page_cache.pop(next(iter(self._page_cache)))
+        self._page_cache[(week, page)] = snapshot
         self._cached_key = cache_key
         self._cached_snapshot = snapshot
         return snapshot
@@ -1264,13 +1314,12 @@ class DashboardHomeSnapshotModule:
             ),
         )
 
-    def _overview_life(
+    def _overview_life_base(
         self,
         *,
         projection: LedgerProjection,
         cursor: ProjectionCursor,
-        week: date, page=None, outlook_head=None, outlook_state="disabled",
-    ) -> DashboardOverviewLifeSection:
+    ) -> tuple[tuple[DashboardMetric, ...], tuple[DashboardEntitySummary, ...], int]:
         metrics = _overview_life_metrics(projection)
         # Only the bounded display candidates need additional immutable reads.
         plans = sorted(projection.plans, key=lambda item: (
@@ -1308,6 +1357,22 @@ class DashboardHomeSnapshotModule:
             world_readings=world_readings,
         )
         highlights = _bounded_summaries(all_highlights)
+        known_count = len(all_highlights) + len(projection.plans) - len(plans)
+        return metrics, highlights, known_count
+
+    def _overview_life(
+        self,
+        *,
+        projection: LedgerProjection,
+        cursor: ProjectionCursor,
+        week: date, page=None, outlook_head=None, outlook_state="disabled",
+        overview_base: tuple[tuple[DashboardMetric, ...], tuple[DashboardEntitySummary, ...], int] | None = None,
+    ) -> DashboardOverviewLifeSection:
+        metrics, highlights, known_count = (
+            overview_base
+            if overview_base is not None
+            else self._overview_life_base(projection=projection, cursor=cursor)
+        )
         agenda = compile_dashboard_agenda(
             ledger=self._ledger, projection=projection, cursor=cursor,
             store=self._life_content_store, actor_ref=self._life_actor_ref,
@@ -1318,9 +1383,7 @@ class DashboardHomeSnapshotModule:
             state="ready" if agenda.entries else _state_from_metrics(metrics),
             observed_at=projection.logical_time,
             cursor=cursor,
-            coverage=_coverage(
-                len(all_highlights) + len(projection.plans) - len(plans), len(highlights),
-            ),
+            coverage=_coverage(known_count, len(highlights)),
             data=DashboardOverviewLifeData(metrics=metrics, highlights=highlights,
                 agenda=agenda),
         )
@@ -2278,12 +2341,18 @@ def _relationship_summaries(
         )
     for item in projection.relationship_states:
         variables = item.variables
+        subject_ref = getattr(item, "subject_ref", "")
+        if isinstance(subject_ref, str) and subject_ref.startswith("npc:"):
+            npc_id = subject_ref.removeprefix("npc:")
+            rel_title = f"与{_NPC_LABELS[npc_id]}" if npc_id in _NPC_LABELS else "与身边人物"
+        else:
+            rel_title = "和你"
         summaries.append(
             _summary(
                 kind="relationship_state",
                 kind_label="关系状态",
                 entity_id=item.relationship_id,
-                title="和你",
+                title=rel_title,
                 status=item.stage,
                 status_mapping=_STAGE_LABELS,
                 occurred_at=item.last_adjusted_at,
@@ -2791,40 +2860,84 @@ def _perception_media_summaries(
                 occurred_at=item.frozen_at,
             )
         )
+    plans_by_id = {
+        getattr(item, "plan_id", None): item for item in projection.media_plans
+    }
+    inspections_by_id = {
+        getattr(item, "inspection_id", None): item for item in projection.media_inspections
+    }
+    previews_by_plan = {
+        getattr(item, "plan_id", None): item for item in projection.media_previews
+    }
     for item in projection.media_inspections:
-        _failure_code, failure_label = _dashboard_failure(
-            item.reason_code,
-            family="media",
-        )
+        passed = bool(getattr(item, "passed", False))
+        observed_summary = _short_text(getattr(item, "observed_summary", None))
+        if passed:
+            detail_text = observed_summary or "画面检查通过"
+        else:
+            _failure_code, detail_text = _dashboard_failure(
+                getattr(item, "reason_code", None),
+                family="media",
+            )
         summaries.append(
             _summary(
                 kind="media_inspection",
                 kind_label="媒体检查",
-                entity_id=item.inspection_id,
+                entity_id=getattr(item, "inspection_id", None),
                 title="媒体检查",
-                status="accepted" if item.passed else "rejected",
-                detail=failure_label,
-                values=(_value("repairable", "可修复", item.repairable),),
+                status="accepted" if passed else "rejected",
+                detail=detail_text,
+                values=(_value("repairable", "可修复", getattr(item, "repairable", False)),),
             )
         )
     for item in projection.media_previews:
+        preview_id = getattr(item, "preview_id", None)
+        plan = plans_by_id.get(getattr(item, "plan_id", None))
+        insp = inspections_by_id.get(getattr(item, "inspection_id", None))
+        caption = _short_text(getattr(insp, "observed_summary", None))
+        preview_values = []
+        if isinstance(preview_id, str) and preview_id:
+            preview_values.append(
+                _value("image_url", "照片画面", f"/world-v2/dashboard/media/{preview_id}/image")
+            )
         summaries.append(
             _summary(
                 kind="media_preview",
                 kind_label="媒体预览",
-                entity_id=item.preview_id,
-                title="媒体预览已生成",
-                status=item.delivery_mode,
+                entity_id=preview_id,
+                title=caption or "媒体预览已生成",
+                detail=caption,
+                status=getattr(item, "delivery_mode", "preview"),
+                occurred_at=getattr(plan, "frozen_at", None),
+                values=tuple(preview_values),
             )
         )
     for item in projection.media_deliveries:
+        plan_id = getattr(item, "plan_id", None)
+        plan = plans_by_id.get(plan_id)
+        insp = inspections_by_id.get(getattr(item, "inspection_id", None))
+        preview = previews_by_plan.get(plan_id)
+        caption = _short_text(getattr(insp, "observed_summary", None))
+        delivery_values = []
+        preview_id = getattr(preview, "preview_id", None) if preview is not None else None
+        if isinstance(preview_id, str) and preview_id:
+            delivery_values.append(
+                _value("image_url", "照片画面", f"/world-v2/dashboard/media/{preview_id}/image")
+            )
         summaries.append(
             _summary(
                 kind="media_delivery",
                 kind_label="媒体送达",
-                entity_id=item.delivery_id,
-                title="媒体已送达",
+                entity_id=getattr(item, "delivery_id", None),
+                title=caption or "媒体已送达",
+                detail=caption,
                 status="delivered",
+                occurred_at=(
+                    getattr(item, "shared_at", None)
+                    or getattr(item, "received_at", None)
+                    or getattr(plan, "frozen_at", None)
+                ),
+                values=tuple(delivery_values),
             )
         )
     return tuple(summaries)
@@ -3121,6 +3234,7 @@ def _bounded_summaries(
         ordered = sorted(
             items,
             key=lambda item: (
+                item.kind == "relationship_state" and item.title == "和你",
                 item.occurred_at or datetime.min.replace(tzinfo=UTC),
                 item.kind,
                 item.title,

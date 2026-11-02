@@ -32,6 +32,7 @@ RESPONSE_PREFIX = "response:character-life-response:"
 EVENT_PREFIX = "event:character-life-response:"
 
 
+@lru_cache(maxsize=4096)
 def character_life_response_id(*, world_id: str, actor_ref: str, source_event_ref: str) -> str:
     material = json.dumps(
         [world_id, actor_ref, source_event_ref],

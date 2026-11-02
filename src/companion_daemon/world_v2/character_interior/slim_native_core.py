@@ -6,7 +6,7 @@ interpretation, message, claim or capability choice.
 
 import json
 
-CORE_FIELDS = ("messages", "meaning_of_this", "my_state", "world_claims")
+CORE_FIELDS = ("meaning_of_this", "my_state", "world_claims", "messages")
 CORE_KEYS = frozenset(CORE_FIELDS)
 
 
@@ -23,8 +23,9 @@ def parameters(*, recall_allowed):
     ]}, "source_refs": {"type": "array", "items": text,
                        "description": "At most 8 exact supporting source refs per claim; choose relevant refs, never copy the whole catalog. Different factual propositions use separate claims."}})
     decision = _object({"result_kind": {"type": "string", "enum": ["decision"]},
-        "messages": {"type": "array", "items": text}, "meaning_of_this": text,
-        "my_state": text, "world_claims": {"type": "array", "items": claim},
+        "meaning_of_this": text, "my_state": text,
+        "world_claims": {"type": "array", "items": claim},
+        "messages": {"type": "array", "items": text},
         "extras_json": {"type": "string", "description": "One JSON object of selected optional slim capabilities; {} when none. Never repeat the native core fields."}})
     branches = [decision]
     if recall_allowed:
@@ -82,7 +83,7 @@ def prompt(original):
     updated = updated.replace("SLIM PAYLOAD_JSON 形状", "完整内部决定的字段示意")
     return updated + (
         "\n本轮使用 native slim core：函数参数只有 result 对象。decision分支直接写 "
-        "result_kind、messages、meaning_of_this、my_state、world_claims；这四项必须由你自己填写，"
+        "result_kind、meaning_of_this、my_state、world_claims、messages；这四项必须由你自己填写，"
         "不能放入字符串或用null代替。其余你选择的可选能力只放extras_json这个JSON对象字符串，"
         "未选可选能力时写\"{}\"，不重复四项核心字段。recall分支的result只含result_kind和"
         "payload_json，后者沿用上方独立Recall结构。两分支不可混写。"

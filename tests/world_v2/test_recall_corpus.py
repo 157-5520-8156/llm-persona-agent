@@ -1062,3 +1062,129 @@ def test_bounded_recall_texts_skips_empty_memory_excerpts() -> None:
     # A candidate whose every excerpt is empty is omitted from lexical
     # continuity instead of aborting the whole inbound turn.
     assert _bounded_recall_texts(("", None)) == ()
+
+
+def test_recall_corpus_compiles_biographical_context_and_outlook_history_reads_observations() -> None:
+    from companion_daemon.world_v2.world_life_context import (
+        ActiveLifeArcContext,
+        BiographicalWorldContextItem,
+        SettledBiographicalCoordinateContext,
+    )
+    from companion_daemon.world_v2.world_outlook_history import history_query_text
+
+    bio = BiographicalWorldContextItem(
+        biography_id="bio:companion",
+        reviewed_timeline_ref="timeline:1",
+        timeline_source_event_ref="event:bio:timeline",
+        logical_at=NOW,
+        age=20,
+        academic_phase="undergraduate",
+        academic_year=2,
+        season="autumn",
+        calendar_context_tags=("season:autumn",),
+        current_residence_context_tags=("residence:campus_dorm",),
+        active_life_arcs=(
+            ActiveLifeArcContext(
+                arc_id="arc:dorm-autumn",
+                arc_kind="residence",
+                context_pack_ref="pack:dorm",
+                context_tags=("residence:campus_dorm",),
+                started_at=NOW - timedelta(days=10),
+                source_event_ref="event:arc:source",
+                accepted_event_ref="event:arc:accepted",
+                context_summary_ref="event:arc:summary",
+                context_summary_payload_hash="a" * 64,
+                context_summary="秋学期住在校内宿舍，和室友林晚作息相近。",
+            ),
+        ),
+        settled_biographical_coordinates=(
+            SettledBiographicalCoordinateContext(
+                coordinate_ref="coord:roommate-lin",
+                authority_kind="objective_transition",
+                summary="室友林晚住对铺，晚上常在宿舍书桌前看书。",
+                context_tags=("residence:campus_dorm", "npc:roommate-lin"),
+                replaces_context_tag_prefixes=("residence:",),
+                privacy_class="personal",
+                settlement_event_ref="event:coord:settled",
+            ),
+        ),
+        privacy_class="personal",
+        source_bindings=(
+            WorldLifeSourceBinding(
+                authority_event_ref="event:bio:timeline",
+                authority_world_revision=10,
+                authority_payload_hash="b" * 64,
+            ),
+            WorldLifeSourceBinding(
+                authority_event_ref="event:coord:settled",
+                authority_world_revision=12,
+                authority_payload_hash="c" * 64,
+            ),
+            WorldLifeSourceBinding(
+                authority_event_ref="event:arc:source",
+                authority_world_revision=11,
+                authority_payload_hash="d" * 64,
+            ),
+            WorldLifeSourceBinding(
+                authority_event_ref="event:arc:accepted",
+                authority_world_revision=11,
+                authority_payload_hash="e" * 64,
+            ),
+        ),
+    )
+    sources = _sources().model_copy(update={"biographical_context": (bio,)})
+    documents = RecallCorpusCompiler().compile(
+        cursor=CURSOR,
+        actor_ref="agent:companion",
+        subject_refs=("agent:companion", "user:primary"),
+        sources=sources,
+    )
+    by_ref = {doc.source_item_ref: doc for doc in documents}
+    assert "coord:roommate-lin" in by_ref
+    assert "室友林晚住对铺" in by_ref["coord:roommate-lin"].text
+    assert "arc:dorm-autumn" in by_ref
+    assert "和室友林晚作息相近" in by_ref["arc:dorm-autumn"].text
+
+    query = history_query_text(
+        context={
+            "slices": {
+                "world_life": {
+                    "availability": "available",
+                    "items": [{"privacy_class": "personal", "value": bio.model_dump(mode="json")}],
+                },
+                "private_impressions": {
+                    "availability": "available",
+                    "items": [
+                        {
+                            "privacy_class": "private",
+                            "value": {"reflection_summary": "刚才注意到林晚在收拾明天的实验器材"},
+                        }
+                    ],
+                },
+                "recent_experiences": {
+                    "availability": "available",
+                    "items": [
+                        {
+                            "privacy_class": "personal",
+                            "value": {"content": {"text": "回宿舍时看见走廊贴了社团招新通知"}},
+                        }
+                    ],
+                },
+                "perception_results": {
+                    "availability": "available",
+                    "items": [
+                        {
+                            "privacy_class": "personal",
+                            "value": {"summary": "校园论坛热帖讨论周末旧书市集"},
+                        }
+                    ],
+                },
+            }
+        },
+        current_outlook={"threads": []},
+    )
+    assert "室友林晚住对铺" in query
+    assert "刚才注意到林晚在收拾明天的实验器材" in query
+    assert "回宿舍时看见走廊贴了社团招新通知" in query
+    assert "校园论坛热帖讨论周末旧书市集" in query
+

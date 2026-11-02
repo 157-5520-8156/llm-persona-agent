@@ -258,11 +258,56 @@ class InboundRelationshipSignalWorker:
         if len(changes) != 1 or changes[0].transition != "suggest":
             raise InboundRelationshipSignalError("signal_change_invalid")
         if (
-            source_event.event_type != "ObservationRecorded"
-            or authority.proposal.trigger_ref != source_event.event_id
+            authority.proposal.trigger_ref != source_event.event_id
             or authority.audit.trigger_ref != source_event.event_id
         ):
             raise InboundRelationshipSignalError("source_observation_mismatch")
+        if source_event.event_type != "ObservationRecorded":
+            if not proposal_id.startswith("proposal:proactive:"):
+                raise InboundRelationshipSignalError("source_observation_mismatch")
+            accepted_id = self._compiler.accepted_proactive_descendant(
+                world_id=world_id,
+                audit_cursor=audit_cursor,
+                current_cursor=current_cursor,
+                proposal_id=proposal_id,
+                source_event_id=source_event.event_id,
+            )
+            if accepted_id is not None:
+                return InboundRelationshipSignalWorkResult(
+                    status="accepted",
+                    source_proposal_id=proposal_id,
+                    typed_proposal_id=accepted_id,
+                    replayed=True,
+                )
+            compiled = self._compiler.record_proactive_rebased(
+                world_id=world_id,
+                audit_cursor=audit_cursor,
+                current_cursor=current_cursor,
+                proposal_id=proposal_id,
+                source_event_id=source_event.event_id,
+            )
+            if (
+                compiled.status != "candidate_recorded"
+                or compiled.typed_proposal_id is None
+                or compiled.commit is None
+                or compiled.acceptance_cursor is None
+            ):
+                raise InboundRelationshipSignalError("compiled_candidate_incomplete")
+            acceptance_commit = self._acceptance.accept_runtime_owned(
+                handle=self._acceptance.pin_proposal(
+                    cursor=compiled.acceptance_cursor,
+                    proposal_id=compiled.typed_proposal_id,
+                ),
+                actor=self._owner_id,
+                source=self._source,
+            )
+            return InboundRelationshipSignalWorkResult(
+                status="accepted",
+                source_proposal_id=proposal_id,
+                typed_proposal_id=compiled.typed_proposal_id,
+                compile_commit=compiled.commit,
+                acceptance_commit=acceptance_commit,
+            )
 
         trigger_id = relationship_continuity_trigger_id(
             world_id=world_id,

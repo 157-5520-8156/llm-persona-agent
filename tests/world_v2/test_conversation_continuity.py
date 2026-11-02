@@ -665,3 +665,276 @@ def test_conversation_view_follows_causal_order_not_rank_order() -> None:
     assert conversation[0].endswith("☀️ 太阳")
     assert conversation[1].endswith("晚点整理好了发你")
     assert conversation[2].endswith("还没睡呀")
+
+
+def test_pending_interaction_dropped_for_older_turns_once_newer_turn_acknowledged() -> None:
+    yesterday_unacked = _dialogue(
+        "yesterday-unacked",
+        "想看看你",
+        speaker="counterpart",
+        at=NOW - timedelta(hours=20),
+        sequence=1,
+    )
+    today_acked = _dialogue(
+        "today-acked",
+        "忙什么呢",
+        speaker="counterpart",
+        at=NOW - timedelta(minutes=5),
+        sequence=2,
+    )
+    her_reply = _dialogue(
+        "her-reply",
+        "刚忙完手头的事",
+        speaker="companion",
+        at=NOW - timedelta(minutes=4),
+        sequence=3,
+        acknowledges=("event:dialogue:today-acked",),
+    )
+    current = _dialogue(
+        "current",
+        "在干嘛呀",
+        speaker="counterpart",
+        at=NOW,
+        sequence=4,
+    )
+    result = ConversationContinuityCompiler().compile(
+        dialogue=(yesterday_unacked, today_acked, her_reply, current),
+        trigger_ref="event:dialogue:current",
+    )
+    by_id = {item.dialogue_id: item for item in result.dialogue}
+    if yesterday_unacked.dialogue_id in by_id:
+        assert "pending_interaction" not in by_id[yesterday_unacked.dialogue_id].continuity_reasons
+
+
+def test_pack_recent_dialogue_does_not_slip_ancient_media_delivery_into_spare_ref_slot() -> None:
+    from companion_daemon.world_v2.conversation_continuity import (
+        pack_recent_dialogue_under_source_budget,
+    )
+
+    ancient_photo = _beat(
+        "media-delivery:ancient",
+        "[一张自拍]",
+        speaker="companion",
+        at=NOW - timedelta(days=67),
+        sequence=10,
+        claim_count=1,
+    )
+    recent_turns: list[RecentDialogueItem] = [ancient_photo]
+    seq = 100
+    for idx in range(16):
+        recent_turns.append(
+            _beat(
+                f"him-{idx}",
+                f"消息 {idx}",
+                speaker="counterpart",
+                at=NOW - timedelta(minutes=40 - idx * 2),
+                sequence=seq,
+                claim_count=1,
+            )
+        )
+        seq += 1
+        recent_turns.append(
+            _beat(
+                f"her-{idx}",
+                f"回复 {idx}",
+                speaker="companion",
+                at=NOW - timedelta(minutes=39 - idx * 2),
+                sequence=seq,
+                claim_count=2,
+            )
+        )
+        seq += 1
+
+    packed = pack_recent_dialogue_under_source_budget(
+        tuple(recent_turns),
+        max_refs=32,
+    )
+    packed_ids = {item.dialogue_id for item in packed}
+    assert "dialogue:media-delivery:ancient" not in packed_ids
+
+
+def test_long_companion_history_and_multi_message_bursts_keep_acknowledged_user_lines() -> None:
+    from companion_daemon.world_v2.ledger_context_resolver import _bounded_domain_items
+
+    history: list[RecentDialogueItem] = []
+    seq = 10
+    for idx in range(230):
+        history.append(
+            _beat(
+                f"old-her-{idx}",
+                f"早前回复 {idx}",
+                speaker="companion",
+                at=NOW - timedelta(hours=2, minutes=230 - idx),
+                sequence=seq,
+                claim_count=2,
+            )
+        )
+        seq += 1
+
+    done = _beat(
+        "him-done",
+        "已经面完啦",
+        speaker="counterpart",
+        at=NOW - timedelta(minutes=4),
+        sequence=seq,
+    )
+    seq += 1
+    her_done = [
+        _beat(
+            f"her-done-{i}",
+            f"面完回复 {i}",
+            speaker="companion",
+            at=NOW - timedelta(minutes=3, seconds=50 - i),
+            sequence=seq + i,
+            claim_count=2,
+            acknowledges=("event:dialogue:him-done:0",),
+        )
+        for i in range(4)
+    ]
+    seq += 4
+
+    haha = _beat(
+        "him-haha",
+        "哈哈哈哈",
+        speaker="counterpart",
+        at=NOW - timedelta(minutes=3, seconds=20),
+        sequence=seq,
+    )
+    seq += 1
+    smooth = _beat(
+        "him-smooth",
+        "对线很顺利",
+        speaker="counterpart",
+        at=NOW - timedelta(minutes=3, seconds=10),
+        sequence=seq,
+    )
+    seq += 1
+    her_smooth = [
+        _beat(
+            f"her-smooth-{i}",
+            f"顺利回复 {i}",
+            speaker="companion",
+            at=NOW - timedelta(minutes=3, seconds=5 - i),
+            sequence=seq + i,
+            claim_count=2,
+            acknowledges=("event:dialogue:him-smooth:0",),
+        )
+        for i in range(4)
+    ]
+    seq += 4
+
+    draft = _beat(
+        "him-draft",
+        "给老师交了个论文初稿，被发现是 ai 写的了，被约着面谈了",
+        speaker="counterpart",
+        at=NOW - timedelta(minutes=2, seconds=30),
+        sequence=seq,
+    )
+    seq += 1
+    her_draft = [
+        _beat(
+            f"her-draft-{i}",
+            f"初稿回复 {i}",
+            speaker="companion",
+            at=NOW - timedelta(minutes=2, seconds=20 - i),
+            sequence=seq + i,
+            claim_count=2,
+            acknowledges=("event:dialogue:him-draft:0",),
+        )
+        for i in range(5)
+    ]
+    seq += 5
+
+    know_well = _beat(
+        "him-know-well",
+        "不过好在我对论文本身很了解，老师就没说啥了",
+        speaker="counterpart",
+        at=NOW - timedelta(minutes=1, seconds=12),
+        sequence=seq,
+    )
+    seq += 1
+    peace = _beat(
+        "him-peace",
+        "✌️",
+        speaker="counterpart",
+        at=NOW - timedelta(minutes=1, seconds=10),
+        sequence=seq,
+    )
+    seq += 1
+    her_peace = [
+        _beat(
+            f"her-peace-{i}",
+            f"了解回复 {i}",
+            speaker="companion",
+            at=NOW - timedelta(minutes=1, seconds=5 - i),
+            sequence=seq + i,
+            claim_count=2,
+            acknowledges=("event:dialogue:him-peace:0",),
+        )
+        for i in range(5)
+    ]
+    seq += 5
+
+    encourage = _beat(
+        "him-encourage",
+        "我们专业是鼓励用 ai 写这种东西的，只是老师不希望我们交个 ai 幻觉产物就上去了",
+        speaker="counterpart",
+        at=NOW - timedelta(seconds=14),
+        sequence=seq,
+    )
+    seq += 1
+    if_not = _beat(
+        "him-if-not",
+        "你要是今天没排到的话",
+        speaker="counterpart",
+        at=NOW - timedelta(seconds=7),
+        sequence=seq,
+    )
+    seq += 1
+    current = _beat(
+        "him-current",
+        "明天还要继续排吗",
+        speaker="counterpart",
+        at=NOW,
+        sequence=seq,
+    )
+
+    dialogue = (
+        *history,
+        done,
+        *her_done,
+        haha,
+        smooth,
+        *her_smooth,
+        draft,
+        *her_draft,
+        know_well,
+        peace,
+        *her_peace,
+        encourage,
+        if_not,
+        current,
+    )
+    compiled = ConversationContinuityCompiler().compile(
+        dialogue=dialogue,
+        trigger_ref="event:dialogue:him-current:0",
+    )
+    bounded = _bounded_domain_items(
+        "recent_dialogue",
+        compiled.dialogue,
+        NOW,
+        compiled.rank_overrides,
+        current.text,
+        "event:dialogue:him-current:0",
+        None,
+        seq,
+    )
+    assert bounded is not None
+    packed = pack_recent_dialogue_under_source_budget(bounded)
+    packed_texts = {item.text for item in packed}
+    assert "已经面完啦" in packed_texts
+    assert "不过好在我对论文本身很了解，老师就没说啥了" in packed_texts
+    assert "给老师交了个论文初稿，被发现是 ai 写的了，被约着面谈了" in packed_texts
+    assert "我们专业是鼓励用 ai 写这种东西的，只是老师不希望我们交个 ai 幻觉产物就上去了" in packed_texts
+
+

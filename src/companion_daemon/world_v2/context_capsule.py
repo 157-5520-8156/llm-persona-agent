@@ -108,6 +108,7 @@ _REQUIRED_WHOLE_ITEM_SLICES: frozenset[SliceName] = frozenset(
 MAX_INPUT_ITEMS_PER_SLICE = 256
 MAX_RESOLVER_DOMAIN_SCAN_ITEMS = 4_096
 MAX_SOURCE_REFS_PER_ITEM = 32
+MAX_SOURCE_REFS_PER_SLICE = 128
 MAX_SOURCE_REF_CHARACTERS = 256
 MAX_ITEM_SERIALIZED_CHARACTERS = 64_000
 MAX_INPUT_SERIALIZED_CHARACTERS_PER_SLICE = 1_000_000
@@ -398,7 +399,7 @@ class ResolverProof(_FrozenModel):
     policy_version: Literal["context-capsule-resolution-policy.1"]
     completeness: Literal["complete"]
     privacy_floor: PrivacyClass | None = None
-    explicit_authority_refs: tuple[str, ...] = Field(max_length=MAX_SOURCE_REFS_PER_ITEM)
+    explicit_authority_refs: tuple[str, ...] = Field(max_length=MAX_SOURCE_REFS_PER_SLICE)
     authority_refs_digest: str = Field(min_length=64, max_length=64)
     result_set_hash: str = Field(min_length=64, max_length=64)
 
@@ -567,11 +568,10 @@ class ContextCapsuleBudgetPolicy(_FrozenModel):
     recent_dialogue: SliceBudget = Field(
         default_factory=lambda: SliceBudget(
             max_items=PRESENT_RECENT_DIALOGUE_ITEM_LIMIT,
-            # A dialogue item dumps ~11–13 keys. 96 fields therefore kept only
-            # ~7 lines — a half-conversation of whoever rank favoured. 256
-            # fits the mixed 16-item working window (~16×13 keys) without
-            # raising the ResolverProof 32-ref cap.
-            max_fields=256,
+            # A dialogue item dumps ~11–13 keys. 768 fields fits up to ~56
+            # dialogue lines (24+ back-and-forth turns) inside the 128-ref
+            # slice proof bound.
+            max_fields=768,
             max_characters=80_000,
         )
     )
@@ -629,24 +629,27 @@ class ContextCapsuleBudgetPolicy(_FrozenModel):
         # prompt prose.
         default_factory=lambda: SliceBudget(
             max_items=8,
-            max_fields=128,
-            max_characters=8_000,
-        )
-    )
-    world_life: SliceBudget = Field(
-        # Lived settlements carry full ResolverProof envelopes.  The generic
-        # 8/96/4000 default can reject the whole slice after a few weeks of
-        # aftermath, which also drops photo_in_hand joins that live on those
-        # items.  Photo choosability now has its own installed inventory;
-        # this budget only keeps autobiographical world_life itself visible.
-        default_factory=lambda: SliceBudget(
-            max_items=8,
-            max_fields=192,
+            max_fields=160,
             max_characters=24_000,
         )
     )
+    world_life: SliceBudget = Field(
+        # Lived settlements carry full ResolverProof envelopes alongside
+        # published world_planning schedules, active activities, and planned
+        # activities. Keep enough item and character capacity so published
+        # schedules and plans do not evict recent settled life occurrences.
+        default_factory=lambda: SliceBudget(
+            max_items=12,
+            max_fields=256,
+            max_characters=36_000,
+        )
+    )
     perception_results: SliceBudget = Field(
-        default_factory=lambda: SliceBudget(max_items=4, max_fields=96, max_characters=8_000)
+        # Each ExternalPerceptionLifeInfluenceView carries a deep multimodal
+        # video summary plus subjective reading (~6.3k ASCII-escaped JSON
+        # characters). An 8k cap dropped every external perception whenever one
+        # user image PerceptionResultContextItem (~4k with proof) was present.
+        default_factory=lambda: SliceBudget(max_items=4, max_fields=96, max_characters=28_000)
     )
     active_memory_candidates: SliceBudget = Field(
         # Two compact source excerpts are the minimum useful cross-turn recall
@@ -667,9 +670,12 @@ class ContextCapsuleBudgetPolicy(_FrozenModel):
         # its compact alternatives.  The former 3k cap routinely retained
         # only the first classification, making user-affect/thread/interrupt
         # alternatives disappear before the main model could weigh them.
-        # Eight kilobytes fits the complete bounded semantic matrix while the
-        # capsule-wide 32k hard cap still limits total prompt growth.
-        default_factory=lambda: SliceBudget(max_items=12, max_fields=96, max_characters=8_000)
+        # Proactive self-history binds up to 12 committed events (reply gap,
+        # recent unanswered outbound messages, and unanswered hopes), whose
+        # resolver_proof envelope can reach ~12k-16k characters; 24k keeps
+        # self-history and expectation advisories intact while the capsule-wide
+        # 32k hard cap still limits total prompt growth.
+        default_factory=lambda: SliceBudget(max_items=12, max_fields=192, max_characters=24_000)
     )
     media_deliveries: SliceBudget = Field(
         default_factory=lambda: SliceBudget(
@@ -1747,12 +1753,42 @@ def _compile_slice(
             if slice_name == "advisories"
             and isinstance(pair[0], InnerAdvisoryProjection)
             and pair[0].kind
-            in {"proactive_opportunity", "response_expectation", "expired_expectation"}
+            in {
+                "proactive_opportunity",
+                "proactive_self_history",
+                "response_expectation",
+                "expired_expectation",
+            }
             else 1,
             -pair[1].rank_score_bp,
             pair[1].item_ref,
         )
     )
+    if slice_name == "perception_results" and len(resolved) > 1:
+        top_media = next(
+            (pair for pair in resolved if isinstance(pair[0], PerceptionResultContextItem)),
+            None,
+        )
+        ext_pairs = [
+            pair for pair in resolved if isinstance(pair[0], ExternalPerceptionLifeInfluenceView)
+        ]
+        if top_media is not None and ext_pairs:
+            # Keep the most recent counterpart media perception and her most
+            # recent external perceptions together in the top slice window so
+            # multiple older stickers from the past day cannot crowd out every
+            # Bilibili video she watched (or vice versa).
+            pinned_front = sorted(
+                (top_media, ext_pairs[0]),
+                key=lambda pair: (-pair[1].rank_score_bp, pair[1].item_ref),
+            )
+            pinned_refs = {pair[1].item_ref for pair in pinned_front}
+            if limit.max_items >= 4 and len(ext_pairs) >= 2:
+                pinned_front.append(ext_pairs[1])
+                pinned_refs.add(ext_pairs[1][1].item_ref)
+            resolved = [
+                *pinned_front,
+                *(pair for pair in resolved if pair[1].item_ref not in pinned_refs),
+            ]
     eligible = resolved
     log: list[TruncationEntry] = []
     over_item_limit = eligible[limit.max_items :]
@@ -2665,8 +2701,8 @@ def _compile_resolved_context(
         # least one exact, source-bound recent Experience in the model packet.
         # Otherwise emergency global compaction can make a healthy ledger look
         # as though she has no recent life at all.
-        "recent_experiences": 1,
-        "world_life": 1,
+        "recent_experiences": min(4, len(slices["recent_experiences"].items)),
+        "world_life": min(6, len(slices["world_life"].items)),
         "active_memory_candidates": 2,
         # An advisory overlay is the semantic decision matrix explicitly
         # requested by the current lane.  Keep the whole bounded matrix
@@ -2681,7 +2717,12 @@ def _compile_resolved_context(
     }
     protected_advisory_present = any(
         json.loads(item.payload_json).get("kind")
-        in {"proactive_opportunity", "response_expectation", "expired_expectation"}
+        in {
+            "proactive_opportunity",
+            "proactive_self_history",
+            "response_expectation",
+            "expired_expectation",
+        }
         for item in slices["advisories"].items
     )
     required_dialogue_ids = {
@@ -2700,9 +2741,24 @@ def _compile_resolved_context(
         # is not silently replaced by an empty provider view.
         "recent_experiences": 1 if slices["recent_experiences"].items else 0,
         "perception_results": (
-            1
-            if slices.get("perception_results") is not None and slices["perception_results"].items
-            else 0
+            2
+            if (
+                slices.get("perception_results") is not None
+                and any(
+                    "result_id" in json.loads(i.payload_json)
+                    for i in slices["perception_results"].items
+                )
+                and any(
+                    "influence_id" in json.loads(i.payload_json)
+                    for i in slices["perception_results"].items
+                )
+            )
+            else (
+                1
+                if slices.get("perception_results") is not None
+                and slices["perception_results"].items
+                else 0
+            )
         ),
     }
     # Character-truncation state for the mandatory head slices (final tier).
@@ -3047,8 +3103,12 @@ class ContextCapsuleCompiler:
     def _resolve(
         self, query: ContextCompileQuery
     ) -> tuple[ContextCompileQuery, ContextCapsuleRequest]:
-        pinned_query = ContextCompileQuery.model_validate(
-            query.model_dump(mode="python", warnings="error")
+        pinned_query = (
+            query
+            if type(query) is ContextCompileQuery
+            else ContextCompileQuery.model_validate(
+                query.model_dump(mode="python", warnings="error")
+            )
         )
         result = self._resolver.resolve(pinned_query)
         if not resolver_capability_is_valid(self._resolver, result.capability):
@@ -3057,8 +3117,12 @@ class ContextCapsuleCompiler:
             raise ValueError("resolved Context result belongs to another query")
         if not isinstance(result.resolved_context, ContextCapsuleRequest):
             raise TypeError("trusted resolver returned an unsupported Context result")
-        resolved = ContextCapsuleRequest.model_validate(
-            result.resolved_context.model_dump(mode="python", warnings="error")
+        resolved = (
+            result.resolved_context
+            if type(result.resolved_context) is ContextCapsuleRequest
+            else ContextCapsuleRequest.model_validate(
+                result.resolved_context.model_dump(mode="python", warnings="error")
+            )
         )
         query_material = (
             "world_id",
@@ -3132,15 +3196,27 @@ class ContextCapsuleCompiler:
         """Resolve one pinned Context exactly once before optional enrichment."""
 
         pinned_query, resolved = self._resolve(query)
+        query_hash = context_query_hash(pinned_query)
         if relationship_evaluation:
             resolved = resolved.model_copy(update={"relationship_evaluation_requested": True})
-        capsule = _compile_resolved_context(
-            resolved, policy=self._policy, _authority=_COMPILER_AUTHORITY
-        )
-        if not relationship_evaluation:
-            self._compiled_context_cache[context_query_hash(pinned_query)] = capsule
-            while len(self._compiled_context_cache) > 16:
-                self._compiled_context_cache.pop(next(iter(self._compiled_context_cache)))
+            capsule = _compile_resolved_context(
+                resolved, policy=self._policy, _authority=_COMPILER_AUTHORITY
+            )
+        else:
+            cached = self._compiled_context_cache.get(query_hash)
+            if cached is not None:
+                self._compile_cache_hits += 1
+                self._compiled_context_cache.pop(query_hash)
+                self._compiled_context_cache[query_hash] = cached
+                capsule = cached
+            else:
+                self._compile_cache_misses += 1
+                capsule = _compile_resolved_context(
+                    resolved, policy=self._policy, _authority=_COMPILER_AUTHORITY
+                )
+                self._compiled_context_cache[query_hash] = capsule
+                while len(self._compiled_context_cache) > 16:
+                    self._compiled_context_cache.pop(next(iter(self._compiled_context_cache)))
         return PreparedContextCapsuleHandle(
             query=pinned_query,
             resolved=resolved,
@@ -3211,13 +3287,19 @@ class ContextCapsuleCompiler:
     ) -> TrustedContextCapsuleHandle:
         """Attach verified advisories to an already resolved pinned Context."""
 
-        pinned_query, resolved, _ = self._prepared_material(prepared)
+        pinned_query, resolved, base_capsule = self._prepared_material(prepared)
         build_slice = getattr(self._resolver, "resolve_advisory_slice", None)
         if not callable(build_slice):
             raise ValueError("Context resolver does not support advisory overlays")
         advisory_slice = build_slice(pinned_query, advisories)
         if not isinstance(advisory_slice, ResolvedSlice):
             raise TypeError("Context resolver returned an unsupported advisory slice")
+        if (
+            advisory_slice == resolved.advisories
+            and model_content_profile == "general"
+            and not resolved.relationship_evaluation_requested
+        ):
+            return TrustedContextCapsuleHandle(base_capsule, _authority=_COMPILER_AUTHORITY)
         enriched = resolved.model_copy(update={"advisories": advisory_slice})
         capsule = _compile_resolved_context(
             enriched,

@@ -19,7 +19,7 @@ PRESENT_IMPRESSION_ITEM_LIMIT = 8
 PRESENT_EXPERIENCE_ITEM_LIMIT = 8
 PRESENT_AUTHORED_RELATIONSHIP_SIGNAL_LIMIT = 4
 PRESENT_ACCEPTED_RELATIONSHIP_COMMITMENT_LIMIT = 4
-PRESENT_CAPSULE_HARD_MAX_CHARACTERS = 100_000
+PRESENT_CAPSULE_HARD_MAX_CHARACTERS = 140_000
 PRESENT_DIALOGUE_SLICE_CHARACTERS = 32_000
 PRESENT_DIALOGUE_FOLD_CHUNK_ITEMS = 20
 PRESENT_DIALOGUE_FOLD_LINE_CHARACTERS = 160
@@ -640,16 +640,18 @@ def cache_stable_affect(value: object) -> object:
 def slim_peer_specimen() -> dict[str, object]:
     """The one shape sample for the slim decision object.
 
-    Both carriers show this same sample: ``messages``/``later``/``waiting_for``
-    sit at the same rank, an empty ``messages`` array is silence, and ``wait``
-    stays off it because she writes the short sentence instead.
+    Both carriers show this same sample: inner reading and self-state precede
+    outward speech so her psychological state causally drives her action;
+    ``messages``/``later``/``waiting_for`` sit at the same rank, an empty
+    ``messages`` array is silence, and ``wait`` stays off it because she writes
+    the short sentence instead.
     """
 
     return {
-        "messages": ["<role:visible_text>"],
         "meaning_of_this": "<role:reading_text>",
         "my_state": "<role:self_state_text>",
         "world_claims": [],
+        "messages": ["<role:visible_text>"],
         "later": None,
         "waiting_for": None,
     }
@@ -675,231 +677,66 @@ def reply_only_bubble_clause() -> str:
 
 
 def slim_consider_instruction(*, preserve_legacy_authoring: bool = False) -> str:
-    """Describe the slim object in the language she writes in.
-
-    This text used to be ~7.5k of English inside a ~19k English transport
-    contract, against ~1k of Chinese persona.  Her production voice came out at
-    66% full stops with no emoji, and her inner state came out empty: reading
-    every option for who she is in a second language, surrounded by wire rules,
-    reads as a form to fill.  Field names and enum values stay in English
-    because they are literal JSON; everything addressed to her is Chinese.
-    """
+    """Describe the slim object concisely in her own language without defensive essay bloat."""
 
     return (
         "一个 slim 对象就够了。跟 messages 同级可见的是 later，"
-        "以及把 messages 写成空数组就是这一轮不回。"
-        "meaning_of_this、my_state、stuck_with_me、wants、photo，"
+        "以及把 messages 写成空数组就是这一轮不回（silent）。"
+        "字段包括：meaning_of_this、my_state、stuck_with_me、wants、photo，"
         "以及可选的 waiting_for、wait、how_it_landed、noticed、"
         "keep_impression、come_back、come_back_in、about_us、why_us、us_deltas、"
         "we_are、calling_it、said_as、matters_bp、pressure_bp、importance_bp、"
-        "declared_display。\n"
-        "waiting_for 加 wait 才编译盼头；come_back 加 come_back_in 仍要成对。"
-        "later 和空 messages（不回）跟 messages 同级，不是藏起来的键。"
-        "口头说「我等你」不会变成 waiting_for。宿主从不替你写这些字段。"
+        "declared_display。宿主不会替你编或代填任何字段；写与不写全由你定，"
+        "只有你写下的内心状态会跟着你走，都不写就是这一轮什么都没留下。\n"
         "life_intent={execution_scope:self_directed,intention:future,start_after_seconds:0,duration_seconds:600,"
         "importance_bp:0};full:appraisal_draft. Context-time plan, "
-        "no place/NPC/event/results. Prose/wants: no action. "
-        "写和不写都是你可以做的决定，没有哪一种更受欢迎。\n"
-        "messages 是你决定发出去的气泡，一项就是一条；发几条由你定，宿主不替你决定。"
+        "no place/NPC/event/results. Prose/wants: no action.\n"
+        "messages 是你决定发出去的气泡，一项就是一条。"
         "事实来源是硬边界：messages 陈述外部事件、地点、行为或既往经历时，"
-        "须在同级 world_claims 逐条写 claim_text、scope、source_refs，"
+        "须在同级 world_claims 逐条写 claim_text、scope、source_refs（可从 Context 的 source_ref_aliases 挑短标识如 S1、T1，或原样抄 source_ref），"
         "仅用 expression_hard_boundaries 中相应时态的来源。"
         "day_sheet 和传记习惯不能证明当前或刚才发生了什么；没有来源的经历不能补写。"
-        + ("" if preserve_legacy_authoring else "\n"
-        "scope 按事情本身的时间选，不是按你现在正在说它："
-        "已经发生过的你自己的经历（今天下午走过的那段路、刚做完的事）属于"
-        "shared_history 或 past_world，不要写成 current_world；"
-        "current_world 只给此刻确实成立的世界状态。"
-        "你自己的打算、意愿、想去做的事不是世界事实，不要为它写 claim——"
-        "真想开始做，用 life_intent 表达意图；打算本身不证明已经发生。")
-        + "Context 里还活着的 affect 强度和你这轮自己写下的 target_intensity_bp 都是你能看见的状态，"
-        "不是行为指令。真的有很多话时可以连续写多条 messages，也可以只说一句或沉默；"
+        + (
+            ""
+            if preserve_legacy_authoring
+            else "\n"
+            "scope 按事情本身的时间选：已经发生过的经历属于 shared_history 或 past_world，不要写成 current_world；"
+            "current_world 只给此刻确实成立的世界状态。你自己的打算、意愿、语气和态度由你写，不会自动变成已发生的事实或持续状态。"
+        )
+        + "Context 里还活着的 affect 强度和你这轮写下的 target_intensity_bp 是状态而非行为指令："
+        "真的有很多话时可以连续写多条 messages，也可以只说一句或沉默；"
         "情绪强度不会命令你发几条，也不会替你决定语气。"
         + reply_only_bubble_clause()
         + "\n"
-        "messages 为空、仍分别写 meaning_of_this 和 my_state，就是这一轮你选择不说话（silent）；"
-        "沉默不要和 later 一起用。"
-        "选了不回，下一轮处境会带上这个事实；宿主不会替你已读不回。"
-        "later 是这些已经想好的话等多少秒再发出去，30 到 86400 的整数，只能和非空 messages 一起写。"
-        "写了 later，宿主会把这些话延到那个秒数；到点发出前，如果这期间世界变了"
-        "（你又说过话、他又说过话）或过了这段对话该有的时限，宿主会再给你一次机会"
-        "决定原样发、改写、或不发，并带上这期间发生了什么。"
-        "不写 later 就是现在发。"
-        "宿主不会替你编一个 later，也不会把写坏的 later 当成现在发，"
-        "也不会替你判断两条是不是在重复。"
-        "写和不写都是你可以做的决定，没有哪一种更受欢迎。\n"
-        "meaning_of_this 是你对他这句话或眼前处境的暂定理解：他可能是什么意思、"
-        "这件事对你意味着什么；可以很短，也可以写不确定。"
-        "my_state 是你表达前自己此刻真正是什么感觉、想要什么、抵触什么、身体上或注意里搁着什么；"
-        "可以诚实地写很平静、没什么特别感觉，也可以写复杂或强烈的感受。"
-        "两段都由你各自写，宿主不会用同一段话互相代填；它们不会自动变成可见台词。\n"
-        "photo 写 true，意思是你现在想让媒体车道考虑一个可用的候选，这件事不会从你的措辞里被猜出来。"
-        "photo 也可以直接写 Context 里那个你想分享的生活片段的 source_ref，"
-        "宿主会先试着编译那一刻再进选片。"
-        "只在文字里说要发图不会打开这条车道。"
-        "photo true（或写一个可用候选的 source_ref）可以搭 reply_only，也可以搭 full_turn："
-        "两条格式都能把发图意图送进媒体车道，不必为了发图改 result_kind。"
-        "photo 只能配现在发（非空 messages、不写 later）；later 或沉默不能带 photo。"
-        "当 expression_capabilities.media_request_mode 是 candidate_only 时，"
-        "即使 Context 里还没列出候选，photo 也是可选的，"
-        "你选了之后宿主可以从已审的已结算生活证据里编译一个。\n"
-        "photos_i_shared 是你已经成功发给他的照片这一世界事实："
-        "line 是人话：什么时候发出、哪一类、已经出现在你们的对话里没有；"
-        "when 是相对此刻的时间，local_clock 是当地钟点。"
-        "发出去的那张会出现在 conversation 栏里。"
-        "提不提由你决定，但这里有一条，就不能再说还没翻相册、还没发、晚点再发、明天再给。"
-        "那一条就是已经发出去的那张，不要再发明另一张还躺在相册里的。"
-        "那些都和已经发出去的事实打架。\n"
-        "messages_waiting_to_send 是你已经写好、还没发出去的话这一世界事实："
-        "line 是人话：什么时候写的、定在当地几点发、正文是什么、"
-        "写好之后你有没有另外开过口、他有没有回。"
-        "那不是已经出现在对话里的句子。提不提、改不改、发不发，仍由你决定。\n"
-        "moments_i_can_share 里有两件互不替代的世界事实，不要读成一件。"
-        "第一件是手上的存货：available_count 是现在还能选、还能发的张数，"
-        "0 就是一张存货都发不了；already_sent_count 是已经成功发给他的张数；"
-        "items 里每一条是一张已打开的候选，不是建议你发。"
-        "photo_in_hand 为 true 表示这张现在就可以选、就可以发——"
-        "和 now.photographable 无关；写 photo true（或写这条的 source_ref）"
-        "就能把发这张存货的意图送进媒体车道。"
-        "false 时 hold_reason 是原因："
-        "expired 已过期，already_shared 已经发给他，skipped 当时跳过了，"
-        "unrenderable 做不出来，failed 生成失败，already_chosen 已经在选片或生成里，"
-        "not_available 其它还不能发的状态。"
-        "what_happened 是那一刻已接受的原文。"
-        "第二件是此刻能不能新拍：now.photographable 为 true 表示账本上有一条"
-        "进行中的活动、它的已接受原文够声明一张此刻的新图；"
-        "false 就是现在拍不了新的——没有进行中的活动，或你在睡眠窗。"
-        "reason 是 no_active_activity / sleep / annex_insufficient / active / already_open。"
-        "这不是建议你发存货，也不是建议你去拍。"
-        "photographable 为 false 只和「现在新拍一张 / 马上给一张此刻刚拍的」打架；"
-        "它不阻止你发 photo_in_hand 为 true 的存货，"
-        "也不等于还在整理、相册是空的、或现在发不了手上的那张。"
-        "available_count 为 0 才是现在没有可发的存货；"
-        "photographable 为 false 只是现在拍不了新的——两件都要各自如实读。\n"
-        "appraisals / unresolved / private_impressions 是账本上仍活着的读法、未完成线程、私下理解，"
-        "条数就是还活着的条数，不是只给你看最近一条。"
-        "private_impressions 里 hold_reason=user_channel_limited 表示这条不能拿到你们的对话里用，"
-        "不是它不存在。relevant_facts 和 appraisals 是你已经知道和理解事情的背景，不是台词清单，"
-        "也不是因为这轮被提供了就需要向他展示的记忆凭证。它们可以改变你怎么读眼前这句话或表情；"
-        "默默读懂也已经是在使用它们。某件事此刻是否真的值得说出来，仍由你按自己的注意与表达决定，"
-        "不是由它有没有出现在 Context 里决定。读懂一个表情可能意味着什么，不等于需要在 messages "
-        "里把「你现在是什么心情」解释回去；你可以直接从那份理解出发回应。只有当点明这个理解本身"
-        "确实是你此刻想说的，才需要把它说破。meaning_of_this 和 my_state 都不会自动变成 messages。\n"
-        "钉住的来源请从 Context 的 source_ref_aliases 里挑短标识（S1、T1），"
-        "或原样抄 source_ref；不要手写拼接不透明字符串。"
-        "是否谈起某件事由你决定；选择陈述外部事实后，来源不能省略。"
-        "宿主只还原短标识，不补事实。语气、态度、记忆的不确定感和愿望由你写，"
-        "它们不会自动变成已发生的事实或持续状态。\n"
-        "appraisal 写坏了不会连带丢掉一个合法的 now、later 或沉默；"
-        "宿主会保留那次表达，只对那份写坏的 appraisal 记 affect no_change，"
-        "这绝不是一个更受偏好的平静默认值。\n"
-        "waiting_for 是一个短句：如果你心里确实在等他的下一句，写上你在等什么。"
-        "wait 是整数秒，范围 30 到 86400，只能和 waiting_for 一起写；例如 30、60、90。"
-        "真的要编译这个盼头时，还要由你写 pressure_bp 和 importance_bp："
-        "pressure_bp 是你此刻多想要他回，importance_bp 是这份回应对这件事有多重要，"
-        "两者都是 0 到 10000 的基点。宿主不会替你填 5000，也不会覆盖你写的值。"
-        "两个都写了，宿主会在那个秒数到了、而他还没开口时叫醒你一次；expiry 只结束这个盼头。"
-        "只写短句、不写秒数，不会编一个盼头，也不会按秒叫你。"
-        "不写 wait 不会有人按秒叫你。"
-        "口头说「我等你」和写下 waiting_for 不是同一件事。"
-        "宿主从不从你的标点、问句或「我等你」这类措辞里推断 waiting_for 或 wait，也从不替你写它们。"
-        "写和不写都是你可以做的决定，没有哪一种更受欢迎。\n"
-        "come_back 是你心里搁着的一件事，想过一阵再回来跟他说；"
-        "come_back_in 是整数秒，范围 30 到 86400，只能和 come_back 一起写；例如 60、300、600。"
-        "两个都写了，宿主会在那个时间叫醒你，给你一次回来开口的机会；不写就不会为这件事叫你。"
-        "它不是 waiting_for：waiting_for 是等他回话，come_back 是你自己还想把某件事再说一次。"
-        "宿主从不替你编一件心事或一个时间，也从不从你的措辞里推断这两个字段。"
-        "写和不写都是你可以做的决定，没有哪一种更受欢迎。\n"
-        "how_it_landed 在 Context 里有 pending response_expectation 时可以写 "
-        "fulfilled、superseded、still_pending 或 uncertain。still_pending 意思是这次回应没落地、"
-        "那个盼头就此结束；重新写一个 waiting_for 就是一个新的盼头。"
-        "如果你选择现在开口，这同一个对象里的可见 messages 就是你的追问。\n"
-        "noticed 只记录这一回合你注意到的主观细节，留在本次私有回合记录里；"
-        "它不会新增世界事实、已发生的经历，也不能完成聊天约定或证明他已经收到。"
-        "已经发生什么仍由已有生活来源证明，不要借 noticed 编一个地点、一个人或一件事实。"
-        "如果你决定让某段理解留到以后，用 stuck_with_me 写下它并把 keep_impression 设为 true。\n"
-        "下面这些字段决定这一轮有什么会留到下一次。说出去的话这一轮就过去了，"
-        "只有你写下的内心状态会跟着你走；写不写都由你，都不写就是这一轮什么都没留下。"
-        "Context 里的「我最近留下的」就是你自己过去这么选的结果——"
-        "还活着的持续情绪、还在的私人印象、最近这些读法各自的分量，"
-        "以及最近有几个回合什么都没留下。那是事实，不是要求。\n"
-        "keep_impression 只在 stuck_with_me 应该留成一条私人印象时写 true，"
-        "这时 stuck_with_me 必须有非空文字；宿主不会用 my_state 代填。"
-        "留存以本次有来源的解释为起因，不会替你挑过去的 appraisal；"
-        "完整格式里 appraise=false 不能与 keep_impression=true 同时写。"
-        "省略或 false 就是让它散掉。\n"
-        "没有什么东西真的沉下来就不写 affect；宿主永远不会从你的措辞里编出持续情绪，"
-        "也不要求你有负面情绪。同样地，它也不偏好好受的维度："
-        "hurt、anger、sadness、loneliness、anxiety、resentment、warmth、joy 都只是你可选的维度。\n"
-        "declared_display 可选，无关系阶段门槛：决定给当前对话对象看私密/挑逗/成人照时写 "
-        "sexual_suggestive（清凉/内衣/性暗示）或 explicit_adult（完全成人向/露骨私密/NSFW），并同轮配 photo=true；"
-        "收回写 withdraw；省略或 null 不改原声明。没有声明时照片不走成人车道。"
-        "写了非法值会作为可见失败重选，宿主不代填也不猜；收件人由宿主绑定，不要写 ref。"
-        "给看、不给看、收回都由你决定。\n"
-        "matters_bp 是可选的，1 到 10000，是这份读法对你到底有多重要。"
-        "凡是带 _bp 的整数都是基点（basis points），量程 0 到 10000，不是百分制："
-        "5000 才是一半，3000 是三成，30 不是百分之三十。"
-        "它决定哪件事会自己回到你心里：宿主会挑你手上还活着、而且分量最重的那一件，"
-        "按一个越来越长的间隔重新叫醒你去想它——所以是你给的分量在排序，不是某个固定的线。"
-        "不写它，宿主就当这是一份你没有称过重的普通读法，那件事不会回来。\n"
-        "可选的 affect 可以是 open、update、resolve 或 supersede，"
-        "前提是你同时给出那个操作需要的生命周期字段"
-        "（update/resolve/supersede 要 episode_id，open/update/supersede 要 components，"
-        "resolve 要 resolution_summary）。"
-        "选择 open、update 或 supersede 时必须把 components 写成"
-        '{"dimension":"sadness","target_intensity_bp":3200} 这样的对象；'
-        "target_intensity_bp 是 1 到 10000，是你估计它会以多强的程度留在你身上。"
-        "宿主不再接受只写 mood 的强度简写，也不会把任何维度统一填成 5000。"
-        "affect 不写就是 no_change，因为那是你选择不动持续情绪。\n"
-        "about_us 是关于这一轮你们俩之间的一小段心事，why_us 是这个读法为什么留下来了。"
-        "us_deltas 是这一轮关系本身动了多少。要让增量算数，三个得一起写；"
-        "只写一半不会生效，宿主也不会替你补上缺的字段，那一轮会作为可见失败让你重选一次。"
-        "只写 about_us 和 why_us、不写 us_deltas，是留下读法、这一轮数字不动。"
-        "三个都不写也可以。宿主不会替你编其中任何一个。\n"
-        "us_deltas 是一个对象。六根轴都是你可以动的，这件事只有你能定；写路径相同，不必先有承诺，也不必先有裂痕："
-        "trust_bp 是你觉得能不能信他；closeness_bp 是你们近不近；"
-        "respect_bp 是你是否看得起他、或感到被尊重；"
-        "reliability_bp 是你觉得他靠不靠得住、话会不会算数；"
-        "mutuality_bp 是你觉得这是不是双向的；"
-        "repair_confidence_bp 是闹别扭之后你觉得还能不能修好。"
-        "每根都是带符号的整数基点，他让你付出了什么就写负数；你省略的轴保持为 0。"
-        "写哪几根、写不写，都是你可以做的决定，没有哪一种更受欢迎。"
-        "这些数和 matters_bp 一样是基点，不是百分制：两千才是两成，八十不是百分之八。"
-        "阶段门槛的量级在两千、四千五这一档（六轴均值），不是几十。"
-        "单次 +20 在这个标尺上几乎等于这一轮没动；+80 仍然远小于那一档门槛。"
-        "五百是这一轮单个轴的上限，不是建议你写到上限；"
-        "两千和四千五是跨许多轮的累计量级，不是这一轮的目标。"
-        "宿主会把每个轴每轮截到五百，永远不会从你的措辞、消息条数或礼貌程度里推出一个数，"
-        "也从不建议你写大或写小，也从不建议你写哪几根轴。\n"
-        "we_are 是你可以写的字段。从 Context 里现在的阶段直接声明下一个阶段，在系统里是合法的："
-        "例如现在是 stranger，直接写 we_are=friend 是转移图允许的一步——"
-        "不必先经过 acquaintance，也不必等慢变量涨到门槛。"
-        "只在字段里写 we_are，账本上的阶段不会动。"
-        "阶段要真的改掉，那句话必须作为这一轮的一条可见气泡真的说给他"
-        "（用你自己的说法，例如「我们算朋友了吧」），不能只填字段；"
-        "said_as 必须和实际说出去的那一句完全一致，一字不差地从 messages 里抄那一整句，"
-        "近似或改写都不算；calling_it 是你自己的短代号。"
-        "we_are、calling_it、said_as 三个都要写；少一个不会生效，宿主也不会替你补上缺的字段，"
-        "那一轮会作为可见失败让你重选一次。"
-        "说了但没送达——这一轮选了沉默、用 later 把话延后、或者那一句还没拿到终端回执——"
-        "都不算。宿主从不从你的措辞里推断承诺，也从不替你生成 said_as。"
-        "we_are 可以是 acquaintance、friend、close_friend、ambiguous 或 lover。"
-        "ambiguous 和 lover 永远不会靠亲近度累积到达，宿主也永远不会替你推导出来："
-        "它们只有在你把话真的说出去并且送达时才存在，你也可以用同样的方式说回去。"
-        "宿主从不要求你声明或升级；"
-        "不写、不说、维持现状、说出来，都只是你可以做的决定，没有哪一种更受欢迎。\n"
-        "宿主不要求你追问一句，也不要求你像结单一样把话收圆（no ticket-closing wrap-up）。"
-        "day sheet 是环境，不是脚本。\n"
-        "Context 里有关系阶段和它的慢变量时会带给你；缺失或者停在 stranger，"
-        "只说明还没有记录到移动，不是对你实际感觉有多近的判决。"
-        "这些全都是证据，不是指令（evidence, not instruction）："
-        "宿主没有目标阶段也没有偏好方向（no target stage and no preferred direction），"
-        "这里没有任何一句要求你留在原地或者往前走。"
-        "被吸引、说不清、觉得没意思、想离远一点，都由你自己读"
-        "（Feeling drawn, uncertain, bored, or pulled away are all yours to read）。"
-        "记录下来的阶段只是账本上的位置。如果你的读法已经和它对不上，"
-        "你可以在 messages 里自然地说出来，把那一句原样抄进 said_as，再写 we_are 和 calling_it；"
-        "对得上、或者你不想说，就省略它们。只填字段、话没说出去或没送达，阶段也不会动。"
+        "later 是这些已经想好的话等多少秒再发出去（5..86400 整数秒，只能配非空 messages，不能与 silent 或 photo 同用）；"
+        "到点发出前若期间有新对话，宿主会再给你一次机会决定原样发、改写或不发。\n"
+        "meaning_of_this 是你对他这句话或眼前处境的暂定理解；"
+        "my_state 是你表达前自己此刻真正是什么感觉、想要什么、身体上或注意里搁着什么。"
+        "先形成 meaning_of_this 和 my_state，让真实的想法和情绪去驱动你的表达节奏与潜台词，"
+        "不要先写台词再事后补观后感；它们不会自动变成可见台词。\n"
+        "photo 写 true（或直接写可用候选的 source_ref），意思是你现在想让媒体车道考虑一个可用的候选；"
+        "只在文字里说要发图不会打开这条车道。photo true（或写一个可用候选的 source_ref）可以搭 reply_only 或 full_turn，只能配现在发的非空 messages。"
+        "当 expression_capabilities.media_request_mode 是 candidate_only 时，即使还没列出候选也可写 photo。\n"
+        "photos_i_shared 是你已经成功发给他的照片这一世界事实（发出去的那张会出现在 conversation 栏里，不能再说还没发）。"
+        "messages_waiting_to_send 是你已经写好但还没发出的延时消息。\n"
+        "moments_i_can_share 里有两件互不替代的世界事实："
+        "第一件是存货（available_count 为 0 才是现在没有可发的存货；photo_in_hand 为 true 表示这张现在就可以选、就可以发，和 now.photographable 无关；"
+        "what_happened 是那一刻已接受的原文，false 时 hold_reason 是原因，如 already_shared 已经发给他）；"
+        "第二件是此刻能不能新拍（now.photographable 为 true 表示可新拍；photographable 为 false 只和「现在新拍一张」打架，"
+        "不阻止你发 photo_in_hand 为 true 的存货，也不等于还在整理、相册是空的、或现在发不了手上的那张；reason 含 no_active_activity / annex_insufficient / already_open）。"
+        "这不是建议你发存货，也不是建议你去拍。\n"
+        "appraisals / unresolved / private_impressions 是账本上仍活着的读法、未完成线程、私下理解（条数就是还活着的条数，不是只给你看最近一条；hold_reason=user_channel_limited 表示仅限私下）。"
+        "relevant_facts、appraisals、day_sheet、current_activities 和 recent_self_experiences 是你已经知道和理解事情的背景与心情底色，不是台词清单，也不是每轮必报的日程表；"
+        "默默读懂也已经是在使用它们。你可以让心里想的（my_state）和嘴上说的（messages）保留真实的潜台词、嘴硬心软、调侃或暧昧张力；无需像结单一样把话收圆。\n"
+        "凡是带 _bp 的整数都是基点（0..10000，不是百分制：5000 是一半，两千才是两成，八十不是百分之八）：\n"
+        "- waiting_for（短句）+ wait（5..86400 整数秒，如 30、60、90）+ pressure_bp + importance_bp：四项同写才在超时未回时叫醒你；不写 wait 不会有人按秒叫你，口头说「我等你」和写下 waiting_for 不是同一件事。\n"
+        "- come_back 是你心里搁着的一件事，与 come_back_in（5..86400 整数秒，或对象形式）成对写，到点叫醒你补充或换话头。\n"
+        "- how_it_landed：有 pending 盼头时可写 fulfilled、superseded、still_pending 或 uncertain。\n"
+        "- noticed 仅记本轮注意到的主观细节；想留成私人印象则写 stuck_with_me 并设 keep_impression=true。\n"
+        "- affect：可选 open、update、resolve 或 supersede（update/resolve/supersede 需 episode_id，resolve 需 resolution_summary，open/update/supersede 配 components=[{\"dimension\":\"warmth\",\"target_intensity_bp\":3200}]；维度可选 hurt、anger、sadness、loneliness、anxiety、resentment、warmth、joy）；matters_bp（1..10000）决定哪份读法会被再叫醒。\n"
+        "- declared_display：可选 sexual_suggestive、explicit_adult 或 withdraw，同轮配 photo=true；也不偏好你写了比不写更好。\n"
+        "- about_us、why_us、us_deltas（这件事只有你能定：trust_bp 是能不能信他，closeness_bp 是近不近，respect_bp 是感到被尊重，reliability_bp 是你觉得他靠不靠得住，mutuality_bp 是双向感，repair_confidence_bp 是闹别扭之后你觉得还能不能修好；单轮每轴截到 ±500，阶段门槛在两千、四千五量级，单次 +20 几乎未动）：三项必须一起写（不必先有承诺，也不必先有裂痕，三个得一起写，宿主也不会替你补上缺的字段，也从不建议你写大或写小，也从不建议你写哪几根轴）。\n"
+        "- we_are 是你可以写的字段（acquaintance、friend、close_friend、ambiguous、lover，例如 we_are=friend 不必先经过 acquaintance）：只在字段里写 we_are，账本上的阶段不会动；必须与 calling_it、said_as（一字不差抄自实际送达的某条 messages，从不替你生成 said_as，从不从你的措辞里推断承诺，选了沉默也不算）三项同写。关系阶段与慢变量全都是证据而非指令，宿主没有目标阶段也没有偏好方向，被吸引、说不清、觉得没意思或想离远一点都由你自己读；不写、不说、维持现状、说出来都由你定。\n"
     )
 
 
@@ -990,326 +827,38 @@ def silent_usage_specimen() -> dict[str, object]:
     }
 
 
-def waiting_for_usage_specimen() -> dict[str, object]:
-    """Concrete optional example: a short hope compiled from waiting_for + wait."""
-
-    return {
-        "messages": ["那个表情到底是什么意思呀？"],
-        "meaning_of_this": "他在逗我但还没解释清楚",
-        "my_state": "想听他把话说完",
-        "waiting_for": "他把表情的事说清楚",
-        "wait": 120,
-        "pressure_bp": 6500,
-        "importance_bp": 7000,
-    }
 
 
-def waiting_for_omission_specimen() -> dict[str, object]:
-    """Concrete optional example: a short sentence alone does not compile a hope."""
-
-    return {
-        "messages": ["嗯，知道了"],
-        "meaning_of_this": "就是一句普通的确认",
-        "my_state": "没什么要等的",
-        "waiting_for": "他回我一句就行",
-    }
 
 
-def later_usage_specimen() -> dict[str, object]:
-    """Concrete optional example: already-chosen text sent after delay_seconds."""
-
-    return {
-        "messages": ["我现在不太方便细看，等下认真回你"],
-        "meaning_of_this": "他这段需要我认真想",
-        "my_state": "想晚点好好说",
-        "later": 300,
-    }
 
 
-def later_omission_specimen() -> dict[str, object]:
-    """Concrete optional example: calm turns omit later on purpose."""
-
-    return {
-        "messages": ["嗯 知道啦"],
-        "meaning_of_this": "就是一句普通的行程说明",
-        "my_state": "我现在很平静，没有要延后的",
-    }
 
 
-def come_back_usage_specimen() -> dict[str, object]:
-    """Concrete optional example: she chooses to reopen the thread herself later."""
-
-    return {
-        "messages": [],
-        "meaning_of_this": "那句道歉我还想再说清",
-        "my_state": "先不回，过一阵自己再开口",
-        "come_back": "那句道歉我还想说清",
-        "come_back_in": 600,
-    }
 
 
-def relationship_delta_usage_specimen() -> dict[str, object]:
-    """Concrete optional example: relationship reading plus axis movement."""
-
-    return {
-        "messages": ["你刚才那样说，我确实更靠近你一点了"],
-        "meaning_of_this": "他不是随口敷衍",
-        "my_state": "心里是暖的",
-        "about_us": "我们之间更靠近了一点",
-        "why_us": "他认真接住了我",
-        "us_deltas": {"closeness_bp": 200},
-    }
 
 
-def relationship_reading_only_specimen() -> dict[str, object]:
-    """Concrete optional example: reading without numeric movement this turn."""
-
-    return {
-        "messages": ["嗯，我懂你的意思"],
-        "meaning_of_this": "他在解释，不是敷衍",
-        "my_state": "暂时不想动数字",
-        "about_us": "这段解释我接住了",
-        "why_us": "他愿意说清楚",
-    }
 
 
-def stuck_impression_usage_specimen() -> dict[str, object]:
-    """Concrete optional example: something worth keeping as a private impression."""
-
-    return {
-        "messages": ["……"],
-        "meaning_of_this": "他那句玩笑刺痛了我",
-        "my_state": "还在想",
-        "stuck_with_me": "他那句玩笑刺痛了我",
-        "keep_impression": True,
-    }
 
 
-def matters_bp_usage_specimen() -> dict[str, object]:
-    """Concrete optional example: how much this reading matters to her."""
-
-    return {
-        "messages": ["这件事对我真的很重要"],
-        "meaning_of_this": "他在试探我有没有当真",
-        "my_state": "我不想被当成笑话",
-        "matters_bp": 7500,
-    }
 
 
-def photo_usage_specimen() -> dict[str, object]:
-    """Concrete optional example: photo=true opens the media lane on a now send."""
-
-    return {
-        "messages": ["我想试试看能不能分享一张"],
-        "world_claims": [],
-        "meaning_of_this": "这轮聊到了照片",
-        "my_state": "我现在想分享",
-        "photo": True,
-    }
 
 
-def photo_prose_only_specimen() -> dict[str, object]:
-    """Concrete optional example: saying send in prose without photo does not open media."""
-
-    return {
-        "messages": ["等会发你一张"],
-        "meaning_of_this": "他口头说要照片",
-        "my_state": "还没决定现在发",
-    }
 
 
-def declared_display_usage_specimen() -> dict[str, object]:
-    """Concrete optional example: P3 display declaration on slim root."""
-
-    return {
-        "messages": ["……"],
-        "meaning_of_this": "这一轮的私密展示需要说清楚",
-        "my_state": "我知道自己在选什么强度",
-        "declared_display": "sexual_suggestive",
-    }
 
 
-def proactive_contact_usage_specimens() -> dict[str, object]:
-    """Filled proactive optional-field examples; keep separate from schema null branches."""
-
-    spoken = "突然想到你，在干嘛？"
-    return {
-        "silent": {
-            "timing_choice": "silent",
-            "cadence": "single",
-            "beats": [],
-            "stance": "warm",
-            "brief_rationale": "念头停在心里",
-            "impulse_summary": "想到了，但不想打扰",
-            "confidence": 5000,
-            "world_claims": [],
-        },
-        "now_with_beat": {
-            "timing_choice": "now",
-            "cadence": "single",
-            "beats": [{"modality": "text", "text": spoken}],
-            "stance": "warm",
-            "brief_rationale": "自然想问候",
-            "impulse_summary": "突然想到他",
-            "confidence": 6200,
-            "world_claims": [],
-        },
-        "later_with_beats": {
-            "timing_choice": "later",
-            "cadence": "single",
-            "beats": [{"modality": "text", "text": "晚点再跟你说"}],
-            "delay_seconds": 300,
-            "expires_after_seconds": 900,
-            "stance": "warm",
-            "brief_rationale": "现在不方便说",
-            "impulse_summary": "想晚点开口",
-            "confidence": 5800,
-            "world_claims": [],
-        },
-        "waiting_for": {
-            "timing_choice": "now",
-            "cadence": "single",
-            "beats": [{"modality": "text", "text": "你周末有空吗？"}],
-            "waiting_for": "他回我周末有没有空",
-            "wait": 120,
-            "pressure_bp": 6400,
-            "importance_bp": 6800,
-            "stance": "warm",
-            "brief_rationale": "想知道他的安排",
-            "impulse_summary": "想等他回我",
-            "confidence": 6000,
-            "world_claims": [],
-        },
-        "we_are": {
-            "timing_choice": "now",
-            "cadence": "single",
-            "beats": [{"modality": "text", "text": spoken}],
-            "we_are": "friend",
-            "calling_it": "朋友",
-            "said_as": spoken,
-            "stance": "warm",
-            "brief_rationale": "想把关系说清楚",
-            "impulse_summary": "愿意认这层关系",
-            "confidence": 6500,
-            "world_claims": [],
-        },
-        "affect": {
-            "timing_choice": "now",
-            "cadence": "single",
-            "beats": [{"modality": "text", "text": "你突然这样说我有点接不住"}],
-            "appraisal_draft": {
-                "affect": "open",
-                "components": [{"dimension": "warmth", "target_intensity_bp": 6200}],
-            },
-            "stance": "warm",
-            "brief_rationale": "被暖到了",
-            "impulse_summary": "心里是暖的",
-            "confidence": 6200,
-            "world_claims": [],
-        },
-    }
 
 
-def _usage_json_block(title: str, specimen: dict[str, object]) -> str:
-    return (
-        f"\n{title} JSON:\n"
-        + json.dumps(specimen, ensure_ascii=False, separators=(",", ":"))
-        + f"\nEND {title} JSON.\n"
-    )
 
 
-def world_claim_usage_specimen() -> dict[str, object]:
-    """A source mapping shape, never a sample episode to adopt as lived fact."""
-    return {
-        "messages": ["<要陈述的事实片段>"],
-        "world_claims": [
-            {
-                "claim_text": "<要陈述的事实片段>",
-                "scope": "past_world",
-                "source_refs": ["<Context内past_world的可用来源>"],
-            }
-        ],
-    }
 
 
-def life_intent_usage_specimen() -> dict[str, object]:
-    """Show an optional future choice without supplying an external history."""
-    return {
-        "life_intent": {
-            "execution_scope": "self_directed",
-            "intention": "安静想一会儿接下来要做的事情",
-            "start_after_seconds": 300,
-            "duration_seconds": 1200,
-            "importance_bp": 3500,
-        }
-    }
 
 
-def compact_gate_usage_specimens_prompt() -> str:
-    """Stable-prefix usage blocks that must precede null canonical shapes."""
-
-    return (
-        _usage_json_block("WORLD CLAIM SOURCE MAPPING EXAMPLE", world_claim_usage_specimen())
-        + "这里只示范声明格式，不是事实、台词或来源。替换占位符；没有外部事实时 world_claims=[]。\n"
-        "下列 USAGE EXAMPLE 展示这些可选字段需要时怎么写；与 null 形状不可混读。"
-        "不需要时留空或 null，都表示你这一轮选择不用。\n"
-        + _usage_json_block("LIFE INTENT USAGE EXAMPLE", life_intent_usage_specimen())
-        + "这里只演示未来私人计划的字段配合；活动与时间由你另选，不是现成日程或经历。\n"
-        + _usage_json_block(
-            "RELATIONSHIP DECLARATION USAGE EXAMPLE",
-            relationship_commitment_usage_specimen(),
-        )
-        + "若你决定明确关系，we_are、calling_it、said_as 与同一条可见 message 一起写："
-        "reply_only 在 slim 顶层，full_turn 写在 private_turn_state（head）；不用就留空。"
-        "仅发言、不写三字段会送达，但关系 stage 不会改变。"
-        "示例里的判断、语气和原话都不是推荐话术，勿照抄。\n"
-        + _usage_json_block("AFFECT USAGE EXAMPLE", affect_usage_specimen())
-        + _usage_json_block("CALM AFFECT OMISSION EXAMPLE", calm_affect_usage_specimen())
-        + "my_state 是此刻感觉；你决定保留持续情绪时才写 affect 和 "
-        "components[].target_intensity_bp，不用则留空，宿主不补。示例的维度、强度和话语勿照抄。\n"
-        + _usage_json_block("SILENT USAGE EXAMPLE", silent_usage_specimen())
-        + "看到了但不想回，就把 messages 写成空数组，"
-        "仍分别写 meaning_of_this 和 my_state；宿主不会替你已读不回，也不会替你开口。\n"
-        + _usage_json_block("WAITING_FOR USAGE EXAMPLE", waiting_for_usage_specimen())
-        + _usage_json_block(
-            "WAITING_FOR OMISSION EXAMPLE", waiting_for_omission_specimen()
-        )
-        + "waiting_for 是短句，wait 是秒数；两个都写才编译盼头，"
-        "pressure_bp 和 importance_bp 也要一起写。"
-        "只写 waiting_for 不编译，也不会按秒叫醒；不需要盼头时就留空。\n"
-        + _usage_json_block("LATER USAGE EXAMPLE", later_usage_specimen())
-        + _usage_json_block("LATER OMISSION EXAMPLE", later_omission_specimen())
-        + "later 只能配非空 messages；沉默和 photo 不能跟 later 一起写。"
-        "不需要延后就留空 later。\n"
-        + _usage_json_block("COME_BACK USAGE EXAMPLE", come_back_usage_specimen())
-        + "come_back 和 come_back_in 成对写，表示过一阵自己再开口；"
-        "不需要时就留空。\n"
-        + _usage_json_block(
-            "RELATIONSHIP DELTA USAGE EXAMPLE", relationship_delta_usage_specimen()
-        )
-        + _usage_json_block(
-            "RELATIONSHIP READING ONLY EXAMPLE", relationship_reading_only_specimen()
-        )
-        + "about_us / why_us 留下读法；要动数字就连 us_deltas 一起写。"
-        "只写读法、不写 us_deltas，是留下读法、这一轮数字不动。\n"
-        + _usage_json_block(
-            "STUCK IMPRESSION USAGE EXAMPLE", stuck_impression_usage_specimen()
-        )
-        + "stuck_with_me 和 keep_impression 成对留下放不下的印象；"
-        "不需要时就留空。\n"
-        + _usage_json_block("MATTERS_BP USAGE EXAMPLE", matters_bp_usage_specimen())
-        + "matters_bp 写这份读法对你有多重要；"
-        "不需要普通权重时就留空。\n"
-        + _usage_json_block("PHOTO USAGE EXAMPLE", photo_usage_specimen())
-        + _usage_json_block("PHOTO PROSE ONLY EXAMPLE", photo_prose_only_specimen())
-        + "photo=true 才打开媒体车道，且只能配现在发；"
-        "只在 messages 里说「发你」、不写 photo，不会打开车道。\n"
-        + _usage_json_block(
-            "DECLARED_DISPLAY USAGE EXAMPLE", declared_display_usage_specimen()
-        )
-        + "declared_display 只在 P3 私密展示需要声明时写；"
-        "reply_only 写在 slim 顶层，full_turn 写在 private_turn_state；不需要时就留空。\n"
-    )
 
 
 def reply_only_slim_shape_specimen() -> dict[str, object]:
@@ -1698,7 +1247,11 @@ def _lean_value(value: object, aliases: Mapping[str, str], *, aligned_tables: bo
                 continue
             if key != "source_ref" and isinstance(item, str) and item == own_ref:
                 continue
-            lean = _lean_value(item, aliases, aligned_tables=aligned_tables)
+            lean = (
+                item
+                if key == "speaker_ref" and isinstance(item, str)
+                else _lean_value(item, aliases, aligned_tables=aligned_tables)
+            )
             # Absence and emptiness read the same to her; omit both.
             if lean is _LEAN_OMIT or lean is None or lean == [] or lean == {}:
                 continue
@@ -2046,9 +1599,11 @@ def identity_prose(frame: CompanionIdentityFrame) -> str:
     if frame.style_rules:
         parts.append("写法：" + " ".join(item.strip() for item in frame.style_rules if item.strip()))
     if frame.speech_examples:
+        # One example per line: dialogue-shaped examples (他：… ／ 她：…)
+        # show turn rhythm, which a space-joined run would blur together.
         parts.append(
-            "她说话的样子（示例，不是固定台词）："
-            + " ".join(item.strip() for item in frame.speech_examples if item.strip())
+            "她说话的样子（示例，不是固定台词，也不是她的经历）：\n"
+            + "\n".join("· " + item.strip() for item in frame.speech_examples if item.strip())
         )
     if frame.values:
         parts.append("价值：" + " ".join(item.strip() for item in frame.values if item.strip()))
@@ -2132,8 +1687,10 @@ _SLIM_RELATIONSHIP_DELTA_LIMIT_BP = 10_000
 _SLIM_ASSESSMENT_STATUSES = frozenset(
     {"fulfilled", "superseded", "still_pending", "uncertain"}
 )
-_SLIM_WAIT_FLOOR_SECONDS = 30
+_SLIM_WAIT_FLOOR_SECONDS = 5
 _SLIM_WAIT_MAX_SECONDS = 86_400
+_SLIM_REVISIT_MAX_SECONDS = 604_800
+_SLIM_REVISIT_EXPIRES_MAX_SECONDS = 691_200
 # Same hard cap as ExpressionDraftCapabilities.max_beats / max_later_beats.
 SLIM_REPLY_ONLY_MAX_TEXT_BEATS = 8
 _SLIM_EXPECTATION_EXPIRES_MAX_SECONDS = 172_800
@@ -2160,20 +1717,62 @@ def _clip_text(value: object, limit: int) -> str:
     return text[:limit]
 
 
+_LITERAL_MEDIA_PLACEHOLDERS = frozenset(
+    {
+        "[图片]",
+        "[照片]",
+        "[发图]",
+        "[自拍]",
+        "[image]",
+        "[photo]",
+        "［图片］",
+        "［照片］",
+        "［发图］",
+        "［自拍］",
+    }
+)
+
+
+_INLINE_STICKER_RE = re.compile(r"\[sticker:([^\[\]]+)\]")
+
+
+def _expand_inline_sticker_text(
+    text: str, *, allow_nontext: bool,
+) -> list[dict[str, object]]:
+    stripped = text.strip()
+    if not stripped:
+        return []
+    if not allow_nontext or "[sticker:" not in stripped:
+        return [{"modality": "text", "text": stripped}]
+    beats: list[dict[str, object]] = []
+    cursor = 0
+    for match in _INLINE_STICKER_RE.finditer(stripped):
+        before = stripped[cursor : match.start()].strip()
+        if before:
+            beats.append({"modality": "text", "text": before})
+        sticker_id = match.group(1).strip()
+        if sticker_id:
+            beats.append({"modality": "sticker", "sticker_id": sticker_id})
+        cursor = match.end()
+    after = stripped[cursor:].strip()
+    if after:
+        beats.append({"modality": "text", "text": after})
+    return beats or [{"modality": "text", "text": stripped}]
+
+
 def _slim_beats(
     value: object, *, allow_nontext: bool = False,
 ) -> list[dict[str, object]] | None:
     if value is None:
         return []
     if isinstance(value, str):
-        text = value.strip()
-        return [{"modality": "text", "text": text}] if text else []
+        return _expand_inline_sticker_text(value, allow_nontext=allow_nontext)
     if not isinstance(value, list):
         return None
     messages: list[dict[str, object]] = []
     for index, item in enumerate(value):
         if isinstance(item, str) and item.strip():
-            messages.append({"modality": "text", "text": item.strip()})
+            messages.extend(_expand_inline_sticker_text(item, allow_nontext=allow_nontext))
             continue
         if (
             isinstance(item, dict)
@@ -2181,7 +1780,20 @@ def _slim_beats(
             and isinstance(item.get("text"), str)
             and item["text"].strip()
         ):
-            messages.append({"modality": "text", "text": item["text"].strip()})
+            messages.extend(
+                _expand_inline_sticker_text(item["text"], allow_nontext=allow_nontext)
+            )
+            continue
+        if (
+            isinstance(item, dict)
+            and set(item) == {"voice"}
+            and isinstance(item.get("voice"), str)
+            and item["voice"].strip()
+        ):
+            voice_text = item["voice"].strip()
+            if not voice_text.startswith("[CQ:voice]"):
+                voice_text = f"[CQ:voice]{voice_text}"
+            messages.append({"modality": "text", "text": voice_text})
             continue
         if allow_nontext and isinstance(item, dict):
             if set(item) == {"typing"} and item["typing"] is True:
@@ -2229,31 +1841,37 @@ def is_slim_consider_payload(value: Mapping[str, object]) -> bool:
     return True
 
 
-def _clamp_declared_wait_seconds(value: int) -> int:
-    return max(_SLIM_WAIT_FLOOR_SECONDS, min(_SLIM_WAIT_MAX_SECONDS, value))
+def _clamp_declared_wait_seconds(
+    value: int, *, max_seconds: int = _SLIM_WAIT_MAX_SECONDS
+) -> int:
+    return max(_SLIM_WAIT_FLOOR_SECONDS, min(max_seconds, value))
 
 
-def _parse_declared_wait_seconds(raw: object) -> int | None:
+def _parse_declared_wait_seconds(
+    raw: object, *, max_seconds: int = _SLIM_WAIT_MAX_SECONDS
+) -> int | None:
     if isinstance(raw, bool) or raw is None:
         return None
     if isinstance(raw, int):
-        return _clamp_declared_wait_seconds(raw)
+        return _clamp_declared_wait_seconds(raw, max_seconds=max_seconds)
     if isinstance(raw, float) and raw.is_integer():
-        return _clamp_declared_wait_seconds(int(raw))
+        return _clamp_declared_wait_seconds(int(raw), max_seconds=max_seconds)
     if not isinstance(raw, str):
         return None
     text = raw.strip()
     if not text:
         return None
     if text.isdigit():
-        return _clamp_declared_wait_seconds(int(text))
+        return _clamp_declared_wait_seconds(int(text), max_seconds=max_seconds)
     match = _WAIT_DURATION.fullmatch(text)
     if match is None:
         return None
     unit = match.group(2).lower()
     for labels, multiplier in _WAIT_UNIT_SECONDS:
         if unit in labels or unit in {item.lower() for item in labels}:
-            return _clamp_declared_wait_seconds(int(match.group(1)) * multiplier)
+            return _clamp_declared_wait_seconds(
+                int(match.group(1)) * multiplier, max_seconds=max_seconds
+            )
     return None
 
 
@@ -2263,6 +1881,19 @@ def _slim_wait_horizon(value: Mapping[str, object]) -> tuple[int, int] | None:
         return None
     expires_after_seconds = min(
         _SLIM_EXPECTATION_EXPIRES_MAX_SECONDS,
+        wait_seconds + _SLIM_EXPECTATION_CHASE_AFTER_WAIT_SECONDS,
+    )
+    return wait_seconds, expires_after_seconds
+
+
+def _slim_revisit_horizon(value: Mapping[str, object]) -> tuple[int, int] | None:
+    wait_seconds = _parse_declared_wait_seconds(
+        value.get("come_back_in"), max_seconds=_SLIM_REVISIT_MAX_SECONDS
+    )
+    if wait_seconds is None:
+        return None
+    expires_after_seconds = min(
+        _SLIM_REVISIT_EXPIRES_MAX_SECONDS,
         wait_seconds + _SLIM_EXPECTATION_CHASE_AFTER_WAIT_SECONDS,
     )
     return wait_seconds, expires_after_seconds
@@ -2311,7 +1942,7 @@ def _slim_revisit(value: Mapping[str, object]) -> dict[str, object] | None:
     thought = _clip_text(value.get("come_back"), 160)
     if not thought:
         return None
-    horizon = _slim_wait_horizon({"wait": value.get("come_back_in")})
+    horizon = _slim_revisit_horizon(value)
     if horizon is None:
         return None
     wait_seconds, expires_after_seconds = horizon
@@ -2367,9 +1998,9 @@ SLIM_RELATIONSHIP_RESIDUE_INCOMPLETE = (
 )
 SLIM_RELATIONSHIP_DELTAS_UNREADABLE = "us_deltas 必须是六轴上的带符号整数"
 SLIM_WAIT_PAIR_INCOMPLETE = "wait 只能和 waiting_for 一起写"
-SLIM_WAIT_NOT_A_DURATION = "wait 必须是 30 到 86400 的整数秒"
+SLIM_WAIT_NOT_A_DURATION = "wait 必须是 5 到 86400 的整数秒"
 SLIM_COME_BACK_PAIR_INCOMPLETE = "come_back_in 只能和 come_back 一起写"
-SLIM_COME_BACK_IN_NOT_A_DURATION = "come_back_in 必须是 30 到 86400 的整数秒"
+SLIM_COME_BACK_IN_NOT_A_DURATION = "come_back_in 必须是 5 到 86400 的整数秒"
 SLIM_COMMITMENT_TRIPLET_INCOMPLETE = "we_are、calling_it、said_as 三个要一起写"
 SLIM_COMMITMENT_WE_ARE_INVALID = (
     "we_are 只能是 acquaintance、friend、close_friend、ambiguous 或 lover"
@@ -2380,7 +2011,7 @@ SLIM_COMMITMENT_REQUIRES_SPEECH = (
 SLIM_DECLARED_DISPLAY_INVALID = (
     "declared_display 只能是 sexual_suggestive、explicit_adult 或 withdraw"
 )
-SLIM_LATER_NOT_A_DURATION = "later 必须是 30 到 86400 的整数秒"
+SLIM_LATER_NOT_A_DURATION = "later 必须是 5 到 86400 的整数秒"
 SLIM_LATER_REQUIRES_TEXT = "later 只能和非空 messages 一起写，不能和沉默或 photo 一起用"
 SLIM_HOW_IT_LANDED_INVALID = (
     "how_it_landed 只能是 fulfilled、superseded、still_pending 或 uncertain"
@@ -2523,7 +2154,11 @@ def _raise_if_incomplete_come_back_pair(value: Mapping[str, object]) -> None:
     )
     time_attempted = _slim_field_attempted(value, "come_back_in")
     parsed = (
-        _parse_declared_wait_seconds(value.get("come_back_in")) if time_attempted else None
+        _parse_declared_wait_seconds(
+            value.get("come_back_in"), max_seconds=_SLIM_REVISIT_MAX_SECONDS
+        )
+        if time_attempted
+        else None
     )
     if not thought and not time_attempted:
         return
@@ -2698,8 +2333,8 @@ def compile_slim_consider_payload(
         if set(wait) != {"after_seconds", "pressure_bp", "importance_bp"}:
             raise ValueError("wait对象必须且只能包含after_seconds、pressure_bp、importance_bp")
         seconds = wait["after_seconds"]
-        if type(seconds) is not int or not 30 <= seconds <= 86400:
-            raise ValueError("wait.after_seconds必须是30到86400整数秒")
+        if type(seconds) is not int or not 5 <= seconds <= 86400:
+            raise ValueError("wait.after_seconds必须是5到86400整数秒")
         for key in ("pressure_bp", "importance_bp"):
             if type(wait[key]) is not int or not 0 <= wait[key] <= 10000:
                 raise ValueError(f"wait.{key}必须是0到10000整数基点")
@@ -2718,8 +2353,8 @@ def compile_slim_consider_payload(
         thought, seconds = revisit["thought"], revisit["after_seconds"]
         if not isinstance(thought, str) or not thought.strip() or len(thought) > 160:
             raise ValueError("come_back.thought必须是1到160字符的自选主题")
-        if type(seconds) is not int or not 30 <= seconds <= 86400:
-            raise ValueError("come_back.after_seconds必须是30到86400整数秒")
+        if type(seconds) is not int or not 5 <= seconds <= _SLIM_REVISIT_MAX_SECONDS:
+            raise ValueError("come_back.after_seconds必须是5到604800整数秒")
         value = {**value, "come_back": thought, "come_back_in": seconds}
     validate_authored_impression_retention(value)
     messages = _slim_beats(value.get("messages"), allow_nontext=allow_nontext)
@@ -2727,13 +2362,14 @@ def compile_slim_consider_payload(
         return None
     meaning_of_this = _clip_text(value.get("meaning_of_this"), 240)
     my_state = _clip_text(value.get("my_state"), 480)
-    if not meaning_of_this or not my_state:
+    if not my_state:
         raise ValueError(
             SLIM_SELF_STATE_REQUIRED
-            + "。meaning_of_this 只写你怎么理解他或处境；my_state 只写你自己此刻的感觉、欲望、抵触、"
-            "注意或平静。宿主不会用 messages、stuck_with_me 或同一段 felt 替你补。"
+            + "。my_state 只写你自己此刻的感觉、欲望、抵触、注意或平静；"
+            "meaning_of_this 只在你有对对方或处境的特定理解时填写。宿主不会用 messages、stuck_with_me 或同一段 felt 替你补。"
         )
     label = my_state[:64]
+    rationale = (meaning_of_this or my_state)[:240]
     wants = _clip_text(value.get("wants"), 240)
     photo = value.get("photo")
     media_request = "none"
@@ -2744,6 +2380,22 @@ def compile_slim_consider_payload(
         media_request = "consider_available_candidate"
         if photo.strip() not in {"true", "consider_available_candidate"}:
             media_source_refs = [photo.strip()]
+    non_placeholder_messages = [
+        item
+        for item in messages
+        if not (
+            item.get("modality") == "text"
+            and str(item.get("text", "")).strip().lower() in _LITERAL_MEDIA_PLACEHOLDERS
+        )
+    ]
+    if len(non_placeholder_messages) < len(messages):
+        if media_request != "none" and non_placeholder_messages:
+            messages = non_placeholder_messages
+        else:
+            raise ValueError(
+                "messages里不能写'[图片]'或'[照片]'文字占位符；"
+                "若要发照片请设photo=true并在messages里写随图附带的一句自然台词，若不发照片请直接写台词"
+            )
     if media_request != "none" and not messages:
         return None
     delay_seconds: int | None = None
@@ -2797,21 +2449,33 @@ def compile_slim_consider_payload(
         private_turn_state["declared_display"] = declared_display
     claims = value.get("world_claims")
     if isinstance(claims, list):
-        claims = [
-            {**claim, "source_refs": list(dict.fromkeys(claim["source_refs"]))}
-            if isinstance(claim, dict)
-            and isinstance(claim.get("source_refs"), list)
-            and all(isinstance(ref, str) for ref in claim["source_refs"])
-            else claim
-            for claim in claims
-        ]
+        normalized_claims: list[object] = []
+        for claim in claims:
+            if isinstance(claim, dict):
+                c_copy = dict(claim)
+                if "source_refs" not in c_copy and "source_ref" in c_copy:
+                    raw_sr = c_copy.pop("source_ref")
+                    if isinstance(raw_sr, str) and raw_sr.strip():
+                        c_copy["source_refs"] = [raw_sr.strip()]
+                    elif isinstance(raw_sr, list):
+                        c_copy["source_refs"] = raw_sr
+                elif isinstance(c_copy.get("source_refs"), str) and c_copy["source_refs"].strip():
+                    c_copy["source_refs"] = [c_copy["source_refs"].strip()]
+                if isinstance(c_copy.get("source_refs"), list) and all(
+                    isinstance(ref, str) for ref in c_copy["source_refs"]
+                ):
+                    c_copy["source_refs"] = list(dict.fromkeys(c_copy["source_refs"]))
+                normalized_claims.append(c_copy)
+            else:
+                normalized_claims.append(claim)
+        claims = normalized_claims
     expression: dict[str, object] = {
         "private_turn_state": private_turn_state,
         "timing_choice": timing,
         "cadence": "conversational",
         "beats": messages,
         "stance": label,
-        "brief_rationale": meaning_of_this[:240],
+        "brief_rationale": rationale,
         "confidence": 5000,
         # Preserve explicit declarations for the ordinary source validator.
         # A compact carrier must not turn a sourced or invalid authored claim
@@ -2822,6 +2486,9 @@ def compile_slim_consider_payload(
     }
     if wants:
         expression["impulse_summary"] = wants
+    raw_posture = value.get("turn_posture")
+    if isinstance(raw_posture, str) and raw_posture in {"yield", "continue", "interject", "supersede"}:
+        expression["turn_posture"] = raw_posture
     if timing == "later":
         assert delay_seconds is not None and expires_after_seconds is not None
         expression["delay_seconds"] = delay_seconds
@@ -2859,9 +2526,10 @@ def compile_slim_consider_payload(
 def _slim_declared_display(value: object) -> str | None:
     """Read her display intent; the host never invents one from prose.
 
-    A string enum is the documented shape.  An object with only media_intent is
-    accepted so a nested write is not dropped, but recipient_ref is ignored:
-    the inbound observation actor is bound later, never a model-authored ref.
+    A string enum is the documented shape.  An object with media_intent or
+    explicit declare/withdraw fields is accepted so a nested write is not
+    dropped, but recipient_ref is ignored: the inbound observation actor is
+    bound later, never a model-authored ref.
     """
 
     if isinstance(value, str):
@@ -2871,6 +2539,13 @@ def _slim_declared_display(value: object) -> str | None:
         intent = value.get("media_intent")
         if isinstance(intent, str) and intent.strip() in _SLIM_DECLARED_DISPLAY:
             return intent.strip()
+        raw_intent = value.get("intent")
+        if raw_intent == "withdraw":
+            return "withdraw"
+        if raw_intent == "declare":
+            level = value.get("level")
+            if isinstance(level, str) and level.strip() in {"sexual_suggestive", "explicit_adult"}:
+                return level.strip()
     return None
 
 
@@ -2920,7 +2595,7 @@ def _slim_appraisal_draft(
     )
     common: dict[str, object] = {
         "affect": "no_change",
-        "brief_rationale": meaning_of_this[:240],
+        "brief_rationale": (meaning_of_this or my_state)[:240],
         "behavior_tendency": label,
         "stance": label,
         "display_strategy": label,
@@ -3105,14 +2780,59 @@ def hitchhike_proactive_authored_decisions(
         or keep_impression is True
         or (we_are in _SLIM_ORDINARY_STAGES and calling_it and said_as)
     )
+    felt = (
+        _clip_text(bound.get("brief_rationale"), 240)
+        or _clip_text(bound.get("impulse_summary"), 240)
+        or _clip_text(bound.get("stance"), 128)
+    )
+    label = _clip_text(bound.get("stance"), 64) or felt[:64]
     appraisal = bound.get("appraisal_draft")
-    if needs_appraisal_anchor and not isinstance(appraisal, dict):
-        felt = (
-            _clip_text(bound.get("brief_rationale"), 240)
-            or _clip_text(bound.get("impulse_summary"), 240)
-            or _clip_text(bound.get("stance"), 128)
+    if isinstance(appraisal, dict):
+        from .character_interior.inbound_appraisal_wire import (
+            canonicalize_appraisal_draft_wire,
         )
-        label = _clip_text(bound.get("stance"), 64) or felt[:64]
+
+        repaired_appraisal = dict(appraisal)
+        outer_conf = bound.get("confidence")
+        conf_val = (
+            outer_conf
+            if isinstance(outer_conf, int) and not isinstance(outer_conf, bool) and 0 <= outer_conf <= 10_000
+            else 5_000
+        )
+        if not isinstance(repaired_appraisal.get("brief_rationale"), str) or not str(repaired_appraisal.get("brief_rationale")).strip():
+            if felt:
+                repaired_appraisal["brief_rationale"] = felt
+        for lbl_key in ("behavior_tendency", "stance", "display_strategy"):
+            if not isinstance(repaired_appraisal.get(lbl_key), str) or not str(repaired_appraisal.get(lbl_key)).strip():
+                if label:
+                    repaired_appraisal[lbl_key] = label
+        if not isinstance(repaired_appraisal.get("confidence"), int) or isinstance(repaired_appraisal.get("confidence"), bool):
+            repaired_appraisal["confidence"] = conf_val
+        affect_op = repaired_appraisal.get("affect", "no_change")
+        if affect_op in {"open", "update", "resolve", "supersede"} and repaired_appraisal.get("appraise") is not True:
+            repaired_appraisal["appraise"] = True
+        if repaired_appraisal.get("appraise") is True:
+            rationale_text = _clip_text(repaired_appraisal.get("brief_rationale"), 128) or felt[:128]
+            if not isinstance(repaired_appraisal.get("meanings"), list) or not repaired_appraisal.get("meanings"):
+                if rationale_text:
+                    repaired_appraisal["meanings"] = [
+                        {"meaning": rationale_text, "confidence": repaired_appraisal.get("confidence", conf_val)}
+                    ]
+            if repaired_appraisal.get("attribution") not in {
+                "user", "companion", "npc", "situation", "third_party", "unknown"
+            }:
+                repaired_appraisal["attribution"] = "unknown"
+            sev = repaired_appraisal.get("severity")
+            if not isinstance(sev, int) or isinstance(sev, bool) or not 0 <= sev <= 10_000:
+                repaired_appraisal["severity"] = 5_000
+        try:
+            canonicalize_appraisal_draft_wire(repaired_appraisal)
+            bound["appraisal_draft"] = repaired_appraisal
+            appraisal = repaired_appraisal
+        except ValueError:
+            bound["appraisal_draft"] = None
+            appraisal = None
+    if needs_appraisal_anchor and not isinstance(appraisal, dict):
         if felt:
             bound["appraisal_draft"] = _slim_appraisal_draft(
                 meaning_of_this=felt,
@@ -3138,7 +2858,7 @@ def compile_slim_interior_envelope(
     *,
     reply_only: bool,
 ) -> dict[str, object] | None:
-    compiled = compile_slim_consider_payload(value)
+    compiled = compile_slim_consider_payload(value, allow_nontext=True)
     if compiled is None:
         return None
     # Attach before transport expansion so the compact gate actually carries the
@@ -3170,6 +2890,11 @@ def compile_slim_interior_envelope(
                 not (1 <= len(beats) <= SLIM_REPLY_ONLY_MAX_TEXT_BEATS)
                 or delay_seconds is not None
                 or expires_after_seconds is not None
+                or any(
+                    not isinstance(item, dict)
+                    or item.get("modality") not in {"text", "sticker"}
+                    for item in beats
+                )
             ):
                 raise ValueError("reply_only slim payload exceeds text-only capability")
             beat: dict[str, object] | None = beats[0] if len(beats) == 1 else None
@@ -3182,6 +2907,10 @@ def compile_slim_interior_envelope(
                 or isinstance(delay_seconds, bool)
                 or not isinstance(expires_after_seconds, int)
                 or isinstance(expires_after_seconds, bool)
+                or any(
+                    not isinstance(item, dict) or item.get("modality") != "text"
+                    for item in beats
+                )
             ):
                 raise ValueError("reply_only slim payload exceeds text-only capability")
             beat = beats[0] if len(beats) == 1 else None
@@ -3193,11 +2922,17 @@ def compile_slim_interior_envelope(
             beat = None
         else:
             raise ValueError("reply_only slim payload exceeds text-only capability")
+        raw_posture = expression.get("turn_posture")
+        allowed_postures = (
+            {"continue", "interject"}
+            if timing == "now"
+            else {"continue"}
+        )
         head = {
             "type": "head",
             "private_turn_state": expression["private_turn_state"],
             "timing_choice": timing,
-            "turn_posture": None,
+            "turn_posture": raw_posture if raw_posture in allowed_postures else None,
             "cadence": expression.get("cadence", "conversational"),
             "beat": beat,
             "stance": expression["stance"],
@@ -3222,7 +2957,7 @@ def compile_slim_interior_envelope(
             "type": "head",
             "private_turn_state": expression["private_turn_state"],
             "timing_choice": expression["timing_choice"],
-            "turn_posture": None,
+            "turn_posture": expression.get("turn_posture"),
             "cadence": expression.get("cadence", "conversational"),
             "beats": beats,
             "stance": expression["stance"],

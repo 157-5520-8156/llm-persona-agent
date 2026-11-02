@@ -460,7 +460,7 @@ class MemoryQQIngressStore:
             item for item in self._fragments.values()
             if item.state == "pending"
             if item.fragment.recipient_id == anchor.fragment.recipient_id
-            and item.received_at >= anchor.received_at - timedelta(milliseconds=800)
+            and item.received_at >= anchor.received_at - timedelta(seconds=30)
             and item.received_at <= now
         ]
         selected = _select_batch_records(
@@ -678,7 +678,7 @@ class SQLiteQQIngressStore:
                         anchor["recipient_id"],
                         (
                             datetime.fromisoformat(anchor["received_at"])
-                            - timedelta(milliseconds=800)
+                            - timedelta(seconds=30)
                         ).isoformat(),
                         now.isoformat(),
                         limit,

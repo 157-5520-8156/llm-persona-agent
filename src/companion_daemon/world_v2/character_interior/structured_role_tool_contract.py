@@ -304,6 +304,20 @@ def _proactive_payload_schema(
         properties.get("impulse_summary"),
         field_name="impulse_summary",
     )
+    lead_keys = (
+        "impulse_summary",
+        "stance",
+        "brief_rationale",
+        "world_claims",
+        "timing_choice",
+        "cadence",
+        "beats",
+        "confidence",
+    )
+    reordered = {key: properties[key] for key in lead_keys if key in properties}
+    reordered.update({key: value for key, value in properties.items() if key not in reordered})
+    properties.clear()
+    properties.update(reordered)
     # Optional lasting Affect self-select stays in appraisal_draft, whose
     # component targets require the role-authored target_intensity_bp.  A
     # one-word mood shortcut would force the host to invent that intensity.

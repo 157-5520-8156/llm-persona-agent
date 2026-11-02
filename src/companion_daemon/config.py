@@ -233,6 +233,13 @@ class Settings(BaseSettings):
         default=True,
         alias="QQ_C2C_BARGE_IN_ENABLED",
     )
+    # Provider-local typing gap before each already-authored follow-up beat
+    # (world_v2/beat_composition_pacing.py). Presentation physics only: it
+    # never changes what she says, how many bubbles, or now/later/silent.
+    qq_c2c_followup_composition_pacing_enabled: bool = Field(
+        default=True,
+        alias="QQ_C2C_FOLLOWUP_COMPOSITION_PACING_ENABLED",
+    )
     qq_c2c_barge_in_probe_ms: int = Field(
         default=240,
         alias="QQ_C2C_BARGE_IN_PROBE_MS",
@@ -247,10 +254,10 @@ class Settings(BaseSettings):
         alias="WORLD_V2_TEXT_ENDPOINT_ENABLED",
     )
     world_v2_text_endpoint_timeout_seconds: float = Field(
-        default=0.55,
+        default=2.0,
         alias="WORLD_V2_TEXT_ENDPOINT_TIMEOUT_SECONDS",
         ge=0.01,
-        le=1.0,
+        le=3.0,
     )
     # Interactive reply timing posture.  These are the cancellation ceilings of
     # one user-visible turn, not a target: the compact fast lane answers in
@@ -442,7 +449,7 @@ class Settings(BaseSettings):
     world_v2_external_perception_merge_wait_seconds: int = Field(
         default=600,
         ge=30,
-        le=3_600,
+        le=14_400,
         alias="WORLD_V2_EXTERNAL_PERCEPTION_MERGE_WAIT_SECONDS",
     )
     world_v2_external_perception_attempt_retention_seconds: int = Field(
@@ -774,6 +781,14 @@ class Settings(BaseSettings):
         default=12, alias="PERCEPTION_BUDGET_LIMIT", ge=0
     )
     transcription_model: str = Field(default="gpt-4o-mini-transcribe", alias="TRANSCRIPTION_MODEL")
+    voice_enabled: bool = Field(default=True, alias="VOICE_ENABLED")
+    voice_tts_model: str = Field(default="cosyvoice-v3-flash", alias="VOICE_TTS_MODEL")
+    voice_tts_voice: str = Field(
+        default="longwan_v3",
+        alias="VOICE_TTS_VOICE",
+    )
+    voice_phone_mic_realism: bool = Field(default=True, alias="VOICE_PHONE_MIC_REALISM")
+    voice_asr_model: str = Field(default="qwen3-omni-flash", alias="VOICE_ASR_MODEL")
     image_model: str = Field(default="gpt-image-2", alias="IMAGE_MODEL")
     ark_api_key: str | None = Field(
         default_factory=lambda: _macos_launchctl_env("ARK_API_KEY"),

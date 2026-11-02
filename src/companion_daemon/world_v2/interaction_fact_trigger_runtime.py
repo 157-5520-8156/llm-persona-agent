@@ -9,12 +9,13 @@ acceptance authority.  It never lets a model write a Fact or choose evidence.
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import hashlib
 import json
 import logging
-from typing import Literal
+from typing import Literal, Protocol
 
 from ..usage_metrics import interaction_fact_retry_delay_seconds
 from .errors import ConcurrencyConflict
@@ -91,6 +92,35 @@ _NO_FACT_DECISION = object()
 _NO_MEMORY_DECISION = object()
 _STALE_MEMORY_DECISION = object()
 _FACT_MEMORY_INTERIOR_VERSION = "character-interior-fact-memory-retention.1"
+_VISIBLE_COMMIT_WAIT_SECONDS = 12.0
+
+
+class FactBackgroundCommitGate(Protocol):
+    """Process-local priority only; the ledger remains the CAS authority."""
+
+    async def acquire_reconciliation(self) -> None: ...
+    async def release_reconciliation(self) -> None: ...
+
+
+async def _join_before_cancellation(task):
+    """Finish the actual operation before propagating any caller cancellation."""
+    interrupted = False
+    while True:
+        try:
+            result = await asyncio.shield(task)
+            break
+        except asyncio.CancelledError:
+            if task.cancelled():
+                raise
+            interrupted = True
+    if interrupted:
+        raise asyncio.CancelledError
+    return result
+
+
+async def _finish_paid_record(operation):
+    """Do not discard a completed paid decision if its caller is cancelled."""
+    return await _join_before_cancellation(asyncio.create_task(operation))
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +166,7 @@ class InteractionFactTriggerRuntime:
         owner_id: str,
         lease_seconds: int = 120,
         source: str = "world-v2:interaction-fact-trigger-runtime",
+        commit_gate: FactBackgroundCommitGate | None = None,
     ) -> None:
         if type(ledger) is not SQLiteWorldLedger or acceptance.ledger is not ledger:
             raise ValueError("Fact trigger must use the acceptance runtime's exact SQLite ledger")
@@ -156,6 +187,38 @@ class InteractionFactTriggerRuntime:
         self._owner_id = owner_id
         self._lease_seconds = lease_seconds
         self._source = source
+        self._commit_gate = commit_gate
+
+    @asynccontextmanager
+    async def _commit_priority(self):
+        """Wait briefly for visible work, then retain ordinary CAS if still busy.
+
+        The timeout prevents a continuous foreground stream from starving a
+        source-owned Fact.  It never widens the visible budget or suppresses a
+        backend result.  After expiry the existing CAS/retry path applies.
+        """
+        acquired = False
+        if self._commit_gate is not None:
+            try:
+                async with asyncio.timeout(_VISIBLE_COMMIT_WAIT_SECONDS):
+                    await self._commit_gate.acquire_reconciliation()
+                acquired = True
+            except TimeoutError:
+                logger.warning("interaction Fact visible commit priority expired; retain CAS")
+        try:
+            yield
+        finally:
+            if acquired:
+                await _join_before_cancellation(asyncio.create_task(
+                    self._commit_gate.release_reconciliation()
+                ))
+
+    async def _commit_in_thread(self, function, /, *args, **kwargs):
+        """Keep the gate until a started physical commit has actually ended."""
+        async with self._commit_priority():
+            return await _join_before_cancellation(
+                asyncio.create_task(asyncio.to_thread(function, *args, **kwargs))
+            )
 
     async def drain_one(self) -> FactTriggerRunResult:
         projection = await self._project()
@@ -241,7 +304,7 @@ class InteractionFactTriggerRuntime:
                         current_single_fact_sources=current_single_fact_sources,
                         current_set_fact_sources=current_set_fact_sources,
                     )
-                    recorded_decision = await self._record_decision(
+                    recorded_decision = await _finish_paid_record(self._record_decision(
                         process=active,
                         source_event=source_event,
                         observation=observation,
@@ -250,7 +313,7 @@ class InteractionFactTriggerRuntime:
                         current_set_fact_sources=current_set_fact_sources,
                         fact_context_hash=fact_context_hash,
                         decision=proposal,
-                    )
+                    ))
                 else:
                     recorded_decision = batch_decision
                 proposal = None if recorded_decision is _NO_FACT_DECISION else recorded_decision
@@ -586,35 +649,27 @@ class InteractionFactTriggerRuntime:
         )
         identity = _digest({"proposal_id": proposal.proposal_id, "trigger_id": active.trigger_id})
         try:
-            accepted = self._acceptance.accept(
-                request=FactV2AcceptanceEnvelopeRequestV2(
-                    acceptance_id=f"acceptance:interaction-fact:{identity}",
-                    acceptance_event_id=f"event:interaction-fact:accepted:{identity}",
-                    acceptance_causation_id=self._acceptance.proposal_audit_event_ref(
-                        proposal_handle=handle
-                    ),
-                    cursor=audit_cursor,
-                    world_id=self._ledger.world_id,
-                    logical_time=acceptance_logical_time,
-                    # A scheduler wake may have rebased ``acceptance_logical_time``
-                    # beyond the historical observation.  The envelope invariant
-                    # still requires its creation boundary to be at least that
-                    # logical time; otherwise delayed fact materialization raises
-                    # before it can complete the trigger and blocks all later
-                    # scheduled work (including proactive contact).
-                    created_at=max(
-                        source_event.created_at,
-                        source_event.logical_time,
-                        acceptance_logical_time,
-                    ),
-                    actor=self._owner_id,
-                    source=self._source,
-                    trace_id=source_event.trace_id,
-                    correlation_id=source_event.correlation_id,
+            request = FactV2AcceptanceEnvelopeRequestV2(
+                acceptance_id=f"acceptance:interaction-fact:{identity}",
+                acceptance_event_id=f"event:interaction-fact:accepted:{identity}",
+                acceptance_causation_id=self._acceptance.proposal_audit_event_ref(
+                    proposal_handle=handle
                 ),
-                proposal_handle=handle,
-                prepared=prepared,
-                sources=sources,
+                cursor=audit_cursor,
+                world_id=self._ledger.world_id,
+                logical_time=acceptance_logical_time,
+                created_at=max(source_event.created_at, source_event.logical_time, acceptance_logical_time),
+                actor=self._owner_id,
+                source=self._source,
+                trace_id=source_event.trace_id,
+                correlation_id=source_event.correlation_id,
+            )
+            batch = await asyncio.to_thread(
+                self._acceptance.prepare_batch, request=request, proposal_handle=handle,
+                prepared=prepared, sources=sources,
+            )
+            accepted = await self._commit_in_thread(
+                self._ledger.commit_accepted, batch, expected_cursor=audit_cursor,
             )
         except ConcurrencyConflict:
             # A cursor race is retryable; the durable audit is rejoined on the
@@ -823,14 +878,14 @@ class InteractionFactTriggerRuntime:
             )
             raise
 
-        await self._record_batch_decisions(
+        await _finish_paid_record(self._record_batch_decisions(
             members=tuple(members),
             decisions=decisions,
             evaluated_cursor=evaluated_cursor,
             fact_context_hash=fact_context_hash,
             request_hash=request_hash,
             subject_ref=primary_observation.actor,
-        )
+        ))
         primary_index = next(
             index
             for index, member in enumerate(members)
@@ -1801,7 +1856,7 @@ class InteractionFactTriggerRuntime:
                     ).encode()
                 ).hexdigest(),
             )
-            decision = await self._record_memory_decision(
+            decision = await _finish_paid_record(self._record_memory_decision(
                 process=process,
                 fact=fact,
                 fact_event=fact_event,
@@ -1813,7 +1868,7 @@ class InteractionFactTriggerRuntime:
                 decision=draft,
                 author_model_id=_decision_model_id(interior_result),
                 character_interior_model_result=model_result_audit,
-            )
+            ))
             projection = await self._project()
             memory_logical_time = projection.logical_time or source_event.logical_time
         if decision is _STALE_MEMORY_DECISION:
@@ -2298,7 +2353,7 @@ class InteractionFactTriggerRuntime:
     async def _commit(
         self, events, *, world_revision: int, deliberation_revision: int, commit_id: str
     ):
-        return await asyncio.to_thread(
+        return await self._commit_in_thread(
             self._ledger.commit,
             events,
             expected_world_revision=world_revision,
@@ -2307,7 +2362,7 @@ class InteractionFactTriggerRuntime:
         )
 
     async def _commit_at_cursor(self, events, *, cursor: ProjectionCursor, commit_id: str):
-        return await asyncio.to_thread(
+        return await self._commit_in_thread(
             self._ledger.commit_at_cursor, events, expected_cursor=cursor, commit_id=commit_id
         )
 

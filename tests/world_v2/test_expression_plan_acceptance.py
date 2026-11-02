@@ -821,3 +821,132 @@ def test_rejects_intent_layer_or_delay_binding_that_does_not_match_frozen_beat()
             trace_id="trace:1",
             correlation_id="correlation:1",
         )
+
+
+def test_compact_inbound_reply_with_settled_world_event_evidence_succeeds() -> None:
+    from companion_daemon.world_v2.proposal_audit_schemas import (
+        ModelResultAuditProjection,
+        RecordedModelResultAudit,
+    )
+    from companion_daemon.world_v2.schemas import Observation
+
+    obs = Observation(
+        schema_version="world-v2.1",
+        world_id=WORLD,
+        observation_id="event:observation:1",
+        source="qq",
+        source_event_id="msg:1",
+        actor="user:primary",
+        channel="c2c",
+        text="明天核验材料都装好了吗？",
+        payload_ref="payload:obs:1",
+        payload_hash="a" * 64,
+        received_at=NOW,
+        logical_time=NOW,
+        created_at=NOW,
+        trace_id="trace:1",
+        correlation_id="correlation:1",
+        causation_id="cause:1",
+    )
+    obs_hash = _hash(canonical_json(obs.model_dump(mode="json")))
+    base = _proposal()
+    proposal = base.model_copy(
+        update={
+            "evidence_refs": (
+                ProposalEvidenceRef(
+                    ref_id="event:observation:1",
+                    evidence_kind="observed_message",
+                    source_world_revision=4,
+                    immutable_hash=obs_hash,
+                ),
+                ProposalEvidenceRef(
+                    ref_id="event:settlement:1",
+                    evidence_kind="settled_world_event",
+                    source_world_revision=2,
+                    immutable_hash=_hash("settled-1"),
+                ),
+                ProposalEvidenceRef(
+                    ref_id="event:settlement:2",
+                    evidence_kind="settled_world_event",
+                    source_world_revision=3,
+                    immutable_hash=_hash("settled-2"),
+                ),
+            ),
+        }
+    )
+    base_audit = _audit()
+    resp_hash = proposal.proposal_hash.removeprefix("sha256:")
+    model_result_ref = "model-result:" + sha256(
+        canonical_json({"model_call_id": base_audit.model_call_id, "response_hash": resp_hash}).encode()
+    ).hexdigest()
+    audit = base_audit.model_copy(
+        update={
+            "model_result_ref": model_result_ref,
+            "proposal_json": canonical_json(proposal.model_dump(mode="json")),
+            "proposal_hash": proposal.proposal_hash,
+        }
+    )
+    recorded = RecordedModelResultAudit(
+        model_result_ref=audit.model_result_ref,
+        attempt_id=audit.attempt_id,
+        slot="primary",
+        route={"tier": "flash", "reason_code": "default_flash", "router_version": "router.1"},
+        model_id="deepseek-v4-flash",
+        model_version="character-interior-inbound-author.1",
+        model_call_id=audit.model_call_id,
+        request_hash="1" * 64,
+        response_hash=resp_hash,
+        status="proposal_validated",
+        outcome="winner",
+        character_interior_lineage={
+            "inner_turn_id": "character-inner-turn:sha256:" + "2" * 64,
+            "opportunity_ref": "opportunity:causal:" + "7" * 64,
+            "snapshot_id": "inner-life-snapshot:sha256:" + "3" * 64,
+            "snapshot_hash": "3" * 64,
+            "purpose": "inbound_turn",
+            "capability_ref": "inbound-turn-capability:sha256:" + "4" * 64,
+            "author_model_id": "deepseek-v4-flash",
+            "author_model_version": "character-interior-inbound-author.1",
+            "author_model_call_id": audit.model_call_id,
+            "author_attempt_ordinal": 0,
+            "author_request_hash": "sha256:" + "1" * 64,
+            "author_response_hash": proposal.proposal_hash,
+            "decision_hash": "sha256:" + "5" * 64,
+            "private_self_lineage_hash": "sha256:" + "6" * 64,
+        },
+    )
+    mr_audit_json = canonical_json(recorded.model_dump(mode="json"))
+    mr_audit = ModelResultAuditProjection(
+        audit_contract="model-result-audit.7",
+        model_result_ref=audit.model_result_ref,
+        attempt_id=audit.attempt_id,
+        attempt_index=0,
+        attempt_count=1,
+        trigger_ref=audit.trigger_ref,
+        capsule_id=audit.capsule_id,
+        deliberation_result_id=audit.deliberation_result_id,
+        evaluated_world_revision=audit.evaluated_world_revision,
+        model_call_id=audit.model_call_id,
+        proposal_hash=audit.proposal_hash,
+        audit_json=mr_audit_json,
+        audit_hash=sha256(mr_audit_json.encode()).hexdigest(),
+        event_ref="event:model-result:1",
+        event_payload_hash="b" * 64,
+    )
+    material = derive_expression_plan_material(
+        audit=audit,
+        cursor=ProjectionCursor(world_revision=4, deliberation_revision=2, ledger_sequence=7),
+        world_id=WORLD,
+        policy=_policy(),
+        account=BudgetAccount(
+            account_id="account:chat:1", category="chat", window_id="window:1", limit=1000
+        ),
+        logical_time=NOW,
+        created_at=NOW,
+        trace_id="trace:1",
+        correlation_id="correlation:1",
+        source_observation=obs,
+        model_result_audits=(mr_audit,),
+    )
+    assert len(material.beats) == 2
+

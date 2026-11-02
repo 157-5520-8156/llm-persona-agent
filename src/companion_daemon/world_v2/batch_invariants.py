@@ -3792,22 +3792,29 @@ def interaction_appraisal_trigger_identity(world_id: str, observation_ref: str) 
     return f"appraisal:interaction:{hashlib.sha256(encoded).hexdigest()}"
 
 
-def silence_appraisal_trigger_identity(world_id: str, source_evidence_ref: str) -> str:
-    """One deterministic trigger per delivered-reply silence anchor.
+def silence_appraisal_trigger_identity(
+    world_id: str, source_evidence_ref: str, *, ordinal: int = 1
+) -> str:
+    """Deterministic trigger identity per delivered-reply silence anchor and stage ordinal.
 
     The anchor is the committed ``ExecutionReceiptRecorded`` event of the
     companion's last visible message; deriving the identity from it makes the
     per-silence trigger idempotent under replay and concurrent openers.
+    Ordinal 1 preserves the exact historical identity; later ordinals append
+    ``:{ordinal}`` like ``reflection_trigger_id``.
     """
 
-    if not world_id or not source_evidence_ref:
+    if not world_id or not source_evidence_ref or ordinal < 1:
         raise ValueError("silence appraisal identity requires world and receipt event")
     encoded = json.dumps(
         [world_id, source_evidence_ref, "silence_appraisal"],
         ensure_ascii=False,
         separators=(",", ":"),
     ).encode("utf-8")
-    return f"trigger:silence-appraisal:{hashlib.sha256(encoded).hexdigest()}"
+    base = f"trigger:silence-appraisal:{hashlib.sha256(encoded).hexdigest()}"
+    if ordinal == 1:
+        return base
+    return f"{base}:{ordinal}"
 
 
 def private_impression_trigger_identity(world_id: str, source_evidence_ref: str) -> str:

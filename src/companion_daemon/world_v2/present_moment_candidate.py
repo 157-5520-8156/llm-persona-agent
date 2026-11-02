@@ -116,22 +116,18 @@ def inspect_present_moment(
         )
     annex = getattr(opening, "visual_evidence", None) if opening is not None else None
     if catalog is not None and opening is None:
-        if isinstance(kind, str) and kind.startswith("open_life."):
+        if not (
+            isinstance(kind, str)
+            and kind.startswith(("open_life.", "self_directed."))
+        ):
             return PresentMomentFact(
-                photographable=True,
-                reason="active",
+                photographable=False,
+                reason="annex_insufficient",
                 source_ref=source_ref,
                 plan_id=getattr(plan, "plan_id", None),
                 activity_kind=kind,
             )
-        return PresentMomentFact(
-            photographable=False,
-            reason="annex_insufficient",
-            source_ref=source_ref,
-            plan_id=getattr(plan, "plan_id", None),
-            activity_kind=kind,
-        )
-    if catalog is not None and not annex_is_sufficient(annex):
+    elif catalog is not None and not annex_is_sufficient(annex):
         return PresentMomentFact(
             photographable=False,
             reason="annex_insufficient",

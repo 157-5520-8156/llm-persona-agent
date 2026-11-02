@@ -31,7 +31,7 @@ from .life_ecology_contract import (
     LifeEcologyRunKey,
 )
 from .fact_memory_draft import FactMemoryDraftTechnicalFailure
-from .life_aftermath_runtime import LifeAftermathModelFailure
+from .life_aftermath_runtime import LifeAftermathForegroundConflict, LifeAftermathModelFailure
 from .errors import ConcurrencyConflict
 from .event_identity import domain_idempotency_key
 from .life_events import WorldOccurrenceActivatedPayload
@@ -370,6 +370,11 @@ class LifeEcologyRuntime:
 
     def availability(self) -> LifeEcologyAvailability:
         return self._availability
+
+    def set_background_visible_gate(self, gate) -> None:
+        install = getattr(self._aftermath_followup, "set_background_visible_gate", None)
+        if callable(install):
+            install(gate)
 
     async def advance_once(
         self, *, wake_event_ref: str, trace_id: str, correlation_id: str
@@ -739,6 +744,22 @@ class LifeEcologyRuntime:
                     wake_event_ref,
                     memory_postprocess_failure_code,
                 )
+            except LifeAftermathForegroundConflict:
+                # A source or occurrence changed while the bounded foreground
+                # courtesy was in effect. Preserve a typed technical retry;
+                # this is neither a character decision nor a successful wake.
+                failure_code = "aftermath.cursor_conflict"
+                persisted = await self._complete_technical_failure(
+                    key=key, trigger_id=claim.trigger_id, failure_code=failure_code,
+                )
+                return LifeEcologyRunResult(
+                    status="failed_safe", trigger_id=claim.trigger_id,
+                    reason_code=("life_ecology.aftermath_cursor_conflict" if persisted
+                                 else "life_ecology.technical_failure_persistence_failed"),
+                    activity_followup_status=activity_status,
+                    aftermath_followup_status="technical_failure",
+                    technical_failure_code=(failure_code if persisted else None),
+                )
             except LifeAftermathModelFailure as exc:
                 normalized = re.sub(
                     r"[^a-z0-9._-]+",
@@ -851,10 +872,11 @@ class LifeEcologyRuntime:
         outlook_node = None
         if self._world_outlook is not None:
             try:
-                self._world_outlook.reconcile_accepted_offers(wake_event_ref=wake_event_ref)
+                if is_clock_wake:
+                    self._world_outlook.reconcile_accepted_offers(wake_event_ref=wake_event_ref)
                 # Existing execution/settlement and causal NPC work keep priority.
                 if (
-                    development_due and not preparation_attempted and completion_ref is None and active_attempt_ref is None and event_detail_ref is None
+                    is_clock_wake and development_due and not preparation_attempted and completion_ref is None and active_attempt_ref is None and event_detail_ref is None
                     and not npc_has_due_work and not npc_has_stimulus
                 ):
                     prepare = getattr(self._life_development_followup, "prepare_outlook_once", None)
@@ -918,7 +940,12 @@ class LifeEcologyRuntime:
                         trace_id=trace_id, correlation_id=correlation_id,
                     )
                 elif self._world_outlook is not None and (
-                    required_detail_prepared or life_development_failure_code
+                    required_detail_prepared
+                    or life_development_failure_code
+                    or (
+                        callable(getattr(self._life_development_followup, "discretionary_consequence_cooldown_active", None))
+                        and self._life_development_followup.discretionary_consequence_cooldown_active(projection)
+                    )
                 ):
                     return None
                 else:
@@ -1202,9 +1229,10 @@ class LifeEcologyRuntime:
                 )
 
         try:
+            current_logical_time = self._ledger.project().logical_time or logical_time
             media_result = await self._drain_media_once(
                 wake_event_ref=wake_event_ref,
-                logical_time=logical_time,
+                logical_time=current_logical_time,
                 trace_id=trace_id,
                 correlation_id=correlation_id,
             )

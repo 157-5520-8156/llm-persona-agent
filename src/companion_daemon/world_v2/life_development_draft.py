@@ -1111,6 +1111,83 @@ def _normalized_claim_id(value: object) -> str:
     return "local:claim:" + cleaned[:64]
 
 
+def _normalized_object_ref(value: object) -> str:
+    if not isinstance(value, str) or not value:
+        value = "anonymous"
+    if value.startswith("local:object:"):
+        suffix = value[len("local:object:"):]
+        if suffix and suffix[0] in "abcdefghijklmnopqrstuvwxyz0123456789" and all(
+            character in "abcdefghijklmnopqrstuvwxyz0123456789._-" for character in suffix
+        ):
+            return value[:len("local:object:") + 64]
+    for prefix in ("local:object:", "object:", "local:"):
+        if value.startswith(prefix):
+            suffix = value[len(prefix):]
+            break
+    else:
+        suffix = value
+    cleaned = "".join(
+        character
+        if character in "abcdefghijklmnopqrstuvwxyz0123456789._-"
+        else "-"
+        for character in suffix.lower()
+    ).strip("-")
+    if not cleaned:
+        cleaned = hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+    if cleaned[0] not in "abcdefghijklmnopqrstuvwxyz0123456789":
+        cleaned = "obj" + cleaned
+    return "local:object:" + cleaned[:64]
+
+
+def _normalize_visual_object_identifiers(decoded: dict[str, object]) -> dict[str, object]:
+    outcomes = decoded.get("outcomes")
+    if not isinstance(outcomes, list) or not outcomes:
+        return decoded
+    changed = False
+    rebuilt: list[object] = []
+    for outcome in outcomes:
+        if not isinstance(outcome, dict):
+            rebuilt.append(outcome)
+            continue
+        visual = outcome.get("visual_evidence")
+        if not isinstance(visual, dict):
+            rebuilt.append(outcome)
+            continue
+        objects = visual.get("objects")
+        if not isinstance(objects, list) or not objects:
+            rebuilt.append(outcome)
+            continue
+        used: set[str] = set()
+        new_objects: list[object] = []
+        objects_changed = False
+        for obj in objects:
+            if not isinstance(obj, dict) or not isinstance(obj.get("local_ref"), str):
+                new_objects.append(obj)
+                continue
+            original = obj["local_ref"]
+            candidate = _normalized_object_ref(original)
+            if candidate in used and candidate != original:
+                suffix = 1
+                base = candidate[:len("local:object:") + 58]
+                while candidate in used:
+                    candidate = f"{base}-{suffix}"
+                    suffix += 1
+            used.add(candidate)
+            if candidate != original:
+                objects_changed = True
+                new_objects.append({**obj, "local_ref": candidate})
+            else:
+                new_objects.append(obj)
+        if objects_changed:
+            changed = True
+            rebuilt.append({**outcome, "visual_evidence": {**visual, "objects": new_objects}})
+        else:
+            rebuilt.append(outcome)
+    if not changed:
+        return decoded
+    return {**decoded, "outcomes": rebuilt}
+
+
 def _normalize_claim_identifiers(decoded: dict[str, object]) -> dict[str, object]:
     declarations = decoded.get("claim_declarations")
     if not isinstance(declarations, list) or not declarations:
@@ -1199,13 +1276,30 @@ def parse_world_author_draft(
         raise LifeDevelopmentDraftError(
             "invalid_shape", "World Author output must be one JSON object"
         )
-    if set(decoded) == {"replacement"}:
+    if (
+        isinstance(decoded.get("replacement"), dict)
+        and "replacement" in decoded
+        and isinstance(decoded["replacement"].get("decision"), str)
+        and (
+            set(decoded) <= {"replacement", "contract_version", "contract", "decision", "$def", "$defs", "$schema"}
+            or all(
+                key in {"replacement", "contract_version", "contract", "$def", "$defs", "$schema"}
+                or decoded["replacement"].get(key) == value
+                for key, value in decoded.items()
+            )
+        )
+        and (
+            "decision" not in decoded
+            or decoded["decision"] == decoded["replacement"].get("decision")
+        )
+    ):
         # Strict OpenAI-compatible schemas cannot place the no_op/propose
         # union at the root.  The structured transport therefore moves that
         # exact union below one `replacement` property.  Remove only this
-        # exact provider envelope and run the ordinary complete semantic and
-        # authority validation below; the caller still retains `raw` unchanged
-        # for the immutable external-result audit.
+        # exact provider envelope (plus harmless echoed transport metadata)
+        # and run the ordinary complete semantic and authority validation
+        # below; the caller still retains `raw` unchanged for the immutable
+        # external-result audit.
         replacement = decoded.get("replacement")
         if not isinstance(replacement, dict):
             raise LifeDevelopmentDraftError(
@@ -1271,11 +1365,70 @@ def parse_world_author_draft(
                 for item in declarations
             )
         ):
-            used_refs: set[str] = set()
+            declared_ids = {item["claim_id"] for item in declarations}
+            attempt_ids = {
+                item["claim_id"]
+                for item in declarations
+                if item.get("subject_scope") == "authorized_attempt_result"
+            }
+            env_ids = {
+                item["claim_id"]
+                for item in declarations
+                if item.get("subject_scope") == "world_environment"
+            }
             premise_refs = decoded.get("premise_claim_refs")
+            outcomes = decoded.get("outcomes")
+            outcome_used_refs: set[str] = set()
+            if isinstance(outcomes, list):
+                for outcome in outcomes:
+                    claim_refs = outcome.get("claim_refs") if isinstance(outcome, dict) else None
+                    if isinstance(claim_refs, list):
+                        outcome_used_refs.update(item for item in claim_refs if isinstance(item, str))
+            if (
+                attempt_ids
+                and attempt_ids <= outcome_used_refs
+                and decoded.get("causal_authority") == "world_contingency"
+                and isinstance(decoded.get("timing"), dict)
+                and decoded["timing"].get("mode") == "now"
+            ):
+                if isinstance(premise_refs, list) and set(premise_refs) & attempt_ids:
+                    non_attempt_premise_refs = [
+                        item for item in premise_refs if item not in attempt_ids
+                    ]
+                    if non_attempt_premise_refs:
+                        decoded = {**decoded, "premise_claim_refs": non_attempt_premise_refs}
+                        premise_refs = non_attempt_premise_refs
+                json_text = json.dumps(
+                    decoded,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+            raw_steps = decoded.get("event_details")
+            if isinstance(raw_steps, list) and env_ids and any(
+                isinstance(step, dict)
+                and isinstance(step.get("claim_refs"), list)
+                and any(item not in env_ids for item in step["claim_refs"])
+                and [item for item in step["claim_refs"] if item in env_ids]
+                for step in raw_steps
+            ):
+                new_steps = []
+                for step in raw_steps:
+                    if isinstance(step, dict) and isinstance(step.get("claim_refs"), list):
+                        env_step_refs = [
+                            item for item in step["claim_refs"] if item in env_ids
+                        ]
+                        if env_step_refs and len(env_step_refs) != len(step["claim_refs"]):
+                            step = {**step, "claim_refs": env_step_refs}
+                    new_steps.append(step)
+                decoded = {**decoded, "event_details": new_steps}
+                json_text = json.dumps(
+                    decoded,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                )
+            used_refs: set[str] = set()
             if isinstance(premise_refs, list):
                 used_refs.update(item for item in premise_refs if isinstance(item, str))
-            outcomes = decoded.get("outcomes")
             if isinstance(outcomes, list):
                 for outcome in outcomes:
                     claim_refs = outcome.get("claim_refs") if isinstance(outcome, dict) else None
@@ -1285,7 +1438,6 @@ def parse_world_author_draft(
                 refs = step.get("claim_refs") if isinstance(step, dict) else None
                 if isinstance(refs, list):
                     used_refs.update(item for item in refs if isinstance(item, str))
-            declared_ids = {item["claim_id"] for item in declarations}
             # Drop only when every referenced declaration is actually declared.
             # If the draft references an undeclared id, filtering here would
             # silently erase every declaration and turn a repairable closure
@@ -1308,11 +1460,11 @@ def parse_world_author_draft(
         anchors = decoded.get("anchor_refs")
         if isinstance(anchors, list) and anchors:
             allowed_anchors = set(manifest.anchor_refs)
-            filtered_anchors = [
+            filtered_anchors = list(dict.fromkeys(
                 anchor
                 for anchor in anchors
                 if isinstance(anchor, str) and anchor in allowed_anchors
-            ]
+            ))[:16]
             if filtered_anchors and filtered_anchors != anchors:
                 decoded = {**decoded, "anchor_refs": filtered_anchors}
                 json_text = json.dumps(
@@ -1321,7 +1473,68 @@ def parse_world_author_draft(
                     separators=(",", ":"),
                 )
     if isinstance(decoded, dict) and decoded.get("decision") != "no_op":
-        normalized_decoded = _normalize_claim_identifiers(decoded)
+        if manifest.event_detail_capability is not None:
+            min_priv = manifest.event_detail_capability.privacy_class
+            if min_priv in _PRIVACY_RANK:
+                min_rank = _PRIVACY_RANK[min_priv]
+                cur_priv = decoded.get("privacy_class")
+                if isinstance(cur_priv, str) and cur_priv in _PRIVACY_RANK and _PRIVACY_RANK[cur_priv] < min_rank:
+                    decoded = {**decoded, "privacy_class": min_priv}
+                    cur_priv = min_priv
+                target_rank = max(min_rank, _PRIVACY_RANK.get(cur_priv, min_rank))
+                target_priv = next((k for k, v in _PRIVACY_RANK.items() if v == target_rank), min_priv)
+                raw_outcomes = decoded.get("outcomes")
+                if isinstance(raw_outcomes, list):
+                    clamped_outcomes = []
+                    changed_outcomes = False
+                    for out in raw_outcomes:
+                        if isinstance(out, dict):
+                            op = out.get("privacy_class")
+                            if isinstance(op, str) and op in _PRIVACY_RANK and _PRIVACY_RANK[op] < target_rank:
+                                out = {**out, "privacy_class": target_priv}
+                                changed_outcomes = True
+                        clamped_outcomes.append(out)
+                    if changed_outcomes:
+                        decoded = {**decoded, "outcomes": clamped_outcomes}
+                json_text = json.dumps(decoded, ensure_ascii=False, separators=(",", ":"))
+        raw_outcomes = decoded.get("outcomes")
+        if isinstance(raw_outcomes, list):
+            deduped_outcomes = []
+            changed_tags = False
+            for out in raw_outcomes:
+                if isinstance(out, dict):
+                    for field_name, prefix_key in (
+                        ("objective_biographical_transition", "replaces_context_tag_prefixes"),
+                        ("dynamic_life_direction", "supersedes_context_tag_prefixes"),
+                    ):
+                        block = out.get(field_name)
+                        if isinstance(block, dict):
+                            tags = block.get("context_tags")
+                            prefixes = block.get(prefix_key)
+                            if (
+                                isinstance(tags, list)
+                                and isinstance(prefixes, list)
+                                and tags
+                                and prefixes
+                                and all(isinstance(t, str) for t in tags)
+                                and all(isinstance(p, str) for p in prefixes)
+                            ):
+                                new_tags = list(tags)
+                                for pref in prefixes:
+                                    matching = [t for t in new_tags if t.startswith(pref)]
+                                    if len(matching) > 1:
+                                        kept = matching[0]
+                                        new_tags = [t for t in new_tags if not t.startswith(pref) or t == kept]
+                                if new_tags != tags:
+                                    out = {**out, field_name: {**block, "context_tags": new_tags}}
+                                    changed_tags = True
+                deduped_outcomes.append(out)
+            if changed_tags:
+                decoded = {**decoded, "outcomes": deduped_outcomes}
+                json_text = json.dumps(decoded, ensure_ascii=False, separators=(",", ":"))
+        normalized_decoded = _normalize_visual_object_identifiers(
+            _normalize_claim_identifiers(decoded)
+        )
         if normalized_decoded is not decoded:
             decoded = normalized_decoded
             json_text = json.dumps(decoded, ensure_ascii=False, separators=(",", ":"))

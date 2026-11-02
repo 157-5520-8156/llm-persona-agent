@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 import hashlib
 import json
 import logging
@@ -290,6 +291,7 @@ class WorldRuntime:
         memory_consolidation=None,
         perception_owner: str | None = None,
         perception_trigger_runtime: PerceptionTriggerRuntime | None = None,
+        perception_before_expression: bool = False,
         latency_recorder: ProductionLatencyRecorder | None = None,
     ) -> None:
         if not world_id:
@@ -399,6 +401,7 @@ class WorldRuntime:
         self._interaction_fact_owner = interaction_fact_owner
         self._fact_acceptance = fact_acceptance
         self._fact_adapter = fact_adapter
+        self._fact_background_commit_gate = None
         if fact_memory_lifecycle is not None and character_interior is None:
             raise ValueError("Fact memory lifecycle requires CharacterInterior")
         if fact_memory_lifecycle is not None and not fact_memory_actor_ref:
@@ -458,6 +461,7 @@ class WorldRuntime:
             raise ValueError("perception trigger runtime must own this exact ledger")
         self._perception_owner = perception_owner
         self._perception_trigger_runtime = perception_trigger_runtime
+        self._perception_before_expression = perception_before_expression
         self._latency = latency_recorder
         self._lock = asyncio.Lock()
         # A durable expression claim may be observed concurrently by ingress
@@ -673,6 +677,12 @@ class WorldRuntime:
         # Overdue work is still drained; it must not hide the next clock boundary.
         return await self._memory_consolidation.next_due(future_only=True) if self._memory_consolidation is not None else None
 
+    def set_fact_background_commit_gate(self, gate) -> None:
+        """Install a process-local priority gate; durable CAS remains authoritative."""
+        if self._fact_background_commit_gate is not None:
+            raise RuntimeError("Fact background commit gate is already installed")
+        self._fact_background_commit_gate = gate
+
     async def drain_background_once(self):
         """Run background workers until one makes progress.
 
@@ -841,6 +851,7 @@ class WorldRuntime:
                         memory_lifecycle=self._fact_memory_lifecycle,
                         memory_actor_ref=self._fact_memory_actor_ref,
                         owner_id=self._interaction_fact_owner,
+                        commit_gate=self._fact_background_commit_gate,
                     ).drain_one()
 
                 fact = await invoke(
@@ -941,6 +952,43 @@ class WorldRuntime:
             if isolated_exc is not None and technical_result is None:
                 raise isolated_exc
             return technical_result
+
+    async def _settle_inbound_attachment_perception_before_expression(
+        self,
+        *,
+        observation: Observation,
+    ) -> None:
+        if self._perception_trigger_runtime is None:
+            return
+        try:
+            before_actions = {
+                item.action_id
+                for item in (await self._project_for_write()).actions
+                if item.layer == "perception_tool"
+            }
+            perception_run = await self._perception_trigger_runtime.drain_one()
+            if (
+                perception_run.status != "processed"
+                or perception_run.work_status != "accepted"
+                or self._action_executor is None
+            ):
+                return
+            after_projection = await self._project_for_write()
+            new_perception_actions = tuple(
+                item.action_id
+                for item in after_projection.actions
+                if item.layer == "perception_tool"
+                and item.action_id not in before_actions
+                and item.state == "authorized"
+            )
+            for action_id in new_perception_actions:
+                await self.drain_action(action_id)
+        except Exception:
+            _LOG.warning(
+                "pre-expression attachment perception deferred to background trace=%s",
+                observation.trace_id,
+                exc_info=True,
+            )
 
     async def drain_actions_once(
         self,
@@ -3874,6 +3922,32 @@ class WorldRuntime:
                 deliberation_revision=committed.deliberation_revision,
                 ledger_sequence=committed.ledger_sequence,
             )
+            if (
+                self._perception_before_expression
+                and self._perception_trigger_runtime is not None
+                and observation.attachment_refs
+            ):
+                perception_started = time.perf_counter()
+                await self._settle_inbound_attachment_perception_before_expression(
+                    observation=observation
+                )
+                perception_elapsed = max(0.0, time.perf_counter() - perception_started)
+                if turn_budget is not None and perception_elapsed > 0:
+                    turn_budget = replace(
+                        turn_budget,
+                        started_at=turn_budget.started_at + perception_elapsed,
+                        deadline=turn_budget.deadline + perception_elapsed,
+                        hedge_at=turn_budget.hedge_at + perception_elapsed,
+                        first_provider_entry_deadline=(
+                            turn_budget.first_provider_entry_deadline + perception_elapsed
+                        ),
+                    )
+                post_perception = await self._project_for_write()
+                reply_cursor = ProjectionCursor(
+                    world_revision=post_perception.world_revision,
+                    deliberation_revision=post_perception.deliberation_revision,
+                    ledger_sequence=post_perception.ledger_sequence,
+                )
             if self._pinned_turn is not None:
                 episode_process, episode_cursor = await self._claim_expression_episode(
                     observation
@@ -3909,6 +3983,21 @@ class WorldRuntime:
                     and episode_process.claim_lease is not None
                     else None
                 )
+                if turn_budget is not None:
+                    pre_audit_overrun = max(
+                        0.0, (turn_budget.clock() - turn_budget.started_at) - 0.35
+                    )
+                    if pre_audit_overrun > 0:
+                        turn_budget = replace(
+                            turn_budget,
+                            started_at=turn_budget.started_at + pre_audit_overrun,
+                            deadline=turn_budget.deadline + pre_audit_overrun,
+                            hedge_at=turn_budget.hedge_at + pre_audit_overrun,
+                            first_provider_entry_deadline=(
+                                turn_budget.first_provider_entry_deadline
+                                + pre_audit_overrun
+                            ),
+                        )
                 try:
                     if expression_attempt_id is None:
                         audited = await self._pinned_turn.audit_observation(

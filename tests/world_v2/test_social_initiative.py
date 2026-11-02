@@ -2591,3 +2591,122 @@ async def test_non_retryable_spontaneous_failure_does_not_wedge_situation_indepe
     assert stimulus.event_id in opportunity.stimulus_event_refs
 
 
+def test_unanswered_proactive_outreach_stretches_cooldown_and_resets_on_user_reply() -> None:
+    from companion_daemon.world_v2.social_initiative import (
+        effective_contact_cooldown_seconds,
+        unanswered_proactive_outreach_count,
+    )
+
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    policy = SocialInitiativePolicy()
+
+    assert unanswered_proactive_outreach_count(projection) == 0
+    assert effective_contact_cooldown_seconds(projection, policy=policy) == 900
+
+    # When affect is approach (warmth / joy / connected longing), unanswered outreach keeps 15m cooldown
+    t1 = NOW + timedelta(minutes=20)
+    projection.actions = (
+        SimpleNamespace(
+            action_id="action:proactive-1",
+            kind="proactive_message",
+            state="executed",
+            logical_time=t1,
+            last_updated_revision=2,
+        ),
+    )
+    assert unanswered_proactive_outreach_count(projection) == 1
+    assert effective_contact_cooldown_seconds(projection, policy=policy) == 900
+
+    # When affect becomes neutral, cooldown follows the relationship's lower consideration band (1h = 3,600s)
+    t2 = NOW + timedelta(minutes=50)
+    projection.affect_episodes = ()
+    projection.actions = (
+        *projection.actions,
+        SimpleNamespace(
+            action_id="action:proactive-2",
+            kind="proactive_message",
+            state="executed",
+            logical_time=t2,
+            last_updated_revision=3,
+        ),
+    )
+    assert unanswered_proactive_outreach_count(projection) == 2
+    assert effective_contact_cooldown_seconds(projection, policy=policy) == 3_600
+
+    # When affect becomes guarded (hurt / resentment / withdrawal), cooldown stretches to the upper band (2h = 7,200s)
+    t3 = NOW + timedelta(hours=5)
+    projection.affect_episodes = (
+        SimpleNamespace(
+            status="active",
+            components=(
+                SimpleNamespace(dimension="hurt", intensity_bp=7_000),
+            ),
+        ),
+    )
+    projection.actions = (
+        *projection.actions,
+        SimpleNamespace(
+            action_id="action:followup-3",
+            kind="followup",
+            state="executed",
+            logical_time=t3,
+            last_updated_revision=4,
+        ),
+    )
+    assert unanswered_proactive_outreach_count(projection) == 3
+    assert effective_contact_cooldown_seconds(projection, policy=policy) == 7_200
+
+    # When relationship cools to friend + guarded affect, shared outreach interval stretches to friend upper band (4h = 14,400s)
+    projection.relationship_states = (
+        SimpleNamespace(
+            stage="friend",
+            variables=SimpleNamespace(
+                trust_bp=4_500,
+                closeness_bp=4_500,
+                respect_bp=4_500,
+                reliability_bp=4_500,
+                mutuality_bp=4_500,
+                repair_confidence_bp=4_500,
+            ),
+        ),
+    )
+    shared_cid = "consideration:social-initiative:situation-independent:" + "a" * 64
+    stimulus_ref = SimpleNamespace(
+        event_id="event:experience:shared-outreach",
+        event_type="ExperienceCommitted",
+        logical_time=t2,
+        world_revision=3,
+    )
+    projection.committed_world_event_refs = (
+        *projection.committed_world_event_refs,
+        stimulus_ref,
+    )
+    projection.trigger_processes = (
+        SimpleNamespace(
+            process_kind="proactive_action_deliberation",
+            trigger_ref="proactive-consideration:" + shared_cid,
+            source_evidence_ref=stimulus_ref.event_id,
+            state="terminal",
+            runtime_outcome_ref="proactive:executed:action:proactive-2",
+            claim_lease=SimpleNamespace(acquired_at=t2),
+        ),
+    )
+    assert not compiler._shared_outreach_budget_allows(  # noqa: SLF001
+        projection,
+        t2 + timedelta(hours=3, minutes=30),
+    )
+    assert compiler._shared_outreach_budget_allows(  # noqa: SLF001
+        projection,
+        t2 + timedelta(hours=5),
+    )
+
+    # Once the user replies (new ObservationRecorded at revision 5), cooldown resets immediately
+    projection.message_observations = (
+        *projection.message_observations,
+        SimpleNamespace(observation_id="obs:user-reply", world_revision=5),
+    )
+    assert unanswered_proactive_outreach_count(projection) == 0
+    assert effective_contact_cooldown_seconds(projection, policy=policy) == 900
+
+
+

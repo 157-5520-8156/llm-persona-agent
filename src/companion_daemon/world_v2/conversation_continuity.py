@@ -10,6 +10,7 @@ whose language is reactivated by the current message.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 
 from .associative_recall import AssociativeRecallCandidate, AssociativeRecallCompiler
 from .present_prompt import (
@@ -19,15 +20,16 @@ from .present_prompt import (
 from .recent_dialogue import RecentDialogueItem
 
 
-_ACKNOWLEDGED_COMPANION_TAIL = 8
-# ResolverProof proves at most 32 authority refs per slice. Companion beats
-# used to carry acceptance+payload+delivery(+ack) and starved the live head.
-# Compact claims keep ~2 refs each, so the pack can reserve the same 8-line
-# companion live window the continuity tags and context-truth audit expect.
-WORKING_DIALOGUE_SOURCE_REF_BUDGET = 32
-WORKING_DIALOGUE_ITEM_BUDGET = 16
-WORKING_DIALOGUE_COMPANION_ITEMS = 8
-WORKING_DIALOGUE_COUNTERPART_ITEMS = 8
+_ACKNOWLEDGED_COMPANION_TAIL = 48
+_ACKNOWLEDGED_BURST_WINDOW = timedelta(minutes=5)
+_PENDING_INTERACTION_MAX_AGE = timedelta(hours=2)
+# ResolverProof proves up to 128 authority refs per slice. Compact claims keep
+# ~2 refs each, so the pack can reserve a 24-turn (48-line) back-and-forth
+# working window for long stories and multi-bubble exchanges.
+WORKING_DIALOGUE_SOURCE_REF_BUDGET = 128
+WORKING_DIALOGUE_ITEM_BUDGET = 56
+WORKING_DIALOGUE_COMPANION_ITEMS = 24
+WORKING_DIALOGUE_COUNTERPART_ITEMS = 24
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,6 +128,19 @@ class ConversationContinuityCompiler:
             and item.dialogue_id != current.dialogue_id
             and (item.sequence, item.occurred_at) < (current.sequence, current.occurred_at)
         )[-WORKING_DIALOGUE_COUNTERPART_ITEMS:]
+        acknowledged_counterpart_watermark = max(
+            (
+                (item.sequence, item.occurred_at)
+                for item in ordered
+                if item.speaker == "counterpart"
+                and (item.sequence, item.occurred_at) < (current.sequence, current.occurred_at)
+                and any(
+                    claim.authority_event_ref in acknowledged_event_refs
+                    for claim in item.source_claims
+                )
+            ),
+            default=None,
+        )
         pending = tuple(
             item
             for item in recent_counterpart
@@ -133,6 +148,11 @@ class ConversationContinuityCompiler:
                 claim.authority_event_ref in acknowledged_event_refs
                 for claim in item.source_claims
             )
+            and (
+                acknowledged_counterpart_watermark is None
+                or (item.sequence, item.occurred_at) > acknowledged_counterpart_watermark
+            )
+            and (current.occurred_at - item.occurred_at) <= _PENDING_INTERACTION_MAX_AGE
         )[-self._max_pending :]
         for offset, item in enumerate(reversed(pending)):
             retain(item, "pending_interaction", 9_850 - offset * 50)
@@ -160,8 +180,33 @@ class ConversationContinuityCompiler:
                     retain(
                         acknowledged,
                         "acknowledged_context",
-                        9_750 - offset * 50,
+                        9_750 - offset * 20,
                     )
+                    prev_companion_seq = max(
+                        (
+                            c.sequence
+                            for c in companions_before
+                            if c.sequence < acknowledged.sequence
+                        ),
+                        default=0,
+                    )
+                    for sibling in ordered:
+                        if (
+                            sibling.speaker == "counterpart"
+                            and prev_companion_seq < sibling.sequence < acknowledged.sequence
+                            and timedelta(0)
+                            <= (acknowledged.occurred_at - sibling.occurred_at)
+                            <= _ACKNOWLEDGED_BURST_WINDOW
+                        ):
+                            retain(
+                                sibling,
+                                "acknowledged_context",
+                                9_740 - offset * 20,
+                            )
+
+        for offset, item in enumerate(reversed(recent_counterpart)):
+            if item.dialogue_id not in selected:
+                retain(item, "recent", 9_500 - offset * 40)
 
         for offset, item in enumerate(reversed(ordered)):
             if len(selected) >= self._max_items:
@@ -256,8 +301,21 @@ def pack_recent_dialogue_under_source_budget(
         key=lambda item: (item.sequence, item.occurred_at, item.dialogue_id),
         reverse=True,
     )[:WORKING_DIALOGUE_COUNTERPART_ITEMS]
+    newest_counterpart_at = (
+        counterpart_live[0].occurred_at if counterpart_live else None
+    )
+    live_counterpart_added = 0
     for item in counterpart_live:
-        try_add(item)
+        if (
+            live_counterpart_added >= 8
+            and newest_counterpart_at is not None
+            and (newest_counterpart_at - item.occurred_at) > _PENDING_INTERACTION_MAX_AGE
+            and not has_reason(item, "acknowledged_context")
+            and not has_reason(item, "topic_reactivation")
+        ):
+            continue
+        if try_add(item):
+            live_counterpart_added += 1
 
     newest_first = sorted(
         items,
@@ -277,8 +335,12 @@ def pack_recent_dialogue_under_source_budget(
         if try_add(item):
             companion_added += 1
 
+    oldest_selected_seq = min((s.sequence for s in selected), default=0)
     for item in newest_first:
-        if item.dialogue_id.startswith("dialogue:media-delivery:"):
+        if (
+            item.dialogue_id.startswith("dialogue:media-delivery:")
+            and item.sequence >= oldest_selected_seq
+        ):
             try_add(item)
 
     counterpart_added = 0
@@ -290,6 +352,14 @@ def pack_recent_dialogue_under_source_budget(
         if item.dialogue_id in selected_ids:
             counterpart_added += 1
             continue
+        if (
+            counterpart_added >= 8
+            and newest_counterpart_at is not None
+            and (newest_counterpart_at - item.occurred_at) > _PENDING_INTERACTION_MAX_AGE
+            and not has_reason(item, "acknowledged_context")
+            and not has_reason(item, "topic_reactivation")
+        ):
+            continue
         if try_add(item):
             counterpart_added += 1
 
@@ -297,9 +367,18 @@ def pack_recent_dialogue_under_source_budget(
         if has_reason(item, "acknowledged_context"):
             try_add(item)
 
+    oldest_selected_seq = min((s.sequence for s in selected), default=0)
     for item in newest_first:
+        if companion_added >= companion_items:
+            break
         if item.speaker == "companion":
-            try_add(item)
+            if (
+                item.dialogue_id.startswith("dialogue:media-delivery:")
+                and item.sequence < oldest_selected_seq
+            ):
+                continue
+            if item.dialogue_id not in selected_ids and try_add(item):
+                companion_added += 1
 
     return tuple(selected)
 

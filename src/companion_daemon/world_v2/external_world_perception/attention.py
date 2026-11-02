@@ -65,6 +65,8 @@ def _parse_datetime(value: object) -> datetime:
 class SQLiteShadowAttentionCoordinator:
     """Internal durable coordinator observed only through the Hub seam."""
 
+    _requires_durable_snapshot: bool = False
+
     def __init__(
         self,
         *,
@@ -246,6 +248,11 @@ class SQLiteShadowAttentionCoordinator:
                 observed_at=observed_at,
             )
             self._validate_context(context=context, observed_at=observed_at)
+            frozen = self._freeze_window(
+                opportunity_id=str(opportunity["opportunity_id"]),
+                context=context,
+                observed_at=observed_at,
+            )
         except Exception as exc:
             failure_code = self._technical_failure_code("context", exc)
             self._record_opportunity_failure(
@@ -259,12 +266,6 @@ class SQLiteShadowAttentionCoordinator:
                 next_wake_at=self.next_wake_at(),
                 more_due=False,
             )
-
-        frozen = self._freeze_window(
-            opportunity_id=str(opportunity["opportunity_id"]),
-            context=context,
-            observed_at=observed_at,
-        )
         if frozen is None:
             self._terminal_opportunity_without_candidate(
                 opportunity_id=str(opportunity["opportunity_id"]),
@@ -396,6 +397,20 @@ class SQLiteShadowAttentionCoordinator:
         if not self._exposable_source_ids:
             return ()
         placeholders = ",".join("?" for _ in self._exposable_source_ids)
+        durable_snapshot_clause = (
+            """
+              AND EXISTS (
+                  SELECT 1 FROM external_perception_raw_evidence AS evidence
+                  WHERE evidence.evidence_ref = revision.evidence_ref
+              )
+              AND EXISTS (
+                  SELECT 1 FROM external_perception_source_policies AS policy
+                  WHERE policy.policy_revision = revision.source_policy_revision
+              )
+            """
+            if self._requires_durable_snapshot
+            else ""
+        )
         rows = self._connection.execute(
             f"""
             SELECT revision.signal_revision_ref, revision.source_id, revision.observed_at
@@ -404,6 +419,7 @@ class SQLiteShadowAttentionCoordinator:
               ON revision.signal_revision_ref = state.latest_signal_revision_ref
             WHERE state.effective_expires_at > ?
               AND revision.source_id IN ({placeholders})
+              {durable_snapshot_clause}
               AND NOT EXISTS (
                   SELECT 1 FROM external_perception_attention_exposures AS exposure
                   LEFT JOIN external_signal_revisions AS exposed_revision
@@ -556,9 +572,23 @@ class SQLiteShadowAttentionCoordinator:
         context: CharacterAttentionContext,
         observed_at: datetime,
     ) -> tuple[PerceptionDossier, ...]:
+        durable_snapshot_clause = (
+            """
+                  AND EXISTS (
+                      SELECT 1 FROM external_perception_raw_evidence AS evidence
+                      WHERE evidence.evidence_ref = revision.evidence_ref
+                  )
+                  AND EXISTS (
+                      SELECT 1 FROM external_perception_source_policies AS policy
+                      WHERE policy.policy_revision = revision.source_policy_revision
+                  )
+            """
+            if self._requires_durable_snapshot
+            else ""
+        )
         with self._lock:
             rows = self._connection.execute(
-                """
+                f"""
                 SELECT revision.*, membership.cluster_ref
                 FROM external_perception_opportunity_membership AS opportunity
                 JOIN external_signal_revisions AS revision
@@ -569,8 +599,28 @@ class SQLiteShadowAttentionCoordinator:
                   ON membership.signal_id = revision.signal_id
                 WHERE opportunity.opportunity_id = ?
                   AND state.effective_expires_at > ?
+                  {durable_snapshot_clause}
+                  AND NOT EXISTS (
+                      SELECT 1 FROM external_perception_attention_exposures AS exposure
+                      LEFT JOIN external_signal_revisions AS exposed_revision
+                        ON exposed_revision.signal_revision_ref = exposure.signal_revision_ref
+                      WHERE (
+                          exposure.signal_revision_ref = revision.signal_revision_ref
+                          OR (
+                              revision.source_id = 'cn.social.bilibili.popular.v1'
+                              AND exposed_revision.signal_id = revision.signal_id
+                          )
+                      )
+                        AND exposure.attention_policy_revision = ?
+                        AND exposure.deployment_mode_revision = ?
+                  )
                 """,
-                (opportunity_id, _iso_utc(observed_at)),
+                (
+                    opportunity_id,
+                    _iso_utc(observed_at),
+                    self._runtime.attention_policy_revision,
+                    self._runtime.deployment_mode_revision,
+                ),
             ).fetchall()
         by_cluster: dict[str, list[sqlite3.Row]] = {}
         for row in rows:
@@ -1206,14 +1256,30 @@ class SQLiteShadowAttentionCoordinator:
                     """,
                     (_iso_utc(observed_at), result, window.opportunity_id),
                 )
-                for dossier in window.candidates:
-                    for revision_ref in dossier.exact_signal_revisions:
-                        self._record_exposure(
-                            signal_revision_ref=revision_ref,
-                            attention_attempt_id=attention_attempt_id,
-                            result=result,
-                            observed_at=observed_at,
-                        )
+                exposed_revisions: set[str] = {
+                    revision_ref
+                    for dossier in window.candidates
+                    for revision_ref in dossier.exact_signal_revisions
+                }
+                member_rows = self._connection.execute(
+                    """
+                    SELECT signal_revision_ref
+                    FROM external_perception_opportunity_membership
+                    WHERE opportunity_id = ?
+                    """,
+                    (window.opportunity_id,),
+                ).fetchall()
+                for m_row in member_rows:
+                    rev_ref = str(m_row["signal_revision_ref"])
+                    if rev_ref:
+                        exposed_revisions.add(rev_ref)
+                for revision_ref in sorted(exposed_revisions):
+                    self._record_exposure(
+                        signal_revision_ref=revision_ref,
+                        attention_attempt_id=attention_attempt_id,
+                        result=result,
+                        observed_at=observed_at,
+                    )
                 self._connection.execute("COMMIT")
                 return True
             except Exception:

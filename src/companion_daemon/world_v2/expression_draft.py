@@ -135,14 +135,31 @@ class ExpressionDraftCapabilities(FrozenModel):
         kinds.update(item for item in self.modalities if item != "text")
         return frozenset(kinds)
 
+    def _live_sticker_options(self) -> tuple[ExpressionOption, ...]:
+        if self.profile_id != "expression:qq-napcat.1" or not any(
+            item.option_id.startswith("meme:") for item in self.sticker_options
+        ):
+            return self.sticker_options
+        from .sticker_vault import sticker_vault_option_tuples
+
+        non_meme = tuple(
+            item for item in self.sticker_options if not item.option_id.startswith("meme:")
+        )
+        vault_options = tuple(
+            ExpressionOption(option_id=option_id, label=label)
+            for option_id, label in sticker_vault_option_tuples()
+        )
+        return (*non_meme, *vault_options)
+
     def prompt_value(self) -> dict[str, object]:
+        live_stickers = self._live_sticker_options()
         value: dict[str, object] = {
             "profile_id": self.profile_id,
             "modalities": self.modalities,
             "reaction_options": tuple(
                 item.model_dump(mode="json") for item in self.reaction_options
             ),
-            "sticker_options": tuple(item.model_dump(mode="json") for item in self.sticker_options),
+            "sticker_options": tuple(item.model_dump(mode="json") for item in live_stickers),
             "max_beats": self.max_beats,
             "max_later_beats": self.max_later_beats,
             # This is a current transport fact, not a social prescription.
@@ -228,21 +245,30 @@ def qq_expression_capabilities(
     *,
     recorded_cadence_mode: Literal["off", "shadow", "on"] = "off",
     media_request_available: bool = False,
+    include_sticker_vault: bool = False,
 ) -> ExpressionDraftCapabilities:
     """Return only modalities proven by the configured QQ transport dialect."""
 
+    is_napcat = adapter.strip().lower() == "napcat"
     base = (
         QQ_NAPCAT_EXPRESSION_CAPABILITIES
-        if adapter.strip().lower() == "napcat"
+        if is_napcat
         else TEXT_ONLY_EXPRESSION_CAPABILITIES
     )
-    return base.model_copy(
-        update={
-            "recorded_cadence_mode": recorded_cadence_mode,
-            "private_turn_state_mode": "required",
-            "media_request_mode": ("candidate_only" if media_request_available else "unavailable"),
-        }
-    )
+    updates: dict[str, object] = {
+        "recorded_cadence_mode": recorded_cadence_mode,
+        "private_turn_state_mode": "required",
+        "media_request_mode": ("candidate_only" if media_request_available else "unavailable"),
+    }
+    if is_napcat and include_sticker_vault:
+        from .sticker_vault import sticker_vault_option_tuples
+
+        vault_options = tuple(
+            ExpressionOption(option_id=option_id, label=label)
+            for option_id, label in sticker_vault_option_tuples()
+        )
+        updates["sticker_options"] = (*base.sticker_options, *vault_options)
+    return base.model_copy(update=updates)
 
 
 class ExpressionBeatDraftChoice(FrozenModel):
@@ -272,8 +298,8 @@ class ResponseExpectationDraft(FrozenModel):
     hoped_response: str = Field(min_length=1, max_length=128)
     pressure_bp: int = Field(ge=0, le=10_000)
     importance_bp: int = Field(ge=0, le=10_000)
-    wait_seconds: int = Field(ge=30, le=RESPONSE_EXPECTATION_WAIT_MAX_SECONDS)
-    expires_after_seconds: int = Field(ge=60, le=172_800)
+    wait_seconds: int = Field(ge=5, le=RESPONSE_EXPECTATION_WAIT_MAX_SECONDS)
+    expires_after_seconds: int = Field(ge=15, le=172_800)
 
     @model_validator(mode="after")
     def expiry_follows_wait(self) -> "ResponseExpectationDraft":
@@ -282,12 +308,16 @@ class ResponseExpectationDraft(FrozenModel):
         return self
 
 
+REVISIT_WAIT_MAX_SECONDS = 604_800
+REVISIT_EXPIRES_MAX_SECONDS = 691_200
+
+
 class RevisitDraft(FrozenModel):
     """Optional leftover she wants to return to; the host does not invent one."""
 
     thought: str = Field(min_length=1, max_length=160)
-    wait_seconds: int = Field(ge=30, le=RESPONSE_EXPECTATION_WAIT_MAX_SECONDS)
-    expires_after_seconds: int = Field(ge=60, le=172_800)
+    wait_seconds: int = Field(ge=5, le=REVISIT_WAIT_MAX_SECONDS)
+    expires_after_seconds: int = Field(ge=15, le=REVISIT_EXPIRES_MAX_SECONDS)
 
     @model_validator(mode="after")
     def expiry_follows_wait(self) -> "RevisitDraft":
@@ -438,7 +468,7 @@ def validate_expression_draft_capabilities(
     if any(item.modality not in available for item in draft.beats):
         raise ValueError("expression modality is not available in this deployment")
     reaction_ids = {item.option_id for item in capabilities.reaction_options}
-    sticker_ids = {item.option_id for item in capabilities.sticker_options}
+    sticker_ids = {item.option_id for item in capabilities._live_sticker_options()}
     if any(
         item.reaction_id not in reaction_ids for item in draft.beats if item.modality == "reaction"
     ):
@@ -688,7 +718,10 @@ def _current_counterpart_report_source_refs(
     items = recent_dialogue.get("items")
     if not isinstance(items, list):
         return frozenset(refs)
+    from .recent_dialogue import trigger_dialogue_text
+
     expected_dialogue_id = f"dialogue:observation:{trigger.observation_ref}"
+    expected_trigger_text = trigger_dialogue_text(trigger)
     for item in items:
         if not isinstance(item, dict):
             continue
@@ -697,7 +730,7 @@ def _current_counterpart_report_source_refs(
             continue
         dialogue_id = value.get("dialogue_id")
         reasons = value.get("continuity_reasons")
-        is_current = dialogue_id == expected_dialogue_id and value.get("text") == trigger.text
+        is_current = dialogue_id == expected_dialogue_id and value.get("text") == expected_trigger_text
         is_pending = isinstance(reasons, list) and "pending_interaction" in reasons
         if (
             not isinstance(dialogue_id, str)
@@ -2413,7 +2446,57 @@ def normalize_expression_draft_wire(value: dict[str, object]) -> dict[str, objec
     changed = False
     for item in beats:
         if isinstance(item, str) and item.strip():
+            stripped = item.strip()
+            if stripped.startswith("[sticker:") and stripped.endswith("]"):
+                sid = stripped[len("[sticker:") : -1].strip()
+                if sid:
+                    normalized_beats.append({"modality": "sticker", "sticker_id": sid})
+                    changed = True
+                    continue
             normalized_beats.append({"modality": "text", "text": item})
+            changed = True
+        elif (
+            isinstance(item, dict)
+            and set(item) == {"sticker_id"}
+            and isinstance(item.get("sticker_id"), str)
+            and item["sticker_id"].strip()
+        ):
+            normalized_beats.append(
+                {"modality": "sticker", "sticker_id": item["sticker_id"].strip()}
+            )
+            changed = True
+        elif (
+            isinstance(item, dict)
+            and item.get("modality") == "text"
+            and isinstance(item.get("text"), str)
+            and item["text"].strip().startswith("[sticker:")
+            and item["text"].strip().endswith("]")
+            and item["text"].strip()[len("[sticker:") : -1].strip()
+        ):
+            sid = item["text"].strip()[len("[sticker:") : -1].strip()
+            normalized_beats.append({"modality": "sticker", "sticker_id": sid})
+            changed = True
+        elif (
+            isinstance(item, dict)
+            and set(item) == {"voice"}
+            and isinstance(item.get("voice"), str)
+            and item["voice"].strip()
+        ):
+            voice_text = item["voice"].strip()
+            if not voice_text.startswith("[CQ:voice]"):
+                voice_text = f"[CQ:voice]{voice_text}"
+            normalized_beats.append({"modality": "text", "text": voice_text})
+            changed = True
+        elif (
+            isinstance(item, dict)
+            and item.get("modality") == "voice"
+            and isinstance(item.get("text"), str)
+            and item["text"].strip()
+        ):
+            voice_text = item["text"].strip()
+            if not voice_text.startswith("[CQ:voice]"):
+                voice_text = f"[CQ:voice]{voice_text}"
+            normalized_beats.append({"modality": "text", "text": voice_text})
             changed = True
         elif (
             isinstance(item, dict)
@@ -2482,6 +2565,15 @@ def _clip_authored_text(value: object, *, max_length: int) -> object:
 def _bind_proactive_beat(item: object) -> object:
     if not isinstance(item, dict):
         return item
+    if (
+        set(item) == {"voice"}
+        and isinstance(item.get("voice"), str)
+        and item["voice"].strip()
+    ):
+        voice_text = item["voice"].strip()
+        if not voice_text.startswith("[CQ:voice]"):
+            voice_text = f"[CQ:voice]{voice_text}"
+        return {"modality": "text", "text": voice_text}
     bound: dict[str, object] = {}
     for key, value in item.items():
         if value is None:
@@ -2489,6 +2581,23 @@ def _bind_proactive_beat(item: object) -> object:
         canonical = _BEAT_KEY_ALIASES.get(key, key)
         if canonical in _BEAT_WIRE_KEYS and canonical not in bound:
             bound[canonical] = value
+    if bound.get("modality") == "voice" and isinstance(bound.get("text"), str) and bound["text"].strip():
+        voice_text = bound["text"].strip()
+        if not voice_text.startswith("[CQ:voice]"):
+            voice_text = f"[CQ:voice]{voice_text}"
+        bound["modality"] = "text"
+        bound["text"] = voice_text
+    if (
+        bound.get("modality") == "text"
+        and isinstance(bound.get("text"), str)
+        and bound["text"].strip().startswith("[sticker:")
+        and bound["text"].strip().endswith("]")
+    ):
+        sid = bound["text"].strip()[len("[sticker:") : -1].strip()
+        if sid:
+            return {"modality": "sticker", "sticker_id": sid}
+    if set(bound) == {"sticker_id"} and isinstance(bound.get("sticker_id"), str) and bound["sticker_id"].strip():
+        return {"modality": "sticker", "sticker_id": bound["sticker_id"].strip()}
     return bound
 
 
@@ -2604,8 +2713,42 @@ def compile_proactive_world_claim_source_lanes(
             context=context, trigger_ref=trigger_ref, trigger=trigger_message,
         ),
     )
+    entity_tokens = _context_entity_identity_tokens(context)
+    pinned_experience_and_memory = (
+        _slice_source_tokens(context, "recent_experiences", "memory_candidates")
+        - entity_tokens
+    )
+    pinned_snapshot_past = (
+        {
+            ref
+            for ref in _inner_life_attention_tokens(context)
+            if not ref.startswith("dialogue:")
+        }
+        - entity_tokens
+    )
+    mutable_allowed = {scope: set(refs) for scope, refs in allowed.items()}
+    mutable_allowed["current_world"].update(pinned_experience_and_memory)
+    mutable_allowed["past_world"].update(
+        pinned_experience_and_memory
+        | pinned_snapshot_past
+        | mutable_allowed["current_world"]
+        | mutable_allowed["counterpart_history"]
+        | mutable_allowed["shared_history"]
+    )
+    mutable_allowed["shared_history"].update(
+        pinned_experience_and_memory
+        | pinned_snapshot_past
+        | mutable_allowed["past_world"]
+    )
+    if (
+        isinstance(trigger_ref, str)
+        and trigger_ref
+        and not trigger_ref.startswith("event:trigger:observation:")
+    ):
+        mutable_allowed["past_world"].add(trigger_ref)
+        mutable_allowed["shared_history"].add(trigger_ref)
     return ProactiveWorldClaimSourceLanes(contract="proactive-world-claim-source-lanes.1", source_refs_by_scope={
-        scope: tuple(sorted(allowed.get(scope, ()))) for scope in _GROUNDED_WORLD_CLAIM_SCOPES
+        scope: tuple(sorted(mutable_allowed.get(scope, ()))) for scope in _GROUNDED_WORLD_CLAIM_SCOPES
     })
 
 

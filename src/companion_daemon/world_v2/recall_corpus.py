@@ -38,7 +38,7 @@ from .schemas import (
     PrivateImpressionProjection,
     ThreadProjection,
 )
-from .world_life_context import WorldLifeContextItem
+from .world_life_context import BiographicalWorldContextItem, WorldLifeContextItem
 
 
 
@@ -83,6 +83,7 @@ class RecallCorpusSources(FrozenModel):
     historical_memory_understandings: tuple[UnderstandingVersion, ...] = ()
     private_impressions: tuple[PrivateImpressionProjection, ...] = ()
     npc_identities: tuple[NpcIdentityRecallItem, ...] = ()
+    biographical_context: tuple[BiographicalWorldContextItem, ...] = ()
     authority_bindings: tuple[RecallSourceBinding, ...] = ()
 
 
@@ -129,6 +130,15 @@ def required_recall_authority_refs(sources: RecallCorpusSources) -> frozenset[st
         refs.update(b.authority_event_ref for c in item.sources for b in c.values.source_bindings)
     for item in sources.npc_identities:
         refs.update(binding.ref for binding in item.bindings)
+    for item in sources.biographical_context:
+        refs.add(item.timeline_source_event_ref)
+        refs.update(binding.authority_event_ref for binding in item.source_bindings)
+        refs.update(coord.settlement_event_ref for coord in item.settled_biographical_coordinates)
+        for arc in item.active_life_arcs:
+            refs.add(arc.source_event_ref)
+            refs.add(arc.accepted_event_ref)
+            if arc.context_summary_ref is not None:
+                refs.add(arc.context_summary_ref)
     return frozenset(ref for ref in refs if ref)
 
 
@@ -673,6 +683,90 @@ class RecallCorpusCompiler:
                     privacy_class=item.privacy_class,
                 )
             )
+
+        for item in sources.biographical_context:
+            item_bindings_by_ref = {
+                binding.authority_event_ref: self._prefer_exact_binding(
+                    authority=authority,
+                    fallback=recall_source_binding(
+                        source_kind="committed_event",
+                        authority_type="WorldEventCommitted",
+                        ref=binding.authority_event_ref,
+                        source_world_revision=binding.authority_world_revision,
+                        immutable_hash=binding.authority_payload_hash,
+                    ),
+                )
+                for binding in item.source_bindings
+            }
+            for coord in item.settled_biographical_coordinates:
+                coord_refs = {item.timeline_source_event_ref, coord.settlement_event_ref}
+                coord_bindings = self._bindings_for_refs(coord_refs, authority)
+                if coord_bindings is None:
+                    matched = [
+                        item_bindings_by_ref[ref]
+                        for ref in sorted(coord_refs)
+                        if ref in item_bindings_by_ref
+                    ]
+                    if len(matched) == len(coord_refs):
+                        coord_bindings = _canonical_bindings(tuple(matched))
+                if not coord_bindings:
+                    continue
+                documents.append(
+                    self._document(
+                        memory_kind="semantic",
+                        source_item_ref=coord.coordinate_ref,
+                        source_slice="world_life",
+                        bindings=coord_bindings,
+                        text=coord.summary,
+                        retrieval_text=(
+                            f"{coord.summary}\nTags: {', '.join(coord.context_tags)}"
+                        ),
+                        actor_ref=actor_ref,
+                        subject_refs=_subjects(actor_ref),
+                        link_refs=(item.biography_id, *coord.context_tags),
+                        occurred_from=item.logical_at,
+                        privacy_class=coord.privacy_class,
+                    )
+                )
+            for arc in item.active_life_arcs:
+                if not arc.context_summary:
+                    continue
+                arc_refs = {arc.source_event_ref, arc.accepted_event_ref}
+                arc_bindings = self._bindings_for_refs(arc_refs, authority)
+                if arc_bindings is None:
+                    matched = [
+                        item_bindings_by_ref[ref]
+                        for ref in sorted(arc_refs)
+                        if ref in item_bindings_by_ref
+                    ]
+                    if len(matched) == len(arc_refs):
+                        arc_bindings = _canonical_bindings(tuple(matched))
+                if not arc_bindings:
+                    continue
+                documents.append(
+                    self._document(
+                        memory_kind="semantic",
+                        source_item_ref=arc.arc_id,
+                        source_slice="world_life",
+                        bindings=arc_bindings,
+                        text=arc.context_summary,
+                        retrieval_text=(
+                            f"{arc.context_summary}\nTags: {', '.join(arc.context_tags)}"
+                            if arc.context_tags
+                            else arc.context_summary
+                        ),
+                        actor_ref=actor_ref,
+                        subject_refs=_subjects(actor_ref),
+                        link_refs=(
+                            item.biography_id,
+                            f"arc_kind:{arc.arc_kind}",
+                            *arc.context_tags,
+                        ),
+                        occurred_from=arc.started_at,
+                        occurred_to=arc.ends_at,
+                        privacy_class=item.privacy_class,
+                    )
+                )
 
         dialogue_by_ref: dict[str, RecentDialogueItem] = {}
         for item in sources.recent_dialogue:

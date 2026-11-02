@@ -46,9 +46,23 @@ STANDARD_DECAY_SCHEMA_VERSION = "affect-decay.1"
 STANDARD_DECAY_HALF_LIFE_SECONDS = 3_600
 STANDARD_DECAY_FLOOR_BP = 300
 STANDARD_DECAY_DELAY_SECONDS = 120
+SUSTAINED_DECAY_OBJECT_REF = "policy:decay:sustained"
+SUSTAINED_DECAY_HALF_LIFE_SECONDS = 14_400
+DEEP_DECAY_OBJECT_REF = "policy:decay:deep"
+DEEP_DECAY_HALF_LIFE_SECONDS = 43_200
 STANDARD_RESIDUE_OBJECT_REF = "policy:residue:standard"
 STANDARD_RESIDUE_SCHEMA_VERSION = "affect-residue.1"
 STANDARD_RESIDUE_BP = 500
+
+
+def select_decay_object_ref(max_intensity_bp: int) -> str:
+    """Select the installed decay curve matching the episode's peak intensity."""
+
+    if max_intensity_bp >= 4_200:
+        return DEEP_DECAY_OBJECT_REF
+    if max_intensity_bp >= 2_500:
+        return SUSTAINED_DECAY_OBJECT_REF
+    return STANDARD_DECAY_OBJECT_REF
 
 
 class AffectTargetDimensionLowerBound(FrozenModel):
@@ -211,6 +225,8 @@ __all__ = [
     "AffectTargetBelowMinimumError",
     "AffectTargetDimensionLowerBound",
     "AffectTargetLowerBounds",
+    "DEEP_DECAY_HALF_LIFE_SECONDS",
+    "DEEP_DECAY_OBJECT_REF",
     "STANDARD_DECAY_DELAY_SECONDS",
     "STANDARD_DECAY_FLOOR_BP",
     "STANDARD_DECAY_HALF_LIFE_SECONDS",
@@ -219,7 +235,10 @@ __all__ = [
     "STANDARD_RESIDUE_BP",
     "STANDARD_RESIDUE_OBJECT_REF",
     "STANDARD_RESIDUE_SCHEMA_VERSION",
+    "SUSTAINED_DECAY_HALF_LIFE_SECONDS",
+    "SUSTAINED_DECAY_OBJECT_REF",
     "lower_bounds_from_projection",
+    "select_decay_object_ref",
     "target_reselection_instruction",
     "validate_model_authored_targets",
 ]

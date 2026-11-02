@@ -198,3 +198,53 @@ def test_textless_sun_reaction_enters_dialogue_and_takes_current_turn() -> None:
     assert "current_turn" in marked["☀️ 太阳"]
     assert "current_turn" not in marked.get(PHOTO, ())
     assert SUN_EXPLAINED in marked
+
+
+def test_glyphless_qq_face_renders_with_brackets_and_passes_visible_review_trigger_binding() -> None:
+    from types import SimpleNamespace
+    from companion_daemon.world_v2.pinned_turn import PinnedTurnCompiler
+    from companion_daemon.world_v2.visible_review_context import _counterpart_actor
+
+    observation = _observation(
+        suffix="knock",
+        at=NOW,
+        text=None,
+        coalescing_metadata={
+            "schema_version": "world-v2-qq-coalescing.2",
+            "content_shapes": ["reaction"],
+            "reaction_refs": ["qq-face:351"],
+            "sticker_refs": [],
+        },
+    )
+    event, ref, _ = _append_observation(observation=observation, revision=1)
+    assert observation_dialogue_text(observation) == "[敲敲]"
+
+    trigger = PinnedTurnCompiler._trigger_message(
+        observation,
+        event,
+        source_world_revision=ref.world_revision,
+        projection=None,
+    )
+    entries = [
+        {
+            "lane": "recent_dialogue",
+            "item": {
+                "value": {
+                    "dialogue_id": f"dialogue:observation:{observation.observation_id}",
+                    "speaker_ref": observation.actor,
+                    "speaker": "counterpart",
+                    "delivery_state": "observed",
+                    "text": observation_dialogue_text(observation),
+                    "source_claims": [
+                        {
+                            "authority_event_ref": event.event_id,
+                            "authority_world_revision": ref.world_revision,
+                            "authority_payload_hash": event.payload_hash,
+                        }
+                    ],
+                }
+            },
+        }
+    ]
+    req = SimpleNamespace(trigger_message=trigger, trigger_ref=event.event_id)
+    assert _counterpart_actor(req, entries) == observation.actor  # type: ignore[arg-type]

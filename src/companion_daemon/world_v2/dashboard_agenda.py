@@ -48,6 +48,10 @@ class DashboardWorldlineStage(FrozenModel):
 
 
 class DashboardWorldlineOpportunity(FrozenModel):
+    # Display-only indices. Omission preserves the bytes of legacy snapshots.
+    index: int | None = Field(default=None, ge=0, exclude_if=lambda value: value is None)
+    after_indexes: tuple[int, ...] | None = Field(default=None, exclude_if=lambda value: value is None)
+    thread_indexes: tuple[int, ...] | None = Field(default=None, exclude_if=lambda value: value is None)
     title: str = Field(max_length=300)
     detail: str = Field(max_length=2400)
     lane_label: str
@@ -97,7 +101,20 @@ def _clause_title(text: str, fallback: str) -> str:
     return text[:24].strip() or fallback
 
 
+class DashboardWeekSlot(FrozenModel):
+    """Whole-week metadata, before bounded detail pagination; no new content reads."""
+
+    date: date
+    hour: int = Field(ge=0, le=22, multiple_of=2)
+    known_count: int = Field(ge=1)
+    kinds: dict[str, int]
+    labels: tuple[str, ...] = ()
+    first_page: int = Field(ge=0)
+    last_page: int = Field(ge=0)
+
+
 class DashboardAgenda(FrozenModel):
+    week_slots: tuple[DashboardWeekSlot, ...] | None = Field(default=None, exclude_if=lambda value: value is None)
     week_start: date
     timezone: Literal["Asia/Shanghai"] = TIMEZONE
     state: Literal["ready", "empty", "unavailable"]
@@ -190,7 +207,7 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
                 item.values.privacy_class, item)
     if store is not None and now is not None:
         from .life_content import collect_user_channel_limited_content_refs
-        from .world_planning import iter_planning_publications, expand_planning
+        from .world_planning import PlanningPhase, iter_planning_publications, expand_planning
         limited = collect_user_channel_limited_content_refs(ledger=ledger, projection=projection)
         try:
             publications = iter_planning_publications(projection=projection, store=store, actor_ref=actor_ref,
@@ -282,6 +299,9 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
                     )
                     for s in draft.long_term
                 )
+                visible_opps = [opp for opp in draft.opportunities if opp.execution.privacy_class != "withhold"]
+                opp_indexes = {opp.opportunity_id: index for index, opp in enumerate(visible_opps)}
+                thread_indexes = {thread.thread_id: index for index, thread in enumerate(draft.threads)}
                 wl_opps = []
                 for opp in draft.opportunities:
                     if opp.execution.privacy_class == "withhold":
@@ -301,6 +321,9 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
                         opp_status = "待进入窗口"
                     wl_opps.append(
                         DashboardWorldlineOpportunity(
+                            index=opp_indexes[opp.opportunity_id],
+                            after_indexes=tuple(opp_indexes[ref] for ref in opp.after_opportunities if ref in opp_indexes),
+                            thread_indexes=tuple(thread_indexes[ref] for ref in opp.thread_refs if ref in thread_indexes),
                             title=opp.external_possibility[:300],
                             detail=opp.execution.text[:2400],
                             lane_label="人物机缘" if opp.lane == "npc" else "环境机缘",
@@ -327,6 +350,32 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
                     convergences=wl_convs,
                 )
     rows.sort(key=lambda row: (row[0], row[2], row[3]))
+    # Summarize authorized timed rows only. Periods/windows have a separate lane;
+    # crossing midnight is clipped to each day, never inferred as free time.
+    slot_counts = {}
+    for position, (opens, closes, kind, _, item) in enumerate(rows):
+        if kind in {"outlook", "commitment", "revisit", "expectation"}:
+            continue
+        if kind == "planning" and (item[1] is None or isinstance(item[1], PlanningPhase)):
+            continue
+        for offset in range(7):
+            day_start = start + timedelta(days=offset)
+            day_end = day_start + timedelta(days=1)
+            if not (opens < day_end and (closes > day_start or opens == closes and opens >= day_start)):
+                continue
+            minute = int((max(opens, day_start) - day_start).total_seconds() // 60)
+            key = (day_start.date(), minute // 120 * 2)
+            slot = slot_counts.setdefault(key, {"count": 0, "kinds": {}, "first_page": position // ENTRY_LIMIT, "last_page": position // ENTRY_LIMIT, "labels": []})
+            slot["count"] += 1
+            slot["kinds"][kind] = slot["kinds"].get(kind, 0) + 1
+            slot["last_page"] = position // ENTRY_LIMIT
+            if kind == "planning" and len(slot["labels"]) < 2:
+                title = item[1].title[:80]
+                if title not in slot["labels"]:
+                    slot["labels"].append(title)
+    week_slots = tuple(DashboardWeekSlot(date=day, hour=hour, known_count=value["count"],
+        kinds=value["kinds"], labels=tuple(value["labels"]), first_page=value["first_page"], last_page=value["last_page"])
+        for (day, hour), value in sorted(slot_counts.items()))
     page_count = max(1, (len(rows) + ENTRY_LIMIT - 1) // ENTRY_LIMIT)
     if page is None:
         page = max(0, bisect_right([row[0] for row in rows], now or start) - 1) // ENTRY_LIMIT
@@ -470,5 +519,5 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
         week_start=week_start, state="ready" if entries else "empty" if now else "unavailable",
         outlook_state=outlook_state, known_count=len(rows), withheld_count=withheld,
         truncated=len(rows) > ENTRY_LIMIT or planning_truncated, entries=entries, planning_state=planning_state,
-        page=page, page_count=page_count, worldline=worldline,
+        page=page, page_count=page_count, worldline=worldline, week_slots=week_slots,
     )

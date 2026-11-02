@@ -274,6 +274,7 @@ class Element {
     this.attributes={};
     this.events={};
     this.hidden=false;
+    this.open=false;
     this.value='all';
     this.className='';
     this.ownText='';
@@ -291,7 +292,14 @@ class Element {
     const descendants=node=>node.children.flatMap(child=>[child,...descendants(child)]);
     return descendants(this).find(node=>selector.startsWith('.')&&node.className.split(' ').includes(selector.slice(1)))||null;
   }
+  querySelectorAll(selector) {
+    const descendants=node=>node.children.flatMap(child=>[child,...descendants(child)]);
+    if(selector==='button[data-view]')return descendants(this).filter(node=>node.tagName==='button'&&node.dataset.view);
+    throw new Error('unsupported test selector '+selector);
+  }
   focus() {}
+  showModal() {this.open=true;}
+  close() {this.open=false;}
   prepend(...children) {this.children.unshift(...children);}
   append(...children) {this.children.push(...children);}
   appendChild(child) {this.append(child);}
@@ -300,12 +308,13 @@ class Element {
   addEventListener(name,handler) {this.events[name]=handler;}
   fire(name,event={}) {this.events[name]?.({target:this,...event});}
 }
-function browserWith(responses) {
-  const ids=Object.fromEntries(['agendaPanel','sectionGrid','captureState','captureNotice','recordingToggle',
+function browserWith(responses,{costData=null}={}) {
+  const ids=Object.fromEntries(['agendaPanel','storyPanel','detailDrawer','drawerTitle','drawerBody','closeDrawer','viewTitle','viewDescription','viewIndex','sectionGrid','captureState','captureNotice','recordingToggle',
     'recordingTools','recordingFocus','headerClock','worldClock','nowStory',
     'mechanismMap','mechanismDetail','evidenceNode','evidenceKind','evidenceTime','evidenceSearch',
     'evidenceCount','evidenceRecords','evidencePage','previousEvidence','nextEvidence','resetEvidence',
     'evidenceCoverage','runtimeRibbon','domainDetails','pauseDisplay','pauseLabel'].map(id=>[id,new Element()]));
+  if(costData){ids.costMeterPanel=new Element();ids.costMeterDetails=new Element();}
   ids.evidenceSearch.value='';
   const now=new Element('section');
   now.dataset.focusArea='now';
@@ -324,6 +333,7 @@ function browserWith(responses) {
   let poll;
   const window={scrollY:250,scrollTo(_x,y){this.scrollY=y;},fetch:async (url,options)=>{
     requests.push([url,options]);
+    if(costData&&url==='/world-v2/dashboard/cost')return responseFor(costData);
     const response=responses.shift();
     if(response instanceof Error)throw response;
     assert.ok(response,'unexpected extra poll');
@@ -387,7 +397,7 @@ test('recording focus is reversible, read-only and survives poll failures withou
   assert.equal(browser.ids.recordingToggle.attributes['aria-pressed'],'false');
   assert.equal(browser.ids.recordingTools.hidden,true);
   assert.equal(browser.window.scrollY,250);
-  assert.ok(browser.document.querySelectorAll('[data-focus-area]').every(panel=>!panel.hidden));
+  assert.ok(browser.document.querySelectorAll('[data-focus-area]').every(panel=>panel.hidden===false));
   assert.ok(browser.requests.every(([url,options])=>url==='/world-v2/dashboard/home'&&!options.method));
   assert.equal(browser.requests[1][1].headers['If-None-Match'],'"verified"');
   assert.equal(JSON.stringify(payload),original);
@@ -592,14 +602,310 @@ test('shipped calendar navigation and selection use the readonly date route and 
   await browser.flush();
   assert.equal(browser.ids.captureState.textContent,'已同步');
   const descendants=node=>[node,...node.children.flatMap(descendants)];
-  const second=descendants(browser.ids.agendaPanel).find(node=>node.dataset.agendaIndex==='1');
+  descendants(browser.ids.agendaPanel).find(node=>node.dataset.weekCell==='2026-10-12-10').fire('click');
+  const second=descendants(browser.ids.drawerBody).find(node=>node.dataset.agendaIndex==='1');
   second.fire('click');
-  assert.match(browser.ids.agendaPanel.textContent,/第二份详情/);
-  assert.doesNotMatch(browser.ids.agendaPanel.textContent,/第一份详情/);
+  assert.match(browser.ids.drawerBody.textContent,/第二份详情/);
+  assert.doesNotMatch(browser.ids.drawerBody.textContent,/第一份详情/);
+  browser.ids.closeDrawer.fire('click');
   const selected=client.agendaView(payload,'plan','已结束');
   assert.deepEqual(selected.shown.map(entry=>entry.index),[1]);
   descendants(browser.ids.agendaPanel).find(node=>node.tagName==='button'&&node.textContent==='下一周').fire('click');
   await browser.flush();
   assert.equal(browser.requests[1][0],'/world-v2/dashboard/home?week=2026-10-19');
   assert.match(browser.ids.agendaPanel.textContent,/2026-10-19/);
+});
+
+test('story hierarchy, recorded relationship radar and non-overlapping photo buttons render interactively', async () => {
+  const payload=snapshot({state:'unavailable'});
+  payload.sections.overview_life={state:'ready',data:{metrics:[],highlights:[],agenda:{
+    state:'ready',outlook_state:'ready',week_start:'2026-10-12',entries:[],
+    known_count:0,withheld_count:0,truncated:false,
+    worldline:{
+      review_at:'2026-10-19T12:00:00+08:00',
+      horizon_end:'2026-11-15T12:00:00+08:00',
+      stages:[
+        {title:'秋日新篇',situation:'适应新学期节奏',starts_on:'2026-09-01',ends_on:'2026-10-01',status:'已走过'},
+        {title:'期中深耕',situation:'准备课程汇报与微格试讲',starts_on:'2026-10-02',ends_on:'2026-11-01',status:'当前阶段'},
+      ],
+      threads:[
+        {
+          title:'现当代文学汇报线',
+          status:'进行中',
+          situation:'正在图书馆核对张爱玲选段批注',
+          open_question:'汇报时能否把细腻的文本观察讲出彩？',
+          developments:['确定选段与大纲','在阅览室补齐两处意象对照'],
+        },
+      ],
+      opportunities:[
+        {
+          title:'试讲排练邀约',
+          detail:'室友陈诺提议晚上一起去空教室过一遍PPT',
+          lane_label:'学业推进',
+          status:'已就绪',
+          thread_titles:['现当代文学汇报线'],
+          opens_at:'2026-10-13T18:00:00+08:00',
+          closes_at:'2026-10-13T21:00:00+08:00',
+        },
+      ],
+      convergences:[],
+    },
+  }}};
+  payload.sections.relationship_lifecycle={state:'ready',data:{metrics:[],highlights:[{
+    kind:'relationship_state',kind_label:'关系状态',title:'朋友',status_code:'friend',status_label:'朋友',
+    values:[
+      {key:'trust_bp',label:'信任',value:7800},
+      {key:'closeness_bp',label:'亲近',value:7400},
+      {key:'respect_bp',label:'尊重',value:8200},
+      {key:'reliability_bp',label:'可靠',value:8000},
+      {key:'mutuality_bp',label:'相互',value:7600},
+      {key:'repair_confidence_bp',label:'修复信心',value:7200},
+    ],
+  }]}};
+  payload.sections.perception_media={state:'ready',data:{metrics:[],highlights:[{
+    kind:'media_delivery',kind_label:'媒体投递',title:'日常分享随手拍',status_code:'delivered',status_label:'已送达',
+    detail:'在宿舍里挑选并发送一张下午在书店拍的角落照片。',
+    occurred_at:'2026-10-12T17:30:00+08:00',
+    values:[{key:'image_url',label:'照片画面',value:'/world-v2/dashboard/media/media-preview:test/image'}],
+  }]}};
+  const browser=browserWith([responseFor(payload)]);
+  await browser.flush();
+  const descendants=node=>[node,...node.children.flatMap(descendants)];
+  assert.match(browser.ids.storyPanel.textContent,/故事地图/);
+  assert.match(browser.ids.storyPanel.textContent,/汇报时能否把细腻的文本观察讲出彩/);
+  const stepNode=descendants(browser.ids.storyPanel).find(n=>n.dataset.storyPick==='note-0');
+  assert.ok(stepNode);
+  stepNode.fire('click');
+  assert.match(browser.ids.drawerBody.textContent,/确定选段与大纲/);
+  assert.equal(browser.ids.detailDrawer.open,true);
+  const radarSvg=descendants(browser.ids.sectionGrid).find(n=>n.tagName==='svg');
+  assert.ok(radarSvg);
+  assert.match(browser.ids.sectionGrid.textContent,/你们之间/);
+  const polaroid=descendants(browser.ids.sectionGrid).find(n=>n.className==='polaroid-card');
+  assert.ok(polaroid);
+  assert.match(polaroid.textContent,/书店拍的角落照片/);
+});
+
+test('single page keeps all sections visible and restores collapsed panels after recording', async () => {
+  const payload=snapshot({state:'unavailable'});
+  const browser=browserWith([responseFor(payload),responseFor(payload)]);await browser.flush();
+  assert.equal(browser.body.dataset.view,'single');
+  assert.equal(browser.ids.agendaPanel.hidden,false);
+  assert.equal(browser.ids.storyPanel.hidden,false);
+  const panels=browser.document.querySelectorAll('[data-focus-area]');
+  assert.ok(panels.every(p=>!p.hidden));
+  const relationship=panels.find(p=>p.dataset.focusArea==='relationships');
+  assert.equal(relationship.open,false);
+  browser.ids.recordingToggle.fire('click');
+  browser.ids.recordingFocus.value='life';browser.ids.recordingFocus.fire('change');
+  assert.equal(browser.ids.storyPanel.hidden,true);
+  browser.ids.recordingToggle.fire('click');
+  assert.equal(relationship.open,false);
+  await browser.poll();
+  assert.equal(browser.ids.agendaPanel.hidden,false);
+  assert.equal(browser.ids.storyPanel.hidden,false);
+  assert.ok(browser.requests.every(([url,options])=>url==='/world-v2/dashboard/home'&&!options.method));
+});
+
+test('missing affect strength and relationship dimensions never receive invented gauge values', async () => {
+  const payload=snapshot({state:'unavailable'});
+  payload.sections.facts_memory_inner={state:'ready',data:{highlights:[{kind:'affect_episode',title:'平静',status_label:'活跃'}]}};
+  payload.sections.relationship_lifecycle={state:'ready',data:{highlights:[{kind:'relationship_state',title:'和你',status_label:'朋友',values:[{key:'trust_bp',label:'信任',value:1750}]}]}};
+  const browser=browserWith([responseFor(payload)]);await browser.flush();
+  const descendants=node=>[node,...node.children.flatMap(descendants)];
+  const nodes=descendants(browser.ids.sectionGrid);
+  assert.equal(nodes.filter(n=>n.className==='mood-bar-fill').length,0);
+  assert.equal(nodes.filter(n=>n.className==='radar-svg').length,0);
+  assert.match(browser.ids.sectionGrid.textContent,/信任18%/);
+  assert.doesNotMatch(browser.ids.sectionGrid.textContent,/50%/);
+});
+
+test('week retains seven days and opens exact details only on click', async () => {
+  const payload=snapshot({state:'unavailable'});
+  payload.sections.overview_life={state:'ready',data:{highlights:[],agenda:{state:'ready',week_start:'2026-08-10',entries:[
+    {index:1,kind:'experience',title:'周一的经历',detail:'周一正文',status:'已发生',time_kind:'timed',starts_at:'2026-08-10T10:00:00+08:00',ends_at:'2026-08-10T11:00:00+08:00'},
+    {index:2,kind:'experience',title:'周三的经历',detail:'周三正文',status:'已发生',time_kind:'timed',starts_at:'2026-08-12T10:00:00+08:00',ends_at:'2026-08-12T11:00:00+08:00'},
+  ]}}};
+  const browser=browserWith([responseFor(payload),responseFor(payload)]);await browser.flush();
+  const descendants=node=>[node,...node.children.flatMap(descendants)];
+  const nodes=descendants(browser.ids.agendaPanel);
+  assert.equal(nodes.filter(n=>n.className==='week-day-heading').length,7);
+  assert.match(browser.ids.agendaPanel.textContent,/周一的经历/);
+  assert.match(browser.ids.agendaPanel.textContent,/周三的经历/);
+  assert.doesNotMatch(browser.ids.agendaPanel.textContent,/周一正文/);
+  nodes.find(n=>n.dataset.weekCell==='2026-08-10-10').fire('click');
+  assert.equal(browser.ids.detailDrawer.open,true);
+  assert.match(browser.ids.drawerBody.textContent,/周一正文/);
+  await browser.poll();
+  assert.match(browser.ids.drawerBody.textContent,/周一正文/);
+  assert.match(browser.ids.agendaPanel.textContent,/周三的经历/);
+  browser.ids.closeDrawer.fire('click');assert.equal(browser.ids.detailDrawer.open,false);
+});
+
+test('a paged home snapshot renders immediately without merging other cursor snapshots', async () => {
+  const payload=snapshot({state:'unavailable'});
+  payload.sections.overview_life={state:'ready',data:{highlights:[],agenda:{state:'ready',week_start:'2026-08-10',page:7,page_count:8,truncated:true,known_count:755,entries:[
+    {index:2,kind:'experience',title:'本页记录',detail:'正文',status:'已发生',time_kind:'point',starts_at:'2026-08-12T10:00:00+08:00',ends_at:'2026-08-12T11:00:00+08:00'},
+  ]}}};
+  const before=JSON.stringify(payload);
+  const browser=browserWith([responseFor(payload)]);await browser.flush();
+  assert.equal(browser.ids.captureState.textContent,'已同步');
+  assert.equal(browser.requests.length,1);
+  assert.match(browser.ids.agendaPanel.textContent,/当前只显示其中 1 条/);
+  assert.match(browser.ids.agendaPanel.textContent,/本页记录/);
+  assert.match(browser.ids.agendaPanel.textContent,/未载入/);
+  assert.equal(JSON.stringify(payload),before);
+});
+
+test('present view excludes terminal expectations but keeps their records available', () => {
+  const payload=snapshot({state:'unavailable'});
+  payload.sections.operations={state:'ready',data:{highlights:[
+    {kind:'response_expectation',title:'已经失效的期待',status_code:'expired',occurred_at:'2026-08-12T21:00:00+08:00'},
+    {kind:'response_expectation',title:'仍然开放的期待',status_code:'open',occurred_at:'2026-08-12T20:00:00+08:00'},
+  ]}};
+  assert.equal(client.nowStory(payload)[5].text,'仍然开放的期待');
+  assert.equal(client.visibleHighlights(payload,'operations').length,2);
+});
+
+test('structured prose reads only an explicitly reported utterance and preserves its boundary', () => {
+  const value=JSON.stringify({kind:'npc_statement',claim_authority:'speaker_report_only',speaker_ref:'npc:test',utterance:'<script>untrusted</script>她说还没有决定。'});
+  assert.deepEqual(client.readableText(value),{text:'<script>untrusted</script>她说还没有决定。',label:'人物说法 · 不代表已核实事实',structured:true});
+  assert.deepEqual(client.readableText('{"private_notes":"not narrative"}'),{text:'',label:'结构化记录',structured:true});
+  assert.equal(client.readableText('原有的叙述。').text,'原有的叙述。');
+});
+
+test('agenda nests explicit relationships without inventing parentage from overlapping times', async () => {
+  const payload=snapshot({state:'unavailable'});
+  const common={starts_at:'2026-08-12T10:00:00+08:00',ends_at:'2026-08-12T11:00:00+08:00',time_kind:'point',status:'已发生',content_state:'read'};
+  payload.sections.overview_life={state:'ready',data:{highlights:[],agenda:{state:'ready',week_start:'2026-08-10',entries:[
+    {...common,index:1,kind:'planning',title:'已公布课程',related:[]},
+    {...common,index:2,kind:'experience',title:'明确关联的经历',related:[1]},
+    {...common,index:3,kind:'experience',title:'只是同时发生',related:[]},
+  ]}}};
+  const browser=browserWith([responseFor(payload)]);await browser.flush();
+  const descendants=node=>[node,...node.children.flatMap(descendants)];
+  descendants(browser.ids.agendaPanel).find(n=>n.dataset.weekCell==='2026-08-12-10').fire('click');
+  assert.match(browser.ids.drawerBody.textContent,/只是同时发生/);
+  descendants(browser.ids.drawerBody).find(n=>n.dataset.agendaIndex==='2').fire('click');
+  const links=descendants(browser.ids.drawerBody).filter(n=>n.className==='agenda-related');
+  assert.equal(links.length,1);
+  assert.match(links[0].textContent,/已公布课程/);
+  assert.doesNotMatch(browser.ids.drawerBody.textContent,/只是同时发生/);
+});
+
+
+test('cost chart uses recorded amounts and retains selected day after refresh', async () => {
+  const payload=snapshot({state:'unavailable'});
+  const costData={summary:{today_total_cny:3,days_7_total_cny:5},daily_series:[
+    {date:'2026-08-11',total_cny:2,background_cny:1.5,interactive_cny:.5,calls:4,total_tokens:500},
+    {date:'2026-08-12',total_cny:3,background_cny:3,interactive_cny:0,calls:6,total_tokens:900},
+  ],by_purpose:[{category:'后台生活',label:'生活选择',days_7_cny:5,days_7_calls:10,today_calls:6}],by_model:[],recent_records:[]};
+  const browser=browserWith([responseFor(payload),responseFor(payload)],{costData});await browser.flush();
+  browser.ids.costMeterDetails.open=true;browser.ids.costMeterDetails.fire('toggle');await browser.flush();
+  const descendants=node=>[node,...node.children.flatMap(descendants)];
+  let nodes=descendants(browser.ids.costMeterPanel);
+  assert.match(nodes.find(n=>n.className==='cost-day-detail').textContent,/2026-08-12 · ¥3.00/);
+  const chartDay=nodes.find(n=>n.attributes['aria-label']==='2026-08-11 成本 ¥2.00');
+  chartDay.fire('keydown',{key:'Enter',preventDefault(){}});
+  assert.match(nodes.find(n=>n.className==='cost-day-detail').textContent,/2026-08-11 · ¥2.00/);
+  await browser.poll();await browser.flush();
+  nodes=descendants(browser.ids.costMeterPanel);
+  assert.match(nodes.find(n=>n.className==='cost-day-detail').textContent,/2026-08-11 · ¥2.00/);
+  assert.equal(nodes.find(n=>n.className==='cost-date-select').value,'2026-08-11');
+  assert.match(nodes.find(n=>n.className==='cost-legend').textContent,/后台生活¥5.00/);
+});
+
+test('empty cost period avoids an empty trend plot and folds inactive modules', async () => {
+  const payload=snapshot({state:'unavailable'});
+  const costData={summary:{},daily_series:[{date:'2026-08-12',total_cny:0}],by_purpose:[
+    {category:'后台生活',label:'旧模块',days_7_cny:0,days_7_calls:0,today_cny:0,today_calls:0},
+  ],by_model:[],recent_records:[]};
+  const browser=browserWith([responseFor(payload)],{costData});await browser.flush();
+  browser.ids.costMeterDetails.open=true;browser.ids.costMeterDetails.fire('toggle');await browser.flush();
+  const descendants=node=>[node,...node.children.flatMap(descendants)];
+  const nodes=descendants(browser.ids.costMeterPanel);
+  assert.equal(nodes.filter(n=>n.className==='cost-trend-svg').length,0);
+  const archived=nodes.find(n=>n.className==='cost-inactive');
+  assert.equal(archived.open,false);
+  assert.match(archived.textContent,/旧模块/);
+});
+
+test('period hierarchy follows recorded publication links and leaves unrelated candidates separate', async () => {
+  const payload=snapshot({state:'unavailable'});
+  const period={time_kind:'period',starts_at:'2026-08-01T00:00:00+08:00',ends_at:'2026-09-01T00:00:00+08:00',status:'已公布',content_state:'read'};
+  payload.sections.overview_life={state:'ready',data:{highlights:[],agenda:{state:'ready',week_start:'2026-08-10',entries:[
+    {...period,index:1,kind:'planning',title:'学期规划',related:[]},
+    {...period,index:2,kind:'planning',title:'已公布的阶段',related:[1]},
+    {...period,index:3,kind:'outlook',title:'独立候选',related:[]},
+  ]}}};
+  const browser=browserWith([responseFor(payload)]);await browser.flush();
+  const descendants=node=>[node,...node.children.flatMap(descendants)];
+  const nodes=descendants(browser.ids.agendaPanel);
+  nodes.find(n=>n.tagName==='button'&&n.textContent.startsWith('阶段背景与候选窗口')).fire('click');
+  assert.match(browser.ids.drawerBody.textContent,/独立候选/);
+  descendants(browser.ids.drawerBody).find(n=>n.dataset.agendaIndex==='2').fire('click');
+  const links=descendants(browser.ids.drawerBody).filter(n=>n.className==='agenda-related');
+  assert.equal(links.length,1);assert.match(links[0].textContent,/学期规划/);
+  assert.doesNotMatch(browser.ids.drawerBody.textContent,/独立候选/);
+});
+
+test('whole-week metadata separates unloaded records from empty cells without fetching every page', () => {
+  const payload=snapshot({state:'unavailable'});
+  payload.sections.overview_life={state:'ready',data:{agenda:{state:'ready',week_start:'2026-08-10',truncated:true,entries:[],week_slots:[
+    {date:'2026-08-10',hour:8,known_count:15,kinds:{planning:1,experience:14},labels:['已公布课程'],first_page:0,last_page:1},
+  ]}}};
+  const week=client.weekCells(payload);
+  assert.equal(week.days.length,7);
+  assert.equal(week.days[0].cells[4].state,'unloaded');
+  assert.equal(week.days[0].cells[4].known,15);
+  assert.equal(week.days[0].cells[4].labels[0],'已公布课程');
+  assert.equal(week.days[1].cells[4].state,'empty');
+  assert.equal(client.weekCells(payload,'planning').days[0].cells[4].known,1);
+  assert.deepEqual(client.weekCells(payload,'plan').days[0].cells[4].labels,[]);
+  delete payload.sections.overview_life.data.agenda.week_slots;
+  assert.equal(client.weekCells(payload).days[1].cells[4].state,'unknown');
+});
+
+test('story map draws only explicit prerequisite branches and merges, never summary order', () => {
+  const worldline={threads:[{title:'主线',situation:'当前概括',developments:['摘要甲','摘要乙'],open_question:'尚未确定'}],opportunities:[
+    {index:0,thread_indexes:[0],title:'起点',after_indexes:[]},
+    {index:1,thread_indexes:[0],title:'准备甲',after_indexes:[0]},
+    {index:2,thread_indexes:[0],title:'准备乙',after_indexes:[0]},
+    {index:3,thread_indexes:[0],title:'汇合',after_indexes:[1,2]},
+  ]};
+  const graph=client.storyGraph(worldline,0);
+  assert.deepEqual(graph.edges.filter(e=>e.kind==='prerequisite').map(e=>[e.from,e.to]),[
+    ['opp-0','opp-1'],['opp-0','opp-2'],['opp-1','opp-3'],['opp-2','opp-3'],
+  ]);
+  assert.equal(graph.edges.some(e=>e.from==='note-0'&&e.to==='note-1'),false);
+  assert.ok(graph.nodes.find(n=>n.id==='opp-3').x>graph.nodes.find(n=>n.id==='opp-1').x);
+  const legacy=client.storyGraph({threads:worldline.threads,opportunities:[{title:'未提供前置关系',thread_titles:['主线']}]});
+  assert.equal(legacy.edges.filter(e=>e.kind==='prerequisite').length,0);
+  const cyclic=client.storyGraph({threads:worldline.threads,opportunities:[
+    {index:0,thread_indexes:[0],after_indexes:[1]}, {index:1,thread_indexes:[0],after_indexes:[0]},
+  ]});
+  assert.equal(cyclic.nodes.filter(n=>n.id.startsWith('opp-')).length,2);
+});
+
+test('story thread indices disambiguate duplicate titles and retain explicit cross-thread parents', () => {
+  const graph=client.storyGraph({threads:[{title:'相同标题'},{title:'相同标题'}],opportunities:[
+    {index:0,thread_indexes:[1],title:'另一条线的前置',after_indexes:[]},
+    {index:1,thread_indexes:[0],title:'本线节点',after_indexes:[0]},
+    {index:2,thread_indexes:[1],title:'无关节点',after_indexes:[]},
+  ]},0);
+  assert.ok(graph.nodes.find(n=>n.id==='opp-0'));
+  assert.ok(graph.nodes.find(n=>n.id==='opp-1'));
+  assert.equal(graph.nodes.find(n=>n.id==='opp-2'),undefined);
+});
+
+test('story viewport retains pan position while the authorized snapshot refreshes', async () => {
+  const payload=snapshot({state:'unavailable'});
+  payload.sections.overview_life={state:'ready',data:{highlights:[],agenda:{state:'ready',week_start:'2026-08-10',entries:[],worldline:{threads:[{title:'主线',developments:[]}],opportunities:[{index:0,thread_indexes:[0],after_indexes:[],title:'候选'}]}}}};
+  const browser=browserWith([responseFor(payload),responseFor(payload)]);await browser.flush();
+  const viewport=browser.ids.storyPanel.querySelector('.story-map-viewport');
+  viewport.scrollLeft=210;viewport.scrollTop=90;
+  await browser.poll();
+  const refreshed=browser.ids.storyPanel.querySelector('.story-map-viewport');
+  assert.equal(refreshed.scrollLeft,210);
+  assert.equal(refreshed.scrollTop,90);
 });

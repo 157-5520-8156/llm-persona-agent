@@ -145,3 +145,147 @@ async def test_generic_onebot_delivery_uses_its_own_endpoint_and_proactive_targe
     assert str(requests[0].url).startswith("http://127.0.0.1:5700/")
     assert requests[0].headers["Authorization"] == "Bearer onebot-token"
     assert json.loads(requests[0].content)["user_id"] == 123456789
+
+
+@pytest.mark.asyncio
+async def test_bilibili_delivery_never_sends_unsigned_ark_json_when_packet_backend_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    onebot_adapter._RECENT_MINIAPP_SENT.clear()
+    onebot_adapter._BILIBILI_META_CACHE["BV1Zcnd6rEpn"] = (
+        "帝国时代4长局",
+        "DarkCarrot",
+        "https://i2.hdslb.com/bfs/archive/test.jpg",
+    )
+    requests: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/get_mini_app_ark":
+            return httpx.Response(
+                200,
+                json={
+                    "status": "failed",
+                    "retcode": 400,
+                    "data": None,
+                    "message": "packetBackend不可用",
+                },
+            )
+        return httpx.Response(200, json={"status": "ok", "retcode": 0, "data": {"message_id": 101}})
+
+    original_client = httpx.AsyncClient
+
+    def fake_client(*args, **kwargs):
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return original_client(*args, **kwargs)
+
+    monkeypatch.setattr(onebot_adapter.httpx, "AsyncClient", fake_client)
+    settings = SimpleNamespace(
+        qq_adapter="napcat",
+        napcat_api_url="http://127.0.0.1:3000",
+        napcat_access_token="token",
+        napcat_proactive_user_id="2759284998",
+        qq_bot_app_id=None,
+        qq_bot_secret=None,
+    )
+    delivery = QQDelivery(settings)
+    await delivery.send_text("2759284998", "https://www.bilibili.com/video/BV1Zcnd6rEpn")
+
+    assert [req.url.path for req in requests] == ["/get_mini_app_ark", "/send_private_msg"]
+    assert json.loads(requests[1].content) == {
+        "message": "https://www.bilibili.com/video/BV1Zcnd6rEpn",
+        "user_id": 2759284998,
+    }
+
+
+@pytest.mark.asyncio
+async def test_bilibili_delivery_sends_official_signed_miniapp_ark_when_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    onebot_adapter._RECENT_MINIAPP_SENT.clear()
+    onebot_adapter._BILIBILI_META_CACHE["BV1GJ411x7h7"] = (
+        "测试视频",
+        "测试UP主",
+        "https://i0.hdslb.com/bfs/archive/empty.jpg",
+    )
+    requests: list[httpx.Request] = []
+    signed_ark_payload = {
+        "ver": "1.0.0.19",
+        "prompt": "[QQ小程序]测试视频 · UP主：测试UP主",
+        "config": {
+            "type": "normal",
+            "width": 0,
+            "height": 0,
+            "forward": 1,
+            "autoSize": 0,
+            "ctime": 1793030620,
+            "token": "210f54a26aae02e059781cadfc9143a1",
+        },
+        "app": "com.tencent.miniapp_01",
+        "view": "view_8C8E89B49BE609866298ADDFF2DBABA4",
+        "meta": {
+            "detail_1": {
+                "appid": "1109937557",
+                "appType": 0,
+                "title": "哔哩哔哩",
+                "desc": "测试视频 · UP主：测试UP主",
+                "url": "m.q.qq.com/a/s/6c1b274236ec1d4e19c8997a6d7003a6",
+            }
+        },
+        "miniappShareOrigin": 3,
+        "miniappOpenRefer": "10002",
+    }
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        if request.url.path == "/get_mini_app_ark":
+            return httpx.Response(
+                200,
+                json={
+                    "status": "ok",
+                    "retcode": 0,
+                    "data": {"data": signed_ark_payload},
+                    "message": "",
+                },
+            )
+        return httpx.Response(200, json={"status": "ok", "retcode": 0, "data": {"message_id": 102}})
+
+    original_client = httpx.AsyncClient
+
+    def fake_client(*args, **kwargs):
+        kwargs["transport"] = httpx.MockTransport(handler)
+        return original_client(*args, **kwargs)
+
+    monkeypatch.setattr(onebot_adapter.httpx, "AsyncClient", fake_client)
+    settings = SimpleNamespace(
+        qq_adapter="napcat",
+        napcat_api_url="http://127.0.0.1:3000",
+        napcat_access_token="token",
+        napcat_proactive_user_id="2759284998",
+        qq_bot_app_id=None,
+        qq_bot_secret=None,
+    )
+    delivery = QQDelivery(settings)
+    await delivery.send_text("2759284998", "给你看这个 https://www.bilibili.com/video/BV1GJ411x7h7")
+
+    assert [req.url.path for req in requests] == [
+        "/get_mini_app_ark",
+        "/send_private_msg",
+        "/send_private_msg",
+    ]
+    ark_req_body = json.loads(requests[0].content)
+    assert ark_req_body["title"] == "测试视频 · UP主：测试UP主"
+    assert ark_req_body["desc"] == "测试UP主"
+    assert ark_req_body["jumpUrl"] == "pages/video/video?bvid=BV1GJ411x7h7"
+    assert ark_req_body["webUrl"] == "https://www.bilibili.com/video/BV1GJ411x7h7"
+    card_msg_body = json.loads(requests[1].content)
+    assert card_msg_body["user_id"] == 2759284998
+    assert card_msg_body["message"][0]["type"] == "json"
+    assert json.loads(card_msg_body["message"][0]["data"]["data"])["config"]["token"] == "210f54a26aae02e059781cadfc9143a1"
+    text_msg_body = json.loads(requests[2].content)
+    assert text_msg_body == {
+        "message": "给你看这个",
+        "user_id": 2759284998,
+    }
+
+

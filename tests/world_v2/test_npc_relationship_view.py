@@ -12,9 +12,6 @@ from companion_daemon.world_v2.life_author_seed import (
 from companion_daemon.world_v2.life_development_draft import (
     LifeDevelopmentNpcCapability,
 )
-from companion_daemon.world_v2.npc_initiative_weight_policy import (
-    NpcInitiativeWeightPolicy,
-)
 from companion_daemon.world_v2.npc_relationship_view import (
     RESTING_CLOSENESS_BP,
     SharedHistoryEvidence,
@@ -212,32 +209,6 @@ def _candidate(kind: str) -> NpcInitiativeCandidate:
     )
 
 
-def test_weight_policy_v2_tilts_only_by_settled_relationship_reading() -> None:
-    policy = NpcInitiativeWeightPolicy()
-    assert policy.version == "npc-initiative-weight.2"
-    shared_time = _candidate("shared_time")
-    friction = _candidate("friction")
-
-    close = npc_relationship_readings(
-        _Projection(
-            npcs=(_npc(),),
-            world_occurrences=tuple(
-                _settled_occurrence(
-                    occurrence_id=f"o{index}", settled_at=NOW - timedelta(days=index + 1)
-                )
-                for index in range(4)
-            ),
-        ),
-        protagonist_actor_ref="agent:companion",
-    )
-    distant_weights = policy.compile(candidates=(shared_time, friction))
-    close_weights = policy.compile(
-        candidates=(shared_time, friction), npc_relationships=close
-    )
-    # Closeness invites shared time; it never becomes a gate.
-    assert close_weights[shared_time.token] > distant_weights[shared_time.token]
-
-    assert close_weights[friction.token] < distant_weights[friction.token]
 
 
 def test_advisory_is_ledger_backed_and_silent_without_history() -> None:

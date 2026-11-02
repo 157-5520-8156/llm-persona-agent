@@ -35,7 +35,7 @@ INSTRUCTION = LEGACY_INSTRUCTION + (
     "不要把未决意愿补成环境事实；独立断言的场景和已发生的感知仍要核对来源。"
 )
 
-REASONED_INSTRUCTION = INSTRUCTION + (
+REASONED_LEGACY_INSTRUCTION = INSTRUCTION + (
     "本版本每段先写text和rationale，忠实说明原话的意义与证据义务，再在assessment选择kind和对应字段；"
     "不要先选fact再为它找理由。text和rationale不在assessment里重复。review_complete放在全部segments之后。"
     "审核不是尽可能找出可疑命题。角色此刻表达自己的感受、态度、解释、猜测、选择和今后想做什么，"
@@ -48,6 +48,14 @@ REASONED_INSTRUCTION = INSTRUCTION + (
     "混合原句中主观部分保留，独立的物理断言另列为事实核验，不能整句豁免。"
     "具体过去感受、意图、已执行动作、通信以及他人行为和独立未来事件仍需相应来源；"
     "不能把已经发生的事改成打算去做，不许借作者权限证明外部事实或遗漏原文。"
+)
+
+REASONED_STICKER_INSTRUCTION = REASONED_LEGACY_INSTRUCTION + (
+    "若某条Beat原文是平台表情/贴纸/反应JSON载荷（如{\"sticker_id\":...,\"version\":\"expression-sticker.1\"}），整条原文原样作为单个segment归入non_record。"
+)
+
+REASONED_INSTRUCTION = REASONED_STICKER_INSTRUCTION + (
+    "Beat开头的[CQ:reply,id=...]引用标记、[CQ:voice]/[语音]标记及其后紧跟的括号语气提示（如（轻声笑）、（打哈欠））属于平台投递与语音声线标记，归入non_record，不作为外部物理动作核验。"
 )
 
 
@@ -192,6 +200,15 @@ def decode(raw, *, beats=None, carrier=CONTRACT):
                 start = cursor
                 # Source-bound lossless whitespace carrier, not a fuzzy match:
                 # no word, punctuation, reordering or overlap may be repaired.
+                if cursor == 0 and not original.startswith(part["text"], cursor):
+                    import re as _re
+
+                    _tag_m = _re.match(
+                        r"^\s*(?:\[CQ:reply,id=[^\]]+\]\s*)?(?:(?:\[CQ:voice\]|\[voice\]|\[语音\])\s*(?:[\(（][^\)）]{1,40}[\)）]\s*)?)?",
+                        original,
+                    )
+                    if _tag_m is not None and _tag_m.end() > 0 and original.startswith(part["text"], _tag_m.end()):
+                        cursor = _tag_m.end()
                 while not original.startswith(part["text"], cursor) and cursor < len(original) and original[cursor] in " \t\r\n\u3000":
                     cursor += 1
                 if not original.startswith(part["text"], cursor):

@@ -71,7 +71,7 @@ def adjust_affect_baseline(
         episode = next((item for item in episodes if item.episode_id == basis.episode_id), None)
         if (
             episode is None
-            or episode.status != "resolved"
+            or episode.status not in {"resolved", "decayed"}
             or episode.entity_revision != basis.terminal_entity_revision
             or episode.closed_at is None
             or episode.opened_at < payload.calibration_window_from

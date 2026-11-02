@@ -616,7 +616,11 @@ def create_qq_c2c_onebot_app(
             from .external_world_perception.bilibili import (
                 enrich_qq_fragment_with_bilibili_video,
             )
+            from .qq_voice import enrich_qq_fragment_with_voice_message
 
+            fragment = await enrich_qq_fragment_with_voice_message(
+                fragment, raw_event=raw_event, settings=settings
+            )
             fragment = await enrich_qq_fragment_with_bilibili_video(fragment)
         archive_task = _start_attachment_archive(raw_event)
         try:
@@ -942,6 +946,81 @@ def create_qq_c2c_onebot_app(
         if if_none_match == etag:
             return Response(status_code=304, headers=headers)
         return JSONResponse(content=snapshot.to_payload(), headers=headers)
+
+    @app.get("/world-v2/dashboard/media/{preview_id}/image")
+    async def world_v2_dashboard_media_image(
+        preview_id: str,
+        request: Request,
+        x_world_v2_internal_token: str | None = Header(None),
+    ):
+        denied = _owner_dashboard_access(request, x_world_v2_internal_token)
+        if denied is not None:
+            return denied
+        observer = host.media_preview_operator()
+        row = next(
+            (item for item in observer.queue(materialize=True) if item["preview_id"] == preview_id),
+            None,
+        )
+        if row is None or not row.get("image_path"):
+            return JSONResponse({"error": "preview image is unavailable"}, status_code=404)
+        return FileResponse(
+            str(row["image_path"]),
+            media_type="image/png",
+            headers={"Cache-Control": "private, max-age=3600"},
+        )
+
+    @app.get("/world-v2/dashboard/voice")
+    async def world_v2_dashboard_voice_list(
+        request: Request,
+        x_world_v2_internal_token: str | None = Header(None),
+    ):
+        denied = _owner_dashboard_access(request, x_world_v2_internal_token)
+        if denied is not None:
+            return denied
+        from .qq_voice import recent_delivered_voice_notes
+
+        return JSONResponse(
+            content={"voice_notes": recent_delivered_voice_notes(limit=8)},
+            headers={"Cache-Control": "private, no-store"},
+        )
+
+    @app.get("/world-v2/dashboard/cost")
+    async def world_v2_dashboard_cost(
+        request: Request,
+        x_world_v2_internal_token: str | None = Header(None),
+    ):
+        denied = _owner_dashboard_access(request, x_world_v2_internal_token)
+        if denied is not None:
+            return denied
+        from .dashboard_cost_meter import build_dashboard_cost_snapshot
+
+        payload = await asyncio.to_thread(
+            build_dashboard_cost_snapshot, settings.database_path
+        )
+        return JSONResponse(
+            content=payload,
+            headers={"Cache-Control": "private, no-store"},
+        )
+
+    @app.get("/world-v2/dashboard/voice/{voice_id}/audio")
+    async def world_v2_dashboard_voice_audio(
+        voice_id: str,
+        request: Request,
+        x_world_v2_internal_token: str | None = Header(None),
+    ):
+        denied = _owner_dashboard_access(request, x_world_v2_internal_token)
+        if denied is not None:
+            return denied
+        from .qq_voice import resolve_delivered_voice_audio_path
+
+        audio_path = resolve_delivered_voice_audio_path(voice_id)
+        if audio_path is None:
+            return JSONResponse({"error": "voice audio is unavailable"}, status_code=404)
+        return FileResponse(
+            str(audio_path),
+            media_type="audio/wav",
+            headers={"Cache-Control": "private, max-age=3600"},
+        )
 
     @app.get("/internal/world-v2/media/previews")
     async def media_previews(

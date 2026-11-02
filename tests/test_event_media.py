@@ -8,7 +8,6 @@ import pytest
 
 from companion_daemon.event_media import (
     AudienceContext,
-    LegacyMediaShotAdapter,
     MediaInspection,
     MediaOpportunity,
     MediaPlan,
@@ -2068,42 +2067,6 @@ async def test_replay_cannot_swap_the_selected_artifact_path(tmp_path: Path) -> 
         MediaPlan.from_payload(tampered)
 
 
-@pytest.mark.parametrize("version", ["media-shot-v1", "media-shot-v2", "media-shot-v3"])
-def test_legacy_media_shot_v1_v3_can_enter_new_renderer_seam(version: str) -> None:
-    from companion_daemon.media_shot import MediaShotPlanner
-    from companion_daemon.world_media import WorldMediaDecision
-
-    decision = WorldMediaDecision(
-        allowed=True,
-        kind="character_media",
-        reason="test",
-        prompt_topic="咖啡馆",
-        requires_deliberation=False,
-        capture_mode="handheld_selfie",
-        intimacy_tier=None,
-    )
-    old_snapshot = _snapshot()
-    old_snapshot["clock"] = {"logical_at": "2026-07-14T10:00:00+08:00"}
-    current = MediaShotPlanner().plan(old_snapshot, decision, "legacy:1").to_payload()
-    current["version"] = version
-    if version == "media-shot-v1":
-        current["motion_class"] = None
-        current["motion_cue"] = None
-        current["anti_static_constraints"] = []
-    if version == "media-shot-v3":
-        current["creative_variant_id"] = "legacy-expression"
-        current["render_direction"] = "a restrained, shareable expression"
-    from companion_daemon.media_shot import MediaShotPlan
-
-    legacy = MediaShotPlan.from_payload(current)
-
-    adapted = LegacyMediaShotAdapter.adapt(
-        legacy, opportunity_id="opportunity:legacy", event_id="event:legacy"
-    )
-
-    assert MediaPlan.from_payload(adapted.to_payload()) == adapted
-    assert adapted.family == "character_media"
-    assert adapted.capture_mode == "character_front_camera"
 
 
 class FakeGenerator:
@@ -2643,7 +2606,7 @@ def test_v5_renderer_sends_only_frozen_identity_anchor(tmp_path: Path) -> None:
         visual_identity_path=None,
     )
 
-    assert renderer._references(plan) == (identity,)
+    assert renderer._references(plan) == (identity, angle)
 
 
 @pytest.mark.asyncio
@@ -2941,3 +2904,78 @@ def test_pre_extension_v5_does_not_adopt_new_inspection_rejection_semantics() ->
     )
 
     assert result.passed
+
+
+@pytest.mark.asyncio
+async def test_v5_synthesized_camera_direction_does_not_collide_with_unselected_object_kind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("COMPANION_EVENT_MEDIA_V5_ENABLED", "1")
+    snapshot = _snapshot(
+        objects=[
+            {
+                "id": "object:1",
+                "kind": "手机",
+                "description": "周雨微举着的手机，屏幕上是那份逐行记录各家进度的名单。",
+                "role": "visible_prop",
+            },
+            {
+                "id": "object:2",
+                "kind": "待核材料",
+                "description": "她臂弯里夹着的自己那袋装订好的重核材料，封皮已经磨出折角。",
+                "role": "visible_prop",
+            },
+        ]
+    )
+    proposal = _proposal(
+        capture_mode="character_front_camera",
+        primary_evidence_ref="/objects/0/description",
+        supporting_evidence_refs=["/objects/1/description"],
+    )
+    for field in (
+        "composition",
+        "action",
+        "camera_direction",
+        "sharing_motive",
+        "subject_variant_id",
+    ):
+        proposal.pop(field, None)
+
+    planned = await MediaPlanner(V5SelectingModel(proposal)).plan(_opportunity(snapshot=snapshot))
+
+    assert isinstance(planned, PlannedMedia)
+    assert "手机" in planned.plan.camera_direction
+
+
+@pytest.mark.asyncio
+async def test_v5_shot_direction_brief_round_trips_and_compiles_without_hardcoded_scene_rules(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("COMPANION_EVENT_MEDIA_V5_ENABLED", "1")
+    proposal = _proposal(interaction_bid_id="share_presence")
+    for field in (
+        "composition",
+        "action",
+        "camera_direction",
+        "sharing_motive",
+        "subject_variant_id",
+    ):
+        proposal.pop(field, None)
+    proposal["shot_direction"] = {
+        "spatial_staging": "She stands naturally aligned with the activity flow in the scene and glances over her shoulder at the lens.",
+        "expression_and_body_beat": "A wry, exasperated '囧' brow draw and small unsmiling pout, honest to the moment.",
+        "communicative_subtext": "Quietly venting to the recipient about the situation she is stuck in right now.",
+        "camera_handling": "Her right arm angles forward toward the bottom edge of the camera lens holding the phone while her left arm hangs relaxed.",
+    }
+
+    planned = await MediaPlanner(V5SelectingModel(proposal)).plan(_opportunity())
+
+    assert isinstance(planned, PlannedMedia)
+    assert planned.plan.shot_direction is not None
+    assert MediaPlan.from_payload(planned.plan.to_payload()) == planned.plan
+    prompt = compile_media_prompt(planned.plan, Path("configs/visual_identity.yaml"))
+    assert "Shot-Specific LLM Director Brief" in prompt
+    assert "Quietly venting to the recipient" in prompt
+    assert "排队" not in prompt
+
+

@@ -258,6 +258,7 @@ from .social_initiative import (
     SocialInitiativeCompiler,
     SocialInitiativeContextPolicy,
     SocialInitiativePolicy,
+    effective_contact_cooldown_seconds,
     social_initiative_attempt_id,
     social_initiative_consideration_id,
 )
@@ -820,6 +821,7 @@ class WorldV2TurnApplicationConfig:
     perception_window_id: str = "window:world-v2:perception"
     perception_budget_limit: int = 0
     perception_worker_owner: str = "worker:world-v2:perception"
+    perception_before_expression: bool = False
     trace_environment: TraceEnvironment = "offline_in_process"
     proactive_account_id: str = "account:world-v2:proactive"
     proactive_window_id: str = "window:world-v2:proactive"
@@ -1077,6 +1079,12 @@ class WorldV2TurnApplication:
         outcome = await self._turns.respond(inbound)
         self._last_character_outcome = outcome.status
         return outcome
+
+    def set_background_commit_priority_gate(self, gate) -> None:
+        self._turns.set_fact_background_commit_gate(gate)
+        install = getattr(self._life_ecology, "set_background_visible_gate", None)
+        if callable(install):
+            install(gate)
 
     async def prepare_memory_index(self, *, force: bool = False) -> dict[str, object]:
         """Prepare accepted life, social and historical sources off the event loop."""
@@ -2501,7 +2509,7 @@ class WorldV2TurnApplication:
             contact_on_cooldown = (
                 recent_contact is not None
                 and (logical_time - recent_contact).total_seconds()
-                < policy.contact_cooldown_seconds
+                < effective_contact_cooldown_seconds(projection, policy=policy)
             )
             if not contact_on_cooldown:
                 # Response expectations remain advisory model context. V3 only
@@ -3475,8 +3483,13 @@ class WorldV2TurnApplication:
 
         user_state = None
         if projection.relationship_states:
+            user_candidates = [
+                item
+                for item in projection.relationship_states
+                if str(getattr(item, "subject_ref", "")).startswith("user:")
+            ] or list(projection.relationship_states)
             latest = max(
-                projection.relationship_states,
+                user_candidates,
                 key=lambda item: (
                     item.last_adjusted_at is not None,
                     item.last_adjusted_at or datetime.min.replace(tzinfo=UTC),
@@ -4389,6 +4402,7 @@ def build_sqlite_world_v2_turn_application(
                 config.perception_worker_owner if perception_trigger_runtime is not None else None
             ),
             perception_trigger_runtime=perception_trigger_runtime,
+            perception_before_expression=config.perception_before_expression,
         )
         media_execution = MediaExecutionRuntime(
             ledger=ledger,
@@ -4568,6 +4582,7 @@ def build_sqlite_world_v2_turn_application(
             from .world_outlook_store import SQLiteWorldOutlookStore
             from .world_outlook_execution import WorldOutlookExecutor
             from .npc_identity_view import npc_identity_views
+            from .life_development_capability import active_capability_npc_refs
 
             world_outlook = WorldOutlookRuntime(
                 ledger=ledger, content_store=life_content_store,
@@ -4583,6 +4598,9 @@ def build_sqlite_world_v2_turn_application(
                 npc_refs_reader=lambda state: tuple(
                     v.npc_ref for v in npc_identity_views(state, content_store=life_content_store)
                     if v.lifecycle_state == "active"
+                    and v.npc_ref in active_capability_npc_refs(
+                        state, owner_actor_ref=config.companion_actor_ref
+                    )
                 ),
                 executor=WorldOutlookExecutor(
                     ledger=ledger, occurrence_content=occurrence_content,
@@ -4623,6 +4641,7 @@ def build_sqlite_world_v2_turn_application(
                 content_store=life_content_store,
                 character_ref=config.companion_actor_ref,
                 recipient_ref=config.counterpart_actor_ref,
+                media_ecology=media_ecology,
                 actor=config.life_ecology.worker_actor,
             )
             if config.life_ecology is not None and life_seed_catalog is not None

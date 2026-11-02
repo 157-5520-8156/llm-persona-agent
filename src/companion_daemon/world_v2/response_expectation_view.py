@@ -217,7 +217,10 @@ def pending_response_expectation(
         if (
             expectation is None
             or manifest.plan_id in terminal_plan_ids
-            or logical_time >= expectation.expires_at
+            or (
+                before_world_revision is None
+                and logical_time >= expectation.expires_at
+            )
         ):
             continue
         beat = next(
@@ -235,6 +238,14 @@ def pending_response_expectation(
         ):
             continue
         candidates.append((declared_ref, manifest))
+    if not candidates and before_world_revision is not None:
+        still_pending_manifest = _latest_still_pending_manifest(
+            projection,
+            first_visible_by_action=first_visible_by_action,
+            before_world_revision=before_world_revision,
+        )
+        if still_pending_manifest is not None:
+            candidates.append(still_pending_manifest)
     if not candidates:
         return None
     declared_ref, manifest = max(
@@ -264,6 +275,36 @@ class ExpiredUnansweredExpectation(FrozenModel):
     declared_world_revision: int = Field(ge=1)
     declared_logical_time: datetime
     is_open_hope: bool = False
+    pressure: ExpectationTier | None = None
+    importance: ExpectationTier | None = None
+    inviting_beat_text: str | None = Field(default=None, max_length=128)
+
+
+def _inviting_beat_text(projection, beat: object) -> str | None:
+    """Resolve the delivered text of the beat that carried the response expectation."""
+
+    direct = getattr(beat, "text", None)
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()[:128]
+    payload_ref = getattr(beat, "payload_ref", None)
+    if isinstance(payload_ref, str) and payload_ref:
+        for item in getattr(projection, "stored_message_payloads", ()):
+            if getattr(item, "payload_ref", None) == payload_ref:
+                text = getattr(item, "text", None)
+                if isinstance(text, str) and text.strip():
+                    return text.strip()[:128]
+    action_id = getattr(getattr(beat, "action", None), "action_id", None)
+    if isinstance(action_id, str) and action_id:
+        payload_by_ref = {
+            getattr(item, "payload_ref", None): getattr(item, "text", None)
+            for item in getattr(projection, "stored_message_payloads", ())
+        }
+        for expr_beat in getattr(projection, "expression_beats", ()):
+            if getattr(expr_beat, "action_id", None) == action_id:
+                text = payload_by_ref.get(getattr(expr_beat, "payload_ref", None))
+                if isinstance(text, str) and text.strip():
+                    return text.strip()[:128]
+    return None
 
 
 def expired_expectation_consideration_id(plan_id: str) -> str:
@@ -338,6 +379,18 @@ def unanswered_response_expectations(
             if due_only and logical_time < authority_not_before:
                 continue
             not_before = authority_not_before
+            pressure_bp = getattr(expectation, "pressure_bp", None)
+            importance_bp = getattr(expectation, "importance_bp", None)
+            pressure = (
+                _tier(pressure_bp)
+                if isinstance(pressure_bp, int) and not isinstance(pressure_bp, bool)
+                else None
+            )
+            importance = (
+                _tier(importance_bp)
+                if isinstance(importance_bp, int) and not isinstance(importance_bp, bool)
+                else None
+            )
             candidates.append(
                 ExpiredUnansweredExpectation(
                     plan_id=manifest.plan_id,
@@ -350,6 +403,9 @@ def unanswered_response_expectations(
                     declared_world_revision=declared_ref.world_revision,
                     declared_logical_time=declared_at,
                     is_open_hope=_is_open_hope_expectation(expectation),
+                    pressure=pressure,
+                    importance=importance,
+                    inviting_beat_text=_inviting_beat_text(projection, beat),
                 )
             )
         if not candidates:
@@ -398,6 +454,80 @@ def next_response_expectation_wake_at(projection) -> datetime | None:
     )
 
 
+def _latest_still_pending_manifest(
+    projection,
+    *,
+    first_visible_by_action: dict[str, object],
+    before_world_revision: int,
+):
+    """Find the latest manifest whose most recent assessment before ``before_world_revision`` is ``still_pending``."""
+
+    assessments = [
+        item
+        for item in getattr(projection, "response_expectation_assessments", ()) or ()
+        if getattr(item, "world_revision", 0) < before_world_revision
+    ]
+    if not assessments:
+        return None
+    last_settled_revision = max(
+        (
+            getattr(item, "world_revision", 0)
+            for item in assessments
+            if getattr(item, "status", None) in {"fulfilled", "superseded"}
+        ),
+        default=0,
+    )
+    by_plan: dict[str, list[object]] = {}
+    for item in assessments:
+        plan_id = getattr(item, "source_plan_id", None)
+        if isinstance(plan_id, str) and plan_id:
+            by_plan.setdefault(plan_id, []).append(item)
+    still_pending_plans = {
+        plan_id
+        for plan_id, items in by_plan.items()
+        if getattr(
+            max(items, key=lambda entry: getattr(entry, "world_revision", 0)),
+            "status",
+            None,
+        )
+        == "still_pending"
+        and getattr(
+            max(items, key=lambda entry: getattr(entry, "world_revision", 0)),
+            "world_revision",
+            0,
+        )
+        > last_settled_revision
+    }
+    if not still_pending_plans:
+        return None
+    candidates = []
+    for manifest in getattr(projection, "expression_plan_manifests", ()) or ():
+        expectation = getattr(manifest, "response_expectation", None)
+        if (
+            expectation is None
+            or manifest.plan_id not in still_pending_plans
+        ):
+            continue
+        beat = next(
+            (item for item in manifest.beats if item.beat_id == expectation.source_beat_id),
+            None,
+        )
+        if beat is None:
+            continue
+        declared_ref = first_visible_by_action.get(beat.action.action_id)
+        if (
+            declared_ref is not None
+            and declared_ref.world_revision < before_world_revision
+            and declared_ref.world_revision > last_settled_revision
+        ):
+            candidates.append((declared_ref, manifest))
+    if not candidates:
+        return None
+    return max(
+        candidates, key=lambda item: (item[0].world_revision, item[1].acceptance_event_ref)
+    )
+
+
 def pending_response_expectation_manifest(
     projection,
     *,
@@ -425,7 +555,6 @@ def pending_response_expectation_manifest(
         if (
             expectation is None
             or manifest.plan_id in terminal_plan_ids
-            or logical_time >= expectation.expires_at
         ):
             continue
         beat = next(
@@ -437,7 +566,14 @@ def pending_response_expectation_manifest(
         delivered_ref = delivered_by_action.get(beat.action.action_id)
         if delivered_ref is not None:
             candidates.append((delivered_ref.world_revision, manifest))
-    return max(candidates, key=lambda item: item[0])[1] if candidates else None
+    if candidates:
+        return max(candidates, key=lambda item: item[0])[1]
+    still_pending_pair = _latest_still_pending_manifest(
+        projection,
+        first_visible_by_action=delivered_by_action,
+        before_world_revision=before_world_revision,
+    )
+    return still_pending_pair[1] if still_pending_pair is not None else None
 
 
 def _view(expectation, *, declared_seconds_ago: int) -> PendingResponseExpectationView:
@@ -527,30 +663,6 @@ def _is_open_hope_expectation(expectation) -> bool:
     return (expires_at - not_before).total_seconds() >= OPEN_HOPE_CHASE_SECONDS
 
 
-def _open_hope_cadence_due_at(
-    projection, *, declared_ref, declared_at: datetime | None = None
-) -> datetime | None:
-    """When an open hope may reuse the expiry lane. None means do not mint.
-
-    Host timing only: she still chooses now / later / silent on that consider.
-    ``declared_at`` must be world logical time (her Action), not a provider
-    wall-clock receipt. Receipt timestamps can sit in the future relative to
-    the world clock and would mute a hot pause as overnight.
-    """
-
-    if declared_at is None:
-        declared_at = getattr(declared_ref, "logical_time", None)
-    declared_revision = getattr(declared_ref, "world_revision", None)
-    if declared_at is None or declared_revision is None:
-        return None
-    heat = _exchange_heat_before_declared(projection, declared_revision, declared_at)
-    delay = OPEN_HOPE_WAKE_SECONDS.get(heat)
-    if delay is None:
-        return None
-    due = declared_at + timedelta(seconds=delay)
-    if _is_overnight_local(due):
-        return None
-    return due
 
 
 def _action_world_time(projection, action_id: str):
@@ -586,119 +698,10 @@ _CONTACT_KINDS = frozenset({"proactive_message", "followup"})
 _CONTACT_SKIP_STATES = frozenset({"failed", "cancelled", "expired"})
 
 
-def _contact_since_hope_declared(projection, *, declared_at: datetime) -> bool:
-    """True when she already used a contact at or after this hope.
-
-    Cadence wakeup is one offer per hope. A later proactive/followup means
-    she already had a turn; the host must not mint another short wake.
-    Inbound replies are not this set, so a mid-chat ``waiting_for`` still
-    gets its first cadence offer. Explicit ``wait`` does not use this gate.
-    """
-
-    return any(
-        getattr(item, "kind", None) in _CONTACT_KINDS
-        and getattr(item, "state", None) not in _CONTACT_SKIP_STATES
-        and getattr(item, "logical_time", None) is not None
-        and item.logical_time >= declared_at
-        for item in getattr(projection, "actions", ()) or ()
-    )
 
 
-def _exchange_heat_before_declared(
-    projection, declared_revision: int, declared_at: datetime
-) -> str:
-    """Heat of the exchange she answered, not the silence after she hoped.
-
-    ``conversation_cadence`` measures gap from *now* to the last line. At
-    hope-declaration that gap is ~0, so every reply would look hot. Classify
-    at his inbound instead, using only earlier in/out lines.
-    """
-
-    inbound = None
-    for ref in getattr(projection, "committed_world_event_refs", ()):
-        if (
-            getattr(ref, "event_type", None) != "ObservationRecorded"
-            or getattr(ref, "world_revision", 0) >= declared_revision
-        ):
-            continue
-        if inbound is None or ref.world_revision > inbound.world_revision:
-            inbound = ref
-    if inbound is None or getattr(inbound, "logical_time", None) is None:
-        return "cold"
-    recent = _cadence_messages_before(
-        projection, before_world_revision=inbound.world_revision
-    )
-    recent = _collapse_cadence_turns(
-        _cadence_window(recent, observed_at=inbound.logical_time)
-    )
-    previous_heat = None
-    if len(recent) >= 1:
-        try:
-            prior_at = datetime.fromisoformat(recent[-1]["observed_at"])
-        except (TypeError, ValueError):
-            prior_at = None
-        if prior_at is not None:
-            previous_heat = derive_conversation_cadence(
-                {"recent_messages": recent[:-1]},
-                user_id="hope-cadence",
-                observed_at=prior_at,
-            ).heat
-    cadence = derive_conversation_cadence(
-        {"recent_messages": recent},
-        user_id="hope-cadence",
-        observed_at=inbound.logical_time,
-        previous_heat=previous_heat,
-    )
-    del declared_at
-    return cadence.heat
 
 
-def _cadence_messages_before(projection, *, before_world_revision: int) -> list[dict[str, str]]:
-    rows: list[tuple[int, dict[str, str]]] = []
-    receipt_refs = tuple(
-        item
-        for item in getattr(projection, "committed_world_event_refs", ())
-        if getattr(item, "event_type", None) == "ExecutionReceiptRecorded"
-    )
-    receipts = tuple(getattr(projection, "execution_receipts", ()) or ())
-    if len(receipt_refs) == len(receipts):
-        for ref, receipt in zip(receipt_refs, receipts, strict=True):
-            if (
-                getattr(ref, "world_revision", 0) >= before_world_revision
-                or getattr(receipt, "observed_state", None) not in _ANSWERABLE_RECEIPT_STATES
-                or getattr(ref, "logical_time", None) is None
-            ):
-                continue
-            observed = _action_world_time(projection, receipt.action_id) or ref.logical_time
-            rows.append(
-                (
-                    ref.world_revision,
-                    {
-                        "user_id": "",
-                        "direction": "out",
-                        "observed_at": observed.isoformat(),
-                    },
-                )
-            )
-    for ref in getattr(projection, "committed_world_event_refs", ()):
-        if (
-            getattr(ref, "event_type", None) != "ObservationRecorded"
-            or getattr(ref, "world_revision", 0) >= before_world_revision
-            or getattr(ref, "logical_time", None) is None
-        ):
-            continue
-        rows.append(
-            (
-                ref.world_revision,
-                {
-                    "user_id": "",
-                    "direction": "in",
-                    "observed_at": ref.logical_time.isoformat(),
-                },
-            )
-        )
-    rows.sort(key=lambda item: item[0])
-    return [item[1] for item in rows]
 
 
 _CADENCE_WINDOW_SECONDS = 720.0
@@ -726,19 +729,6 @@ def _cadence_window(
     return kept[-_CADENCE_TURN_LIMIT:]
 
 
-def _collapse_cadence_turns(messages: list[dict[str, str]]) -> list[dict[str, str]]:
-    """One row per spoken turn. Multi-beat replies share one timestamp."""
-
-    collapsed: list[dict[str, str]] = []
-    for item in messages:
-        if (
-            collapsed
-            and collapsed[-1].get("direction") == item.get("direction")
-            and collapsed[-1].get("observed_at") == item.get("observed_at")
-        ):
-            continue
-        collapsed.append(item)
-    return collapsed
 
 
 class LivingUnansweredHope(FrozenModel):
@@ -856,6 +846,10 @@ def expired_hope_advisory_value(
     seconds_since_he_last_spoke: int | None,
     spoken_since_declared: bool,
     projection: object | None = None,
+    pressure: str | None = None,
+    importance: str | None = None,
+    inviting_beat_text: str | None = None,
+    chase_count: int = 0,
 ) -> str:
     """Neutral timing facts for an expired hope.  She still decides.
 
@@ -863,7 +857,20 @@ def expired_hope_advisory_value(
     ``Hope expired:`` read as if the thing she was waiting for had happened.
     """
 
-    hope = hoped_response.strip()[:72]
+    meta_parts: list[str] = []
+    if isinstance(pressure, str) and pressure and isinstance(importance, str) and importance:
+        meta_parts.append(f"p={pressure}/i={importance}")
+    elif isinstance(pressure, str) and pressure:
+        meta_parts.append(f"p={pressure}")
+    elif isinstance(importance, str) and importance:
+        meta_parts.append(f"i={importance}")
+    if isinstance(inviting_beat_text, str) and inviting_beat_text.strip():
+        meta_parts.append(f"sent='{inviting_beat_text.strip()[:20]}'")
+    if isinstance(chase_count, int) and not isinstance(chase_count, bool) and chase_count > 0:
+        meta_parts.append(f"woken={chase_count}x")
+    hope_limit = 36 if meta_parts else 72
+    hope = hoped_response.strip()[:hope_limit]
+    meta_clause = f" [{', '.join(meta_parts)}]" if meta_parts else ""
     if seconds_since_he_last_spoke is None:
         timing = "No counterpart line is on the ledger yet."
     else:
@@ -874,7 +881,7 @@ def expired_hope_advisory_value(
         )
         timing = f"He last spoke {seconds_since_he_last_spoke}s ago; {spoken}."
     base = (
-        f"{timing} What she hoped for (her words, not a world event): {hope}. "
+        f"{timing} What she hoped for (her words, not a world event): {hope}{meta_clause}. "
         "Timing evidence only; she still decides."
     )
     return _append_media_cross_lane_clause(base, projection)
@@ -896,6 +903,9 @@ def expired_expectation_advisory(
         seconds_since_he_last_spoke=seconds_since_he_last_spoke,
         spoken_since_declared=spoken_since_declared,
         projection=projection,
+        pressure=getattr(expired, "pressure", None),
+        importance=getattr(expired, "importance", None),
+        inviting_beat_text=getattr(expired, "inviting_beat_text", None),
     )
     return InnerAdvisoryProjection(
         advisory_id="advisory:expired-expectation:" + _digest(source_ref),
@@ -948,55 +958,331 @@ def response_expectation_advisory(
     )
 
 
+def unfulfilled_expectation_backlog_advisory(
+    projection,
+    *,
+    before_world_revision: int | None = None,
+) -> InnerAdvisoryProjection | None:
+    """Compile her accumulated unfulfilled expectations (still_pending + overdue unanswered) as source-bound facts."""
+
+    logical_time = getattr(projection, "logical_time", None)
+    if not isinstance(logical_time, datetime):
+        return None
+    try:
+        answerable = answerable_receipt_history(
+            projection, before_world_revision=before_world_revision
+        )
+    except (TypeError, ValueError):
+        return None
+    first_visible_by_action = {action_id: refs[0] for action_id, refs in answerable.items()}
+    assessments = [
+        item
+        for item in getattr(projection, "response_expectation_assessments", ()) or ()
+        if before_world_revision is None
+        or getattr(item, "world_revision", 0) < before_world_revision
+    ]
+    last_fulfilled_revision = max(
+        (
+            getattr(item, "world_revision", 0)
+            for item in assessments
+            if getattr(item, "status", None) == "fulfilled"
+        ),
+        default=0,
+    )
+    by_plan: dict[str, list[object]] = {}
+    for item in assessments:
+        plan_id = getattr(item, "source_plan_id", None)
+        if isinstance(plan_id, str) and plan_id:
+            by_plan.setdefault(plan_id, []).append(item)
+
+    observations = tuple(getattr(projection, "message_observations", ()) or ())
+    delivered_manifests = []
+    for manifest in getattr(projection, "expression_plan_manifests", ()) or ():
+        expectation = getattr(manifest, "response_expectation", None)
+        if expectation is None:
+            continue
+        beat = next(
+            (item for item in getattr(manifest, "beats", ()) if item.beat_id == expectation.source_beat_id),
+            None,
+        )
+        if beat is None:
+            continue
+        action_id = getattr(getattr(beat, "action", None), "action_id", None)
+        declared_ref = first_visible_by_action.get(action_id) if isinstance(action_id, str) else None
+        if declared_ref is None:
+            continue
+        if (
+            before_world_revision is not None
+            and declared_ref.world_revision >= before_world_revision
+        ):
+            continue
+        if declared_ref.world_revision <= last_fulfilled_revision:
+            continue
+        delivered_manifests.append((declared_ref, manifest, beat, expectation))
+
+    delivered_manifests.sort(
+        key=lambda item: (
+            item[0].world_revision,
+            getattr(item[1], "acceptance_event_ref", "") or "",
+        )
+    )
+    backlog: list[dict[str, object]] = []
+    for declared_ref, manifest, beat, expectation in delivered_manifests:
+        plan_id = getattr(manifest, "plan_id", "")
+        plan_assessments = by_plan.get(plan_id, [])
+        latest = max(
+            plan_assessments,
+            key=lambda entry: getattr(entry, "world_revision", 0),
+            default=None,
+        )
+        minutes_ago = max(
+            0, int((logical_time - declared_ref.logical_time).total_seconds()) // 60
+        )
+        beat_text = _inviting_beat_text(projection, beat)
+        acceptance_ref = (
+            getattr(manifest, "acceptance_event_ref", None) or declared_ref.event_id
+        )
+        if latest is not None:
+            status = getattr(latest, "status", None)
+            if status in {"fulfilled", "superseded"}:
+                continue
+            if status == "still_pending":
+                if getattr(latest, "world_revision", 0) <= last_fulfilled_revision:
+                    continue
+                ordered_pending = sorted(
+                    (
+                        entry
+                        for entry in plan_assessments
+                        if getattr(entry, "status", None) == "still_pending"
+                        and getattr(entry, "world_revision", 0) > last_fulfilled_revision
+                    ),
+                    key=lambda entry: getattr(entry, "world_revision", 0),
+                )
+                prior_reason = (
+                    str(getattr(ordered_pending[-2], "reason", None) or "").strip()
+                    if len(ordered_pending) >= 2
+                    else ""
+                )
+                source_ref = getattr(latest, "event_ref", None) or acceptance_ref
+                backlog.append(
+                    {
+                        "kind": "still_pending",
+                        "source_ref": str(source_ref),
+                        "hoped_response": expectation.hoped_response,
+                        "importance": _tier(expectation.importance_bp),
+                        "pressure": _tier(expectation.pressure_bp),
+                        "minutes_ago": minutes_ago,
+                        "reason": str(getattr(latest, "reason", None) or "").strip(),
+                        "prior_reason": prior_reason,
+                        "step_count": max(1, len(ordered_pending)),
+                        "beat_text": beat_text,
+                        "is_long_ignored": False,
+                    }
+                )
+                continue
+        replied_between = any(
+            getattr(obs, "world_revision", 0) > declared_ref.world_revision
+            and (
+                before_world_revision is None
+                or getattr(obs, "world_revision", 0) < before_world_revision
+            )
+            for obs in observations
+        )
+        not_before = getattr(expectation, "not_before", None)
+        expires_at = getattr(expectation, "expires_at", None)
+        if (
+            not replied_between
+            and isinstance(not_before, datetime)
+            and isinstance(expires_at, datetime)
+            and logical_time >= not_before
+        ):
+            backlog.append(
+                {
+                    "kind": "unanswered",
+                    "source_ref": str(acceptance_ref),
+                    "hoped_response": expectation.hoped_response,
+                    "importance": _tier(expectation.importance_bp),
+                    "pressure": _tier(expectation.pressure_bp),
+                    "minutes_ago": minutes_ago,
+                    "reason": "",
+                    "beat_text": beat_text,
+                    "is_long_ignored": logical_time >= expires_at + EXPIRED_EXPECTATION_GRACE,
+                }
+            )
+
+    still_pending_items = [item for item in backlog if item["kind"] == "still_pending"]
+    unanswered_items = [item for item in backlog if item["kind"] == "unanswered"]
+    has_long_ignored = any(bool(item.get("is_long_ignored")) for item in unanswered_items)
+    if not still_pending_items and len(backlog) < 2 and not has_long_ignored:
+        return None
+
+    selected = backlog[-5:]
+    source_refs: list[str] = []
+    for item in selected:
+        ref = str(item["source_ref"])
+        if ref not in source_refs:
+            source_refs.append(ref)
+    if not source_refs:
+        return None
+
+    oldest_minutes = max(int(item["minutes_ago"]) for item in backlog)
+    summary_ref = "unfulfilled-expectation-backlog:summary:" + _digest(source_refs)
+    candidates: list[InnerAdvisoryCandidate] = [
+        InnerAdvisoryCandidate(
+            candidate_ref=summary_ref,
+            value=(
+                f"Unfulfilled expectation backlog ({len(backlog)} unresolved since last fulfillment: "
+                f"{len(still_pending_items)} still_pending after his replies, "
+                f"{len(unanswered_items)} left unanswered; oldest {oldest_minutes}m ago). "
+                "Facts only; she decides how or whether to bring this up."
+            )[:256],
+            weight_bp=10_000,
+            confidence_bp=10_000,
+        )
+    ]
+    candidate_refs: list[str] = [summary_ref]
+    for idx, item in enumerate(selected):
+        cref = f"unfulfilled-expectation-backlog:{idx}:" + _digest(
+            [item["source_ref"], item["kind"], item["minutes_ago"]]
+        )
+        said_clause = f" (when saying {item['beat_text']!r})" if item["beat_text"] else ""
+        if item["kind"] == "still_pending":
+            step_count = int(item.get("step_count") or 1)
+            step_label = f"still_pending x{step_count}" if step_count > 1 else "still_pending"
+            prior_clause = (
+                f" (prev: {item['prior_reason'][:48]})"
+                if step_count > 1 and item.get("prior_reason")
+                else ""
+            )
+            reason_clause = (
+                f"; her assessment: {item['reason']}{prior_clause}"
+                if item["reason"]
+                else prior_clause
+            )
+            val = (
+                f"[{step_label} {item['minutes_ago']}m ago, importance {item['importance']}]"
+                f"{said_clause} hoped for: {item['hoped_response']}{reason_clause}."
+            )[:256]
+        else:
+            label = "long_unanswered" if item["is_long_ignored"] else "unanswered"
+            val = (
+                f"[{label} {item['minutes_ago']}m ago, importance {item['importance']}]"
+                f"{said_clause} hoped for: {item['hoped_response']}; he did not answer it."
+            )[:256]
+        candidate_refs.append(cref)
+        candidates.append(
+            InnerAdvisoryCandidate(
+                candidate_ref=cref,
+                value=val,
+                weight_bp=9_500,
+                confidence_bp=10_000,
+            )
+        )
+
+    return InnerAdvisoryProjection(
+        advisory_id="advisory:unfulfilled-expectation-backlog:" + _digest(source_refs),
+        kind="unfulfilled_expectation_backlog",
+        source_refs=tuple(source_refs),
+        candidate_refs=tuple(candidate_refs),
+        candidates=tuple(candidates),
+        confidence_bp=10_000,
+        expiry=logical_time + timedelta(days=1),
+        producer_version=RESPONSE_EXPECTATION_ADVISORY_VERSION,
+    )
+
+
 def attach_pending_expectation_advisory(
     context: dict[str, object],
     projection,
     *,
     anchor_event_ref: str,
 ) -> dict[str, object]:
-    """Fold the silence-anchored pending hope into Capsule materials, if any.
+    """Fold the silence-anchored or inbound-answered pending hope into Capsule materials.
 
     An expired hope whose inviting receipt is this turn's trigger still gets
     timing facts: how long since he last spoke, and whether he has spoken
-    since she declared the hope.  That is not a suggestion to chase or stay
-    silent.
+    since she declared the hope.  When the trigger is an inbound counterpart
+    message observation, the open expectation she declared before his reply
+    is attached with ``counterpart_replied=True`` so she can see what she was
+    hoping for and assess ``how_it_landed``.  Accumulated unfulfilled
+    expectations (``still_pending`` or overdue/repeated unanswered hopes) are
+    also surfaced via ``unfulfilled_expectation_backlog``.
     """
 
+    logical_time = getattr(projection, "logical_time", None)
+    if logical_time is None:
+        return context
     try:
         view = pending_response_expectation(
             projection, anchor_event_ref=anchor_event_ref
         )
     except (TypeError, ValueError):
         view = None
-    logical_time = getattr(projection, "logical_time", None)
-    if view is not None and logical_time is not None:
+    if view is not None:
         advisory = response_expectation_advisory(
             view, source_ref=anchor_event_ref, logical_time=logical_time
         )
-        return _append_advisory(context, advisory)
-    if logical_time is None:
+        context = _append_advisory(context, advisory)
+        backlog = unfulfilled_expectation_backlog_advisory(projection)
+        if backlog is not None:
+            context = _append_advisory(context, backlog)
         return context
+
+    message_obs = next(
+        (
+            item
+            for item in getattr(projection, "message_observations", ()) or ()
+            if getattr(item, "observation_id", None) == anchor_event_ref
+        ),
+        None,
+    )
+    obs_revision = getattr(message_obs, "world_revision", None)
+    if isinstance(obs_revision, int) and not isinstance(obs_revision, bool):
+        try:
+            inbound_view = pending_response_expectation(
+                projection, before_world_revision=obs_revision
+            )
+        except (TypeError, ValueError):
+            inbound_view = None
+        if inbound_view is not None:
+            advisory = response_expectation_advisory(
+                inbound_view,
+                source_ref=anchor_event_ref,
+                logical_time=logical_time,
+                counterpart_replied=True,
+            )
+            context = _append_advisory(context, advisory)
+        backlog = unfulfilled_expectation_backlog_advisory(
+            projection, before_world_revision=obs_revision
+        )
+        if backlog is not None:
+            context = _append_advisory(context, backlog)
+        return context
+
     try:
         expired = expired_unanswered_expectation(
             projection, require_unanswered=False
         )
     except (TypeError, ValueError):
-        return context
-    if expired is None or expired.receipt_event_id != anchor_event_ref:
-        return context
-    seconds, spoken_since = counterpart_last_spoke_facts(
-        projection, since_world_revision=expired.declared_world_revision
-    )
-    return _append_advisory(
-        context,
-        expired_expectation_advisory(
-            expired,
-            logical_time=logical_time,
-            seconds_since_he_last_spoke=seconds,
-            spoken_since_declared=spoken_since,
-            projection=projection,
-        ),
-    )
+        expired = None
+    if expired is not None and expired.receipt_event_id == anchor_event_ref:
+        seconds, spoken_since = counterpart_last_spoke_facts(
+            projection, since_world_revision=expired.declared_world_revision
+        )
+        context = _append_advisory(
+            context,
+            expired_expectation_advisory(
+                expired,
+                logical_time=logical_time,
+                seconds_since_he_last_spoke=seconds,
+                spoken_since_declared=spoken_since,
+                projection=projection,
+            ),
+        )
+    backlog = unfulfilled_expectation_backlog_advisory(projection)
+    if backlog is not None:
+        context = _append_advisory(context, backlog)
+    return context
 
 
 def _append_advisory(
@@ -1016,6 +1302,11 @@ def _append_advisory(
     else:
         lane = {}
         items = []
+    if any(
+        isinstance(item, dict) and item.get("source_ref") == advisory.advisory_id
+        for item in items
+    ):
+        return context
     dumped = advisory.model_dump(mode="json")
     items.append(
         {
@@ -1031,6 +1322,7 @@ def _append_advisory(
 
 
 __all__ = [
+    "EXPIRED_EXPECTATION_GRACE",
     "OPEN_HOPE_CHASE_SECONDS",
     "OPEN_HOPE_LOCAL_TIMEZONE",
     "OPEN_HOPE_OVERNIGHT_END_HOUR",
@@ -1053,4 +1345,5 @@ __all__ = [
     "pending_response_expectation_manifest",
     "response_expectation_advisory",
     "unanswered_response_expectations",
+    "unfulfilled_expectation_backlog_advisory",
 ]

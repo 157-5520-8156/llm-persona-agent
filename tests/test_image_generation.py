@@ -113,8 +113,8 @@ def test_visual_identity_loads_anchor() -> None:
 
     assert identity.name == "沈知栀 / Celia Shen"
     assert "不要复用真实公众人物" in identity.negative_prompt
-    assert identity.reference_assets("everyday_selfie")[0].endswith("08-cafe-phone-canonical.png")
-    assert any("02-bedtime-close-selfie" in path for path in identity.reference_assets("relationship_private"))
+    assert identity.reference_assets("everyday_selfie")[0].endswith("04-night-walk-turn.png")
+    assert any("05-restaurant-seated" in path for path in identity.reference_assets("relationship_private"))
 
 
 def test_persist_generated_image_bytes_uses_magic_not_requested_suffix(tmp_path: Path) -> None:
@@ -1127,5 +1127,14 @@ def test_visual_reference_selection_keeps_anchor_and_limits_reference_cost() -> 
     )
 
     assert len(references) == 2
-    assert references[0].name == "08-cafe-phone-canonical.png"
+    assert references[0].name == "04-night-walk-turn.png"
+    assert all(
+        path.name
+        in {
+            "04-night-walk-turn.png",
+            "05-restaurant-seated.png",
+            "06-night-street-seated.png",
+        }
+        for path in references
+    )
     assert all(path.is_file() for path in references)

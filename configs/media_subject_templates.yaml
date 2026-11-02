@@ -58,7 +58,7 @@ display_strategies:
     forbidden_cues: [exaggerated_duck_face, kiss_gesture, broad_smile, distressed_expression]
     exclude_when_severe_affect: true
   mock_wronged:
-    communicative_goals: [invite_playful_exchange, seek_validation]
+    communicative_goals: [invite_playful_exchange, seek_validation, inform_status, share_presence]
     tone_affinities: [embarrassed, frustrated, playful]
     intentionality: knowingly_performed
     intensity: subtle
@@ -72,7 +72,7 @@ display_strategies:
     forbidden_cues: [crying, severe_sadness, invented_pain]
     exclude_when_severe_affect: true
   deadpan_reveal:
-    communicative_goals: [invite_playful_exchange, share_discovery]
+    communicative_goals: [invite_playful_exchange, share_discovery, inform_status, share_presence]
     tone_affinities: [neutral, amused, frustrated]
     intentionality: deliberately_underplayed
     intensity: subtle
@@ -152,7 +152,7 @@ display_strategies:
     forbidden_cues: [invented_pain, crying, glamorized_illness, exaggerated_helplessness]
     minimum_privacy: personal
   tired_unfiltered:
-    communicative_goals: [seek_validation, seek_care, share_presence]
+    communicative_goals: [seek_validation, seek_care, share_presence, inform_status]
     tone_affinities: [tired, frustrated, vulnerable]
     intentionality: unpolished
     intensity: subtle
@@ -207,7 +207,7 @@ display_strategy_bindings:
   helper_checkin_pose: [small_proud_reveal, warm_include_you, playful_challenge]
   companion_reaction: [candid_enjoyment, suppressed_laugh, warm_include_you]
   external_candid_glance: [matter_of_fact_showing, candid_enjoyment, tired_unfiltered]
-  body_detail_showcase: [matter_of_fact_showing, curious_check, soft_bid_for_care]
+  body_detail_showcase: [matter_of_fact_showing, curious_check, soft_bid_for_care, tired_unfiltered, mock_wronged, deadpan_reveal]
 
 # These are coherent photographic performances. MediaPlanner chooses one ID;
 # it does not independently compose pose axes and accidentally create a puppet.
@@ -367,12 +367,12 @@ variants:
 
 render_lexicon:
   hair_arrangement:
-    hair_down_tucked: hair worn down, with the front strands visibly tucked behind one ear
-    half_up: upper hair visibly gathered into a relaxed half-up arrangement
-    low_ponytail: hair visibly gathered into a low ponytail at the nape
-    loose_small_bun: hair visibly gathered into a loose small bun, with a few natural strands free
+    hair_down_tucked: hair worn naturally down with soft front bangs and face-framing strands, one side lightly tucked behind an ear without altering crown volume
+    half_up: hair worn mostly down with her natural soft bangs and flat crown silhouette, only the side temples lightly gathered back without puffing up the top of the head
+    low_ponytail: hair softly gathered low at the nape while keeping her natural front bangs and face-framing strands around the cheeks
+    loose_small_bun: hair softly gathered low at the back with her natural front bangs and loose face-framing strands around the cheeks
     clipped_back: front and side strands visibly secured away from the face by a simple, event-supported tie or pin; it must functionally hold the hair rather than merely decorate loose hair
-    natural_down: naturally loose shoulder-length hair with no forced symmetry
+    natural_down: naturally loose shoulder-length hair with soft front bangs and no forced symmetry
   outfit_role:
     home_cooking: soft washable home knit in muted grey or soft blue with sleeves that can be pushed up, and simple trousers for cooking
     event_appropriate_casual: everyday city-casual clothes with a place-appropriate silhouette, not identity-reference wardrobe
@@ -424,59 +424,59 @@ render_lexicon:
     neutral_attentive: a neutral attentive expression grounded in the activity
     not_applicable: facial expression is outside this body-detail composition
   shoulder_orientation:
-    three_quarter_opposite_head: shoulders turn in a gentle three-quarter direction opposite the head turn
-    open_three_quarter: shoulders remain open in a relaxed three-quarter angle
-    slightly_turned: shoulders turn slightly rather than facing the camera squarely
-    dynamic_three_quarter: shoulders use an energetic but believable three-quarter angle
-    three_quarter: shoulders form a clear natural three-quarter line
-    open_to_environment: torso and shoulders stay visually connected to the surrounding place
-    three_quarter_to_environment: shoulders angle toward the environment while the face acknowledges the camera
-    turned_toward_companion: shoulders turn toward the known companion
-    in_motion_three_quarter: shoulders show a natural transitional three-quarter orientation
+    three_quarter_opposite_head: relaxed natural shoulders angled casually to the space, never a stiff studio three-quarter pose
+    open_three_quarter: relaxed unposed shoulders in a natural everyday stance
+    slightly_turned: shoulders relaxed and slightly angled in place rather than facing the camera like an ID photo
+    dynamic_three_quarter: natural everyday shoulder line with zero model-like posing or chest-out stiffness
+    three_quarter: relaxed casual shoulder line grounded in the real environment
+    open_to_environment: torso and shoulders stay naturally in the middle of the ongoing environment
+    three_quarter_to_environment: shoulders stay naturally oriented to the environment while she glances toward the phone
+    turned_toward_companion: shoulders naturally oriented toward the companion
+    in_motion_three_quarter: natural unposed shoulders caught mid-activity
     not_applicable: shoulders are outside this body-detail composition
   posture:
-    relaxed_engaged: relaxed posture with visible engagement in the sharing action
-    leaning_slightly_into_activity: body leans slightly toward the current activity
-    compact_casual: compact casual posture suited to a close front-camera frame
-    weight_shifted: weight shifts naturally rather than forming a centered static pose
-    balanced_weight_shift: balanced mirror pose with a subtle natural weight shift
-    mid_step_or_weight_shift: either a small mid-step or a clear natural weight shift
-    settled_pose_with_energy: a settled friendly pose that still carries some energy
-    relaxed_in_interaction: relaxed posture visibly connected to the social interaction
-    active_not_surveillance: active everyday posture, never surveillance-like
+    relaxed_engaged: unposed, lived-in everyday posture—naturally standing at eye level in the scene without stiff model posture
+    leaning_slightly_into_activity: casual everyday posture standing or leaning naturally into what she is doing
+    compact_casual: standing or leaning casually at eye level in the scene with relaxed, unposed shoulders
+    weight_shifted: natural weight resting casually on one foot or against a nearby surface, never a staged pose
+    balanced_weight_shift: casual unposed mirror stance
+    mid_step_or_weight_shift: natural mid-step or casual weight rest
+    settled_pose_with_energy: relaxed everyday stance for a quick friend photo
+    relaxed_in_interaction: casual unposed posture during real interaction
+    active_not_surveillance: ordinary everyday posture, never surveillance-like
     stable_detail_presentation: stable positioning that makes the intended detail easy to inspect
   gesture:
-    show_primary_evidence: use the free hand or free forearm to present the selected event evidence clearly
-    interact_with_primary_evidence: visibly interact with the selected evidence instead of merely standing beside it
-    hold_or_point_at_primary_evidence: naturally hold or point toward the selected evidence with an anatomically clear hand
-    small_contextual_pose: make a small deliberate pose that is meaningful in the current context
-    adjust_clothing_or_accessory: naturally adjust the selected clothing or accessory without tangling fingers or fabric
-    contextual_hand_pose: use a small hand pose that fits the place and activity
-    acknowledge_place_or_object: use a restrained gesture acknowledging the selected place or object
-    conversational_hand_gesture: use a natural hand gesture from an ongoing conversation
-    continue_event_action: continue the event action rather than freezing for the camera
-    present_specific_body_detail: position the relevant body detail clearly without inventing another condition
+    show_primary_evidence: one arm holds the phone toward the camera edge while the other arm stays natural and free while the surrounding scene evidence stays visible
+    interact_with_primary_evidence: stay naturally engaged with the selected evidence while maintaining believable camera-hand physics
+    hold_or_point_at_primary_evidence: one arm angles forward to hold the phone while the other hand stays relaxed or casually indicates the scene without theatrical acting
+    small_contextual_pose: one arm angles forward to hold the phone while the other arm rests naturally—never leave both arms hanging down at her sides in a selfie
+    adjust_clothing_or_accessory: naturally touch or rest near the selected clothing or strap with her free hand while the other hand holds the phone
+    contextual_hand_pose: keep hands relaxed and unposed in the scene
+    acknowledge_place_or_object: let her presence in the place speak for itself without a staged tourist gesture
+    conversational_hand_gesture: natural understated hand position during interaction
+    continue_event_action: continue the real event action without freezing for the camera
+    present_specific_body_detail: position the relevant body detail (hand, sleeve, shoes, held item, or body area) clearly in frame without showing the face
   photo_awareness:
-    aware_light_pose: clearly aware of the camera and making a light friend-facing pose
-    aware_of_photo_not_staring: aware of being photographed without forcing direct eye contact
-    checking_own_frame: visibly checking her own phone framing
-    deliberately_playful: knowingly playful for the photo without exaggerated performance
-    composed_mirror_pose: deliberately composed for a mirror photo
-    friendly_requested_photo: posing naturally for a friendly requested photo
-    clearly_posing_for_friend: clearly but casually posing for a friend
-    noticed_camera_mid_moment: has just noticed the camera during a real interaction
-    lightly_aware: lightly aware of the camera while staying in the activity
-    deliberate_detail_showing: deliberately making the requested detail visible
+    aware_light_pose: quick, expressive everyday phone snap—her face directly conveys her reaction to her friend
+    aware_of_photo_not_staring: casually aware of the phone without staring or posing
+    checking_own_frame: glancing at her phone screen with a real, communicative reaction in an unposed moment
+    deliberately_playful: candid, unguarded reaction shared with a close friend—never a rehearsed influencer or art-portrait pose
+    composed_mirror_pose: casual everyday mirror check
+    friendly_requested_photo: natural unforced look for a quick photo taken by someone else (both hands free)
+    clearly_posing_for_friend: casual quick pause for a friend's camera (both hands free)
+    noticed_camera_mid_moment: caught mid-moment just as she notices the camera
+    lightly_aware: barely pausing her real activity for the snapshot
+    deliberate_detail_showing: deliberately framing her own hand, held item, or body detail in a casual first-person shot
   hand_occupancy:
-    one_hand_operates_phone_other_presents_evidence: one hand operates the phone while the other free hand or forearm presents the evidence; never merge the two arms
-    one_hand_operates_phone_other_remains_natural: one hand operates the phone while the other remains anatomically natural
-    one_hand_holds_phone_other_performs_gesture: one hand visibly holds the phone in the mirror while the other performs the planned gesture
-    both_hands_available: the camera is externally supported, so both hands are available for the planned gesture
+    one_hand_operates_phone_other_presents_evidence: one hand operates the phone (so exactly ONE arm/forearm visibly angles forward toward the camera edge holding the phone) while her other arm/hand remains free and natural; NEVER leave both arms hanging down at her sides as if someone else took the photo, and never raise both arms to the lens
+    one_hand_operates_phone_other_remains_natural: one hand operates the phone (so exactly ONE arm/forearm visibly angles forward toward the camera edge holding the phone) while her other arm stays relaxed by her side; NEVER leave both arms hanging down at her sides as if someone else took the photo, and never raise both arms to the lens
+    one_hand_holds_phone_other_performs_gesture: one hand visibly holds the phone in the mirror while the other remains anatomically natural
+    both_hands_available: the camera is externally supported, so both hands are available and relaxed
     unspecified: preserve physically plausible hand responsibilities for the stated capture mode
 
 reference_pose_metadata:
   assets/reference/01-headphones-candid.png:
-    identity_usage: angle_support
+    identity_usage: scene_only
     head_yaw: toward_frame_right
     head_pitch: slightly_down
     head_roll: slight
@@ -484,7 +484,7 @@ reference_pose_metadata:
     expression: neutral_tired
     hair_arrangement: loose_small_bun
   assets/reference/02-bedtime-close-selfie.png:
-    identity_usage: angle_support
+    identity_usage: scene_only
     head_yaw: near_front
     head_pitch: slightly_down
     head_roll: slight
@@ -500,12 +500,12 @@ reference_pose_metadata:
     expression: breathless_neutral
     hair_arrangement: tied_back
   assets/reference/04-night-walk-turn.png:
-    identity_usage: angle_support
-    head_yaw: toward_frame_left
+    identity_usage: canonical_identity
+    head_yaw: near_front
     head_pitch: level
     head_roll: none
     gaze_target: lens
-    expression: glance_back
+    expression: neutral_soft
     hair_arrangement: natural_down
   assets/reference/05-restaurant-seated.png:
     identity_usage: angle_support
@@ -524,7 +524,7 @@ reference_pose_metadata:
     expression: neutral_soft
     hair_arrangement: natural_down
   assets/reference/07-lakeside-turn.png:
-    identity_usage: angle_support
+    identity_usage: scene_only
     head_yaw: toward_frame_right
     head_pitch: level
     head_roll: none
@@ -532,7 +532,7 @@ reference_pose_metadata:
     expression: glance_back
     hair_arrangement: loose_small_bun
   assets/reference/08-cafe-phone-canonical.png:
-    identity_usage: canonical_identity
+    identity_usage: scene_only
     head_yaw: near_front
     head_pitch: level
     head_roll: none
@@ -548,7 +548,7 @@ reference_pose_metadata:
     expression: breathless_neutral
     hair_arrangement: wet_down
   assets/reference/10-sidewalk-turn.png:
-    identity_usage: angle_support
+    identity_usage: scene_only
     head_yaw: toward_frame_left
     head_pitch: level
     head_roll: slight

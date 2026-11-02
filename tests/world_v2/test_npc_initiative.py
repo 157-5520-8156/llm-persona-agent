@@ -13,10 +13,6 @@ from world_v2_application import (
 
 from companion_daemon.world_v2.life_author_seed import ReviewedLifeSeedCatalog
 from companion_daemon.world_v2.local_chronology import LocalChronology
-from companion_daemon.world_v2.npc_initiative_weight_policy import (
-    NOTHING_CANDIDATE_REF,
-    NpcInitiativeWeightPolicy,
-)
 from companion_daemon.world_v2.production_turn_application import (
     LifeEcologyComposition,
     WorldV2TurnApplicationConfig,
@@ -371,58 +367,3 @@ async def test_npc_initiative_can_be_disabled_by_composition(
         app.close()
 
 
-def test_mood_and_relationship_tilt_the_recorded_weights_without_gating(
-    tmp_path: Path,
-) -> None:
-    catalog = ReviewedLifeSeedCatalog.from_yaml(
-        path=_seed(tmp_path / "seed.yaml", events=_THREE_EVENTS),
-        chronology=LocalChronology("Asia/Shanghai"),
-    )
-    # 11:00 local: all three reviewed events are eligible.
-    candidates = catalog.npc_initiative_candidates_at(
-        instant=datetime(2026, 7, 17, 3, 0, tzinfo=UTC),
-        npcs=(SimpleNamespace(npc_id="fan-yuan", status="active"),),
-    )
-    assert len(candidates) == 3
-    by_kind = {item.event.initiative_kind: item for item in candidates}
-    policy = NpcInitiativeWeightPolicy()
-
-    def episode(dimension: str, intensity: int = 8_000) -> SimpleNamespace:
-        return SimpleNamespace(
-            status="active",
-            components=(SimpleNamespace(dimension=dimension, intensity_bp=intensity),),
-        )
-
-    baseline = policy.compile(candidates=candidates)
-    lonely = policy.compile(candidates=candidates, affect_episodes=(episode("loneliness"),))
-    warm = policy.compile(candidates=candidates, affect_episodes=(episode("warmth"),))
-    unresolved = policy.compile(candidates=candidates, affect_episodes=(episode("resentment"),))
-
-    # Loneliness raises every NPC-initiated event — the friend showing up is
-    # exactly what is quietly needed — and shrinks only the nothing mass.
-    for kind in ("small_favor", "shared_time", "friction"):
-        token = by_kind[kind].token
-        assert lonely[token] > baseline[token]
-    assert lonely[NOTHING_CANDIDATE_REF] < baseline[NOTHING_CANDIDATE_REF]
-
-    # Warmth (the phase-one closeness reading) reaches toward being asked
-    # along and small favors, and leaves the disagreement prior alone.
-    assert warm[by_kind["shared_time"].token] > baseline[by_kind["shared_time"].token]
-    assert warm[by_kind["small_favor"].token] > baseline[by_kind["small_favor"].token]
-    assert warm[by_kind["friction"].token] == baseline[by_kind["friction"].token]
-
-    # Unresolved friction slightly raises only the disagreement event.
-    assert unresolved[by_kind["friction"].token] > baseline[by_kind["friction"].token]
-    assert unresolved[by_kind["shared_time"].token] == baseline[by_kind["shared_time"].token]
-
-    # The tilt is a bounded tendency, never a gate: every candidate keeps
-    # positive mass and no multiplier exceeds +/-40% of the reviewed base.
-    saturated = policy.compile(
-        candidates=candidates,
-        affect_episodes=(episode("loneliness", 10_000), episode("warmth", 10_000)),
-    )
-    for candidate in candidates:
-        base = candidate.event.base_chance_bp
-        assert 0 < saturated[candidate.token] <= base * 14_000 // 10_000
-        assert baseline[candidate.token] == base
-    assert baseline[NOTHING_CANDIDATE_REF] == 10_000 - 1_200 - 900 - 600

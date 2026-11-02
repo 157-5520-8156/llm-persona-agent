@@ -77,7 +77,6 @@ from companion_daemon.media_suggestive_lane import (
     load_suggestive_catalog,
 )
 from companion_daemon.media_moment import MomentCapture
-from companion_daemon.media_shot import MediaShotPlan
 from companion_daemon.media_subject import (
     DEFAULT_SUBJECT_CONFIG,
     PhotoDisplayStrategy,
@@ -459,6 +458,57 @@ class AudienceContext:
 
 
 @dataclass(frozen=True)
+class ShotDirectionBrief:
+    """LLM-authored, event-specific photographic brief bounded by the frozen candidate and evidence."""
+
+    spatial_staging: str
+    expression_and_body_beat: str
+    communicative_subtext: str
+    camera_handling: str
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        spatial_staging: str,
+        expression_and_body_beat: str,
+        communicative_subtext: str,
+        camera_handling: str,
+    ) -> "ShotDirectionBrief":
+        staging = str(spatial_staging or "").strip()[:320]
+        beat = str(expression_and_body_beat or "").strip()[:320]
+        subtext = str(communicative_subtext or "").strip()[:320]
+        handling = str(camera_handling or "").strip()[:320]
+        if not (staging and beat and subtext and handling):
+            raise ValueError("shot_direction requires non-empty fields")
+        return cls(
+            spatial_staging=staging,
+            expression_and_body_beat=beat,
+            communicative_subtext=subtext,
+            camera_handling=handling,
+        )
+
+    def to_payload(self) -> dict[str, str]:
+        return {
+            "spatial_staging": self.spatial_staging,
+            "expression_and_body_beat": self.expression_and_body_beat,
+            "communicative_subtext": self.communicative_subtext,
+            "camera_handling": self.camera_handling,
+        }
+
+    @classmethod
+    def from_payload(cls, value: object) -> "ShotDirectionBrief":
+        if not isinstance(value, Mapping):
+            raise ValueError("shot_direction must be an object")
+        return cls.create(
+            spatial_staging=str(value.get("spatial_staging") or ""),
+            expression_and_body_beat=str(value.get("expression_and_body_beat") or ""),
+            communicative_subtext=str(value.get("communicative_subtext") or ""),
+            camera_handling=str(value.get("camera_handling") or ""),
+        )
+
+
+@dataclass(frozen=True)
 class MediaPlan:
     """The single replayable photographic interpretation of an opportunity."""
 
@@ -511,6 +561,7 @@ class MediaPlan:
     private_render_contract: PrivateRenderContract | None = None
     private_flair: PrivateFlairBrief | None = None
     suggestive_private_contract: SuggestivePrivateContract | None = None
+    shot_direction: ShotDirectionBrief | None = None
 
     def to_payload(self) -> dict[str, object]:
         payload = asdict(self)
@@ -568,6 +619,10 @@ class MediaPlan:
                 payload["private_flair"] = self.private_flair.to_payload()
             else:
                 payload.pop("private_flair", None)
+            if self.shot_direction:
+                payload["shot_direction"] = self.shot_direction.to_payload()
+            else:
+                payload.pop("shot_direction", None)
             payload["suggestive_private_contract"] = (
                 self.suggestive_private_contract.to_payload()
                 if self.suggestive_private_contract
@@ -591,6 +646,7 @@ class MediaPlan:
                 "private_render_contract",
                 "private_flair",
                 "suggestive_private_contract",
+                "shot_direction",
             ):
                 payload.pop(key, None)
         return payload
@@ -745,6 +801,11 @@ class MediaPlan:
                 suggestive_private_contract=(
                     SuggestivePrivateContract.from_payload(payload["suggestive_private_contract"])
                     if payload.get("suggestive_private_contract") is not None
+                    else None
+                ),
+                shot_direction=(
+                    ShotDirectionBrief.from_payload(payload["shot_direction"])
+                    if payload.get("shot_direction") is not None
                     else None
                 ),
             )
@@ -1018,58 +1079,21 @@ def _first_person_capture_contract(capture_mode: str) -> str:
 
 
 def _first_person_camera_prose_restraint(capture_mode: str) -> str:
-    """Keep camera-authorship prose from becoming an unwanted depicted prop."""
+    """Keep camera-authorship prose aligned with the physical capture mode."""
 
     if capture_mode == "character_front_camera":
         return (
-            "do not mention a phone, screen, device, interface, camera app, shutter button, or a hand "
-            "holding the camera; the capture device stays outside the picture; describe the person, "
-            "the frozen clothing, and the private setting the plan selected, not a camera UI and not "
-            "an ordinary public lifestyle portrait"
+            "for a front-camera selfie, the lens is looking at me from arm's length so the phone screen "
+            "and camera UI stay outside the image; focus on my expression, body language, clothing, and setting"
         )
     return "keep the camera relationship faithful to the frozen capture mode"
 
 
 def _sanitize_first_person_camera_prose(text: str, capture_mode: str) -> str:
-    """Apply a narrow deterministic guard after the author chose its prose.
+    """Normalize whitespace without rewriting the author's natural English prose."""
 
-    Prompt authors often use ``phone`` as harmless narrative shorthand.  In a
-    Krea2 image prompt, however, that noun becomes a salient foreground prop
-    and can obscure the very facial performance the profile selected.  We do
-    not alter scene facts or expression—only remove that accidental prop cue
-    for a frozen front-camera capture.
-    """
-
-    if capture_mode != "character_front_camera":
-        return text
-    replacements = (
-        ("holding my phone", "framing myself"),
-        ("holding the phone", "framing myself"),
-        ("holding a phone", "framing myself"),
-        ("hold my phone", "frame myself"),
-        ("hold the phone", "frame myself"),
-        ("hold a phone", "frame myself"),
-        ("hold up my camera", "lean in"),
-        ("hold up the camera", "lean in"),
-        ("hold up a camera", "lean in"),
-        ("holding my camera", "framing myself"),
-        ("holding the camera", "framing myself"),
-        ("holding a camera", "framing myself"),
-        ("my camera captures", "the frame holds"),
-        ("the camera captures", "the frame holds"),
-        ("camera captures", "frame holds"),
-        ("smartphone", "camera"),
-        ("phone", "camera"),
-        ("screen", "frame"),
-        ("device", "camera"),
-        ("holding my camera", "framing myself"),
-        ("holding the camera", "framing myself"),
-        ("holding a camera", "framing myself"),
-    )
-    result = text
-    for old, new in replacements:
-        result = result.replace(old, new).replace(old.title(), new.title())
-    return result
+    _ = capture_mode
+    return " ".join(text.split())
 
 
 def _first_person_facial_contract(plan: MediaPlan) -> str:
@@ -1996,9 +2020,10 @@ class MediaRenderer:
         if plan.character_visibility not in {"identifiable", "body_detail"}:
             return ()
         if plan.version == PLAN_VERSION_V5 and plan.identity_reference_selection:
-            # The frozen angle support remains useful planning/audit context, but
-            # reference-edit renderers blend its beauty treatment into the face.
-            # Send only the original canonical identity pixels to the provider.
+            # Pair the canonical identity anchor with at most one angle/contour
+            # support reference so reference-edit renderers triangulate her
+            # invariant 3D facial bone structure across slightly fuller and
+            # slightly slimmer reference angles.
             paired = tuple(
                 (Path(asset_id), role)
                 for asset_id, role in zip(
@@ -2009,7 +2034,13 @@ class MediaRenderer:
                 if Path(asset_id).is_file()
             )
             identity_anchors = tuple(path for path, role in paired if role == "identity_anchor")
-            return identity_anchors[:1] or tuple(path for path, _role in paired)[:1]
+            angle_supports = tuple(
+                path
+                for path, role in paired
+                if role == "angle_support" and path not in identity_anchors
+            )
+            ordered = (*identity_anchors[:1], *angle_supports[:1])
+            return ordered or tuple(path for path, _role in paired)[:2]
         if (
             plan.version in QUALITY_PLAN_VERSIONS
             and plan.subject_presentation
@@ -2261,90 +2292,6 @@ class OpenAIMediaInspector:
         )
 
 
-class LegacyMediaShotAdapter:
-    """Map recoverable MediaShotPlan v1-v3 payloads into the new renderer seam."""
-
-    @staticmethod
-    def adapt(
-        shot_plan: MediaShotPlan,
-        *,
-        opportunity_id: str,
-        event_id: str,
-        delivery_mode: str = "preview",
-    ) -> MediaPlan:
-        capture = {
-            "handheld_selfie": "character_front_camera",
-            "check_in_timer": "timer_fixed",
-            "check_in_helper": "requested_helper",
-            "mirror": "mirror",
-            "candid_life": "known_companion",
-            "unfiltered": "character_front_camera",
-        }.get(shot_plan.capture_mode, "character_front_camera")
-        intent = "intimate_signal" if shot_plan.media_kind == "relationship_private" else "record"
-        privacy = "intimate" if intent == "intimate_signal" else "personal"
-        content_domain = "appearance_style" if privacy == "intimate" else "activity_process"
-        evidence = {
-            "/legacy/location": shot_plan.location or "未断言具体地点",
-            "/legacy/action": shot_plan.action,
-            "/legacy/environment": list(shot_plan.environment_cues),
-        }
-        if shot_plan.companions:
-            evidence["/participants/0/id"] = shot_plan.companions[0]
-        fingerprint = "|".join(
-            (
-                "character_media",
-                content_domain,
-                "portrait_context",
-                intent,
-                capture,
-                "identifiable",
-                "casual",
-                "tender" if privacy == "intimate" else "warm",
-            )
-        )
-        return MediaPlan(
-            version=PLAN_VERSION_V1,
-            plan_id=f"event-plan:{opportunity_id}",
-            opportunity_id=opportunity_id,
-            event_id=event_id,
-            snapshot_hash=sha256(_stable_json(shot_plan.to_payload()).encode()).hexdigest(),
-            delivery_mode=delivery_mode,
-            family="character_media",
-            content_domain=content_domain,
-            visual_form="portrait_context",
-            share_intent=intent,
-            capture_mode=capture,
-            character_visibility="identifiable",
-            other_people_visibility="none",
-            polish="raw" if shot_plan.capture_mode == "unfiltered" else "casual",
-            tone="tender" if privacy == "intimate" else "warm",
-            privacy=privacy,
-            primary_evidence_ref="/legacy/action",
-            supporting_evidence_refs=tuple(item for item in evidence if item != "/legacy/action"),
-            evidence_values=evidence,
-            composition="带少量环境线索的自然人像",
-            action="自然地把{primary}带进画面",
-            camera_direction=_DEFAULT_CAMERA_DIRECTION[capture],
-            sharing_motive=(
-                "传递克制且非露骨的亲密信号"
-                if privacy == "intimate"
-                else "把这个生活瞬间分享给熟悉的人"
-            ),
-            constraints=tuple(
-                dict.fromkeys(
-                    (
-                        "不生成可读文字",
-                        "手部结构自然",
-                        *(() if capture == "character_front_camera" else ("不出现自拍臂",)),
-                        _INTERNAL_GROUNDING_CONSTRAINT,
-                    )
-                )
-            ),
-            route="generate",
-            diversity_fingerprint=fingerprint,
-            planned_summary=f"{shot_plan.scene_category}中的{shot_plan.action}",
-            intimate_intensity=shot_plan.relationship_tier if privacy == "intimate" else None,
-        )
 
 
 def compile_media_prompt(
@@ -2556,7 +2503,11 @@ def _compile_media_prompt_v5(
             roles = "; ".join(plan.identity_reference_selection.roles)
             identity = (
                 f"Identity Reference Responsibilities: {roles}. References define identity or broad geometry "
-                "only; never copy their hairstyle, smile, head tilt, pose, wardrobe, or framing."
+                "only; never copy their hairstyle, smile, head tilt, pose, wardrobe, or framing. "
+                "When multiple reference images are provided (some from slightly fuller-cheek front angles and "
+                "some from slightly slimmer three-quarter angles), synthesize their shared invariant 3D facial "
+                "bone structure, eye shape, straight nose bridge, soft natural jawline, and right-cheek mole so "
+                "she is unmistakably the same person without exaggerating either fullness or sharpness."
             )
     identity_anchor = ""
     if (
@@ -2644,10 +2595,31 @@ def _compile_media_prompt_v5(
     )
     capture_physics = {
         "character_front_camera": (
-            "Self-authorship invariant: the character is operating the front-facing phone herself. "
+            "Self-authorship invariant: the character is taking this front-camera selfie herself with ONE hand. "
             "Make that physically legible with a credible foreground hand or forearm operating the phone, or a "
-            "partial device edge. It may be naturally cropped, but this evidence cannot disappear completely. "
+            "partial device edge: exactly ONE arm/shoulder must visibly angle forward toward the bottom edge of "
+            "the camera lens to hold the phone, while her OTHER arm remains relaxed by her side or interacting "
+            "with the scene (NEVER leave both arms hanging down at her sides as if someone else took the photo, "
+            "and NEVER raise both arms to the lens). Spatial & activity coherence: her body orientation and any "
+            "surrounding environment or people must align naturally with the ongoing activity in the selected "
+            "evidence—never stage an unnatural 180-degree reversal against the physical flow of the activity. "
             "No third photographer, tripod, or authorless portrait viewpoint."
+        ),
+        "character_rear_camera": (
+            "Self-authorship invariant: the character is holding the phone and shooting outward from her own "
+            "first-person perspective with the rear camera. If character_visibility is 'body_detail', show only "
+            "her own hand, forearm, sleeve, lap, or shoes naturally entering the lower/foreground frame while her "
+            "face remains completely out of frame; if character_visibility is 'none', show only the scene from her "
+            "eye/chest viewpoint."
+        ),
+        "requested_helper": (
+            "External-helper capture invariant: a passerby or helper is holding the camera at conversational "
+            "distance, so BOTH of the character's hands are free from holding the camera phone and she can "
+            "interact naturally with the scene."
+        ),
+        "timer_fixed": (
+            "Fixed-timer capture invariant: the phone rests on a stable surface at the frozen camera height, "
+            "so BOTH of the character's hands are free from holding the camera phone."
         ),
         "mirror": (
             "Self-authorship invariant: the phone is visibly reflected and held by the character in the mirror; "
@@ -2716,8 +2688,10 @@ def _compile_media_prompt_v5(
     phone_snapshot_priority = (
         "Rendering priority: preserve the fictional character's identity, then make the result read as an "
         "ordinary personal phone capture rather than a generated beauty portrait. Use physically motivated "
-        "light from the evidenced scene; retain visible pore-scale skin variation, fine facial hair, natural "
-        "under-eye and nasolabial variation, and small left-right differences without aging or dirtying her. "
+        "light from the evidenced scene; render authentic smartphone ISP optics with clean, natural 20-year-old "
+        "skin, soft mobile-sensor tonal roll-off, natural ambient light falloff, and subtle shadow micro-grain "
+        "matching real handheld phone photos—never harsh CGI macro pores, deep nasolabial folds, waxy plastic "
+        "airbrushing, or synthetic illustration shading. "
         "Let framing follow the frozen camera geometry without cosmetically re-centering the face or cleaning "
         "the room. Keep ordinary phone depth of field and local exposure compromises; do not add cinematic "
         "key/fill/rim lighting, beauty-filter skin, enlarged or glassy eyes, individually sculpted hair strands, "
@@ -2725,6 +2699,47 @@ def _compile_media_prompt_v5(
         "image: authenticity must come from optics, light, texture, and an unresolved moment—not blanket grain, "
         "blur, desaturation, clutter, or damage.\n"
         if plan.character_visibility in {"identifiable", "body_detail"}
+        else ""
+    )
+    rendered_radial = (
+        "inner_third (keep the face well inside the central lens zone, never stretched near the frame edge)"
+        if plan.capture_mode == "character_front_camera"
+        and camera.face_radial_position == "outer_third"
+        else camera.face_radial_position
+    )
+    rendered_roll = (
+        "level (keep the horizon and eye-line natural and un-tilted)"
+        if plan.capture_mode == "character_front_camera" and camera.roll != "level"
+        else camera.roll
+    )
+    pressure_level = plan.interaction_bid.response_pressure if plan.interaction_bid else "none"
+    expectation_tier_desc = {
+        "none": "none (low-key ambient share; letting the recipient see the moment without demanding a reply)",
+        "low": "low (casual conversational hook; tossing over a relatable moment or visual detail to invite an easy reply)",
+        "medium": "medium (clear conversational expectation; directly showing her live reaction/predicament so the recipient commiserates, teases back, or answers)",
+    }.get(pressure_level, pressure_level)
+    recipient_effect_desc = (
+        plan.subject_presentation.facial_display_strategy.recipient_effect
+        if plan.subject_presentation and plan.subject_presentation.facial_display_strategy
+        else plan.sharing_motive
+    )
+    communicative_subtext = (
+        "Communicative Subtext & Expectation (what she wants to express through this photo): "
+        f"share_intent={plan.share_intent}; tone={plan.tone}; sharing_motive={plan.sharing_motive}; "
+        f"expectation_tier={expectation_tier_desc}; desired_recipient_impression={recipient_effect_desc}. "
+        "Every visual detail (facial expression, gaze, body language, and framing) must actively convey "
+        "this specific conversational message to the recipient—NEVER turn her into a blank, calm, aloof, "
+        "or melancholic 'art portrait (纯粹艺术照/文艺写真)' detached from what she is trying to say.\n"
+    )
+    shot_direction_block = (
+        "Shot-Specific LLM Director Brief (AUTHORITATIVE for this exact photo—takes precedence over "
+        "any generic template micro-sliders in Frozen subject presentation below, while obeying frozen "
+        "event evidence and camera authorship):\n"
+        f"- Spatial staging & orientation: {plan.shot_direction.spatial_staging}\n"
+        f"- Expression & body beat: {plan.shot_direction.expression_and_body_beat}\n"
+        f"- Communicative subtext: {plan.shot_direction.communicative_subtext}\n"
+        f"- Camera & hand handling: {plan.shot_direction.camera_handling}\n"
+        if plan.shot_direction is not None
         else ""
     )
     return (
@@ -2742,6 +2757,8 @@ def _compile_media_prompt_v5(
         f"Interaction Bid: goal={plan.interaction_bid.communicative_goal if plan.interaction_bid else 'none'}; "
         f"hoped_response={plan.interaction_bid.hoped_response if plan.interaction_bid else 'none'}; "
         f"pressure={plan.interaction_bid.response_pressure if plan.interaction_bid else 'none'}.\n"
+        f"{communicative_subtext}"
+        f"{shot_direction_block}"
         f"Media Address Strategy: address={address.address_mode}; tactic={address.engagement_tactic}; "
         f"disclosure={address.disclosure_mode}; staging={address.staging_degree}; "
         f"temporal_beat={address.temporal_beat}; visual_priority={address.visual_priority}; "
@@ -2749,8 +2766,8 @@ def _compile_media_prompt_v5(
         f"Camera Geometry: capture_author={_camera_authorship(plan.capture_mode)}; "
         f"distance={camera.shot_distance}; height={camera.camera_height}; view_axis={camera.view_axis}; "
         f"camera_face_distance={camera.camera_face_distance}; "
-        f"face_radial_position={camera.face_radial_position}; "
-        f"pitch={camera.pitch}; roll={camera.roll}; orientation={camera.orientation}; "
+        f"face_radial_position={rendered_radial}; "
+        f"pitch={camera.pitch}; roll={rendered_roll}; orientation={camera.orientation}; "
         f"subject_occupancy={camera.subject_occupancy}; placement={camera.subject_placement}; "
         f"environment_share={camera.environment_share}; focus={camera.focus_behavior}; "
         f"imperfection={camera.imperfection_profile}; device={camera.device_visibility}.\n"
@@ -2777,6 +2794,7 @@ def _freeze_proposal(
     embodiment_config_path: Path = DEFAULT_EMBODIMENT_CONFIG,
     presentation_candidate_limit: int = 8,
     frozen_presentation_candidates: tuple[dict[str, object], ...] | None = None,
+    synthesized_directions: bool = False,
 ) -> PlanningResult:
     fields = {
         "content_domain": CONTENT_DOMAINS,
@@ -2828,9 +2846,14 @@ def _freeze_proposal(
         str(proposal[name]).strip()
         for name in ("composition", "action", "camera_direction", "sharing_motive")
     )
-    ungrounded = _unselected_fact_mentioned(opportunity.event_snapshot, pointers, direction_texts)
-    if ungrounded:
-        return NotRenderable(opportunity.opportunity_id, "unselected_fact_in_direction", ungrounded)
+    if not synthesized_directions:
+        ungrounded = _unselected_fact_mentioned(
+            opportunity.event_snapshot, pointers, direction_texts
+        )
+        if ungrounded:
+            return NotRenderable(
+                opportunity.opportunity_id, "unselected_fact_in_direction", ungrounded
+            )
     constraints = proposal.get("constraints", [])
     if not isinstance(constraints, list) or any(not isinstance(item, str) for item in constraints):
         return NotRenderable(opportunity.opportunity_id, "invalid_model_output", "constraints")
@@ -3346,6 +3369,7 @@ def _freeze_proposal_v5(
         embodiment_config_path=embodiment_config_path,
         presentation_candidate_limit=24,
         frozen_presentation_candidates=presentation_candidates,
+        synthesized_directions=True,
     )
     if isinstance(frozen, NotRenderable):
         return frozen
@@ -3464,6 +3488,13 @@ def _freeze_proposal_v5(
             ),
             minimum_privacy=str(bid_values.get("minimum_privacy") or "ordinary"),
         )
+    shot_direction: ShotDirectionBrief | None = None
+    raw_shot_direction = proposal.get("shot_direction")
+    if isinstance(raw_shot_direction, Mapping):
+        try:
+            shot_direction = ShotDirectionBrief.from_payload(raw_shot_direction)
+        except ValueError:
+            shot_direction = None
     plan = replace(
         frozen.plan,
         version=PLAN_VERSION_V5,
@@ -3500,6 +3531,7 @@ def _freeze_proposal_v5(
         private_render_contract=private_render_contract,
         private_flair=private_flair,
         suggestive_private_contract=None,
+        shot_direction=shot_direction,
     )
     plan = replace(plan, diversity_fingerprint=_v5_fingerprint(plan))
     if plan.diversity_fingerprint in recent[-12:]:
@@ -5044,6 +5076,45 @@ def _planning_messages_v5(
                 "exactly one supplied complete_candidate_id and RFC 6901 evidence pointers. The complete "
                 "candidate is indivisible: do not return or rewrite composition, camera geometry, action, "
                 "expression, pose, embodied strategy, attraction mechanism, or identity references. "
+                "CRITICAL — COUNTERACT LLM POSITIVITY BIAS: Never default to warm, smiling, or amused "
+                "candidates (`warm_connection`, `amusement_leaking`, `proud_display`, or `tone='warm'`/`'amused'`) "
+                "when the event involves mundane hassle, delays, awkwardness, social friction, fatigue, or a minor "
+                "mishap. Match the candidate's `subject_presentation.facial_display_strategy.strategy_family` and "
+                "`tone` to the honest emotional valence of the event (e.g., `comic_self_exposure` for a deadpan/囧/speechless "
+                "reaction, `frustrated_complaint` for quiet exasperation/helplessness, `tired_access` for low-energy "
+                "fatigue, `mock_defiance` for wry side-eye, or `neutral_evidence` for plain observation; and set `tone` "
+                "to `'frustrated'`, `'tired'`, `'embarrassed'`, or `'neutral'`). Only pick warm or laughing candidates "
+                "when the event genuinely warrants happiness. "
+                "FULL MEDIA MACHINE SPECTRUM & RECIPIENT-DIRECTED VISUAL ACT: Choose the capture mode and "
+                "visual form that best fits how and why she would shoot this moment—use `character_front_camera` "
+                "(one-handed selfie) when she wants to send a vivid, recipient-directed facial reaction (`portrait_closeup` "
+                "with `very_close`/`supported_near` or an expressive `portrait_context`) where the recipient can immediately "
+                "feel 'this look/expression was aimed specifically at me' even without a text bubble; avoid bland, passive "
+                "arm's-length 3/4 `portrait_context` shots (`neutral_evidence` / `present_and_available`) where she just "
+                "stares calmly at the lens while holding a prop at the bottom edge. When the point of the photo is an object, "
+                "book, food, or scene rather than an expressive facial reaction, prefer `character_rear_camera` with "
+                "`visual_form='body_detail'` (her hand/sleeve/shoes/held item in 1st-person POV without her face) or "
+                "`character_rear_camera` (`wide_scene`, `contextual_still_life`, `process_pov`, `subject_closeup`). "
+                "Use `requested_helper`, `known_companion`, or `timer_fixed` only when having someone else hold the phone "
+                "or propping it up (leaving both of her hands free) genuinely fits the situation. Actively vary `visual_form`, "
+                "`camera_face_distance`, and `view_axis` relative to `recent_media` so consecutive photos never repeat the "
+                "same composition. "
+                "PER-PHOTO TARGETED PROMPT OPTIMIZATION (`shot_direction`): For every photo, also return "
+                "`shot_direction={spatial_staging, expression_and_body_beat, communicative_subtext, camera_handling}` "
+                "(four concise English sentences tailored specifically to THIS event and the chosen candidate): "
+                "(1) `spatial_staging`: how the subject, objects, and any surrounding people/environment are naturally "
+                "oriented in 3D space so the activity in `event_snapshot` looks physically real (e.g., aligning her body "
+                "with the ongoing activity rather than turning 180 degrees against it or posing like a studio portrait); "
+                "(2) `expression_and_body_beat`: the exact moment-specific facial expression (if face is visible) or "
+                "hand/body/object nuance (if `body_detail`/`none`), honest to the event and never a blank artsy portrait; "
+                "(3) `communicative_subtext`: what she wants to express to the recipient through this photo right now, "
+                "tied to `interaction_bid_id` (and its expectation tier `response_pressure`) and `share_intent`; "
+                "(4) `camera_handling`: how the phone is physically held or positioned in this shot (e.g., which hand "
+                "angles forward to hold the phone in a one-handed selfie while the other hand stays free, or how her "
+                "hand/body detail enters a rear-camera POV shot, or how both hands are free in a helper/timer shot). "
+                "For `other_people_visibility`, "
+                "choose `'anonymous_incidental'` whenever the selected evidence involves surrounding people/crowds, "
+                "and `'none'` when alone. "
                 "Copy capture_mode, visual_form, share_intent, character_visibility, route, and "
                 "interaction_bid_id from that candidate's legal_* menus. If a classification label "
                 "disagrees with the chosen candidate, the compiler will bind it; never invent a domain, "
@@ -5053,7 +5124,7 @@ def _planning_messages_v5(
                 "these top-level keys: content_domain, visual_form, share_intent, capture_mode, "
                 "character_visibility, other_people_visibility, polish, tone, privacy, primary_evidence_ref, "
                 "supporting_evidence_refs, constraints, route, interaction_bid_id, complete_candidate_id, "
-                "media_lane, recipient_access, attraction_expression, plus private_flair only for a private "
+                "media_lane, recipient_access, attraction_expression, shot_direction, plus private_flair only for a private "
                 "lane. The supplied enum lists are menus: select one literal string, never echo a menu, wrap "
                 "fields in a classification_fields object, or return a different schema."
             ),
@@ -5079,12 +5150,14 @@ def _planning_messages_v5(
                 "character_visibility, other_people_visibility, polish, tone, privacy, "
                 "primary_evidence_ref, supporting_evidence_refs, constraints, route, "
                 "interaction_bid_id, complete_candidate_id, media_lane, recipient_access, "
-                "attraction_expression. Every classification field and every *_id field must be one "
+                "attraction_expression, shot_direction. Every classification field and every *_id field must be one "
                 "single string value, never an array, object, alternative, explanation, or markdown. "
-                "Only supporting_evidence_refs and constraints are arrays. When private_expression_basis is non-empty, "
+                "Only supporting_evidence_refs and constraints are arrays, and shot_direction={spatial_staging, "
+                "expression_and_body_beat, communicative_subtext, camera_handling} is an object of four concise English "
+                "strings tailored to this specific event and candidate. When private_expression_basis is non-empty, "
                 "include its frozen basis evidence pointer among primary or "
-                "supporting evidence. Return at most eight constraints. Never return free visual directions or "
-                "intimate_intensity. If and only if media_lane is suggestive_private or explicit_private, also "
+                "supporting evidence. Return at most eight constraints. Never return legacy composition/action/camera_direction "
+                "or intimate_intensity. If and only if media_lane is suggestive_private or explicit_private, also "
                 "return private_flair={action_beat, expression_beat, gaze_beat, recipient_subtext, facial_profile}. Every field "
                 "is required and must be one short English phrase. action_beat must describe one visible, "
                 "physically possible adult teasing action that follows the selected candidate rather than a new "
@@ -5129,26 +5202,6 @@ def _planning_messages_v5(
     ]
 
 
-def _snapshot_evidence_pointers(value: object, pointer: str = "", *, limit: int = 96) -> list[str]:
-    """Expose a bounded, exact pointer vocabulary to the planning model."""
-
-    pointers: list[str] = []
-
-    def visit(current: object, current_pointer: str) -> None:
-        if len(pointers) >= limit:
-            return
-        if current_pointer:
-            pointers.append(current_pointer)
-        if isinstance(current, dict):
-            for key, child in current.items():
-                escaped = str(key).replace("~", "~0").replace("/", "~1")
-                visit(child, f"{current_pointer}/{escaped}")
-        elif isinstance(current, list):
-            for index, child in enumerate(current):
-                visit(child, f"{current_pointer}/{index}")
-
-    visit(value, pointer)
-    return pointers
 
 
 _PRIVATE_LOCATION_MARKERS = frozenset(
@@ -6379,8 +6432,26 @@ def _unselected_fact_mentioned(
     check closes the common failure mode where the model notices a real but
     unselected place, participant, object, or body fact elsewhere in the input.
     """
-    joined = "\n".join(directions)
+    canonical_camera = set(_DEFAULT_CAMERA_DIRECTION.values())
+    free_directions = [text for text in directions if text not in canonical_camera]
+    joined = "\n".join(free_directions)
     for pointer, value in _scalar_leaves(snapshot):
+        if (
+            pointer.startswith(("/evidence_index/", "/source/", "/situational_context/"))
+            or pointer
+            in {
+                "/schema_version",
+                "/event/type",
+                "/event/status",
+                "/activity/id",
+                "/activity/kind",
+                "/location/id",
+                "/location/kind",
+                "/location/publicness",
+            }
+            or (pointer.startswith("/objects/") and pointer.endswith(("/id", "/kind")))
+        ):
+            continue
         selected = any(
             pointer == root or pointer.startswith(f"{root}/") for root in selected_pointers
         )
@@ -6457,8 +6528,26 @@ def _mapping(value: object) -> dict[str, object]:
     return value if isinstance(value, dict) else {}
 
 
+
+
 def _compact_value(value: object) -> str:
     if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.startswith("{") and stripped.endswith("}"):
+            try:
+                parsed = json.loads(stripped)
+            except ValueError:
+                parsed = None
+            if isinstance(parsed, dict):
+                env_text = str(parsed.get("environment_text") or "").strip()
+                act_text = str(parsed.get("activity_text") or "").strip()
+                if env_text or act_text:
+                    merged = (
+                        f"{act_text}；{env_text}"
+                        if (act_text and env_text and act_text not in env_text)
+                        else (env_text or act_text)
+                    )
+                    return merged[:500]
         return value[:500]
     return _stable_json(value)[:500]
 
@@ -6547,7 +6636,6 @@ def _optional_bool(value: dict[str, object], key: str) -> bool | None:
 
 
 __all__ = [
-    "LegacyMediaShotAdapter",
     "MediaInspection",
     "MediaInspector",
     "FirstPersonPrivatePromptAuthor",

@@ -386,3 +386,53 @@ def test_delivered_photo_sits_in_causal_conversation_order() -> None:
     assert "一张书店下午的自拍" not in hidden_blob
     for token in _LEAK_TOKENS:
         assert token not in hidden_blob
+
+
+def test_bound_shared_media_about_uses_image_evidence_location_and_activity() -> None:
+    from types import SimpleNamespace
+
+    from companion_daemon.world_v2.ledger_context_resolver import _bound_shared_media_about
+
+    evidence_event = SimpleNamespace(
+        event_id="event:evidence:bulletin",
+        event_type="ImageEvidenceDeclared",
+        payload_hash=_HASH,
+        payload_json=__import__("json").dumps(
+            {
+                "image_evidence": {
+                    "location": {"kind": "教学楼一层公告栏与信箱区"},
+                    "activity": {
+                        "description": "课间在公告栏前翻看综测补充说明，取表填写，课后折回投递报名表"
+                    },
+                }
+            },
+            ensure_ascii=False,
+        ),
+    )
+    ref = SimpleNamespace(
+        event_id="event:evidence:bulletin",
+        event_type="ImageEvidenceDeclared",
+        payload_hash=_HASH,
+    )
+    ledger = SimpleNamespace(
+        lookup_event_commit=lambda eid: (evidence_event, None)
+        if eid == "event:evidence:bulletin"
+        else None
+    )
+    about = _bound_shared_media_about(
+        family="character_media",
+        kind="selfie",
+        candidate=SimpleNamespace(
+            source_event_refs=("event:evidence:bulletin",),
+            source_events=(),
+            ecology_observed_at=datetime(2026, 10, 26, 13, 4, tzinfo=_SHANGHAI),
+        ),
+        projection=SimpleNamespace(
+            world_occurrences=(),
+            committed_world_event_refs=(ref,),
+        ),
+        ledger=ledger,
+    )
+    assert "教学楼一层公告栏与信箱区" in about
+    assert "课间在公告栏前翻看综测补充说明" in about
+

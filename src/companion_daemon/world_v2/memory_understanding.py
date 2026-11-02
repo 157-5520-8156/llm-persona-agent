@@ -6,6 +6,7 @@ No new World Fact, personality assignment, or emotion transition is produced.
 """
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass, replace
 from datetime import datetime
 import hashlib
@@ -39,6 +40,88 @@ def _parse_audit(raw):
 @immutable_value_cache(maxsize=4096)
 def _parse_candidate(raw):
     return MemoryCandidateProjection.model_validate_json(raw)
+
+
+@immutable_value_cache(maxsize=2048)
+def _verified_content_body(content_kind: str, content_payload_hash: str, text: str):
+    if (content_kind != "capability_manifest_audit"
+            or hashlib.sha256(text.encode()).hexdigest() != content_payload_hash):
+        raise ValueError("memory understanding content proof unavailable")
+    return json.loads(text)
+
+
+@immutable_value_cache(maxsize=4096)
+def _event_model_result_raw(payload_json: str) -> str:
+    return canonical(json.loads(payload_json).get("character_interior_model_result"))
+
+
+@immutable_value_cache(maxsize=1024)
+def _validated_batch_material(
+    world_id: str,
+    actor_ref: str,
+    trigger_id: str,
+    trigger_ref: str,
+    source_evidence_ref: str | None,
+    runtime_outcome_ref: str | None,
+    event_world_id: str,
+    event_type: str,
+    event_payload_json: str,
+    job_kind: str,
+    job_hash: str,
+    job_text: str,
+    decision_kind: str | None,
+    decision_hash: str | None,
+    decision_text: str | None,
+):
+    payload = json.loads(event_payload_json)
+    if (event_world_id != world_id or event_type != "TriggerProcessCompleted"
+            or payload.get("trigger_id") != trigger_id):
+        raise ValueError("completion receipt changed world or type")
+    job = _verified_content_body(job_kind, job_hash, job_text)
+    if job.get("contract") != "memory-review-job.2":
+        return None
+    if (job["world_id"] != world_id or job["actor_ref"] != actor_ref
+            or trigger_ref != "memory-review-job:" + digest(job)
+            or job["clock_event_ref"] != source_evidence_ref):
+        raise ValueError("understanding job identity changed")
+    if decision_kind is None or decision_hash is None or decision_text is None:
+        raise ValueError("memory understanding content proof unavailable")
+    decision = _verified_content_body(decision_kind, decision_hash, decision_text)
+    batch = MemoryReviewBatch.model_validate_json(canonical(decision["batch"]))
+    audit = _parse_audit(canonical(decision["audit"]))
+    audit_dump = audit.model_dump(mode="json")
+    audit_raw = canonical(audit_dump)
+    batch_dump = batch.model_dump(mode="json")
+    lineage = json.loads(audit.audit_json).get("character_interior_lineage") or {}
+    if (decision["job_hash"] != digest(job)
+            or payload.get("character_interior_model_result") != audit_dump
+            or audit.proposal_hash != "sha256:" + digest(batch_dump)
+            or payload.get("runtime_outcome_ref") != runtime_outcome_ref
+            or runtime_outcome_ref != "memory-consolidation:reviewed:" + digest(decision["batch"])):
+        raise ValueError("standing understanding has no exact successful author receipt")
+    if (lineage.get("purpose") != "memory_consolidation"
+            or lineage.get("causal_actor_ref") != actor_ref
+            or lineage.get("causal_world_id") != world_id
+            or lineage.get("causal_epoch") != trigger_ref):
+        raise ValueError("standing understanding author belongs to another actor or purpose")
+    candidates = {
+        f"m{i}": _parse_candidate(canonical(c))
+        for i, c in enumerate(job["candidates"])
+    }
+    candidates.update({f"k{i}": _parse_candidate(canonical(c))
+                       for i, c in enumerate(job.get("context_candidates", []))})
+    previous = {f"u{i}": ref for i, ref in enumerate(job.get("understanding_refs", []))}
+    validate_payload(batch_dump, {f"m{i}" for i in range(len(job["candidates"]))},
+                     source_tokens=set(candidates), predecessor_tokens=set(previous),
+                     readings={**{f"m{i}": r for i, r in enumerate(job["readings"])},
+                               **{f"k{i}": r for i, r in enumerate(job.get("context_readings", []))}})
+    if batch.understandings is None:
+        raise ValueError("new memory batch lacks explicit understanding decision")
+    effect_refs = tuple(
+        "event:memory-consolidation:effect:" + digest([trigger_id, candidates[choice.candidate_token].candidate_id])
+        for choice in batch.choices
+    )
+    return batch, candidates, previous, audit_raw, effect_refs
 
 
 @immutable_value_cache(maxsize=4096)
@@ -129,6 +212,13 @@ class MemoryUnderstandingReader:
         self._schedule_index = None
         self._schedule_sequence = 0
         self._schedule_generation = None
+        self._read_lock = RLock()
+        self._read_cache: OrderedDict[tuple[object, ...], UnderstandingSnapshot] = OrderedDict()
+        self._retrieval_compiler = (
+            MemoryRetrievalCompiler(ledger=self.ledger, life_content_store=self.store)
+            if self.store is not None
+            else None
+        )
 
     def schedule(self, projection):
         """Incremental review acknowledgements, not a semantic/permission read.
@@ -275,59 +365,43 @@ class MemoryUnderstandingReader:
 
     def _content(self, ref):
         body = self.store.read_exact(content_ref=ref)
-        if (body is None or body.content_kind != "capability_manifest_audit"
-                or hashlib.sha256(body.text.encode()).hexdigest() != body.content_payload_hash):
+        if body is None:
             raise ValueError("memory understanding content proof unavailable")
-        return json.loads(body.text)
+        return _verified_content_body(body.content_kind, body.content_payload_hash, body.text)
 
     def _validated_batch(self, projection, process, event, receipt_commit, *, committed=None):
-        payload = event.payload()
-        if (event.world_id != projection.world_id or event.event_type != "TriggerProcessCompleted"
-                or payload.get("trigger_id") != process.trigger_id):
+        if event.world_id != projection.world_id or event.event_type != "TriggerProcessCompleted":
             raise ValueError("completion receipt changed world or type")
-        job = self._content(process.trigger_ref)
-        if job.get("contract") != "memory-review-job.2":
+        job_body = self.store.read_exact(content_ref=process.trigger_ref)
+        if job_body is None:
+            raise ValueError("memory understanding content proof unavailable")
+        decision_body = self.store.read_exact(
+            content_ref="memory-review-decision:" + digest(process.trigger_id)
+        )
+        material = _validated_batch_material(
+            projection.world_id,
+            self.actor_ref,
+            process.trigger_id,
+            process.trigger_ref,
+            process.source_evidence_ref,
+            process.runtime_outcome_ref,
+            event.world_id,
+            event.event_type,
+            event.payload_json,
+            job_body.content_kind,
+            job_body.content_payload_hash,
+            job_body.text,
+            decision_body.content_kind if decision_body is not None else None,
+            decision_body.content_payload_hash if decision_body is not None else None,
+            decision_body.text if decision_body is not None else None,
+        )
+        if material is None:
             return None  # Choice-only historical reviews authored no understanding.
-        if (job["world_id"] != projection.world_id or job["actor_ref"] != self.actor_ref
-                or process.trigger_ref != "memory-review-job:" + digest(job)
-                or job["clock_event_ref"] != process.source_evidence_ref):
-            raise ValueError("understanding job identity changed")
-        decision = self._content("memory-review-decision:" + digest(process.trigger_id))
-        batch = MemoryReviewBatch.model_validate_json(canonical(decision["batch"]))
-        # Reuse only immutable decoding. Receipt/effect/current-source
-        # authority below is still resolved afresh on every read.
-        audit = _parse_audit(canonical(decision["audit"]))
-        lineage = json.loads(audit.audit_json).get("character_interior_lineage") or {}
-        if (decision["job_hash"] != digest(job)
-                or payload.get("character_interior_model_result") != audit.model_dump(mode="json")
-                or audit.proposal_hash != "sha256:" + digest(batch.model_dump(mode="json"))
-                or payload.get("runtime_outcome_ref") != process.runtime_outcome_ref
-                or process.runtime_outcome_ref != "memory-consolidation:reviewed:" + digest(decision["batch"])):
-            raise ValueError("standing understanding has no exact successful author receipt")
-        if (lineage.get("purpose") != "memory_consolidation"
-                or lineage.get("causal_actor_ref") != self.actor_ref
-                or lineage.get("causal_world_id") != projection.world_id
-                or lineage.get("causal_epoch") != process.trigger_ref):
-            raise ValueError("standing understanding author belongs to another actor or purpose")
-        candidates = {
-            f"m{i}": _parse_candidate(canonical(c))
-            for i, c in enumerate(job["candidates"])
-        }
-        candidates.update({f"k{i}": _parse_candidate(canonical(c))
-                           for i, c in enumerate(job.get("context_candidates", []))})
-        previous = {f"u{i}": ref for i, ref in enumerate(job.get("understanding_refs", []))}
-        validate_payload(batch.model_dump(mode="json"), {f"m{i}" for i in range(len(job["candidates"]))},
-                         source_tokens=set(candidates), predecessor_tokens=set(previous),
-                         readings={**{f"m{i}": r for i, r in enumerate(job["readings"])},
-                                   **{f"k{i}": r for i, r in enumerate(job.get("context_readings", []))}})
-        if batch.understandings is None:
-            raise ValueError("new memory batch lacks explicit understanding decision")
+        batch, candidates, previous, audit_raw, effect_refs = material
         # A saved model decision or a forged completion marker is not
         # enough. Every retention choice must have its typed effect
         # committed before this receipt under the very same author.
-        for choice in batch.choices:
-            candidate = candidates[choice.candidate_token]
-            effect_ref = "event:memory-consolidation:effect:" + digest([process.trigger_id, candidate.candidate_id])
+        for effect_ref in effect_refs:
             located_effect = self.ledger.lookup_event_commit(effect_ref)
             effect = (committed.get(effect_ref) if committed is not None else
                       self.ledger.resolve_committed_event_refs((effect_ref,),
@@ -336,13 +410,47 @@ class MemoryUnderstandingReader:
                     or located_effect[1].ledger_sequence >= receipt_commit.ledger_sequence
                     or located_effect[0].world_id != projection.world_id
                     or effect.payload_hash != located_effect[0].payload_hash
-                    or located_effect[0].payload().get("character_interior_model_result") != audit.model_dump(mode="json")):
+                    or _event_model_result_raw(located_effect[0].payload_json) != audit_raw):
                 raise ValueError("understanding batch has incomplete or differently authored effects")
         return batch, candidates, previous
 
     def read(self, projection):
         if self.store is None:
             return UnderstandingSnapshot((), (), frozenset(), ())
+        from .sqlite_ledger import SQLiteWorldLedger
+        from .life_content_store import SQLiteImmutableLifeContentStore
+        from .context_read_scope import current_content_snapshot
+
+        can_cache = (
+            type(self.ledger) is SQLiteWorldLedger
+            and type(self.store) is SQLiteImmutableLifeContentStore
+            and "lookup_event_commit" not in vars(self.ledger)
+            and "read_exact" not in vars(self.store)
+            and current_content_snapshot(self.store) is None
+        )
+        generation_before = (
+            (self.ledger.verified_history_generation(), *self.store.read_generations())
+            if can_cache
+            else None
+        )
+        cache_key = (
+            (
+                projection.world_id,
+                projection.world_revision,
+                projection.deliberation_revision,
+                projection.ledger_sequence,
+                projection.semantic_hash,
+                *generation_before,
+            )
+            if generation_before is not None
+            else None
+        )
+        if cache_key is not None:
+            with self._read_lock:
+                cached = self._read_cache.get(cache_key)
+                if cached is not None:
+                    self._read_cache.move_to_end(cache_key)
+                    return cached
         processes = {p.trigger_id: p for p in projection.trigger_processes
                      if p.process_kind == "memory_consolidation_review" and p.state == "terminal"
                      and (p.runtime_outcome_ref or "").startswith("memory-consolidation:reviewed:")}
@@ -403,7 +511,12 @@ class MemoryUnderstandingReader:
             possible.append(version)
         selected_sources = {c.candidate_id: current[c.candidate_id] for v in possible
                             for c in (v.dependencies or v.sources)}
-        readable = MemoryRetrievalCompiler(ledger=self.ledger, life_content_store=self.store).compile(
+        compiler = (
+            self._retrieval_compiler
+            if can_cache and self._retrieval_compiler is not None
+            else MemoryRetrievalCompiler(ledger=self.ledger, life_content_store=self.store)
+        )
+        readable = compiler.compile(
             cursor=ProjectionCursor(world_revision=projection.world_revision,
                                     deliberation_revision=projection.deliberation_revision,
                                     ledger_sequence=projection.ledger_sequence),
@@ -421,7 +534,18 @@ class MemoryUnderstandingReader:
         pending = sum(c.values.status == "active" and support_fingerprint(c) not in acknowledged
                       for c in projection.memory_candidates)
         active = tuple(v for v in recallable if v.read_status == "active")
-        return UnderstandingSnapshot(tuple(versions), active, frozenset(acknowledged), tuple(failures), pending, tuple(recallable))
+        snapshot = UnderstandingSnapshot(tuple(versions), active, frozenset(acknowledged), tuple(failures), pending, tuple(recallable))
+        if (
+            cache_key is not None
+            and generation_before is not None
+            and (self.ledger.verified_history_generation(), *self.store.read_generations()) == generation_before
+        ):
+            with self._read_lock:
+                self._read_cache[cache_key] = snapshot
+                self._read_cache.move_to_end(cache_key)
+                while len(self._read_cache) > 16:
+                    self._read_cache.popitem(last=False)
+        return snapshot
 
     def context_candidates(self, projection, primary, snapshot, *, limit=4):
         """Exact reviewed story links and standing sources, not social rules."""

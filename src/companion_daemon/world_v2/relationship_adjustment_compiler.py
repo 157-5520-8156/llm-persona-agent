@@ -96,7 +96,14 @@ class RelationshipAdjustmentCompiler:
             return RelationshipAdjustmentCompilation(status="no_change", signal_id=signal.signal_id)
         if projection.logical_time is None:
             raise RelationshipAdjustmentCompilerError("logical_time_missing")
-        typed = self._compile(signal=signal, accepted_deltas=accepted, projection=projection)
+        try:
+            typed = self._compile(signal=signal, accepted_deltas=accepted, projection=projection)
+        except ValueError as exc:
+            if str(exc) == "relationship adjustment is a semantic no-op":
+                return RelationshipAdjustmentCompilation(
+                    status="no_change", signal_id=signal.signal_id
+                )
+            raise
         event = self._proposal_event(typed=typed, source_event=source_event, logical_time=projection.logical_time)
         commit = self._ledger.commit(
             [event],

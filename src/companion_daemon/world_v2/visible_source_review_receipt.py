@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from .visible_source_composer import VisibleSourceTable
 
 
-_MAX_BYTES = 512_000
+_MAX_BYTES = 2_097_152
 
 
 def review_version_for_contract(contract: str, *, family: str) -> Literal["1", "2", "3", "4", "5", "6", "7", "8"]:

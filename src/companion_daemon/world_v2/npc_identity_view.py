@@ -233,7 +233,7 @@ def npc_identity_views(
             sourced_worlds = tuple(
                 item for item in worlds if item.source_entity_id in owned_occurrences
                 and item.world_consequence is not None
-            )
+            )[-4:]
             shared_experience_summaries = (
                 *shared_experience_summaries,
                 *dict.fromkeys(item.world_consequence.model_dump_json() for item in sourced_worlds),
@@ -287,7 +287,7 @@ def npc_identity_views(
                         if shared_history_item is not None
                         else ()
                     ),
-                    *(item.origin.accepted_event_ref for item in legacy_experiences),
+                    *(item.origin.accepted_event_ref for item in legacy_experiences[-4:]),
                     *(ref for item in sourced_worlds
                       for ref in (item.authority_event_ref, item.descriptor_event_ref)),
                     *(

@@ -9,6 +9,7 @@ from datetime import UTC, date, datetime, time, timedelta
 import hashlib
 import json
 import logging
+import os
 import sqlite3
 from typing import Literal, Protocol
 from zoneinfo import ZoneInfo
@@ -2015,6 +2016,11 @@ class LifeDevelopmentRuntime:
         view = await read_life_source(self._ledger, self._world_outlook.view, projection=state)
         if not view["needs_revision"]:
             return {"status": "unchanged"}
+        next_prep = getattr(self._world_outlook, "next_preparation_due", None)
+        if callable(next_prep):
+            prep_due = next_prep(projection=state, view=view)
+            if prep_due is not None and prep_due > state.logical_time:
+                return {"status": "unchanged"}
         located = self._ledger.lookup_event_commit(wake_event_ref)
         if located is None or located[0].event_type != "ClockAdvanced":
             return {"status": "rejected", "failure_code": "outlook_requires_committed_clock"}
@@ -2031,6 +2037,7 @@ class LifeDevelopmentRuntime:
             projection=state,
             context=slice_background_capsule_context(context, profile), manifest=manifest,
             history_trigger_ref=_capsule.trigger_ref,
+            history_query_context=context,
         )
 
     def _resolve_occasion_draw(
@@ -2044,11 +2051,39 @@ class LifeDevelopmentRuntime:
             wake_event_ref=wake.event_id,
         )
 
+    def discretionary_consequence_cooldown_active(self, projection=None) -> bool:
+        raw = os.environ.get("WORLD_V2_LIFE_DEVELOPMENT_MIN_INTERVAL_SECONDS", "").strip()
+        if not raw:
+            return False
+        try:
+            min_interval = int(raw)
+        except ValueError:
+            return False
+        if min_interval <= 0:
+            return False
+        state = projection if projection is not None else self._ledger.project()
+        last_proposal = next(
+            (
+                ref.logical_time
+                for ref in reversed(state.committed_world_event_refs)
+                if ref.event_id.startswith((
+                    "event:life-development:proposal:",
+                    "event:life-development:model-result:",
+                ))
+            ),
+            None,
+        )
+        if last_proposal is None:
+            return False
+        return state.logical_time < last_proposal + timedelta(seconds=min_interval)
+
     def pending_completed_activity_ref(self, *, after_world_revision: int | None = None) -> str | None:
         """Latest completed attempt, without reviving a historical backlog."""
         from .completed_activity_consequence import read_completed_activity_consequence
 
         state = self._ledger.project()
+        if self.discretionary_consequence_cooldown_active(state):
+            return None
         for plan in sorted(
             (item for item in state.plans if item.owner_actor_ref == self._owner
              and item.status == "completed" and item.authority_origin is not None),
@@ -2071,6 +2106,14 @@ class LifeDevelopmentRuntime:
             # silently substitute an older activity as today's opportunity.
             if source is None:
                 return None
+            if os.environ.get("WORLD_V2_LIFE_DEVELOPMENT_MIN_INTERVAL_SECONDS", "").strip():
+                active_proposal_id = self._active_attempt_proposal_id(
+                    source.execution_binding.source_event_ref
+                )
+                if self._ledger.lookup_event_commit(
+                    "event:life-development:proposal:" + _digest(active_proposal_id)
+                ):
+                    return None
             return origin.accepted_event_ref
         return None
 
@@ -2085,6 +2128,8 @@ class LifeDevelopmentRuntime:
         from .active_attempt_consequence import read_active_attempt_consequence
 
         state = self._ledger.project()
+        if self.discretionary_consequence_cooldown_active(state):
+            return None
         clock = max(
             (ref for ref in state.committed_world_event_refs if ref.event_type == "ClockAdvanced"),
             key=lambda ref: ref.world_revision, default=None,
@@ -2132,6 +2177,8 @@ class LifeDevelopmentRuntime:
         if self._world_outlook is None:
             return ()
         state = projection if projection is not None else self._ledger.project()
+        if not required_planning_only and self.discretionary_consequence_cooldown_active(state):
+            return ()
         found = []
         for occurrence in reversed(state.world_occurrences):
             if (occurrence.status != "active" or self._owner not in occurrence.participant_refs
@@ -6502,6 +6549,22 @@ class LifeDevelopmentRuntime:
             else model_purpose
         )
         pinned_context = slice_background_capsule_context(context, profile)
+        if isinstance(pinned_context.get("slices"), dict):
+            pinned_context = {
+                **pinned_context,
+                "slices": {
+                    name: (
+                        {
+                            key: val
+                            for key, val in lane.items()
+                            if key not in {"resolver_proof", "source_refs", "source_hash"}
+                        }
+                        if isinstance(lane, dict)
+                        else lane
+                    )
+                    for name, lane in pinned_context["slices"].items()
+                },
+            }
         pressure_surfaces = (
             compile_pressure_surfaces(
                 manifest=manifest,
@@ -6703,8 +6766,23 @@ class LifeDevelopmentRuntime:
                         "recent_life_texture": compile_recent_life_texture(pinned_context),
                         **(
                             {
-                                "private_world_outlook": self._world_outlook.advisory(
-                                    projection=self._ledger.project_at(manifest.pinned_cursor)
+                                "private_world_outlook": (
+                                    {
+                                        "contract": "world-outlook-advisory.1",
+                                        "authority": "private_draft_only_not_a_world_fact",
+                                        "revision": self._world_outlook.view(
+                                            projection=self._ledger.project_at(manifest.pinned_cursor)
+                                        )["revision"],
+                                        "scope": "omitted_for_bound_consequence_task",
+                                    }
+                                    if (
+                                        manifest.completed_activity_consequence is not None
+                                        or manifest.active_attempt_consequence is not None
+                                        or manifest.event_detail_capability is not None
+                                    )
+                                    else self._world_outlook.advisory(
+                                        projection=self._ledger.project_at(manifest.pinned_cursor)
+                                    )
                                 ),
                                 "outlook_authority": "private draft only; never use as a factual source or prescribe protagonist choices",
                             }

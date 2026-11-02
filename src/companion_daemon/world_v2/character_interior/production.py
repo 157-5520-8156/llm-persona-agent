@@ -9,6 +9,7 @@ Adapters independently.
 from __future__ import annotations
 
 import asyncio
+from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 import hashlib
@@ -139,6 +140,12 @@ class _LedgerCapsuleInteriorProjection:
     capsules: ContextCapsuleCompiler
     companion_actor_ref: str
     memory_understanding_reader: object | None = None
+    _base_snapshot_cache: OrderedDict[tuple[object, ...], InnerLifeSnapshot] = field(
+        default_factory=OrderedDict,
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     async def project(
         self,
@@ -149,6 +156,39 @@ class _LedgerCapsuleInteriorProjection:
             raise ValueError("character interior subject belongs to another world")
         if subject.actor_ref != self.companion_actor_ref:
             raise ValueError("character interior subject belongs to another actor")
+        source_kind = (
+            subject.capability_manifest.payload.get("source_kind")
+            if subject.capability_manifest is not None
+            else None
+        )
+        can_cache_base = (
+            subject.purpose not in {"proactive_contact", "memory_consolidation"}
+            and source_kind not in {"character_prehistory", "character_prehistory_batch"}
+        )
+        base_cache_key = (
+            (
+                subject.world_id,
+                subject.actor_ref,
+                subject.trigger_ref,
+                subject.cursor.world_revision,
+                subject.cursor.deliberation_revision,
+                subject.cursor.ledger_sequence,
+                subject.logical_time,
+                subject.viewer_scope,
+                subject.privacy_ceiling,
+                subject.purpose == "world_stimulus_appraisal",
+            )
+            if can_cache_base
+            else None
+        )
+        if base_cache_key is not None:
+            cached_base = self._base_snapshot_cache.get(base_cache_key)
+            if cached_base is not None:
+                self._base_snapshot_cache.move_to_end(base_cache_key)
+                return await self._bind_capability_evidence(
+                    snapshot=cached_base,
+                    subject=subject,
+                )
         projection = (
             await asyncio.to_thread(self.ledger.project_at, subject.cursor)
             if self.ledger.blocks_event_loop
@@ -230,13 +270,21 @@ class _LedgerCapsuleInteriorProjection:
             cursor=subject.cursor,
         )
         context = install_relationship_context(context, relationship_join)
-        context = install_shareable_photos_context(context, projection)
+        context = install_shareable_photos_context(
+            context, projection, ledger=self.ledger
+        )
         context = install_living_state_context(
             context,
             projection,
             pinned_appraisals=capsule.pinned_appraisals,
             user_channel_limited_impression_ids=(
-                collect_user_channel_limited_impression_ids(
+                await asyncio.to_thread(
+                    collect_user_channel_limited_impression_ids,
+                    ledger=self.ledger,
+                    projection=projection,
+                )
+                if self.ledger.blocks_event_loop
+                else collect_user_channel_limited_impression_ids(
                     ledger=self.ledger, projection=projection
                 )
             ),
@@ -282,6 +330,11 @@ class _LedgerCapsuleInteriorProjection:
             projection=projection,
             subject=subject,
         )
+        if base_cache_key is not None:
+            self._base_snapshot_cache[base_cache_key] = snapshot
+            self._base_snapshot_cache.move_to_end(base_cache_key)
+            while len(self._base_snapshot_cache) > 16:
+                self._base_snapshot_cache.popitem(last=False)
         return await self._bind_capability_evidence(
             snapshot=snapshot,
             subject=subject,
@@ -1181,6 +1234,8 @@ def compose_production_character_interior(
             life_source_reviewer=life_source_reviewer,
             reviewer=visible_source_review_model,
             visible_source_review_version=visible_source_review_version,
+            ordinary_text_review_mode=ordinary_text_review_mode,
+            text_shadow_observer=text_shadow_observer,
             expression_capabilities=expression_capabilities,
         )
     else:

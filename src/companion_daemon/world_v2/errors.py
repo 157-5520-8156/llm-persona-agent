@@ -9,6 +9,10 @@ class ConcurrencyConflict(WorldV2Error):
     """The caller evaluated against stale world or deliberation state."""
 
 
+class QQIngressAwaitingObservation(WorldV2Error):
+    """A persisted QQ interjection precedes an old expression's dispatch."""
+
+
 class UnknownEventType(WorldV2Error):
     """An event without a declared revision class or reducer was submitted."""
 

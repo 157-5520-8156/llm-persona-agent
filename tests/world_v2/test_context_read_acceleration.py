@@ -18,6 +18,10 @@ def test_receipt_lookup_uses_action_index_and_does_not_scan_world_history(tmp_pa
     assert any("world_v2_events_receipt_action_lookup" in str(row[3]) for row in plan)
     assert ledger.execution_receipt_events_for_actions(action_ids=frozenset(),
         cursor=ProjectionCursor(world_revision=0,deliberation_revision=0,ledger_sequence=0))==()
+    assert ledger.execution_receipt_events_for_actions(
+        action_ids=frozenset(f"action:{idx}" for idx in range(600)),
+        cursor=ProjectionCursor(world_revision=0,deliberation_revision=0,ledger_sequence=0),
+    )==()
     ledger.close()
 
 

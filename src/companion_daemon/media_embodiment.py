@@ -393,6 +393,17 @@ def build_embodied_candidates(
                 continue
             if SENSUAL_CHARGE_RANK[charge] > SENSUAL_CHARGE_RANK[sensual_charge_ceiling]:
                 continue
+            if (
+                strategy_id == "resting_repose"
+                and charge == "none"
+                and not {cue.cue_id for cue in state.cues}
+                & {"posture_fatigue", "sleepy_face", "muscle_tension"}
+                and str(_mapping(snapshot.get("location")).get("kind") or "")
+                not in {"home", "private", "bedroom", "residence"}
+                and str(_mapping(snapshot.get("activity")).get("kind") or "")
+                not in {"sleep", "rest", "wind_down"}
+            ):
+                continue
             for coverage_mode in coverage_modes:
                 if coverage_mode in {"private_apparel", "strategic_cover"} and not wardrobe_refs:
                     continue

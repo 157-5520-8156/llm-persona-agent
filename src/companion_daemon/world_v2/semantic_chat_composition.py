@@ -75,7 +75,7 @@ _GROUNDED_REVIEW_PROFILES = {
 # Whole-candidate author carriers that keep the one curated call and its single
 # contextual reviewer. The slim carrier changes only the transport envelope, so it
 # cannot quietly become a second author topology or a differently-reviewed candidate.
-_INDEPENDENT_WHOLE_AUTHOR_VERSIONS = frozenset({"3", "slim", "slim2"})
+_INDEPENDENT_WHOLE_AUTHOR_VERSIONS = frozenset({"3", "slim", "slim2", "slim3", "slim4"})
 
 
 def configured_visible_review_version(settings: Settings) -> str | None:
@@ -239,10 +239,6 @@ def _model_identity(model: object | None) -> str | None:
     return value[:256] if value else type(model).__name__[:256]
 
 
-def _possible_provider_lanes(model: object | None) -> tuple[object, ...]:
-    """Expand every provider that may produce bytes for one semantic role."""
-
-    return possible_provider_lanes(model)
 
 
 def _provider_lane_sets_are_independent(
@@ -320,35 +316,6 @@ def _installs_strict_output_contract(
     return False
 
 
-def _shares_known_reviewer_runtime(left: object | None, right: object | None) -> bool:
-    """Reject mutable runtime objects known to couple two reviewer roles."""
-
-    if left is None or right is None:
-        return False
-    if left is right:
-        return True
-    for attribute in ("circuit_breaker", "capacity_gate"):
-        left_state = getattr(left, attribute, None)
-        right_state = getattr(right, attribute, None)
-        if left_state is not None and left_state is right_state:
-            return True
-    left_lanes = tuple(
-        lane
-        for lane_name in ("primary", "secondary")
-        if (lane := getattr(left, lane_name, None)) is not None
-    )
-    right_lanes = tuple(
-        lane
-        for lane_name in ("primary", "secondary")
-        if (lane := getattr(right, lane_name, None)) is not None
-    )
-    if any(
-        left_lane is right_lane or _shares_known_reviewer_runtime(left_lane, right_lane)
-        for left_lane in left_lanes
-        for right_lane in right_lanes
-    ):
-        return True
-    return False
 
 
 def _provider_roles_are_pairwise_independent(
@@ -958,7 +925,7 @@ def build_semantic_chat_composition(
         raise TypeError("schema references flag must be a boolean")
     if visible_author_schema_references and visible_author_tool_version != "3":
         raise ValueError("schema references require strict atomic v3")
-    if visible_author_tool_version not in {"1", "2", "3", "slim", "slim2"}:
+    if visible_author_tool_version not in {"1", "2", "3", "slim", "slim2", "slim3", "slim4"}:
         raise ValueError("unsupported visible author tool version")
     if visible_author_tool_version != "1" and not visible_source_review_required:
         raise ValueError("versioned whole author requires explicit visible source review")
@@ -1249,8 +1216,12 @@ def build_semantic_chat_composition(
                 model=life_review_model, evidence_store=evidence_store,
                 timeout_seconds=settings.world_v2_background_timeout_seconds if separate_background else 22.0,
             )
+        import os
         text_shadow_observer = None
-        if settings.world_v2_ordinary_text_review_mode == "sampled":
+        if (
+            settings.world_v2_ordinary_text_review_mode == "sampled"
+            and os.environ.get("WORLD_V2_ORDINARY_TEXT_OBSERVATION_MODE", "").strip().lower() != "off"
+        ):
             from .text_shadow_observer import TextShadowObserver
             text_shadow_observer = TextShadowObserver(
                 database=settings.database_path, world_id=life_review_world_id,

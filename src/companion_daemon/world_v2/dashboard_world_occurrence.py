@@ -9,6 +9,7 @@ from .life_content_events import LifeContentRecordedPayload
 from .life_content_reading import selected_world_consequence
 from .life_content_store import ImmutableLifeContentStore
 from .occurrence_result_content_runtime import require_published_world_consequence
+from .projection_lookup import lookup_first, lookup_last
 from .schemas import LedgerProjection, ProjectionCursor, WorldEvent, WorldOccurrenceProjection
 
 
@@ -34,8 +35,9 @@ def experience_world_occurrence(projection, experience):
         binding = binding.settlement
     if binding.source_kind != 'occurrence_settlement':
         return None
-    occurrence = next((o for o in projection.world_occurrences
-                       if o.occurrence_id == binding.occurrence_id), None)
+    occurrence = lookup_first(
+        projection.world_occurrences, "occurrence_id", binding.occurrence_id
+    )
     if occurrence is None or any((
         occurrence.settlement_event_ref != binding.authority_event_ref,
         occurrence.result_id != binding.result_id,
@@ -44,11 +46,15 @@ def experience_world_occurrence(projection, experience):
         occurrence.entity_revision != binding.occurrence_entity_revision,
     )):
         return None
-    if not any(e.event_id == binding.authority_event_ref
-               and e.world_revision == binding.authority_world_revision
-               and e.payload_hash == binding.authority_payload_hash
-               and e.event_type == 'WorldOccurrenceSettled'
-               for e in projection.committed_world_event_refs):
+    committed_ref = lookup_first(
+        projection.committed_world_event_refs, "event_id", binding.authority_event_ref
+    )
+    if (
+        committed_ref is None
+        or committed_ref.world_revision != binding.authority_world_revision
+        or committed_ref.payload_hash != binding.authority_payload_hash
+        or committed_ref.event_type != 'WorldOccurrenceSettled'
+    ):
         return None
     return occurrence
 
@@ -56,17 +62,20 @@ def experience_world_occurrence(projection, experience):
 def _event_at(
     ledger: LedgerPort, projection: LedgerProjection, event_ref: str, event_type: str,
 ) -> WorldEvent:
-    refs = [item for item in projection.committed_world_event_refs if item.event_id == event_ref]
+    ref = lookup_first(projection.committed_world_event_refs, "event_id", event_ref)
+    last_ref = lookup_last(projection.committed_world_event_refs, "event_id", event_ref)
     located = ledger.lookup_event_commit(event_ref)
-    if len(refs) != 1 or located is None:
+    if ref is None or ref is not last_ref or located is None:
         raise ValueError("dashboard World content source is not pinned")
     event, commit = located
     event = WorldEvent.model_validate_json(event.model_dump_json())
-    ref = refs[0]
     if event_ref not in commit.event_ids:
         raise ValueError("dashboard content event is outside its commit")
-    following = set(commit.event_ids[commit.event_ids.index(event_ref) + 1:])
-    revision = commit.world_revision - sum(r.event_id in following for r in projection.committed_world_event_refs)
+    following = commit.event_ids[commit.event_ids.index(event_ref) + 1:]
+    revision = commit.world_revision - sum(
+        lookup_first(projection.committed_world_event_refs, "event_id", fid) is not None
+        for fid in following
+    )
     if (
         event.world_id != projection.world_id or event.event_id != event_ref
         or event.event_type != event_type or ref.event_type != event_type

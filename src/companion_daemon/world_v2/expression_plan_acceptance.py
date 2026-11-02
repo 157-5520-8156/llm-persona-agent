@@ -220,11 +220,19 @@ def derive_expression_plan_material(
     # pulse. This acceptance check mirrors the model-visible capability fact
     # so a forged/tampered plan cannot turn a deferred non-text beat into an
     # authorized external effect.
-    for draft, intent in zip(drafts, external_intents, strict=True):
-        if getattr(intent, "due_window", None) is not None and (
-            not isinstance(draft, dict)
-            or draft.get("content_type") != "text/plain"
-            or getattr(intent, "kind", None) != "followup"
+    is_on_cadence_immediate = (
+        payload.get("recorded_cadence_mode") == "on"
+        and payload.get("overall_intent") == "expression:now"
+    )
+    for position, (draft, intent) in enumerate(zip(drafts, external_intents, strict=True)):
+        if (
+            getattr(intent, "due_window", None) is not None
+            and not (is_on_cadence_immediate and position > 0)
+            and (
+                not isinstance(draft, dict)
+                or draft.get("content_type") != "text/plain"
+                or getattr(intent, "kind", None) != "followup"
+            )
         ):
             raise ExpressionPlanAcceptanceError("deferred_expression_modality_invalid")
     _validate_event_share_claim(
@@ -240,6 +248,8 @@ def derive_expression_plan_material(
                 audit=audit, model_result_audits=model_result_audits,
                 review_hash=review_hash, observation=source_observation,
                 world_id=world_id, actor_ref=policy.actor,
+                proposal=proposal,
+                visible_source_review_required=policy.visible_source_review_required,
             )
         ),
     )
@@ -589,14 +599,22 @@ def _validate_audit(
 
 
 def _reviewed_inbound_observation_matches(
-    *, audit, model_result_audits, review_hash, observation, world_id, actor_ref,
+    *,
+    audit,
+    model_result_audits,
+    review_hash,
+    observation,
+    world_id,
+    actor_ref,
+    proposal: ProposalInput | None = None,
+    visible_source_review_required: bool = True,
 ) -> bool:
     """Distinguish an already reviewed reply from an event-share trigger.
 
     The full receipt was verified above. Reuse its immutable original input,
     never a candidate-authored origin flag or today's reconstructed Context.
     """
-    if review_hash is None or observation is None or observation.world_id != world_id:
+    if observation is None or observation.world_id != world_id:
         return False
     from .deliberation import ModelInput
     from .proposal_audit_schemas import RecordedModelResultAudit
@@ -609,6 +627,22 @@ def _reviewed_inbound_observation_matches(
         lineage = recorded.character_interior_lineage
         if lineage is None or lineage.purpose != "inbound_turn":
             return False
+        if review_hash is None:
+            if visible_source_review_required or proposal is None or recorded.status != "proposal_validated":
+                return False
+            if (
+                matches[0].trigger_ref != audit.trigger_ref
+                or matches[0].proposal_hash != audit.proposal_hash
+                or proposal.trigger_ref != audit.trigger_ref
+            ):
+                return False
+            expected_obs_hash = "sha256:" + _digest(observation.model_dump(mode="json"))
+            return any(
+                item.evidence_kind == "observed_message"
+                and item.ref_id == observation.observation_id
+                and item.immutable_hash == expected_obs_hash
+                for item in proposal.evidence_refs
+            )
         from .visible_review_evidence_storage import read_review_evidence
         evidence = read_review_evidence(recorded.visible_source_review_json)
         requirement = json.loads(evidence["requirement_json"])

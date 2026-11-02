@@ -25,18 +25,50 @@ from .schemas import TriggerProcess, WorldEvent
 from .response_expectation_view import answerable_receipt_history
 
 
-SILENCE_APPRAISAL_TRIGGER_VERSION = "silence-appraisal-trigger.2"
+SILENCE_APPRAISAL_TRIGGER_VERSION = "silence-appraisal-trigger.3"
 
 # The silence anchor must be one of her own visible conversational messages.
 # Media, tool, and perception receipts are provider plumbing, not something a
 # person would sit with while waiting for an answer.
 _VISIBLE_MESSAGE_ACTION_KINDS = frozenset({"reply", "followup", "proactive_message"})
+_MAX_SILENCE_APPRAISAL_ORDINALS = 4
+# (base_multiplier, jitter_span_multiplier, min_gap_from_prior_multiplier)
+_SILENCE_STAGE_WINDOWS: tuple[tuple[int, int, int], ...] = (
+    (1, 0, 0),
+    (6, 3, 4),
+    (18, 8, 10),
+    (42, 12, 18),
+)
 
 
 def _digest(value: object) -> str:
     return hashlib.sha256(
         json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
+
+
+def silence_appraisal_stage_threshold(
+    anchor_event_ref: str, *, idle_seconds_threshold: int, ordinal: int = 1
+) -> int:
+    """Return the deterministic jittered idle threshold for ``ordinal`` (1-indexed).
+
+    Ordinal 1 uses ``idle_seconds_threshold`` directly; later stages widen with
+    a source-bound jitter window so half-day and cross-day silence can be
+    re-appraised without a fixed mechanical clock.
+    """
+
+    if idle_seconds_threshold <= 0 or not 1 <= ordinal <= len(_SILENCE_STAGE_WINDOWS):
+        raise ValueError("invalid silence appraisal stage parameters")
+    base_mult, jitter_mult, _gap_mult = _SILENCE_STAGE_WINDOWS[ordinal - 1]
+    base_seconds = base_mult * idle_seconds_threshold
+    if jitter_mult <= 0:
+        return base_seconds
+    jitter_span = jitter_mult * idle_seconds_threshold
+    jitter_draw = int(
+        _digest({"anchor": anchor_event_ref, "ordinal": ordinal, "version": SILENCE_APPRAISAL_TRIGGER_VERSION})[:16],
+        16,
+    ) % (jitter_span + 1)
+    return base_seconds + jitter_draw
 
 
 class SilenceOpportunity(FrozenModel):
@@ -49,6 +81,7 @@ class SilenceOpportunity(FrozenModel):
     action_kind: str = Field(min_length=1)
     anchored_at: datetime
     idle_seconds: int = Field(ge=0)
+    ordinal: int = Field(default=1, ge=1)
 
 
 def answerable_expression_anchors(projection, *, actor_ref=None, target=None):
@@ -120,12 +153,84 @@ def silence_appraisal_opportunity(
                           and (actions[receipt.action_id].expression_plan_id or receipt.action_id) == group_id}
     # Older ledgers keyed this work by any receipt. Preserve their completed
     # or pending work instead of reopening it under the canonical first send.
-    old_ids = {silence_appraisal_trigger_identity(projection.world_id, ref)
-               for ref in group_receipt_refs}
-    if any(item.trigger_id in old_ids for item in projection.trigger_processes):
+    non_anchor_old_ids = {
+        silence_appraisal_trigger_identity(projection.world_id, ref)
+        for ref in group_receipt_refs
+        if ref != anchor_ref.event_id
+    }
+    if any(
+        getattr(item, "trigger_id", None) in non_anchor_old_ids
+        or (
+            getattr(item, "process_kind", None) == "silence_appraisal"
+            and getattr(item, "source_evidence_ref", None) in group_receipt_refs
+            and getattr(item, "source_evidence_ref", None) != anchor_ref.event_id
+        )
+        for item in projection.trigger_processes
+    ):
         return None
+    anchor_base_id = silence_appraisal_trigger_identity(projection.world_id, anchor_ref.event_id)
+    existing_anchor_processes = [
+        item
+        for item in projection.trigger_processes
+        if getattr(item, "trigger_id", None) == anchor_base_id
+        or str(getattr(item, "trigger_id", "") or "").startswith(f"{anchor_base_id}:")
+        or (
+            getattr(item, "process_kind", None) == "silence_appraisal"
+            and getattr(item, "source_evidence_ref", None) == anchor_ref.event_id
+        )
+    ]
+    if any(getattr(item, "state", None) != "terminal" for item in existing_anchor_processes):
+        return None
+    ordinal = len(existing_anchor_processes) + 1
+    if ordinal > _MAX_SILENCE_APPRAISAL_ORDINALS:
+        return None
+    latest_inbound_rev = max(
+        (item.world_revision for item in projection.message_observations),
+        default=-1,
+    )
+    unanswered_refs = [
+        ref for ref in groups.values() if ref.world_revision > latest_inbound_rev
+    ]
+    first_unanswered_ref = min(
+        unanswered_refs, key=lambda item: item.world_revision, default=anchor_ref
+    )
+    cumulative_idle_seconds = max(
+        idle_seconds,
+        int((logical_time - first_unanswered_ref.logical_time).total_seconds()),
+    )
+    stage_threshold = silence_appraisal_stage_threshold(
+        anchor_ref.event_id,
+        idle_seconds_threshold=idle_seconds_threshold,
+        ordinal=ordinal,
+    )
+    effective_idle_seconds = cumulative_idle_seconds if ordinal >= 2 else idle_seconds
+    if effective_idle_seconds < stage_threshold:
+        return None
+    if ordinal >= 2:
+        prior_trigger_id = silence_appraisal_trigger_identity(
+            projection.world_id, anchor_ref.event_id, ordinal=ordinal - 1
+        )
+        prior_opened_event_id = "event:silence-appraisal:opened:" + _digest(
+            {"world_id": projection.world_id, "trigger_id": prior_trigger_id}
+        )
+        prior_opened_ref = next(
+            (
+                e
+                for e in projection.committed_world_event_refs
+                if getattr(e, "event_id", None) == prior_opened_event_id
+            ),
+            None,
+        )
+        min_gap_seconds = _SILENCE_STAGE_WINDOWS[ordinal - 1][2] * idle_seconds_threshold
+        if prior_opened_ref is not None and isinstance(
+            getattr(prior_opened_ref, "logical_time", None), datetime
+        ):
+            if (logical_time - prior_opened_ref.logical_time).total_seconds() < min_gap_seconds:
+                return None
     anchor_receipt = receipts[anchor_ref.event_id]
-    trigger_id = silence_appraisal_trigger_identity(projection.world_id, anchor_ref.event_id)
+    trigger_id = silence_appraisal_trigger_identity(
+        projection.world_id, anchor_ref.event_id, ordinal=ordinal
+    )
     return SilenceOpportunity(
         trigger_id=trigger_id,
         source_evidence_ref=anchor_ref.event_id,
@@ -134,6 +239,7 @@ def silence_appraisal_opportunity(
         action_kind=actions[anchor_receipt.action_id].kind,
         anchored_at=anchor_ref.logical_time,
         idle_seconds=idle_seconds,
+        ordinal=ordinal,
     )
 
 
@@ -244,4 +350,5 @@ __all__ = [
     "SilenceAppraisalTriggerOpener",
     "SilenceOpportunity",
     "silence_appraisal_opportunity",
+    "silence_appraisal_stage_threshold",
 ]

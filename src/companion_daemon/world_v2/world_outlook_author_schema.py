@@ -13,15 +13,14 @@ def outlook_author_schema(*, basis_refs=None, npc_privacy_floors=(), prior_oppor
     schema = WorldOutlookDraft.model_json_schema()
     if story_planning:
         schema["$defs"]["OutlookChangeResponse"]["properties"]["decision"]["description"] = (
-            "retain if the future remains compatible. revise requires a source-linked change of "
-            "dates, execution fields other than text, or planning timing/structure; new IDs, prose, "
-            "thread links and conditions alone do not prove that change."
+            "retain only if all current thread situations, open_questions, developments and future opportunities "
+            "remain accurate. revise whenever this source advances a linked thread's situation, open_question, "
+            "developments or status, or changes dates, execution fields, conditions, opportunities, stages or planning."
         )
         if structural_retirements:
             schema["$defs"]["OutlookChangeResponse"]["properties"]["decision"]["description"] += (
-                " A source-linked thread status change or net retirement of its unrealized future "
-                "also counts; do not invent a new event to acknowledge a refusal. Renaming an "
-                "equivalent opportunity or cleaning up expired/executed items is not a retirement."
+                " Advancing a thread's situation/open_question/developments, changing thread status, or retiring "
+                "unrealized future opportunities also counts; do not invent a new event just to acknowledge a refusal."
             )
         schema["properties"]["threads"]["minItems"] = 2
         thread = schema["$defs"]["OutlookThread"]

@@ -277,3 +277,73 @@ async def test_chat_endpoint_model_rejects_behavior_fields() -> None:
                 recent_message_character_counts=(),
             )
         )
+
+
+@pytest.mark.asyncio
+async def test_chat_endpoint_model_strips_markdown_fence_and_advisory_validates_compact_hint() -> None:
+    from companion_daemon.world_v2.deliberation import TurnAttentionAdvisory
+    from companion_daemon.world_v2.present_prompt import compile_slim_consider_payload
+
+    chat = _EndpointChat(
+        "```json\n"
+        '{"continuation_probability_bp":8500,"confidence_bp":8000,'
+        '"evidence_summary":"话刚起头","compact_reply_hint_bp":8200}\n'
+        "```"
+    )
+    prediction = await ChatSemanticEndpointModel(chat).predict(
+        TextTurnEndpointEvidence(
+            batch_texts=("我跟你说个事",),
+            recent_gap_seconds=(),
+            typing_active=True,
+            burst_fragment_count=1,
+            recent_message_character_counts=(6,),
+        )
+    )
+    advisory = TurnAttentionAdvisory.model_validate(
+        {
+            "continuation_probability_bp": prediction.continuation_probability_bp,
+            "confidence_bp": prediction.confidence_bp,
+            "compact_reply_hint_bp": prediction.compact_reply_hint_bp,
+            "typing_active": True,
+            "status": "predicted",
+            "model_id": prediction.model_id,
+            "evidence_summary": prediction.evidence_summary,
+            "reason_codes": ["typing_active", "semantic_continuation_likely"],
+            "authority": "advisory_only",
+        }
+    )
+    assert advisory.compact_reply_hint_bp == 8_200
+
+    compiled = compile_slim_consider_payload(
+        {
+            "meaning_of_this": "他话刚起头还没说完",
+            "my_state": "等他把后半句发出来再接",
+            "world_claims": [],
+            "messages": ["？", "你说"],
+            "turn_posture": "interject",
+            "waiting_for": "等他把事情说完",
+            "wait": {"after_seconds": 8, "pressure_bp": 4500, "importance_bp": 5500},
+            "come_back": {"thought": "隔十秒再补一句", "after_seconds": 10},
+        }
+    )
+    assert compiled is not None
+    expression = compiled["expression_draft"]
+    assert expression["turn_posture"] == "interject"
+    assert expression["response_expectation"]["wait_seconds"] == 8
+    assert expression["revisit"]["wait_seconds"] == 10
+
+    from companion_daemon.world_v2.present_prompt import compile_slim_interior_envelope
+
+    envelope = compile_slim_interior_envelope(
+        {
+            "meaning_of_this": "他话刚起头还没说完",
+            "my_state": "等他把后半句发出来再接",
+            "world_claims": [],
+            "messages": ["？", "你说"],
+            "turn_posture": "interject",
+        },
+        reply_only=True,
+    )
+    assert envelope is not None
+    assert envelope["events"][0]["turn_posture"] == "interject"
+

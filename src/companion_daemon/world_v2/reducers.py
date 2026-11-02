@@ -5234,6 +5234,33 @@ def _world_stimulus_relationship_signal_rebase_is_live(
     )
 
 
+def _proactive_relationship_signal_rebase_is_live(
+    state: ReducerState, audit: object
+) -> bool:
+    """Re-prove a claimed proactive deliberation trigger can carry its authored signal forward."""
+
+    proposal_id = getattr(audit, "proposal_id", "")
+    trigger_ref = getattr(audit, "trigger_ref", None)
+    if not isinstance(proposal_id, str) or not proposal_id.startswith("proposal:proactive:"):
+        return False
+    source_event = next(
+        (
+            item
+            for item in state.committed_world_event_refs
+            if item.event_id == trigger_ref
+        ),
+        None,
+    )
+    if source_event is None:
+        return False
+    return any(
+        item.process_kind == "proactive_action_deliberation"
+        and item.source_evidence_ref == trigger_ref
+        and item.state == "claimed"
+        for item in state.trigger_processes
+    )
+
+
 def _validate_compiled_relationship_proposal_source(
     state: ReducerState, proposal: RelationshipProposalProjection
 ) -> None:
@@ -5278,6 +5305,7 @@ def _validate_compiled_relationship_proposal_source(
         if not (
             _inbound_relationship_signal_rebase_is_live(state, audit)
             or _world_stimulus_relationship_signal_rebase_is_live(state, audit)
+            or _proactive_relationship_signal_rebase_is_live(state, audit)
         ):
             raise ValueError("compiled relationship proposal source audit revision does not rebase")
     source_shape = {
@@ -10750,11 +10778,20 @@ def _trigger_process_completed(state: ReducerState, event: WorldEvent) -> Reduce
             "life-ecology:aftermath_recovered_experience",
             "life-ecology:aftermath_recovered_memory",
         }
+        reusable_prior_outcome_refs = semantic_outcome_refs | {
+            "life-ecology:idle",
+            "life-ecology:author_idle",
+            "life-ecology:author_no_opening",
+            "life-ecology:life_development_no_op",
+            "life-ecology:life_development_plan_committed",
+            "life-ecology:life_development_occurrence_committed",
+            "life-ecology:life_development_recovered",
+        }
         if cadence_reused and (
             cadence_draw_event_ref is not None
             or outcome_ref not in semantic_outcome_refs
             or prior is None
-            or prior.last_outcome_ref not in semantic_outcome_refs
+            or prior.last_outcome_ref not in reusable_prior_outcome_refs
             or completed_at >= prior.next_consideration_at
         ):
             raise ValueError("life ecology cadence reuse binding is invalid")
@@ -11626,11 +11663,14 @@ def _trigger_process_opened(state: ReducerState, event: WorldEvent) -> ReducerSt
         )
         if source is None or source.event_type != "ExecutionReceiptRecorded":
             raise ValueError("silence appraisal trigger requires a committed execution receipt")
-        if (
-            process.trigger_id
-            != silence_appraisal_trigger_identity(event.world_id, process.source_evidence_ref)
-            or process.trigger_ref != f"silence:{process.source_evidence_ref}"
-        ):
+        expected_base = silence_appraisal_trigger_identity(
+            event.world_id, process.source_evidence_ref
+        )
+        valid_trigger_id = process.trigger_id == expected_base
+        if not valid_trigger_id and process.trigger_id.startswith(expected_base + ":"):
+            suffix = process.trigger_id.removeprefix(expected_base + ":")
+            valid_trigger_id = suffix.isdigit() and int(suffix) >= 2
+        if not valid_trigger_id or process.trigger_ref != f"silence:{process.source_evidence_ref}":
             raise ValueError("silence appraisal trigger identity is not deterministic")
     if process.process_kind == "plan_disruption_appraisal":
         source = next(
@@ -16150,13 +16190,10 @@ def _derived_retirement_lease(state: ReducerState, process: TriggerProcess) -> C
 def _source_event_ref_for_expression_episode(
     state: ReducerState, process: TriggerProcess
 ) -> str | None:
-    observation = next(
-        (
-            item
-            for item in state.message_observations
-            if item.observation_id == process.source_evidence_ref
-        ),
-        None,
+    observation = (
+        lookup_last(state.message_observations, "observation_id", process.source_evidence_ref)
+        if process.source_evidence_ref is not None
+        else None
     )
     if (
         observation is None
@@ -16174,10 +16211,18 @@ def _source_event_ref_for_expression_episode(
 
 
 def _has_character_interior_inbound_authority(
-    state: ReducerState, *, source_evidence_ref: str | None, source_event_ref: str | None
+    state: ReducerState,
+    *,
+    source_evidence_ref: str | None,
+    source_event_ref: str | None,
+    inbound_authority_sources: set[str] | None = None,
 ) -> bool:
     del source_event_ref
-    return source_evidence_ref is not None and any(
+    if source_evidence_ref is None:
+        return False
+    if inbound_authority_sources is not None:
+        return source_evidence_ref in inbound_authority_sources
+    return any(
         process.process_kind == "interaction_appraisal"
         and process.source_evidence_ref == source_evidence_ref
         and any(
@@ -16189,29 +16234,31 @@ def _has_character_interior_inbound_authority(
 
 
 def _retired_character_process_outcome(
-    state: ReducerState, process: TriggerProcess
+    state: ReducerState,
+    process: TriggerProcess,
+    *,
+    inbound_authority_sources: set[str] | None = None,
 ) -> str | None:
     outcome = _RETIRED_CHARACTER_PROCESS_OUTCOMES.get(process.process_kind)
     if outcome is None:
         return None
-    source = next(
-        (
-            item
-            for item in state.committed_world_event_refs
-            if item.event_id == process.source_evidence_ref
-        ),
-        None,
-    )
-    if process.process_kind == "relationship_deliberation" and (
-        source is None or source.event_type != "AppraisalAccepted"
-    ):
-        return None
+    if process.process_kind == "relationship_deliberation":
+        source = (
+            lookup_last(
+                state.committed_world_event_refs, "event_id", process.source_evidence_ref
+            )
+            if process.source_evidence_ref is not None
+            else None
+        )
+        if source is None or source.event_type != "AppraisalAccepted":
+            return None
     if process.process_kind == "interaction_appraisal":
         source_event_ref = _source_event_ref_for_expression_episode(state, process)
         if _has_character_interior_inbound_authority(
             state,
             source_evidence_ref=process.source_evidence_ref,
             source_event_ref=source_event_ref,
+            inbound_authority_sources=inbound_authority_sources,
         ):
             return None
     return outcome
@@ -16339,10 +16386,26 @@ def fold_retired_character_author_state(state: ReducerState) -> ReducerState:
 
     processes = list(state.trigger_processes)
     completed = list(state.completed_trigger_ids)
+    completed_set = set(completed)
+    inbound_authority_sources: set[str] | None = None
     derived = state
     for index, process in enumerate(processes):
         if process.state == "terminal":
             continue
+        if inbound_authority_sources is None and process.process_kind in {
+            "expression_episode",
+            "interaction_appraisal",
+        }:
+            inbound_authority_sources = {
+                item.source_evidence_ref
+                for item in state.trigger_processes
+                if item.process_kind == "interaction_appraisal"
+                and item.source_evidence_ref is not None
+                and any(
+                    attempt_id.startswith(CHARACTER_INTERIOR_INBOUND_ATTEMPT_PREFIX)
+                    for attempt_id in item.attempt_ids
+                )
+            }
         source_event_ref = (
             _source_event_ref_for_expression_episode(derived, process)
             if process.process_kind in {"expression_episode", "interaction_appraisal"}
@@ -16353,6 +16416,7 @@ def fold_retired_character_author_state(state: ReducerState) -> ReducerState:
                 derived,
                 source_evidence_ref=process.source_evidence_ref,
                 source_event_ref=source_event_ref,
+                inbound_authority_sources=inbound_authority_sources,
             ):
                 continue
             disposition = _recorded_expression_episode_disposition(
@@ -16372,7 +16436,11 @@ def fold_retired_character_author_state(state: ReducerState) -> ReducerState:
                 else ":no-disposition"
             )
         else:
-            outcome = _retired_character_process_outcome(derived, process)
+            outcome = _retired_character_process_outcome(
+                derived,
+                process,
+                inbound_authority_sources=inbound_authority_sources,
+            )
             if outcome is None:
                 continue
         lease = process.claim_lease or _derived_retirement_lease(derived, process)
@@ -16389,8 +16457,9 @@ def fold_retired_character_author_state(state: ReducerState) -> ReducerState:
                 "runtime_outcome_ref": outcome,
             }
         )
-        if process.trigger_id not in completed:
+        if process.trigger_id not in completed_set:
             completed.append(process.trigger_id)
+            completed_set.add(process.trigger_id)
     if tuple(processes) == state.trigger_processes and derived is state:
         return state
     return derived.model_copy(

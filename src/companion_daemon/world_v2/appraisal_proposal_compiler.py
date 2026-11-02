@@ -314,46 +314,49 @@ class AppraisalProposalCompiler:
     ):
         """Bind one appraisal candidate to its exact claimed stimulus trigger."""
 
-        if source_event.event_type == "ObservationRecorded":
+        if str(authority.proposal.proposal_id).startswith("proposal:proactive:"):
+            trigger = next(
+                (
+                    item
+                    for item in projection.trigger_processes
+                    if item.process_kind == "proactive_action_deliberation"
+                    and item.state == "claimed"
+                    and item.source_evidence_ref == source_event.event_id
+                ),
+                None,
+            )
+            if trigger is None:
+                raise AppraisalProposalCompilerError("source_trigger_not_claimed")
+            # Proactive evidence is the source event itself, not the
+            # inbound interaction-appraisal observation_id.
+            source_evidence_ref = source_event.event_id
+            source_evidence_type = "committed_world_event"
+            subject_ref = (
+                self._observation(source_event).actor
+                if source_event.event_type == "ObservationRecorded"
+                else self._companion_subject(projection)
+            )
+            source_cluster_ref = "proactive:" + _digest({"event": source_event.event_id})
+        elif source_event.event_type == "ObservationRecorded":
             observation = self._observation(source_event)
-            if str(authority.proposal.proposal_id).startswith("proposal:proactive:"):
-                trigger = next(
-                    (
-                        item
-                        for item in projection.trigger_processes
-                        if item.process_kind == "proactive_action_deliberation"
-                        and item.state == "claimed"
-                        and item.source_evidence_ref == source_event.event_id
-                    ),
-                    None,
-                )
-                if trigger is None:
-                    raise AppraisalProposalCompilerError("source_trigger_not_claimed")
-                # Proactive evidence is the observation event itself, not the
-                # inbound interaction-appraisal observation_id.
-                source_evidence_ref = source_event.event_id
-                source_evidence_type = "committed_world_event"
-                subject_ref = observation.actor
-                source_cluster_ref = "proactive:" + _digest({"event": source_event.event_id})
-            else:
-                trigger_id = interaction_appraisal_trigger_identity(
-                    self._ledger.world_id, observation.observation_id
-                )
-                trigger = next(
-                    (item for item in projection.trigger_processes if item.trigger_id == trigger_id),
-                    None,
-                )
-                if (
-                    trigger is None
-                    or trigger.process_kind != "interaction_appraisal"
-                    or trigger.state != "claimed"
-                    or trigger.source_evidence_ref != observation.observation_id
-                ):
-                    raise AppraisalProposalCompilerError("source_trigger_not_claimed")
-                source_evidence_ref = observation.observation_id
-                source_evidence_type = "observed_message"
-                subject_ref = observation.actor
-                source_cluster_ref = self._source_cluster(observation)
+            trigger_id = interaction_appraisal_trigger_identity(
+                self._ledger.world_id, observation.observation_id
+            )
+            trigger = next(
+                (item for item in projection.trigger_processes if item.trigger_id == trigger_id),
+                None,
+            )
+            if (
+                trigger is None
+                or trigger.process_kind != "interaction_appraisal"
+                or trigger.state != "claimed"
+                or trigger.source_evidence_ref != observation.observation_id
+            ):
+                raise AppraisalProposalCompilerError("source_trigger_not_claimed")
+            source_evidence_ref = observation.observation_id
+            source_evidence_type = "observed_message"
+            subject_ref = observation.actor
+            source_cluster_ref = self._source_cluster(observation)
         elif source_event.event_type == "WorldOccurrenceSettled":
             trigger = next(
                 (
@@ -380,6 +383,7 @@ class AppraisalProposalCompiler:
                     for item in projection.trigger_processes
                     if item.process_kind == "silence_appraisal"
                     and item.source_evidence_ref == source_event.event_id
+                    and item.state == "claimed"
                 ),
                 None,
             )
@@ -490,23 +494,6 @@ class AppraisalProposalCompiler:
             source_evidence_type = "committed_world_event"
             subject_ref = accepted.appraisal.subject_ref
             source_cluster_ref = accepted.appraisal.source_cluster_ref
-        elif str(authority.proposal.proposal_id).startswith("proposal:proactive:"):
-            trigger = next(
-                (
-                    item
-                    for item in projection.trigger_processes
-                    if item.process_kind == "proactive_action_deliberation"
-                    and item.state == "claimed"
-                    and item.source_evidence_ref == source_event.event_id
-                ),
-                None,
-            )
-            if trigger is None:
-                raise AppraisalProposalCompilerError("source_trigger_not_claimed")
-            source_evidence_ref = source_event.event_id
-            source_evidence_type = "committed_world_event"
-            subject_ref = self._companion_subject(projection)
-            source_cluster_ref = "proactive:" + _digest({"event": source_event.event_id})
         else:
             raise AppraisalProposalCompilerError("trigger_source_unsupported")
         return self._compile_bound_activate(

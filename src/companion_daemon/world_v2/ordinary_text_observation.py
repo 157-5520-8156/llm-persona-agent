@@ -23,16 +23,43 @@ def eligible_text(proposal):
     if not isinstance(proposal, DecisionProposal):
         return False
     # These projections do not grant objective-event or memory authority.
-    if any(c.kind not in {'expression_plan_transition', 'appraisal_transition', 'affect_transition'}
-           for c in proposal.proposed_changes):
+    if any(
+        c.kind
+        not in {
+            'expression_plan_transition',
+            'appraisal_transition',
+            'affect_transition',
+            'relationship_signal',
+            'life_intent_transition',
+            'relationship_commitment_transition',
+        }
+        for c in proposal.proposed_changes
+    ):
         return False
     expressions = [c for c in proposal.proposed_changes if c.kind == 'expression_plan_transition']
     if len(expressions) != 1 or not proposal.action_intents:
         return False
     beats = expressions[0].payload.value().get('beat_drafts', [])
-    return bool(beats) and all(b.get('content_type') == 'text/plain'
-                              and isinstance(b.get('inline_text'), str) for b in beats) and all(
-        action.kind in {'reply', 'followup'} and action.layer == 'external_action'
+    allowed_content_types = {
+        'text/plain',
+        'application/vnd.world-v2.sticker+json',
+        'application/vnd.world-v2.reaction+json',
+        'application/vnd.world-v2.typing+json',
+    }
+    allowed_action_kinds = {
+        'reply',
+        'followup',
+        'proactive_message',
+        'sticker',
+        'reaction',
+        'typing',
+    }
+    return bool(beats) and all(
+        b.get('content_type') in allowed_content_types
+        and isinstance(b.get('inline_text'), str)
+        for b in beats
+    ) and all(
+        action.kind in allowed_action_kinds and action.layer == 'external_action'
         for action in proposal.action_intents
     )
 

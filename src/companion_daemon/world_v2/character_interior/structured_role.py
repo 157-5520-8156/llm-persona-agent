@@ -243,6 +243,9 @@ def _bind_host_owned_source_lists(
     Semantic fields, payload choices, statuses and proposals are never changed.
     """
 
+    summary = decoded.get("summary")
+    if isinstance(summary, list) and len(summary) == 1 and isinstance(summary[0], str):
+        decoded["summary"] = summary[0]
     if request.purpose in _HOST_BOUND_DECISION_PURPOSES and "source_refs" in decoded:
         root_refs = decoded.pop("source_refs", None)
         if (
@@ -540,14 +543,21 @@ def _redact_private_impression_material(value: object) -> object:
     view: long refs and event IDs are not useful semantic choices and asking a
     model to echo them creates avoidable source-closure failures.
     """
+    from .appraisal_model_view import sanitize_inner_thought_prose
 
     if isinstance(value, Mapping):
-        return {
-            str(key): _redact_private_impression_material(item)
-            for key, item in value.items()
-            if str(key).lower() not in _PRIVATE_IMPRESSION_IDENTITY_KEYS
-            and not str(key).lower().endswith(("_ref", "_refs", "_id", "_ids"))
-        }
+        out: dict[str, object] = {}
+        for key, item in value.items():
+            k_str = str(key)
+            if k_str.lower() in _PRIVATE_IMPRESSION_IDENTITY_KEYS or k_str.lower().endswith(
+                ("_ref", "_refs", "_id", "_ids")
+            ):
+                continue
+            redacted = _redact_private_impression_material(item)
+            if k_str in {"reflection_summary", "meaning", "summary"} and isinstance(redacted, str):
+                redacted = sanitize_inner_thought_prose(redacted)
+            out[k_str] = redacted
+        return out
     if isinstance(value, list):
         return [_redact_private_impression_material(item) for item in value]
     if isinstance(value, tuple):
@@ -622,6 +632,12 @@ def _memory_consolidation_provider_payload(payload, *, compact=False):
             return {key:view(item) for key,item in value.items() if key not in proof_fields}
         return value
     result = view({key:value for key,value in payload.items() if key != "attention_token_map"})
+    from .appraisal_model_view import sanitize_inner_thought_prose
+    standing = result.get("standing_understandings")
+    if isinstance(standing, list):
+        for item in standing:
+            if isinstance(item, dict) and isinstance(item.get("summary"), str):
+                item["summary"] = sanitize_inner_thought_prose(item["summary"])
     if not compact:
         return result
     from .inbound_context_presentation import pack_flat_literal_rows
@@ -638,6 +654,7 @@ def _memory_consolidation_provider_payload(payload, *, compact=False):
     result["understanding_instruction"] = (
         "你决定保留或释放一份有来源的理解，也可以选择[]。每项写disposition=retain或release，"
         "明确列出你选择替代的predecessor_tokens，保留summary、facet、confidence_bp。"
+        "summary直接用第一人称写出你记住的事与真实想法。"
         "evidence_quotes每项只写quote_ref，选择quote_options里的原文编号，不重抄或改写引文；"
         "quote_parts按顺序拼回完整原文，不是删减过的摘要。"
         "retain配空前身表示新理解，配一个前身表示修订，配多个前身表示合并；release必须选一个前身。"
@@ -858,6 +875,10 @@ def _validate_proactive_payload(
         )
     )
     draft = ProactiveDraft.model_validate_json(_canonical(normalized), strict=True)
+    if draft.appraisal_draft is not None:
+        from .inbound_appraisal_wire import canonicalize_appraisal_draft_wire
+
+        canonicalize_appraisal_draft_wire(draft.appraisal_draft)
     if source_lanes is not _PROACTIVE_SOURCE_LANES_ABSENT:
         lanes = ProactiveWorldClaimSourceLanes.model_validate_json(_canonical(source_lanes), strict=True)
         lanes.validate_claims(draft.world_claims)
@@ -1613,6 +1634,24 @@ class _ExternalAttentionSelection(BaseModel):
         if len(self.attended_context_refs) != len(set(self.attended_context_refs)):
             raise ValueError("external attention Context refs must be unique")
         return self
+
+
+def _strip_null_or_false_unused_keys(value: object) -> object:
+    """Strip non-semantic *_unused transport padding keys when null or false."""
+
+    if isinstance(value, dict):
+        return {
+            key: _strip_null_or_false_unused_keys(item)
+            for key, item in value.items()
+            if not (
+                isinstance(key, str)
+                and key.endswith("_unused")
+                and (item is None or item is False)
+            )
+        }
+    if isinstance(value, list):
+        return [_strip_null_or_false_unused_keys(item) for item in value]
+    return value
 
 
 _FAILURE_DETAILS = {
@@ -2393,10 +2432,12 @@ class StructuredCharacterRoleFaculty:
             if request.purpose == "world_stimulus_appraisal":
                 user_payload["reflection_scope"] = {
                     "contract": "role-owned-reflection-depth.1",
-                    "instruction": "感受可以只是一句，也可以没有变化；不必为每件小事解释意义，也没有自我开解、替对方找补或强行看开的义务。"
+                    "instruction": "感受用第一人称写，可以只是一句，也可以没有变化（no_change）。"
                     "由你决定是否值得深入想。brief允许行为倾向、态度和表达策略写null，"
-                    "表示这次没有形成这些说明，不是系统代你选择行为。复杂或牵动你的事情"
-                    "（无论开心、挂念，还是越想越气、委屈、不甘心或觉得受冷落）可以选elaborated，写真实的多重理解；不要为了填字段展开长篇分析。"
+                    "表示这次没有形成这些说明，不是系统代你选择行为。真正在意或牵动你的事"
+                    "可选elaborated并按需通过affect_transition开启或更新持续情绪；不要为了填字段展开长篇分析。"
+                    "若开启或更新affect_transition，维度可按真实心情选用（hurt/sadness/loneliness/resentment/anger/anxiety/warmth/joy），"
+                    "target_intensity_bp 采用 0..10000 基点。"
                     "当前感受不需要先有同样感受的历史记录；不知道对方原因不妨碍你有自己的感受或不满，"
                     "但不能把猜测当成对方已经做过或想过的事实。",
                 }
@@ -2411,25 +2452,33 @@ class StructuredCharacterRoleFaculty:
         if request.purpose == "external_perception_attention":
             user_payload["purpose_instruction"] = (
                 "对 external_perception_attention：从 candidates 里挑出真正吸引你点开看或留意的条目（也可以全都不选 []）。"
+                "materials.relevant_facts 中 subject_ref 为 user:* 的条目属于对方的个人事实，不是你自己的身份或经历。"
                 "候选 licensed_summary 中的「视频画面与声音实看」「字幕原文实读」「故事板抽帧实看」是视频本身的画面与台词，"
                 "「时间轴弹幕」「高赞神评」是网友发的弹幕与评论；若某条候选只有标题和简介、没有上述实看内容，代表只滑过封面标题未点开，不根据标题脑补画面细节。"
                 "subjective_summary 与 epistemic_notes 由你自由记录。"
             )
+        if request.purpose == "media_selection":
+            user_payload["purpose_instruction"] = (
+                "对 media_selection：这是独立的选图与发图决策步骤。"
+                "recent_dialogue 展示已发出的文字气泡（speaker=companion 是你自己，speaker=counterpart 是对方），materials.photos_i_shared 记录已送达的照片及对方此后是否开口（he_spoke_after）。"
+                "capability_manifest.payload.candidates 中每项候选提供客观属性：capture_modes、character_visibility、accompanied_by_text、lived_facts 与 advisory。"
+                "是否发图（decision='select' 或 'no_op'）以及选哪张候选，完全由你结合当下语境与心情自主决定。"
+            )
         if request.purpose == "proactive_contact":
             user_payload["purpose_instruction"] = (
-                "对 proactive_contact：这次唤醒可能因为等他回话超时（response_expectation）、你自己记着想回头再提的事（revisit_intention）、刚忙完手头的事（situation_change）或突然想起他/刷到想分享的东西（spontaneous_contact）；"
-                "说不说（now/later/silent）、怎么开口全由你按此刻心情决定——可以自然分享、追问他怎么人不见了、把刚才没吵完或没尽兴的话捡起来继续说，也可以干脆不发（silent），不必每次都端着客气汇报近况或替他的沉默找借口。"
-                "开口前先看一眼 recent_dialogue 里自己最近已经发过的消息：如果某条视频、某件小事或某个槽点你在前几轮已经跟他说过了，绝不要失忆似地当成‘刚又刷到’重复发一遍（若没别的新话想说直接选 silent）。"
-                "如果决定把 perception 里刚刷到的新视频或内容分享给他，记住对方看不见你的手机屏幕——不要没头没脑只甩半句画面描述，像平时在 QQ 上分享视频一样把链接（canonical_url / BV号）或视频标题带上，或者把前因后果说清楚。"
+                "对 proactive_contact：这次唤醒的触发原因见 wakeup_reason 与环境状态。"
+                "此刻要不要开口（timing_choice='now' | 'later' | 'silent'）、发几条气泡、用什么语气，以及是否同时通过 revisit（wait_seconds: 5..86400）、response_expectation 安排下一次唤醒、通过 media_request='consider_available_candidate' 请求发图、或通过 appraisal_draft 更新持续情绪（affect: open/update/supersede），完全由你自主决定。"
+                "可用表达形式见 capability_manifest.payload.expression_capabilities（含文字、'[CQ:voice]（语气提示）台词' 语音、及 modality='sticker' 表情包）。"
                 "私人状态只写在外层 summary 和 attended_source_refs；"
                 "payload 里禁止 private_turn_state（这一点和 inbound 相反，不要照 inbound 的草稿来写）。"
                 "attended_source_refs 最多 8 条，只写 citeable_sources 里你真正注意到的那几条。"
                 "没有可核对的世界事实时 world_claims 写 []。"
-                "每条 world_claims 的 scope 必须属于所引 source_refs 在 citeable_sources.items 中列出的 world_claim_scopes："
+                "每条 world_claims 的 scope 必须属于所引 source_refs 在 citeable_sources.items 中列出的 world_claim_scopes（world_claim_scopes 为 [] 的来源只能放进 attended_source_refs）："
                 "已经结束的活动或既往经历（recent_experiences / ActivityCompleted / WorldOccurrenceSettled / ExperienceCommitted）属于 past_world 或 shared_history，不要写成 current_world；"
                 "对话 beat 不是 current_world；current_world 只能引用此刻正在进行的当前生活/世界来源。"
                 "来源只写 citeable_sources 里的 id（如 s0）或原样抄 ref，不要手写拼接。"
                 "盼头只用完整 response_expectation 对象表达，不需要时写 null。"
+                "timing_choice='silent' 时 beats 必须为 []，且 delay_seconds、expires_after_seconds、response_expectation、revisit 均须写 null。"
                 "payload 顶层 waiting_for、wait、pressure_bp、importance_bp 是旧版字段，全部写 null。"
                 "response_expectation 若写，pressure_bp 与 importance_bp 是 0 到 10000 的基点，"
                 "不是百分制：5000 才是一半，30 不是百分之三十。"
@@ -2615,6 +2664,7 @@ class StructuredCharacterRoleFaculty:
                         " 对这次私人反应，只写你实际形成的内容。可以没有变化，也可以只是一句感受；"
                         "不要求内心独白。没有形成行为倾向或表达策略时可选brief并把对应说明写null，"
                         "无需为了字段重复解释。只有你确实有多层理解时才展开。"
+                        "若本次只是你自己的独处日常结算而对方并未产生新的互动，不要在 relationship_signal 里对 recent_authored_signals 中已记过的旧对话重复累加正数 suggested_deltas（若在独处时想念或暗暗喜欢他，可写 0 增量只更新心意读法，或留存 private_impression）。"
                         if request.purpose == "world_stimulus_appraisal" else ""
                     )
                     + (
@@ -2705,6 +2755,23 @@ class StructuredCharacterRoleFaculty:
                 detail=_FAILURE_DETAILS["role_result_not_object"],
                 response_hash=response_hash,
             )
+        raw_proposals = decoded.get("proposals")
+        if isinstance(raw_proposals, list) and any(
+            isinstance(item, str) and item.strip().startswith("{") for item in raw_proposals
+        ):
+            unwrapped_proposals: list[object] = []
+            for item in raw_proposals:
+                if isinstance(item, str) and item.strip().startswith("{"):
+                    try:
+                        parsed_item = json.loads(item)
+                    except json.JSONDecodeError:
+                        parsed_item = item
+                    unwrapped_proposals.append(
+                        parsed_item if isinstance(parsed_item, dict) else item
+                    )
+                else:
+                    unwrapped_proposals.append(item)
+            decoded = {**decoded, "proposals": unwrapped_proposals}
         if reference_dictionary is not None:
             from ..reference_wire import expand_reference_values
 
@@ -2736,6 +2803,17 @@ class StructuredCharacterRoleFaculty:
                 )
 
                 decision = decoded.get("decision")
+                if (
+                    isinstance(decision, dict)
+                    and "payload" not in decision
+                    and any(k in decision for k in ("understandings", "decisions"))
+                ):
+                    payload_only = {k: v for k, v in decision.items() if k != "source_refs"}
+                    decision = {
+                        **({"source_refs": decision["source_refs"]} if "source_refs" in decision else {}),
+                        "payload": payload_only,
+                    }
+                    decoded["decision"] = decision
                 if (request.capability_manifest.payload.get("understanding_contract") == UNDERSTANDING_CONTRACT
                     and isinstance(decision, dict) and isinstance(decision.get("payload"), dict)):
                     try:
@@ -2883,7 +2961,8 @@ class StructuredCharacterRoleFaculty:
         that duplicate only when it exactly agrees with the typed proposal.
         """
 
-        normalized = dict(decoded)
+        raw_stripped = _strip_null_or_false_unused_keys(decoded)
+        normalized = dict(raw_stripped) if isinstance(raw_stripped, dict) else dict(decoded)
         if contract.purpose == "memory_consolidation" and request.capability_manifest is not None:
             from ..memory_consolidation_contract import HOST_SOURCE_BINDING
             manifest = request.capability_manifest
@@ -2920,6 +2999,39 @@ class StructuredCharacterRoleFaculty:
                                     for ref in transition["source_refs"]
                                 ],
                             }}
+                        aspiration = proposal.get("aspiration_transition")
+                        if isinstance(aspiration, dict) and isinstance(aspiration.get("source_refs"), list):
+                            resolved_src = [
+                                catalog.token_to_ref.get(ref, ref)
+                                if isinstance(ref, str) else ref
+                                for ref in aspiration["source_refs"]
+                            ]
+                            raw_tension = aspiration.get("tension_source_refs")
+                            resolved_tension = (
+                                [
+                                    catalog.token_to_ref.get(ref, ref)
+                                    if isinstance(ref, str) else ref
+                                    for ref in raw_tension
+                                ]
+                                if isinstance(raw_tension, list)
+                                else raw_tension
+                            )
+                            if isinstance(resolved_tension, list):
+                                resolved_src = list(
+                                    dict.fromkeys([*resolved_src, *resolved_tension])
+                                )
+                            proposal = {
+                                **proposal,
+                                "aspiration_transition": {
+                                    **aspiration,
+                                    "source_refs": resolved_src,
+                                    **(
+                                        {"tension_source_refs": resolved_tension}
+                                        if isinstance(resolved_tension, list)
+                                        else {}
+                                    ),
+                                },
+                            }
                         # These exact catalog aliases are advertised alongside
                         # attended refs. Decode identity slots only, never prose.
                         for field in ("life_responses", "life_intent", "plan_response"):
@@ -3395,7 +3507,21 @@ class StructuredCharacterRoleFaculty:
             else set()
         )
         if anchors and not (set(proposal.source_refs) & anchors):
-            cls._raise("selected_token_required", response_hash=response_hash)
+            anchor_tokens = manifest.payload.get("anchor_short_tokens")
+            anchor_hint = (
+                f" (anchor_short_tokens={anchor_tokens})"
+                if isinstance(anchor_tokens, list) and anchor_tokens
+                else ""
+            )
+            cls._raise(
+                "selected_token_required",
+                response_hash=response_hash,
+                detail=(
+                    "The decision payload did not name one selected token: "
+                    "proposals[0].source_refs must include at least one entry from "
+                    f"reflection_capsule.anchor_short_tokens{anchor_hint}."
+                ),
+            )
 
     def _resolve_contract(self, request: _InteriorRoleRequest) -> PurposeDecisionContract:
         exact = self._contracts.get(request.purpose)
@@ -3689,6 +3815,24 @@ class StructuredCharacterRoleFaculty:
             if isinstance(durable, list)
             else {}
         )
+        try:
+            raw_materials = json.loads(getattr(request.snapshot, "materials_json", "") or "{}")
+        except (TypeError, ValueError):
+            raw_materials = {}
+        prior_perceptions = (
+            raw_materials.get("perception") if isinstance(raw_materials, Mapping) else None
+        )
+        prior_summaries = (
+            {
+                item["subjective_summary"].strip()
+                for item in prior_perceptions
+                if isinstance(item, Mapping)
+                and isinstance(item.get("subjective_summary"), str)
+                and item["subjective_summary"].strip()
+            }
+            if isinstance(prior_perceptions, list)
+            else set()
+        )
         for selection in selections:
             if selection.candidate_ref in seen:
                 cls._raise(
@@ -3696,6 +3840,15 @@ class StructuredCharacterRoleFaculty:
                     response_hash=response_hash,
                 )
             seen.add(selection.candidate_ref)
+            if selection.subjective_summary.strip() in prior_summaries:
+                raise StructuredRoleResultError(
+                    "role_result_schema_invalid",
+                    detail=(
+                        "subjective_summary copied an earlier perception from inner_life_snapshot; "
+                        "describe the newly selected candidate in capability_manifest.payload.candidates instead"
+                    ),
+                    response_hash=response_hash,
+                )
             candidate = candidates.get(selection.candidate_ref)
             if candidate is None:
                 cls._raise(
@@ -4043,7 +4196,11 @@ class StructuredCharacterRoleFaculty:
         if contract.purpose == "proactive_contact":
             view["payload_schema"] = {
                 "timing_choice": "now|later|silent",
-                "beats": "zero only for silent; otherwise one or more offered expression beats",
+                "beats": (
+                    "zero only for silent; otherwise one or more offered expression beats "
+                    "(to send a QQ voice note when not in a quiet setting like class/library/sleeping dorm, "
+                    "use modality='text' with text='[CQ:voice]（语气提示）台词')"
+                ),
                 "delay_seconds": "later only",
                 "expires_after_seconds": "later only",
                 "stance": "free text",
@@ -4065,7 +4222,10 @@ class StructuredCharacterRoleFaculty:
                     "feelings and hypothetical impulses may omit the claim (or use "
                     "scope=subjective_or_hypothetical with source_refs: []). "
                     "Every grounded claim cites at least one matching "
-                    "supplied source ref; use [] when the beats contain no factual claim. "
+                    "supplied source ref whose world_claim_scopes in citeable_sources.items "
+                    "contains that exact scope (never cite a source with world_claim_scopes: [] "
+                    "in world_claims; put those only in attended_source_refs); "
+                    "use [] when the beats contain no factual claim. "
                     "A dialogue beat is not current_world."
                 ),
                 "private_state_rule": (
@@ -4081,7 +4241,7 @@ class StructuredCharacterRoleFaculty:
                     "item_ref / source_refs；引用他刚说的确认用 counterpart_history。"
                 ),
                 "waiting_for": "optional short sentence; compiles a hope only with wait",
-                "wait": "optional seconds 30..86400; only with waiting_for",
+                "wait": "optional seconds 5..86400; only with waiting_for",
                 "about_us": "optional short reading of us; with why_us",
                 "why_us": "optional short reason; with about_us",
                 "us_deltas": (
@@ -4102,6 +4262,19 @@ class StructuredCharacterRoleFaculty:
                     "expires_after_seconds。也可改写 waiting_for + wait，规则与入站相同。"
                     "pressure_bp 与 importance_bp 是 0 到 10000 的基点（basis points），"
                     "不是 0 到 100 的百分制：5000=一半，3000=三成，30 不是百分之三十。"
+                ),
+                "revisit": (
+                    "可选对象：thought（1..160字）、wait_seconds（5..86400）、expires_after_seconds（大于wait_seconds），"
+                    "用于安排指定秒数后再次唤醒自己；不需要时写 null。"
+                ),
+                "media_request": (
+                    "可选 none|consider_available_candidate（仅当 timing_choice='now' 且想发图时写 consider_available_candidate；默认写 none）。"
+                ),
+                "media_source_refs": (
+                    "配合 media_request='consider_available_candidate' 使用的可选事件来源列表（已有现成候选时可写 []；media_request='none' 时必须写 []）。"
+                ),
+                "appraisal_draft": (
+                    "可选对象：本轮产生需要记录或更新的持续情绪时可写 appraisal_draft（appraise=true 并设 affect=open/update/supersede 及 components）；无变化时写 null 或省略。"
                 ),
             }
         if contract.purpose == "expression_reconsideration":
@@ -4126,24 +4299,20 @@ class StructuredCharacterRoleFaculty:
                     "这次先不动印象：不开新的，也不搁下已有的。省略也完全正常。"
                 ),
                 "retain": (
-                    "记下一条新的、仍可改的私人印象（可以是挂念、好奇，也可以是没翻篇的别扭、"
-                    "不服气或越想越在意的事，不必自我开解成大度体谅）。"
+                    "记下一条新的、仍可改的私人印象，用第一人称写出你此刻的想法。"
                 ),
             }
             if replacement_available:
                 decision_meanings.update(
                     {
                         "consolidate": (
-                            "只把同一件事或同一种理解的已有印象收拢；"
-                            "不同的人、事情和感受可以分别留下，不必合成一条总心得。"
+                            "把关于同一件事或同一个人的几条零散印象合成一条当前想法。"
                         ),
                         "supersede": (
-                            "用一条新的印象替代旧的（例如原本觉得算了、回头越想越气或越发挂念，"
-                            "用更新后的真实想法与 confidence_bp 顶替旧印象）；旧的不再作为未了结的心事。"
+                            "用一条新的真实想法替代旧印象。"
                         ),
                         "release": (
-                            "这件事我已经说过或做过，可以搁下了。"
-                            "仍记得，只是不再占着未了结的位置。选或不选都正常。"
+                            "这件事已经过去或说开了，可以搁下了。选或不选都正常。"
                         ),
                     }
                 )

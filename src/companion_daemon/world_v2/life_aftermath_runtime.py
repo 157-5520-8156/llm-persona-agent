@@ -158,12 +158,17 @@ def _experience_privacy(source_privacy: str) -> str:
 
 
 _LOG = logging.getLogger(__name__)
+_VISIBLE_AFTERMATH_WAIT_SECONDS = 12.0
 _EXPERIENCE_MEMORY_INTERIOR_VERSION = (
     "character-interior-experience-memory-retention.1"
 )
 # Eight failed attempts exhaust this source's technical retry budget. Keep
 # its failure distinct from a character decision not to retain the memory.
 _EXPERIENCE_MEMORY_RETRY_LIMIT = 8
+
+
+class LifeAftermathForegroundConflict(ConcurrencyConflict):
+    """The exact aftermath wake or occurrence moved during foreground wait."""
 
 
 class LifeAftermathModelFailure(RuntimeError):
@@ -276,6 +281,12 @@ class LifeAftermathRuntime:
         self._actor = actor
         self._random = RandomAuthority(ledger=ledger, source="world-v2:life-aftermath-random")
         self._memory_decision_locks: dict[str, asyncio.Lock] = {}
+        self._background_visible_gate = None
+
+    def set_background_visible_gate(self, gate) -> None:
+        if self._background_visible_gate is not None:
+            raise RuntimeError("Life aftermath visible gate is already installed")
+        self._background_visible_gate = gate
 
     async def advance_planning_once(self, *, wake_event_ref: str, trace_id: str, correlation_id: str):
         """Settle one prepaid external publication, without a character decision."""
@@ -657,8 +668,6 @@ class LifeAftermathRuntime:
         source = self._ledger.lookup_event_commit(detail.get("source_event_ref", ""))
         if source is None:
             raise ValueError("external detail source is unavailable")
-        if source[0].event_type != "WorldOccurrenceActivated":
-            return False  # A self-directed ActivityStarted detail is personal.
         programme = next((item for item in self._ledger.project().world_occurrences
                           if item.trigger_ref == detail.get("proposal_event_ref")
                           and item.event_detail_program is not None), None)
@@ -666,11 +675,48 @@ class LifeAftermathRuntime:
                 or programme.event_detail_program.program_hash != detail.get("program_hash")
                 or programme.event_detail_program.capability.source_event_ref != detail.get("source_event_ref")):
             raise ValueError("external detail differs from its accepted programme")
-        return self._is_external_arrangement_instance(programme)
+        return True
 
     async def _settle(
         self, *, occurrence, wake, logical_time: datetime, trace_id: str, correlation_id: str
     ) -> str | None:
+        # Only the world-contingency prefix below has no provider await: it
+        # records the already-frozen world draw and its outcome. Give any
+        # current visible turn a bounded opportunity to finish before entering
+        # this existing synchronous sequence, but do not hold an exclusive
+        # gate across projections, disk IO, or a later memory/model call.
+        if (
+            self._background_visible_gate is not None
+            and occurrence.candidate_outcomes
+            and occurrence.candidate_outcomes[0].causal_authority == "world_contingency"
+        ):
+            try:
+                async with asyncio.timeout(_VISIBLE_AFTERMATH_WAIT_SECONDS):
+                    await self._background_visible_gate.wait_for_visible_turns()
+            except TimeoutError:
+                _LOG.warning("life aftermath visible priority expired; retain CAS")
+            # The wait is not a pin.  Re-read the original immutable wake,
+            # exact occurrence head, and logical clock before doing any work.
+            current = self._ledger.project()
+            matching_wake = next((item for item in current.committed_world_event_refs
+                                  if item.event_id == wake.event_id), None)
+            fresh = next((item for item in current.world_occurrences
+                          if item.occurrence_id == occurrence.occurrence_id), None)
+            if (
+                matching_wake is None
+                or matching_wake.event_type != wake.event_type
+                or matching_wake.payload_hash != wake.payload_hash
+                or matching_wake.logical_time != wake.logical_time
+                or matching_wake.world_revision != wake.world_revision
+                or fresh is None
+                or fresh.entity_revision != occurrence.entity_revision
+                or fresh.status != "active"
+                or current.logical_time is None
+                or current.logical_time < wake.logical_time
+                or fresh.time_window.closes_at > wake.logical_time
+            ):
+                raise LifeAftermathForegroundConflict("life aftermath wake or occurrence changed during foreground wait")
+            occurrence, wake, logical_time = fresh, matching_wake, current.logical_time
         from .event_detail_runtime import cancel_interrupted_execution
         if cancel_interrupted_execution(ledger=self._ledger, occurrence_id=occurrence.occurrence_id,
                                         wake_event_ref=wake.event_id, content_store=self._content_store):

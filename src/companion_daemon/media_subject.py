@@ -464,197 +464,8 @@ def upgrade_subject_presentation_v4(
     )
 
 
-def adapt_subject_for_attraction_mechanism_v3(
-    presentation: SubjectPresentationPlan,
-    mechanism: str,
-) -> SubjectPresentationPlan:
-    """Bind attraction intent to a complete face performance, not loose facial axes."""
-
-    if presentation.version != SUBJECT_PRESENTATION_V3 or presentation.facial_performance is None:
-        raise ValueError("attraction adaptation requires subject presentation v3")
-    recipes: dict[str, FacialPerformance] = {
-        "direct_invitation": FacialPerformance(
-            "desire_direct", "relaxed_parted", "steady_lens", "neutral", "continuous_lens", "held"
-        ),
-        "playful_tease": FacialPerformance(
-            "playfully_performed",
-            "subtle_pout",
-            "steady_lens",
-            "single_brow_energy",
-            "away_then_back",
-            "lively",
-        ),
-        "withheld_attention": FacialPerformance(
-            "desire_withheld",
-            "relaxed_closed",
-            "glance_back",
-            "relaxed_lowered",
-            "away_then_back",
-            "held",
-        ),
-        "sensory_immediacy": FacialPerformance(
-            "desire_direct",
-            "relaxed_parted",
-            "soft_lens",
-            "neutral",
-            "lens_then_away",
-            "breathless",
-        ),
-        "private_trust": FacialPerformance(
-            "tender",
-            "relaxed_parted",
-            "relaxed_heavy_lidded",
-            "relaxed_lowered",
-            "continuous_lens",
-            "low",
-        ),
-        "confident_display": FacialPerformance(
-            "desire_direct",
-            "asymmetric_half_smile",
-            "steady_lens",
-            "single_brow_energy",
-            "continuous_lens",
-            "contained",
-        ),
-        "interrupted_transition": FacialPerformance(
-            "desire_withheld",
-            "relaxed_parted",
-            "evidence_focus",
-            "slight_lift",
-            "evidence_then_lens",
-            "recovering",
-        ),
-        "close_proximity": FacialPerformance(
-            "tender", "relaxed_parted", "soft_lens", "neutral", "continuous_lens", "held"
-        ),
-        "atmospheric_suggestion": FacialPerformance(
-            "desire_withheld",
-            "relaxed_closed",
-            "look_away",
-            "relaxed_lowered",
-            "lens_then_away",
-            "low",
-        ),
-    }
-    facial = recipes.get(mechanism)
-    if facial is None:
-        raise ValueError("unknown attraction mechanism")
-    return replace(
-        presentation,
-        facial_performance=facial,
-        subject_signature=_subject_signature(
-            presentation.appearance,
-            presentation.performance,
-            presentation.display_strategy,
-            facial,
-        ),
-    )
 
 
-def adapt_subject_for_media_address_v3(
-    presentation: SubjectPresentationPlan,
-    *,
-    engagement_tactic: str,
-    attraction_mechanism: str | None = None,
-) -> SubjectPresentationPlan:
-    """Give every whole-image tactic a coherent face without reusing v2 goal bindings."""
-
-    if attraction_mechanism:
-        return adapt_subject_for_attraction_mechanism_v3(presentation, attraction_mechanism)
-    recipes = {
-        "presence": FacialPerformance(
-            "warm", "relaxed_closed", "soft_lens", "neutral", "continuous_lens", "contained"
-        ),
-        "reveal": FacialPerformance(
-            "proud",
-            "small_smile",
-            "evidence_focus",
-            "slight_lift",
-            "evidence_then_lens",
-            "contained",
-        ),
-        "demonstration": FacialPerformance(
-            "neutral_present",
-            "relaxed_closed",
-            "evidence_focus",
-            "neutral",
-            "evidence_then_lens",
-            "contained",
-        ),
-        "question": FacialPerformance(
-            "neutral_present",
-            "relaxed_parted",
-            "steady_lens",
-            "slight_lift",
-            "continuous_lens",
-            "held",
-        ),
-        "comparison": FacialPerformance(
-            "neutral_present",
-            "lightly_pressed",
-            "evidence_focus",
-            "slight_lift",
-            "evidence_then_lens",
-            "contained",
-        ),
-        "contrast": FacialPerformance(
-            "amused",
-            "asymmetric_half_smile",
-            "glance_back",
-            "single_brow_energy",
-            "away_then_back",
-            "lively",
-        ),
-        "comic_hook": FacialPerformance(
-            "playfully_performed",
-            "subtle_pout",
-            "steady_lens",
-            "slight_lift",
-            "continuous_lens",
-            "lively",
-        ),
-        "celebration": FacialPerformance(
-            "proud", "open_laugh", "steady_lens", "slight_lift", "continuous_lens", "lively"
-        ),
-        "vulnerability": FacialPerformance(
-            "vulnerable",
-            "relaxed_parted",
-            "soft_lens",
-            "faint_inward_draw",
-            "lens_then_away",
-            "low",
-        ),
-        "reassurance": FacialPerformance(
-            "tender", "small_smile", "soft_lens", "neutral", "continuous_lens", "contained"
-        ),
-        "coordination": FacialPerformance(
-            "neutral_present",
-            "mid_speech",
-            "evidence_focus",
-            "slight_lift",
-            "evidence_then_lens",
-            "contained",
-        ),
-        "affection": FacialPerformance(
-            "tender", "relaxed_parted", "soft_lens", "relaxed_lowered", "continuous_lens", "held"
-        ),
-        "nostalgia": FacialPerformance(
-            "tender", "small_smile", "look_away", "relaxed_lowered", "lens_then_away", "low"
-        ),
-    }
-    facial = recipes.get(engagement_tactic)
-    if presentation.version != SUBJECT_PRESENTATION_V3 or facial is None:
-        raise ValueError("unsupported media address facial performance")
-    return replace(
-        presentation,
-        facial_performance=facial,
-        subject_signature=_subject_signature(
-            presentation.appearance,
-            presentation.performance,
-            presentation.display_strategy,
-            facial,
-        ),
-    )
 
 
 @dataclass(frozen=True)
@@ -989,10 +800,10 @@ def presentation_prompt_block(
             "or inherit accessories from an identity reference.\n"
         )
     identity_guidance = (
-        "Identity references and the general identity anchor define identity only. This shot-specific "
-        "appearance overrides their default hairstyle and wardrobe. Do not copy their head angle, gaze, "
-        "expression, hairstyle, wardrobe, garment color, silhouette, gesture, or framing. Follow this "
-        "frozen presentation instead."
+        "Identity references and the general identity anchor define her exact facial identity, "
+        "small-mouth/almond-eye proportions, and signature wispy bangs with cheek-hugging side hair strands. "
+        "Do not copy their head angle, background scene, wardrobe, garment color, or framing. "
+        "Follow this frozen presentation for the shot-specific expression beat, clothing, and scene."
         if include_identity_reference_guidance
         else "Follow this frozen presentation and the event-supported appearance; do not introduce a generic "
         "identity-reference pose, wardrobe, accessory, or framing."
@@ -1010,10 +821,18 @@ def presentation_prompt_block(
         f"- action and camera awareness: {render('gesture', performance.gesture)}; "
         f"{render('photo_awareness', performance.photo_awareness)}\n"
         f"- hand feasibility: {render('hand_occupancy', performance.hand_occupancy)}; "
-        f"occlusion risk={performance.occlusion_complexity}. Keep the wrist, hand, sleeve opening, "
-        "and any displayed object anatomically readable and visually distinct, with the correct "
-        "contact or attachment to the described surface.\n"
-        f"{accessory_rule}"
+        f"occlusion risk={performance.occlusion_complexity}. "
+        + (
+            "In this one-handed selfie, make sure ONE arm visibly angles forward toward the bottom edge of the camera lens to hold the phone while her OTHER arm stays relaxed/free (never leave both arms hanging down at her sides as if she is not holding a phone, and never raise both arms to the lens).\n"
+            if performance.hand_occupancy
+            in {
+                "one_hand_operates_phone_other_presents_evidence",
+                "one_hand_operates_phone_other_remains_natural",
+            }
+            and performance.gesture != "present_specific_body_detail"
+            else "Keep the wrist, hand, sleeve opening, and any displayed object anatomically readable and visually distinct, with the correct contact or attachment to the described surface.\n"
+        )
+        + f"{accessory_rule}"
         f"{social}"
         f"{identity_guidance}"
     )

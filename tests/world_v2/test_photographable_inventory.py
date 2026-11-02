@@ -494,3 +494,62 @@ def test_shareable_photo_items_carry_opened_event_bindings() -> None:
             "immutable_hash": "b" * 64,
         }
     ]
+
+
+def test_declined_candidate_revision_is_marked_skipped_not_photo_in_hand() -> None:
+    from companion_daemon.world_v2.photographable_inventory import (
+        install_shareable_photos_context,
+    )
+
+    cand = _opened_candidate(
+        candidate_id="photo-candidate:declined",
+        refs=("event:image:declined",),
+    )
+    cand.entity_revision = 1
+    projection = _empty_projection(cand)
+    projection.media_declined_candidate_revisions = (
+        SimpleNamespace(candidate_id="photo-candidate:declined", entity_revision=1),
+    )
+    context = install_shareable_photos_context(
+        _snapshot_context({"world_life": {"availability": "unavailable"}}),
+        projection,
+    )
+    typed = compile_inner_life_snapshot(context)
+    inventory = __import__("json").loads(typed.materials_json)["moments_i_can_share"]
+    assert inventory["available_count"] == 0
+    assert inventory["items"][0]["photo_in_hand"] is False
+    assert inventory["items"][0]["hold_reason"] == "skipped"
+
+
+def test_shareable_photo_items_include_what_happened_from_bound_evidence() -> None:
+    from companion_daemon.world_v2.photographable_inventory import (
+        install_shareable_photos_context,
+    )
+
+    cand = _opened_candidate(
+        candidate_id="photo-candidate:queue",
+        refs=("event:image:queue",),
+        status="unrenderable",
+    )
+    projection = _empty_projection(cand)
+    projection.declared_image_evidence = (
+        SimpleNamespace(
+            declaration_event_ref="event:image:queue",
+            image_evidence=SimpleNamespace(
+                activity=SimpleNamespace(
+                    description="队伍里一名女生隔着几个人高声发问，周围的人纷纷回头，队伍一时停住。"
+                ),
+            ),
+        ),
+    )
+    context = install_shareable_photos_context(
+        _snapshot_context({"world_life": {"availability": "unavailable"}}),
+        projection,
+    )
+    typed = compile_inner_life_snapshot(context)
+    inventory = __import__("json").loads(typed.materials_json)["moments_i_can_share"]
+    assert inventory["available_count"] == 0
+    assert inventory["items"][0]["photo_in_hand"] is False
+    assert inventory["items"][0]["hold_reason"] == "unrenderable"
+    assert "队伍里一名女生" in inventory["items"][0]["what_happened"]
+

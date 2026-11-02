@@ -69,7 +69,31 @@ def is_counterpart_actor(actor: object, *, character_actor_ref: str) -> bool:
 def clip_fact_text(value: object, *, limit: int = _TEXT_LIMIT) -> str | None:
     if not isinstance(value, str):
         return None
-    clipped = " ".join(value.split()).strip()
+    raw = value.strip()
+    if raw.startswith("{"):
+        import json
+
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, dict) and parsed.get("contract") in {
+            "world-consequence.2",
+            "world-consequence.3",
+        }:
+            attempt = parsed.get("authorized_attempt_result")
+            attempt_text = (
+                attempt.get("text", "").strip()
+                if isinstance(attempt, dict) and isinstance(attempt.get("text"), str)
+                else ""
+            )
+            env_text = (
+                parsed.get("environment_text", "").strip()
+                if isinstance(parsed.get("environment_text"), str)
+                else ""
+            )
+            raw = attempt_text or env_text or raw
+    clipped = " ".join(raw.split()).strip()
     if not clipped:
         return None
     return clipped[:limit]
@@ -255,6 +279,98 @@ def compile_candidate_occasion(
         refs = tuple(
             item
             for item in (spoken_ref, getattr(candidate, "opened_event_ref", None))
+            if isinstance(item, str) and item
+        )
+        return CandidateOccasion(
+            kind="live_conversation_fresh_candidate", source_refs=refs
+        )
+
+    character_last_spoke: datetime | None = None
+    character_spoken_ref: str | None = None
+    has_active_expectation = False
+    unanswered_expression_refs: set[str] = set()
+    for manifest in getattr(projection, "expression_plan_manifests", ()):
+        acceptance_ref = getattr(manifest, "acceptance_event_ref", None)
+        accepted = committed.get(acceptance_ref)
+        accepted_at = getattr(accepted, "logical_time", None) if accepted is not None else None
+        if isinstance(accepted_at, datetime):
+            if last_spoke is None or accepted_at > last_spoke:
+                if isinstance(acceptance_ref, str) and acceptance_ref:
+                    unanswered_expression_refs.add(acceptance_ref)
+            if character_last_spoke is None or accepted_at > character_last_spoke:
+                character_last_spoke = accepted_at
+                character_spoken_ref = acceptance_ref if isinstance(acceptance_ref, str) else None
+        expectation = getattr(manifest, "response_expectation", None)
+        expires_at = getattr(expectation, "expires_at", None) if expectation is not None else None
+        if isinstance(expires_at, datetime) and (
+            expires_at >= logical_time
+            or abs(logical_time - expires_at) <= CONVERSATION_OCCASION_WINDOW
+            or (
+                isinstance(opened_at, datetime)
+                and abs(expires_at - opened_at) <= CONVERSATION_OCCASION_WINDOW
+            )
+        ):
+            has_active_expectation = True
+            if character_spoken_ref is None and isinstance(acceptance_ref, str):
+                character_spoken_ref = acceptance_ref
+    for plan in getattr(projection, "expression_plans", ()):
+        event_ref = getattr(plan, "event_ref", None)
+        accepted = committed.get(event_ref)
+        accepted_at = getattr(accepted, "logical_time", None) if accepted is not None else None
+        if isinstance(accepted_at, datetime):
+            if last_spoke is None or accepted_at > last_spoke:
+                if isinstance(event_ref, str) and event_ref:
+                    unanswered_expression_refs.add(event_ref)
+            if character_last_spoke is None or accepted_at > character_last_spoke:
+                character_last_spoke = accepted_at
+                character_spoken_ref = event_ref if isinstance(event_ref, str) else None
+
+    unanswered_media_deliveries = sum(
+        1
+        for item in getattr(projection, "media_deliveries", ()) or ()
+        if isinstance(getattr(item, "shared_at", None), datetime)
+        and (last_spoke is None or getattr(item, "shared_at") > last_spoke)
+    )
+    if unanswered_media_deliveries >= 1:
+        return None
+    if len(unanswered_expression_refs) >= 1:
+        guarded_intensity = 0
+        approach_intensity = 0
+        for episode in getattr(projection, "affect_episodes", ()) or ():
+            if getattr(episode, "status", None) != "active":
+                continue
+            for component in getattr(episode, "components", ()) or ():
+                intensity = int(getattr(component, "intensity_bp", 0))
+                dimension = getattr(component, "dimension", None)
+                if dimension in {"warmth", "joy", "loneliness", "anxiety"}:
+                    approach_intensity = max(approach_intensity, intensity)
+                else:
+                    guarded_intensity = max(guarded_intensity, intensity)
+        if guarded_intensity >= 5_000 and guarded_intensity >= approach_intensity:
+            return None
+
+    character_live_now = (
+        isinstance(character_last_spoke, datetime)
+        and abs(logical_time - character_last_spoke) <= CONVERSATION_OCCASION_WINDOW
+    )
+    opened_around_character_speech = (
+        isinstance(character_last_spoke, datetime)
+        and isinstance(opened_at, datetime)
+        and abs(character_last_spoke - opened_at) <= CONVERSATION_OCCASION_WINDOW
+    )
+    fresh_candidate_during_expectation = (
+        has_active_expectation
+        and isinstance(opened_at, datetime)
+        and abs(logical_time - opened_at) <= CONVERSATION_OCCASION_WINDOW
+    )
+    if (
+        character_live_now
+        or opened_around_character_speech
+        or fresh_candidate_during_expectation
+    ):
+        refs = tuple(
+            item
+            for item in (character_spoken_ref, getattr(candidate, "opened_event_ref", None))
             if isinstance(item, str) and item
         )
         return CandidateOccasion(
@@ -601,6 +717,46 @@ def compile_text_cross_lane_facts(
                 "send_at": item.send_at.isoformat(),
                 "he_spoke_after": item.he_spoke_after,
                 "i_spoke_after": item.i_spoke_after,
+            }
+        )
+    committed = {
+        getattr(item, "event_id", None): item
+        for item in getattr(projection, "committed_world_event_refs", ()) or ()
+        if isinstance(getattr(item, "event_id", None), str)
+    }
+    last_spoke = counterpart_last_spoke_at(
+        projection,
+        character_actor_ref="",
+    )
+    unanswered_refs: list[str] = []
+    for manifest in getattr(projection, "expression_plan_manifests", ()) or ():
+        acceptance_ref = getattr(manifest, "acceptance_event_ref", None)
+        accepted = committed.get(acceptance_ref)
+        accepted_at = getattr(accepted, "logical_time", None) if accepted is not None else None
+        if (
+            isinstance(acceptance_ref, str)
+            and acceptance_ref
+            and isinstance(accepted_at, datetime)
+            and (last_spoke is None or accepted_at > last_spoke)
+        ):
+            unanswered_refs.append(acceptance_ref)
+    if unanswered_refs:
+        silence_seconds = (
+            max(0, int((at - last_spoke).total_seconds()))
+            if isinstance(at, datetime) and isinstance(last_spoke, datetime)
+            else None
+        )
+        facts.append(
+            {
+                "kind": "text_lane_unanswered_outreach",
+                "source_ref": unanswered_refs[-1],
+                "privacy": "private",
+                "unanswered_outreach_count": len(dict.fromkeys(unanswered_refs)),
+                **(
+                    {"counterpart_silence_seconds": silence_seconds}
+                    if silence_seconds is not None
+                    else {}
+                ),
             }
         )
     return tuple(facts)

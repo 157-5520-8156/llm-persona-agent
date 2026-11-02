@@ -508,6 +508,7 @@ def test_self_history_advisory_lists_unanswered_outbound_facts() -> None:
     values = {item.candidate_ref: item.value for item in advisory.candidates}
     outbound = values["self-history:unanswered_outbound"]
     assert "you have 3 outgoing messages currently acknowledged or delivered" in outbound
+    assert "0 photo(s) delivered" in outbound
     assert "1 of them exact repeats" in outbound
     assert "在干嘛呀" in outbound
     assert "Facts only; she still decides" in outbound
@@ -606,3 +607,49 @@ def test_self_history_advisory_stays_silent_below_threshold() -> None:
     projection.stored_message_payloads = projection.stored_message_payloads[:1]
 
     assert compile_proactive_self_history_advisories(projection) == ()
+
+
+def test_expired_expectation_guidance_includes_sent_text_weight_and_woken_count(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        proactive_action_module,
+        "expired_unanswered_expectation",
+        lambda _projection, *, source_plan_id: SimpleNamespace(
+            hoped_response=HOPED,
+            declared_world_revision=2,
+            pressure="low",
+            importance="medium",
+            inviting_beat_text="今天中午吃什么呀？",
+        ),
+    )
+    monkeypatch.setattr(
+        proactive_action_module,
+        "counterpart_last_spoke_facts",
+        lambda _projection, since_world_revision=None: (600, False),
+    )
+    monkeypatch.setattr(
+        proactive_action_module,
+        "consecutive_unanswered_expired_chase_count",
+        lambda _projection: 1,
+    )
+    context = _proactive_opportunity_context(
+        opportunity=SimpleNamespace(
+            source_kind="expired_expectation",
+            source_id="plan:invite",
+            stimulus_event_refs=(),
+        ),
+        event=SimpleNamespace(event_id="event:receipt", payload_hash="0" * 64),
+        head=None,
+        projection=object(),
+    )
+    value = _proactive_advisory_value(
+        opportunity_context=context,
+        source_kind="expired_expectation",
+    )
+
+    assert "p=low/i=medium" in value
+    assert "sent='今天中午吃什么呀？'" in value
+    assert "woken=1x" in value
+    assert len(value) <= 256
+

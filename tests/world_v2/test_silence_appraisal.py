@@ -445,3 +445,95 @@ async def test_reducer_rejects_a_silence_trigger_with_a_forged_identity() -> Non
             expected_world_revision=projection.world_revision,
             expected_deliberation_revision=projection.deliberation_revision,
         )
+
+
+@pytest.mark.asyncio
+async def test_multi_stage_silence_appraisal_opens_progressive_ordinals_with_jitter() -> None:
+    runtime, ledger, _worker, _turn = _delivered_reply_world()
+    await _deliver_reply(runtime)
+    await _advance(runtime, ledger, seconds=IDLE_THRESHOLD * 2, tick_id="tick-stage-1")
+    opener = SilenceAppraisalTriggerOpener(
+        ledger=ledger, owner_id="worker:appraisal", idle_seconds_threshold=IDLE_THRESHOLD
+    )
+
+    trigger_1 = await opener.open_once()
+    assert trigger_1 is not None
+    receipt_ref = _receipt_event_id(ledger)
+    assert trigger_1 == silence_appraisal_trigger_identity(WORLD_ID, receipt_ref, ordinal=1)
+
+    # Terminalize stage 1 so stage 2 can open after the jittered half-day window (6x-9x)
+    from companion_daemon.world_v2.schemas import ClaimLease
+
+    proj = ledger.project()
+    open_proc = next(item for item in proj.trigger_processes if item.trigger_id == trigger_1)
+    claimed_proc = open_proc.model_copy(
+        update={
+            "state": "claimed",
+            "attempt_ids": ("attempt:silence-1",),
+            "claim_lease": ClaimLease(
+                owner_id="worker:appraisal",
+                attempt_id="attempt:silence-1",
+                acquired_at=proj.logical_time,
+                expires_at=proj.logical_time + timedelta(seconds=120),
+            ),
+        }
+    )
+    claim_payload = {"process": claimed_proc.model_dump(mode="json")}
+    claimed_1 = WorldEvent.from_payload(
+        schema_version="world-v2.1",
+        event_id="event:silence-test:claimed:1",
+        world_id=WORLD_ID,
+        event_type="TriggerProcessClaimed",
+        logical_time=proj.logical_time,
+        created_at=proj.logical_time,
+        actor="worker:appraisal",
+        source="test",
+        trace_id="trace:silence-test",
+        causation_id=trigger_1,
+        correlation_id="test",
+        idempotency_key=domain_idempotency_key(
+            event_type="TriggerProcessClaimed", world_id=WORLD_ID, payload=claim_payload
+        )
+        or "claim:1",
+        payload=claim_payload,
+    )
+    complete_payload = {
+        "trigger_id": trigger_1,
+        "owner_id": "worker:appraisal",
+        "attempt_id": "attempt:silence-1",
+        "completed_at": proj.logical_time.isoformat(),
+        "runtime_outcome_ref": "appraisal:accepted:1",
+    }
+    completed_1 = WorldEvent.from_payload(
+        schema_version="world-v2.1",
+        event_id="event:silence-test:completed:1",
+        world_id=WORLD_ID,
+        event_type="TriggerProcessCompleted",
+        logical_time=proj.logical_time,
+        created_at=proj.logical_time,
+        actor="worker:appraisal",
+        source="test",
+        trace_id="trace:silence-test",
+        causation_id=trigger_1,
+        correlation_id="test",
+        idempotency_key=domain_idempotency_key(
+            event_type="TriggerProcessCompleted", world_id=WORLD_ID, payload=complete_payload
+        )
+        or "complete:1",
+        payload=complete_payload,
+    )
+    ledger.commit(
+        (claimed_1, completed_1),
+        expected_world_revision=proj.world_revision,
+        expected_deliberation_revision=proj.deliberation_revision,
+    )
+
+    # Advancing only 2 hours is still inside the stage-2 minimum gap / window
+    await _advance(runtime, ledger, seconds=IDLE_THRESHOLD * 2, tick_id="tick-too-early")
+    assert await opener.open_once() is None
+
+    # Advancing past 9x idle threshold opens stage 2 (:2)
+    await _advance(runtime, ledger, seconds=IDLE_THRESHOLD * 6, tick_id="tick-stage-2")
+    trigger_2 = await opener.open_once()
+    assert trigger_2 == silence_appraisal_trigger_identity(WORLD_ID, receipt_ref, ordinal=2)
+    assert trigger_2.endswith(":2")

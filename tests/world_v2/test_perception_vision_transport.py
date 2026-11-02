@@ -186,3 +186,50 @@ async def test_dispatch_evidence_reads_support_daily_cap_and_dedupe(tmp_path: Pa
             transport.dispatched_count_since(datetime.now())
     finally:
         transport.close()
+
+
+def test_prepare_vision_input_renders_animated_gif_contact_sheet_and_preserves_gif_in_vault(
+    tmp_path: Path,
+) -> None:
+    import io
+    from PIL import Image
+    from companion_daemon.world_v2.perception_vision_transport import (
+        _ANIMATED_USER_PROMPT,
+        _prepare_vision_input,
+    )
+    from companion_daemon.world_v2.sticker_vault import (
+        harvest_inbound_meme_from_data_url,
+        resolve_sticker_vault_image_path,
+    )
+
+    frames = [
+        Image.new("RGBA", (64, 64), color)
+        for color in ((255, 120, 0, 255), (0, 200, 120, 255), (80, 120, 255, 255), (240, 240, 0, 255))
+    ]
+    buf = io.BytesIO()
+    frames[0].save(
+        buf,
+        format="GIF",
+        save_all=True,
+        append_images=frames[1:],
+        duration=80,
+        loop=0,
+    )
+    gif_bytes = buf.getvalue()
+    data_url = "data:image/gif;base64," + base64.b64encode(gif_bytes).decode("ascii")
+
+    prepared_url, prompt = _prepare_vision_input(data_url)
+    assert prompt == _ANIMATED_USER_PROMPT
+    assert prepared_url.startswith("data:image/png;base64,")
+
+    option_id = harvest_inbound_meme_from_data_url(
+        data_url=data_url,
+        input_hash="sha256:test-animated-gif",
+        vl_description="无厘头抽象GIF动图表情包：圆头橘猫脸（圆头耄耋）P在小人身上跳舞",
+        vault_dir=tmp_path / "vault",
+    )
+    assert option_id is not None
+    saved_path = resolve_sticker_vault_image_path(option_id, vault_dir=tmp_path / "vault")
+    assert saved_path is not None
+    assert saved_path.suffix == ".gif"
+    assert saved_path.read_bytes() == gif_bytes

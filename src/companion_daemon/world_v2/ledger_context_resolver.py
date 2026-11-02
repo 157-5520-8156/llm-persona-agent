@@ -67,6 +67,7 @@ from .context_capsule import (
 from .conversation_continuity import (
     ContinuityRetrievalCandidate,
     ConversationContinuityCompiler,
+    WORKING_DIALOGUE_SOURCE_REF_BUDGET,
     pack_recent_dialogue_under_source_budget,
 )
 from .associative_recall import lexical_relevance_bp
@@ -112,7 +113,7 @@ from .external_perception_events import (
     compile_external_perception_life_influences,
 )
 from .expression_payload_store import ImmutableExpressionPayloadStore
-from .media_v2 import MediaDeliverySharedPayload
+from .media_v2 import MediaDeliverySharedPayload, media_delivery_id
 from .model_facing_context import CHAT_RECENT_DIALOGUE_ITEM_LIMIT
 from .present_prompt import (
     PRESENT_PENDING_OUTBOUND_ITEM_LIMIT,
@@ -999,6 +1000,7 @@ def _recency_bp(item: BaseModel, logical_time: datetime | None) -> int:
     instants = (
         getattr(item, "updated_at", None),
         getattr(item, "last_supported", None),
+        getattr(item, "accepted_at", None),
         getattr(item, "opened_at", None),
         getattr(getattr(item, "values", None), "occurred_to", None),
         getattr(item, "settled_at", None),
@@ -1026,10 +1028,10 @@ def _signal_bp(slice_name: SliceName, item: BaseModel) -> int:
             return 10_000
         if "topic_reactivation" in reasons:
             return 9_900
+        if "acknowledged_context" in reasons:
+            return 9_850
         if "recent_companion" in reasons or "recent" in reasons:
             return 9_800
-        if "acknowledged_context" in reasons:
-            return 9_700
     values = getattr(item, "values", None)
     direct = (
         getattr(values, "importance_bp", None),
@@ -1104,6 +1106,7 @@ def _rank(
     query_text: str = "",
     trigger_ref: str | None = None,
     focus_plan_id: str | None = None,
+    world_revision: int = 0,
 ) -> int:
     # Apply the existing grounding priority before bounded selection and
     # source admission, not only after optional episodes consumed that budget.
@@ -1126,10 +1129,20 @@ def _rank(
         # Recent scenery must not evict it before the model sees the World.
         if isinstance(item, ActiveActivityContextItem):
             return 9_925
+        if isinstance(item, WorldLifeContextItem) and item.content is not None:
+            return 9_910 + (_recency_bp(item, logical_time) * 14 // 10_000)
         if isinstance(item, PlannedActivityContextItem):
             return 9_900
-    if slice_name == "perception_results" and isinstance(item, ExternalPerceptionLifeInfluenceView):
-        return min(9_900, 8_500 + min(1_400, item.source_world_revision % 1_400))
+    if slice_name == "perception_results":
+        if isinstance(item, PerceptionResultContextItem):
+            recency = _recency_bp(item, logical_time)
+            if recency >= 8_500:
+                return 9_910 + (recency - 8_500) * 89 // 1_500
+        if isinstance(item, ExternalPerceptionLifeInfluenceView):
+            if world_revision > 0:
+                age_revs = max(0, world_revision - item.source_world_revision)
+                return max(8_500, 9_900 - min(1_400, age_revs))
+            return min(9_900, 8_500 + min(1_400, item.source_world_revision))
     if slice_name in _READ_SCORE_SLICES:
         recency_bp = _recency_bp(item, logical_time)
         if slice_name == "relevant_facts" and isinstance(item, FactRecallItem):
@@ -1199,6 +1212,7 @@ def _bounded_domain_items(
     query_text: str = "",
     trigger_ref: str | None = None,
     focus_plan_id: str | None = None,
+    world_revision: int = 0,
 ) -> tuple[BaseModel, ...] | None:
     """Apply the installed bounded selection policy before any ledger lookup."""
 
@@ -1206,19 +1220,55 @@ def _bounded_domain_items(
         return None
     if slice_name == "relevant_facts":
         return _bounded_relevant_facts(items, logical_time, rank_overrides, query_text)
-    return tuple(
-        sorted(
-            items,
-            key=lambda item: (
-                -(
-                    max(9_900, _rank(slice_name, item, logical_time, query_text, trigger_ref, focus_plan_id))
-                    if (slice_name, _item_ref(slice_name, item)) in rank_overrides
-                    else _rank(slice_name, item, logical_time, query_text, trigger_ref, focus_plan_id)
-                ),
-                _item_ref(slice_name, item),
+    ranked = sorted(
+        items,
+        key=lambda item: (
+            -(
+                max(
+                    9_900,
+                    _rank(
+                        slice_name,
+                        item,
+                        logical_time,
+                        query_text,
+                        trigger_ref,
+                        focus_plan_id,
+                        world_revision,
+                    ),
+                )
+                if (slice_name, _item_ref(slice_name, item)) in rank_overrides
+                else _rank(
+                    slice_name,
+                    item,
+                    logical_time,
+                    query_text,
+                    trigger_ref,
+                    focus_plan_id,
+                    world_revision,
+                )
             ),
-        )[:MAX_INPUT_ITEMS_PER_SLICE]
+            _item_ref(slice_name, item),
+        ),
     )
+    if slice_name == "perception_results":
+        top_media = next(
+            (i for i in ranked if isinstance(i, PerceptionResultContextItem)), None
+        )
+        top_ext = [
+            i for i in ranked if isinstance(i, ExternalPerceptionLifeInfluenceView)
+        ][:3]
+        if top_media is not None and top_ext:
+            front_refs = {
+                _item_ref(slice_name, top_media),
+                *(_item_ref(slice_name, item) for item in top_ext),
+            }
+            ranked = [
+                top_media,
+                *top_ext,
+                *(i for i in ranked if _item_ref(slice_name, i) not in front_refs),
+            ]
+    selected = ranked[:MAX_INPUT_ITEMS_PER_SLICE]
+    return tuple(selected)
 
 
 def _binding(event: CommittedWorldEventRef) -> ResolvedSourceBinding:
@@ -1248,8 +1298,10 @@ def _bound_shared_media_about(
     kind: str,
     candidate: object,
     projection: LedgerProjection,
+    opportunity: object | None = None,
+    ledger: LedgerPort | None = None,
 ) -> str:
-    """Copy a place already bound on the candidate. Never invent a scene."""
+    """Copy a place or activity already bound on the candidate. Never invent a scene."""
 
     base = _shared_media_about(family=family, kind=kind)
     bound_refs = {
@@ -1262,6 +1314,12 @@ def _bound_shared_media_about(
         for item in getattr(candidate, "source_events", ()) or ()
         if isinstance(getattr(item, "event_ref", None), str)
     )
+    if opportunity is not None:
+        bound_refs.update(
+            ref
+            for ref in getattr(opportunity, "candidate_source_event_refs", ()) or ()
+            if isinstance(ref, str) and ref
+        )
     if not bound_refs:
         return base
     place: str | None = None
@@ -1277,8 +1335,6 @@ def _bound_shared_media_about(
             settled_at = getattr(occurrence, "settled_at", None)
             if isinstance(settled_at, datetime):
                 observed_at = settled_at
-    if place is None:
-        return base
     when = ""
     if isinstance(observed_at, datetime) and observed_at.tzinfo is not None:
         hour = observed_at.astimezone(_SHANGHAI).hour
@@ -1289,7 +1345,67 @@ def _bound_shared_media_about(
         elif hour < 12:
             when = "上午的"
     rest = base[2:] if base.startswith("一张") else base
-    return f"一张{place}{when}{rest}"
+    if place is not None:
+        return f"一张{place}{when}{rest}"
+    if ledger is not None:
+        committed_by_id = {
+            ref.event_id: ref
+            for ref in getattr(projection, "committed_world_event_refs", ()) or ()
+            if getattr(ref, "event_id", None) in bound_refs
+            and getattr(ref, "event_type", None) == "ImageEvidenceDeclared"
+        }
+        for event_id, ref in sorted(committed_by_id.items()):
+            located = ledger.lookup_event_commit(event_id)
+            if located is None:
+                continue
+            event, _commit = located
+            if (
+                event.event_id != ref.event_id
+                or event.event_type != "ImageEvidenceDeclared"
+                or event.payload_hash != ref.payload_hash
+            ):
+                continue
+            try:
+                raw_payload = json.loads(event.payload_json)
+            except (TypeError, ValueError):
+                continue
+            evidence = raw_payload.get("image_evidence") if isinstance(raw_payload, dict) else None
+            if not isinstance(evidence, dict):
+                continue
+            loc = evidence.get("location")
+            env = evidence.get("environment")
+            act = evidence.get("activity")
+            raw_loc_kind = (
+                loc.get("kind").strip(" 。；，")
+                if isinstance(loc, dict) and isinstance(loc.get("kind"), str) and loc.get("kind").strip()
+                else ""
+            )
+            raw_env_struct = (
+                env.get("structure").strip(" 。；，")
+                if isinstance(env, dict) and isinstance(env.get("structure"), str) and env.get("structure").strip()
+                else ""
+            )
+            loc_kind = (
+                raw_loc_kind
+                if raw_loc_kind and not raw_loc_kind.isascii()
+                else (raw_env_struct if raw_env_struct and not raw_env_struct.isascii() else "")
+            )
+            raw_act_desc = (
+                act.get("description").strip(" 。；，")
+                if isinstance(act, dict) and isinstance(act.get("description"), str) and act.get("description").strip()
+                else ""
+            )
+            act_head = raw_act_desc.split("；", 1)[0].strip(" 。；，") if raw_act_desc else ""
+            act_desc = "，".join(c.strip() for c in act_head.split("，")[:2] if c.strip()) if act_head else ""
+            if loc_kind and act_desc:
+                label = f"一张{when}在{loc_kind}的{rest}（{act_desc}）"
+                return label[:150] + ("）" if len(label) > 150 and not label[:150].endswith("）") else "")
+            if loc_kind:
+                return f"一张{when}在{loc_kind}的{rest}"[:150]
+            if act_desc:
+                label = f"一张{when}{rest}（{act_desc}）"
+                return label[:150] + ("）" if len(label) > 150 and not label[:150].endswith("）") else "")
+    return base
 
 
 def shared_media_delivery_items(
@@ -1301,7 +1417,13 @@ def shared_media_delivery_items(
     """Bind delivered photos as source-closed world facts. Failed joins drop the item."""
 
     deliveries = {item.delivery_id: item for item in projection.media_deliveries}
-    if not deliveries:
+    in_flight_media_actions = tuple(
+        item
+        for item in getattr(projection, "actions", ()) or ()
+        if getattr(item, "kind", None) == "media_delivery"
+        and getattr(item, "state", None) in {"provider_accepted", "delivered"}
+    )
+    if not deliveries and not in_flight_media_actions:
         return ()
     plans = {item.plan_id: item for item in projection.media_plans}
     opportunities = {item.opportunity_id: item for item in projection.media_opportunities}
@@ -1318,6 +1440,7 @@ def shared_media_delivery_items(
         )
     )
     items: list[SharedMediaDeliveryContextItem] = []
+    covered_action_ids: set[str] = set()
     for ref in refs:
         if len(items) >= PRESENT_SHARED_MEDIA_ITEM_LIMIT:
             break
@@ -1338,6 +1461,7 @@ def shared_media_delivery_items(
         delivery = payload.delivery
         if delivery.delivery_id not in deliveries:
             continue
+        covered_action_ids.add(delivery.action_id)
         plan = plans.get(delivery.plan_id)
         opportunity = opportunities.get(plan.opportunity_id) if plan is not None else None
         candidate = (
@@ -1356,7 +1480,7 @@ def shared_media_delivery_items(
             continue
         if opportunity.family not in {"life_share", "character_media"}:
             continue
-        shared_at = delivery.shared_at or ref.logical_time
+        shared_at = (delivery.shared_at or ref.logical_time).astimezone(_SHANGHAI)
         he_spoke_after = any(
             item.speaker == "counterpart" and item.occurred_at > shared_at
             for item in recent_dialogue
@@ -1378,11 +1502,114 @@ def shared_media_delivery_items(
                         kind=kind,
                         candidate=candidate,
                         projection=projection,
+                        opportunity=opportunity,
+                        ledger=ledger,
                     ),
                 )
             )
         except ValueError:
             continue
+    if in_flight_media_actions and len(items) < PRESENT_SHARED_MEDIA_ITEM_LIMIT:
+        approvals = {
+            (item.approval_id, item.entity_revision): item
+            for item in getattr(projection, "media_delivery_approvals", ()) or ()
+        }
+        receipt_refs = tuple(
+            ref
+            for ref in projection.committed_world_event_refs
+            if ref.event_type == "ExecutionReceiptRecorded"
+        )
+        latest_receipt_by_action: dict[str, tuple[CommittedWorldEventRef, object]] = {}
+        if len(receipt_refs) == len(getattr(projection, "execution_receipts", ()) or ()):
+            for r_ref, r_item in zip(receipt_refs, projection.execution_receipts, strict=True):
+                prev = latest_receipt_by_action.get(r_item.action_id)
+                if prev is None or r_ref.world_revision > prev[0].world_revision:
+                    latest_receipt_by_action[r_item.action_id] = (r_ref, r_item)
+        for action in sorted(
+            in_flight_media_actions,
+            key=lambda item: (item.logical_time, item.action_id),
+            reverse=True,
+        ):
+            if len(items) >= PRESENT_SHARED_MEDIA_ITEM_LIMIT:
+                break
+            if action.action_id in covered_action_ids:
+                continue
+            binding = getattr(action, "media_delivery_approval", None)
+            if binding is None:
+                continue
+            approval = approvals.get((binding.approval_id, binding.approval_revision))
+            receipt_pair = latest_receipt_by_action.get(action.action_id)
+            if approval is None or receipt_pair is None:
+                continue
+            receipt_ref, receipt = receipt_pair
+            if getattr(receipt, "observed_state", None) not in {"provider_accepted", "delivered"}:
+                continue
+            located = ledger.lookup_event_commit(receipt_ref.event_id)
+            if located is None:
+                continue
+            event, _commit = located
+            if (
+                event.event_id != receipt_ref.event_id
+                or event.event_type != "ExecutionReceiptRecorded"
+                or event.payload_hash != receipt_ref.payload_hash
+            ):
+                continue
+            plan = plans.get(approval.plan_id)
+            opportunity = opportunities.get(plan.opportunity_id) if plan is not None else None
+            candidate = (
+                candidates.get(opportunity.candidate_id) if opportunity is not None else None
+            )
+            if plan is None or opportunity is None or candidate is None:
+                continue
+            contract = candidate.character_media_contract
+            kind = _shared_media_kind(
+                family=opportunity.family,
+                contract_kind=None if contract is None else contract.kind,
+                ecology_category=opportunity.ecology_category or candidate.ecology_category,
+            )
+            privacy_layer = opportunity.media_privacy_ceiling
+            if privacy_layer not in {"ordinary", "personal", "intimate"}:
+                continue
+            if opportunity.family not in {"life_share", "character_media"}:
+                continue
+            received_at = getattr(receipt, "received_at", None)
+            shared_at = (
+                received_at if isinstance(received_at, datetime) else receipt_ref.logical_time
+            ).astimezone(_SHANGHAI)
+            he_spoke_after = any(
+                item.speaker == "counterpart" and item.occurred_at > shared_at
+                for item in recent_dialogue
+            )
+            delivery_id = media_delivery_id(
+                action_id=action.action_id,
+                receipt_id=receipt.receipt_id,
+            )
+            try:
+                items.append(
+                    compile_shared_media_delivery_item(
+                        delivery_id=delivery_id,
+                        shared_at=shared_at,
+                        family=opportunity.family,
+                        kind=kind,
+                        privacy_layer=privacy_layer,
+                        he_spoke_after=he_spoke_after,
+                        authority_event_ref=receipt_ref.event_id,
+                        authority_world_revision=receipt_ref.world_revision,
+                        authority_payload_hash=receipt_ref.payload_hash,
+                        about=_bound_shared_media_about(
+                            family=opportunity.family,
+                            kind=kind,
+                            candidate=candidate,
+                            projection=projection,
+                            opportunity=opportunity,
+                            ledger=ledger,
+                        ),
+                    )
+                )
+            except ValueError:
+                continue
+        items.sort(key=lambda item: (item.shared_at, item.delivery_id), reverse=True)
+        items = items[:PRESENT_SHARED_MEDIA_ITEM_LIMIT]
     return tuple(items)
 
 
@@ -2316,6 +2543,11 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             projection=projection,
             logical_time=query.logical_time,
         )
+        oldest_dialogue_at = (
+            min(item.occurred_at for item in recent_dialogue.dialogue)
+            if recent_dialogue.dialogue
+            else None
+        )
         photo_dialogue = tuple(
             delivered_photo_dialogue_item(
                 delivery_id=item.delivery_id,
@@ -2327,6 +2559,11 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                 authority_payload_hash=item.authority_payload_hash,
             )
             for item in media_deliveries
+            if (
+                query.logical_time is None
+                or (query.logical_time - item.shared_at) <= timedelta(hours=24)
+                or (oldest_dialogue_at is not None and item.shared_at >= oldest_dialogue_at)
+            )
         )
         dialogue_candidates = (
             tuple(
@@ -2597,7 +2834,10 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             tuple(
                 item
                 for item in recalled_facts
-                if ("relevant_facts", item.fact_id) in continuity_rank_overrides
+                if fact_predicate_is_stable(item.predicate_code)
+                or item.predicate_code
+                in {"schedule.commitment", "activity.current", "situation.recent"}
+                or ("relevant_facts", item.fact_id) in continuity_rank_overrides
             )
             if is_inbound_dialogue_turn
             else recalled_facts
@@ -3177,6 +3417,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                     trigger_text,
                     query.trigger_ref,
                     focus_plan_id,
+                    query.world_revision,
                 )
             )
             for slice_name, items in domains.items()
@@ -3556,7 +3797,12 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                 )
             )
             candidate_refs = {binding.ref for binding in bindings}
-            if len(selected_authority_refs | candidate_refs) > MAX_SOURCE_REFS_PER_ITEM:
+            max_slice_authority_refs = (
+                max(MAX_SOURCE_REFS_PER_ITEM, WORKING_DIALOGUE_SOURCE_REF_BUDGET)
+                if slice_name == "recent_dialogue"
+                else MAX_SOURCE_REFS_PER_ITEM
+            )
+            if len(selected_authority_refs | candidate_refs) > max_slice_authority_refs:
                 # ResolverProof has a fixed authority-closure bound. A long
                 # conversation may leave many independently valid appraisal
                 # or dialogue items; attempting to prove all of them used to
@@ -3569,11 +3815,26 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                 ResolvedItemMetadata(
                     item_ref=item_ref,
                     rank_score_bp=(
-                        max(9_900, _rank(slice_name, item, query.logical_time, trigger_ref=query.trigger_ref,
-                                        focus_plan_id=focus_plan_id))
+                        max(
+                            9_900,
+                            _rank(
+                                slice_name,
+                                item,
+                                query.logical_time,
+                                trigger_ref=query.trigger_ref,
+                                focus_plan_id=focus_plan_id,
+                                world_revision=query.world_revision,
+                            ),
+                        )
                         if (slice_name, item_ref) in rank_overrides
-                        else _rank(slice_name, item, query.logical_time, trigger_ref=query.trigger_ref,
-                                   focus_plan_id=focus_plan_id)
+                        else _rank(
+                            slice_name,
+                            item,
+                            query.logical_time,
+                            trigger_ref=query.trigger_ref,
+                            focus_plan_id=focus_plan_id,
+                            world_revision=query.world_revision,
+                        )
                     ),
                     privacy_class=_privacy(slice_name, item),
                     source_bindings=bindings,

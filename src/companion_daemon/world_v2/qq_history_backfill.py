@@ -164,14 +164,19 @@ async def backfill_missed_private_messages(
         if already is not None:
             deduplicated += 1
             continue
-        missed_fragments.append(fragment)
+        missed_fragments.append((event, fragment))
 
-    async def _submit(fragment):  # type: ignore[no-untyped-def]
+    async def _submit(pair):  # type: ignore[no-untyped-def]
+        raw_event, fragment = pair
         try:
             from .external_world_perception.bilibili import (
                 enrich_qq_fragment_with_bilibili_video,
             )
+            from .qq_voice import enrich_qq_fragment_with_voice_message
 
+            fragment = await enrich_qq_fragment_with_voice_message(
+                fragment, raw_event=raw_event
+            )
             fragment = await enrich_qq_fragment_with_bilibili_video(fragment)
             return await host.inbound_fragment(fragment)
         except Exception:  # noqa: BLE001 - one bad record must not stop the rest
@@ -185,7 +190,7 @@ async def backfill_missed_private_messages(
     # joins these fragments into one bounded batch.  Sequentially awaiting
     # each fragment would let every old bubble finish a separate role turn and
     # flood the user with replies immediately after restart.
-    results = await asyncio.gather(*(_submit(fragment) for fragment in missed_fragments))
+    results = await asyncio.gather(*(_submit(pair) for pair in missed_fragments))
     for result in results:
         if result is None:
             failed += 1

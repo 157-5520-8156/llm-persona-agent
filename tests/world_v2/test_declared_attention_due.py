@@ -282,3 +282,83 @@ async def test_scheduler_does_not_resurrect_consumed_or_expired_declarations(kin
 
     assert await compiler.peek_next_due(projection) is None
     assert committed == []
+
+
+@pytest.mark.asyncio
+async def test_internal_life_settlement_thread_and_silent_reschedule_do_not_wake_user_contact():
+    compiler, projection, _ = _compiler_fixture(receptive=False)
+    due = projection.logical_time - timedelta(seconds=1)
+    source, thread_id, _ = _declared(compiler, projection, kind="thread", name="npc-essay", due=due)
+    projection.threads[0].values.subject_ref = "event:life-aftermath:settlement:essay-contest"
+    assert await compiler.next_opportunity(projection) is None
+
+    # Restore user subject_ref, mark first schedule as having authorized a proactive message
+    # after latest user message, then add a background reschedule while user is still silent.
+    projection.threads[0].values.subject_ref = "subject:user-topic"
+    first_cid = due_thread_consideration_id(thread_id, schedule_event_ref=source.event_id)
+    first_proc = _process(source, first_cid, state="terminal")
+    first_proc.runtime_outcome_ref = "proactive:authorized:plan:thread-outreach"
+    projection.trigger_processes = (first_proc,)
+
+    second_due = projection.logical_time - timedelta(seconds=1)
+    second_closes = second_due + timedelta(minutes=5)
+    reschedule_event = WorldEvent.from_payload(
+        schema_version="world-v2.1",
+        event_id="event:thread-reschedule",
+        world_id=projection.world_id,
+        event_type="ThreadMaterialUpdated",
+        logical_time=NOW,
+        created_at=NOW,
+        actor="actor:companion",
+        source="test",
+        trace_id="trace:reschedule",
+        causation_id="cause:reschedule",
+        correlation_id="conversation:attention",
+        idempotency_key="reschedule",
+        payload={},
+    )
+    prior_lookup = compiler._ledger.lookup_event_commit  # noqa: SLF001
+    compiler._ledger.lookup_event_commit = (  # noqa: SLF001
+        lambda event_id: (
+            (reschedule_event, SimpleNamespace(world_revision=4))
+            if event_id == reschedule_event.event_id
+            else prior_lookup(event_id)
+        )
+    )
+    new_values = SimpleNamespace(
+        status="open",
+        subject_ref="subject:user-topic",
+        anchor_evidence_refs=(),
+        due_window=SimpleNamespace(opens_at=second_due, closes_at=second_closes),
+        fulfillment_contract=SimpleNamespace(expected_action_id="future:user-topic"),
+    )
+    projection.threads = (
+        SimpleNamespace(thread_id=thread_id, entity_revision=2, values=new_values),
+    )
+    projection.thread_transitions += (
+        SimpleNamespace(
+            thread_id=thread_id,
+            entity_revision=2,
+            values_after=new_values,
+            accepted_event_ref=reschedule_event.event_id,
+        ),
+    )
+    assert await compiler.next_opportunity(projection) is None
+
+
+@pytest.mark.asyncio
+async def test_proactive_expired_expectation_does_not_self_chain_while_user_is_silent():
+    compiler, projection, _ = _compiler_fixture(receptive=False)
+    due = projection.logical_time - timedelta(seconds=1)
+    first_source, _, first_cid = _declared(
+        compiler, projection, kind="expectation", name="first-reply", due=due, revision=2
+    )
+    _, _, _ = _declared(
+        compiler, projection, kind="expectation", name="chained-proactive", due=due, revision=5
+    )
+    projection.expression_plan_manifests[-1].beats[0].action.kind = "proactive_message"
+    proc = _process(first_source, first_cid, state="terminal")
+    proc.runtime_outcome_ref = "proactive:authorized:plan:chained-proactive"
+    projection.trigger_processes = (proc,)
+
+    assert await compiler.next_opportunity(projection) is None

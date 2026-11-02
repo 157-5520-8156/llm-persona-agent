@@ -15,7 +15,7 @@ import json
 import logging
 from typing import Literal, Protocol
 
-from .errors import ConcurrencyConflict
+from .errors import ConcurrencyConflict, QQIngressAwaitingObservation
 from .event_identity import domain_idempotency_key
 from .expression_reconsideration import expression_beat_is_gated
 from .later_expression_freshness import later_dispatch_allowed
@@ -128,6 +128,7 @@ class ActionPumpResult(FrozenModel):
         "marked_unknown",
         "expired",
         "deferred_visible_turn",
+        "deferred_ingress",
     ]
     # The pump status describes workflow progress; this separately carries
     # the provider observation that was durably settled during this call.
@@ -177,23 +178,34 @@ class ActionPump:
         same provider key.
         """
 
-        for _attempt in range(3):
-            try:
-                return await self._drain_once(
-                    provider_accepted_reconciliation_gate=(
-                        provider_accepted_reconciliation_gate
+        deferred: ActionPumpResult | None = None
+        excluded: set[str] = set()
+        while True:
+            for _attempt in range(3):
+                try:
+                    result = await self._drain_once(
+                        provider_accepted_reconciliation_gate=(
+                            provider_accepted_reconciliation_gate
+                        ),
+                        excluded_action_ids=excluded,
                     )
-                )
-            except ConcurrencyConflict:
-                # A different runtime won the ledger CAS. Re-read the single
-                # authority before deciding whether there is work left; never
-                # continue an external effect from a stale in-memory Action.
-                #
-                # IdempotencyConflict is different: immutable content reused
-                # an existing identity. Re-reading cannot repair that
-                # permanent contract violation, so it must remain observable.
+                    break
+                except ConcurrencyConflict:
+                    # Re-read the single authority after a stale ledger CAS.
+                    continue
+            else:
+                raise ConcurrencyConflict("action pump did not converge after ledger contention")
+            if result.status == "deferred_ingress" and result.action_id is not None:
+                if result.action_id in excluded:
+                    raise RuntimeError("ingress-deferred action was selected twice")
+                deferred = deferred or result
+                excluded.add(result.action_id)
                 continue
-        raise ConcurrencyConflict("action pump did not converge after ledger contention")
+            # An unrelated eligible Action may still progress. If nothing else
+            # can progress, expose the typed ingress hold to the timer.
+            if deferred is not None and result.status in {"idle", "not_due", "owned_elsewhere"}:
+                return deferred
+            return result
 
     async def drain_action(self, action_id: str) -> ActionPumpResult:
         """Advance exactly one authorized Action, never an arbitrary sibling.
@@ -217,6 +229,7 @@ class ActionPump:
         self,
         *,
         target_action_id: str | None = None,
+        excluded_action_ids: set[str] | None = None,
         provider_accepted_reconciliation_gate: (
             ProviderAcceptedReconciliationGate | None
         ) = None,
@@ -226,7 +239,7 @@ class ActionPump:
             (
                 item
                 for item in projection.actions
-                if self._is_eligible(item, target_action_id)
+                if self._is_eligible(item, target_action_id, excluded_action_ids)
                 if item.state in {"authorized", "scheduled", "claimed"}
                 and item.expires_at is not None
                 and (projection.logical_time or item.logical_time) >= item.expires_at
@@ -242,7 +255,7 @@ class ActionPump:
             (
                 item
                 for item in projection.actions
-                if self._is_eligible(item, target_action_id)
+                if self._is_eligible(item, target_action_id, excluded_action_ids)
                 if item.state == "authorized" and self._expression_dispatch_allowed(item, projection)
             ),
             None,
@@ -257,7 +270,7 @@ class ActionPump:
             # transitions so another worker can observe and recover each
             # intermediate state independently.
             if (
-                target_action_id is not None
+                (target_action_id is not None or self._is_qq_expression(action))
                 and self._is_due(action=action, logical_time=projection.logical_time)
                 and self._dependencies_satisfied(action=action, actions=projection.actions)
             ):
@@ -268,7 +281,7 @@ class ActionPump:
             (
                 item
                 for item in projection.actions
-                if self._is_eligible(item, target_action_id)
+                if self._is_eligible(item, target_action_id, excluded_action_ids)
                 if item.state == "scheduled"
                 and self._is_due(action=item, logical_time=projection.logical_time)
                 and self._dependencies_satisfied(action=item, actions=projection.actions)
@@ -277,6 +290,8 @@ class ActionPump:
             None,
         )
         if action is not None:
+            if self._is_qq_expression(action):
+                return await self._fast_start_and_dispatch(action=action, projection=projection)
             claimed = await self._claim_or_reclaim(action=action, projection=projection)
             if claimed is None:
                 return ActionPumpResult(action_id=action.action_id, status="owned_elsewhere")
@@ -285,7 +300,7 @@ class ActionPump:
             (
                 item
                 for item in projection.actions
-                if self._is_eligible(item, target_action_id)
+                if self._is_eligible(item, target_action_id, excluded_action_ids)
                 and item.state == "scheduled"
                 and self._expression_dispatch_allowed(item, projection)
             ),
@@ -297,12 +312,16 @@ class ActionPump:
             (
                 item
                 for item in projection.actions
-                if self._is_eligible(item, target_action_id)
+                if self._is_eligible(item, target_action_id, excluded_action_ids)
                 if item.state == "claimed" and self._expression_dispatch_allowed(item, projection)
             ),
             None,
         )
         if action is not None:
+            at = projection.logical_time or action.logical_time
+            if (self._is_qq_expression(action) and action.claim_lease is not None
+                and at >= action.claim_lease.expires_at):
+                return await self._fast_start_and_dispatch(action=action, projection=projection)
             claimed = await self._claim_or_reclaim(action=action, projection=projection)
             if claimed is None:
                 return ActionPumpResult(action_id=action.action_id, status="owned_elsewhere")
@@ -311,7 +330,7 @@ class ActionPump:
             (
                 item
                 for item in projection.actions
-                if self._is_eligible(item, target_action_id) and item.state == "dispatch_started"
+                if self._is_eligible(item, target_action_id, excluded_action_ids) and item.state == "dispatch_started"
             ),
             None,
         )
@@ -321,7 +340,7 @@ class ActionPump:
             (
                 item
                 for item in projection.actions
-                if self._is_eligible(item, target_action_id) and item.state == "provider_accepted"
+                if self._is_eligible(item, target_action_id, excluded_action_ids) and item.state == "provider_accepted"
             ),
             None,
         )
@@ -334,7 +353,7 @@ class ActionPump:
             (
                 item
                 for item in projection.actions
-                if self._is_eligible(item, target_action_id) and item.state == "unknown"
+                if self._is_eligible(item, target_action_id, excluded_action_ids) and item.state == "unknown"
             ),
             None,
         )
@@ -348,15 +367,19 @@ class ActionPump:
     async def _fast_start_and_dispatch(self, *, action: Action, projection) -> ActionPumpResult:
         """Atomically claim and start an ingress-bound Action before dispatch.
 
-        This is deliberately limited to a targeted ingress drain.  The batch
-        contains the same three lifecycle events emitted by the ordinary
+        QQ expression scheduler drains use the same atomic boundary so an
+        ingress fence can never strand a fresh claim. The batch contains the
+        same ordered lifecycle events emitted by the ordinary
         scheduler, in their contract order, so replay, recovery, and audit
         semantics are unchanged.  Only the expensive persisted-head snapshot
         is shared across the transitions.
         """
 
         at = projection.logical_time or action.logical_time
-        attempt_id = "attempt:action-pump:" + _digest([action.action_id, "initial"])
+        previous_lease = action.claim_lease
+        attempt_id = "attempt:action-pump:" + _digest(
+            [action.action_id, "initial" if previous_lease is None else previous_lease.attempt_id]
+        )
         lease = ClaimLease(
             owner_id=self._owner_id,
             attempt_id=attempt_id,
@@ -374,17 +397,19 @@ class ActionPump:
             "attempt_id": lease.attempt_id,
             "started_at": at.isoformat(),
         }
-        events = [
-            self._lifecycle_event(
+        events = []
+        if action.state == "authorized":
+            events.append(self._lifecycle_event(
                 action=action,
                 event_type="ActionScheduled",
                 payload=scheduled_payload,
                 suffix="scheduled",
                 at=at,
-            ),
+            ))
+        events.extend([
             self._lifecycle_event(
                 action=action,
-                event_type="ActionClaimed",
+                event_type=("ActionReclaimed" if action.state == "claimed" else "ActionClaimed"),
                 payload=claimed_payload,
                 suffix=attempt_id,
                 at=at,
@@ -396,27 +421,30 @@ class ActionPump:
                 suffix=f"dispatch:{attempt_id}",
                 at=at,
             ),
-        ]
+        ])
         commit_id = "commit:action-pump:dispatch-fast:" + _digest(
             [action.action_id, attempt_id]
         )
-        if self._ledger.blocks_event_loop:
-            import asyncio
+        try:
+            if self._ledger.blocks_event_loop:
+                import asyncio
 
-            await asyncio.to_thread(
-                self._ledger.commit,
-                events,
-                expected_world_revision=projection.world_revision,
-                expected_deliberation_revision=projection.deliberation_revision,
-                commit_id=commit_id,
-            )
-        else:
-            self._ledger.commit(
-                events,
-                expected_world_revision=projection.world_revision,
-                expected_deliberation_revision=projection.deliberation_revision,
-                commit_id=commit_id,
-            )
+                await asyncio.to_thread(
+                    self._ledger.commit,
+                    events,
+                    expected_world_revision=projection.world_revision,
+                    expected_deliberation_revision=projection.deliberation_revision,
+                    commit_id=commit_id,
+                )
+            else:
+                self._ledger.commit(
+                    events,
+                    expected_world_revision=projection.world_revision,
+                    expected_deliberation_revision=projection.deliberation_revision,
+                    commit_id=commit_id,
+                )
+        except QQIngressAwaitingObservation:
+            return ActionPumpResult(action_id=action.action_id, action_kind=action.kind, status="deferred_ingress")
 
         # Re-read after the atomic CAS.  No provider call is allowed to use a
         # stale pre-commit Action or lease.
@@ -450,11 +478,16 @@ class ActionPump:
             return result
         return await self._settle_or_pending(action=current, result=result, dispatched=True)
 
-    def _is_eligible(self, action: Action, target_action_id: str | None) -> bool:
+    def _is_eligible(self, action: Action, target_action_id: str | None, excluded_action_ids: set[str] | None = None) -> bool:
         return (
             action.kind not in self._excluded_action_kinds
+            and action.action_id not in (excluded_action_ids or set())
             and (target_action_id is None or action.action_id == target_action_id)
         )
+
+    @staticmethod
+    def _is_qq_expression(action: Action) -> bool:
+        return action.expression_plan_id is not None and action.target.startswith("conversation:qq:c2c:")
 
     async def _schedule(self, *, action: Action, projection) -> None:
         await self._commit_event(
@@ -527,6 +560,8 @@ class ActionPump:
                     at=at,
                 )
                 break
+            except QQIngressAwaitingObservation:
+                return ActionPumpResult(action_id=action.action_id, action_kind=action.kind, status="deferred_ingress")
             except ConcurrencyConflict:
                 if attempt == 2:
                     raise
@@ -980,11 +1015,22 @@ class ActionPump:
         await self._settle_checked(
             action=action, result=self._external_observation(action=action, receipt=result)
         )
+        provider_status = result.status
+        if action.kind == "media_delivery" and result.status == "provider_accepted":
+            verify = getattr(self._executor, "verify_delivery", None)
+            if callable(verify):
+                verified = await verify(action, provider_ref=result.provider_ref)
+                if verified is not None and verified.status in {"delivered", "failed"}:
+                    await self._settle_checked(
+                        action=action,
+                        result=self._external_observation(action=action, receipt=verified),
+                    )
+                    provider_status = verified.status
         return ActionPumpResult(
             action_id=action.action_id,
             action_kind=action.kind,
             status="settled",
-            provider_status=result.status,
+            provider_status=provider_status,
         )
 
     async def _settle_checked(self, *, action: Action, result: ExternalObservation) -> None:

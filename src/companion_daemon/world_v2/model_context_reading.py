@@ -49,9 +49,41 @@ def present_context_evidence(packet: dict[str, object]) -> dict[str, object]:
             presented['recent_self_experiences'] = {**experiences,
                 'authority': 'field_scoped_world_records_not_automatic_personal_experience'}
         sources = [key for key in ('week_diary', 'appraisals', 'private_impressions') if materials.get(key)]
+        if not sources and isinstance(materials.get('lived_moment'), str):
+            sources = [
+                key
+                for key in ('biographical_context', 'affect', 'world_planning')
+                if materials.get(key)
+            ]
         if isinstance(materials.get('lived_moment'), str) and sources:
-            presented['lived_moment'] = {'contract': 'lived-material-links.1',
-                'authority': 'navigation_only_not_additional_evidence', 'source_fields': sources}
+            walking_clauses = [
+                clause.strip()
+                for part in materials['lived_moment'].split('。')
+                for clause in part.split('；')
+                if clause.strip()
+                and clause.strip().startswith(
+                    (
+                        '此刻正在：',
+                        '手头正忙：',
+                        '刚经历：',
+                        '当下环境：',
+                        '眼前环境余光：',
+                        '近期身上悬着的处境：',
+                        '此刻情绪余波：',
+                        '今日近期课表/日程：',
+                        '当前状态负荷：',
+                        '已连续清醒',
+                    )
+                )
+            ]
+            lived_nav: dict[str, object] = {
+                'contract': 'lived-material-links.1',
+                'authority': 'navigation_only_not_additional_evidence',
+                'source_fields': sources,
+            }
+            if walking_clauses:
+                lived_nav['current_moment'] = '；'.join(walking_clauses)
+            presented['lived_moment'] = lived_nav
     if presented == materials:
         return packet
     return {**packet, 'inner_life_snapshot': {**snapshot, 'materials': presented}}

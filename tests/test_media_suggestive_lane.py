@@ -130,10 +130,10 @@ def test_first_person_author_capture_contract_preserves_self_camera_physics() ->
     assert "outside photographer" in _first_person_capture_contract("character_rear_camera")
     assert (
         _sanitize_first_person_camera_prose(
-            "I hold my phone near the screen while holding my camera; the camera captures my face.",
+            "I frame myself   in the warm bedroom light.",
             "character_front_camera",
         )
-        == "I frame myself near the frame while framing myself; the frame holds my face."
+        == "I frame myself in the warm bedroom light."
     )
 
 
@@ -688,7 +688,7 @@ async def test_first_person_private_prompt_author_keeps_character_authorship_in_
     assert "negative prompt" not in authored
     assert "Camera construction requirement:" in authored
     if planned.plan.capture_mode == "character_front_camera":
-        assert "no visible phone" in authored
+        assert "camera is entirely outside" in authored
     elif planned.plan.capture_mode == "mirror":
         assert "single believable mirror selfie" in authored
     author_input = str(author_model.last_messages[-1]["content"])

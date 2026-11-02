@@ -15,6 +15,9 @@ from weakref import ref
 from .schema_core import FrozenModel
 
 _CacheInfo = namedtuple("CacheInfo", "hits misses maxsize currsize")
+_IMMUTABLE_MODELS: OrderedDict[int, ref] = OrderedDict()
+_IMMUTABLE_MODELS_LOCK = RLock()
+_IMMUTABLE_MODELS_MAXSIZE = 8192
 
 
 def _immutable(value, seen=None):
@@ -22,16 +25,31 @@ def _immutable(value, seen=None):
         value, (str, bytes, int, float, bool, type(None), date, datetime, time, timedelta)
     ):
         return True
+    is_frozen_model = (
+        isinstance(value, FrozenModel) and type(value).model_config.get("frozen") is True
+    )
+    key = id(value)
+    if is_frozen_model:
+        with _IMMUTABLE_MODELS_LOCK:
+            cached_ref = _IMMUTABLE_MODELS.get(key)
+            if cached_ref is not None and cached_ref() is value:
+                return True
     if seen is None:
         seen = set()
-    key = id(value)
     if key in seen:
         return True
     seen.add(key)
     if isinstance(value, (tuple, frozenset)):
         return all(_immutable(v, seen) for v in value)
-    if isinstance(value, FrozenModel) and type(value).model_config.get("frozen") is True:
-        return all(_immutable(getattr(value, field), seen) for field in type(value).model_fields)
+    if is_frozen_model:
+        ok = all(_immutable(getattr(value, field), seen) for field in type(value).model_fields)
+        if ok:
+            with _IMMUTABLE_MODELS_LOCK:
+                _IMMUTABLE_MODELS[key] = ref(value)
+                _IMMUTABLE_MODELS.move_to_end(key)
+                while len(_IMMUTABLE_MODELS) > _IMMUTABLE_MODELS_MAXSIZE:
+                    _IMMUTABLE_MODELS.popitem(last=False)
+        return ok
     return False
 
 

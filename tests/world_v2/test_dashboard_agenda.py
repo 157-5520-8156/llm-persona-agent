@@ -37,6 +37,9 @@ async def test_week_reads_original_agenda_and_outlook_and_separates_truth(tmp_pa
     candidates = [e for e in agenda.entries if e.kind == "outlook"]
     assert len(candidates) == 3 and all("未定" in e.status for e in candidates)
     assert agenda.worldline is not None and len(agenda.worldline.threads) == 3 and len(agenda.worldline.opportunities) == 3
+    assert agenda.worldline.opportunities[1].after_indexes == (0,)
+    assert all(opp.index == i for i, opp in enumerate(agenda.worldline.opportunities))
+    assert all(opp.thread_indexes is not None for opp in agenda.worldline.opportunities)
     assert any(e.related for e in candidates)
     assert not any(e.kind == "world" for e in agenda.entries)
     encoded = agenda.model_dump_json()
@@ -113,6 +116,9 @@ async def test_week_output_and_immutable_reads_stay_bounded_as_history_grows(tmp
                                       week_start=week_start_date(first.logical_time.date()))
     assert agenda.known_count == 10_000 and agenda.truncated
     assert len(agenda.entries) == ENTRY_LIMIT and len(reads) <= ENTRY_LIMIT
+    assert agenda.week_slots is not None and len(agenda.week_slots) <= 84
+    assert sum(slot.known_count for slot in agenda.week_slots) >= 10_000
+    assert max(slot.last_page for slot in agenda.week_slots) == (10_000 - 1) // ENTRY_LIMIT
     assert len(agenda.model_dump_json()) < 100_000
     assert all(e.content_state == "unavailable" for e in agenda.entries)
     assert ledger.project().semantic_hash == before
@@ -160,6 +166,7 @@ async def test_legacy_agenda_snapshot_preserves_its_original_visible_hash(tmp_pa
     agenda = payload["sections"]["overview_life"]["data"]["agenda"]
     agenda.pop("page")
     agenda.pop("page_count")
+    agenda.pop("week_slots")
     payload["snapshot_hash"] = _snapshot_hash({k: v for k, v in payload.items() if k != "snapshot_hash"})
     restored = DashboardHomeSnapshot.model_validate_json(json.dumps(payload))
     assert restored.to_payload() == payload
@@ -173,6 +180,7 @@ async def test_outlook_privacy_ceiling_is_explicit_and_withhold_never_leaks(tmp_
     value.update(world_id=ledger.world_id, actor_ref=ACTOR)
     value["opportunities"][0]["execution"]["privacy_class"] = "withhold"
     value["opportunities"][0]["external_possibility"] = "WITHHELD_CANARY"
+    value["opportunities"][1]["after_opportunities"] = [value["opportunities"][0]["opportunity_id"]]
     draft = WorldOutlookDraft.model_validate_json(json.dumps(value))
     head = ("revision", draft, {"cursor": _cursor(ledger).model_dump()})
     for ceiling, expected in (("shareable", 0), ("private", 2)):
@@ -183,4 +191,15 @@ async def test_outlook_privacy_ceiling_is_explicit_and_withhold_never_leaks(tmp_
         assert len(agenda.entries) == expected
         assert "WITHHELD_CANARY" not in agenda.model_dump_json()
         assert agenda.withheld_count == 3 - expected
+        if agenda.worldline is not None:
+            assert [opp.index for opp in agenda.worldline.opportunities] == [0, 1]
+            assert agenda.worldline.opportunities[0].after_indexes == ()
+            assert value["opportunities"][0]["opportunity_id"] not in agenda.model_dump_json()
     ledger.close()
+
+
+def test_legacy_story_graph_omits_new_display_fields_on_round_trip():
+    from companion_daemon.world_v2.dashboard_agenda import DashboardWorldlineOpportunity
+    value={"title":"历史候选","detail":"原说明","lane_label":"环境机缘","thread_titles":["原主线"],"opens_at":"2026-11-01T00:00:00Z","closes_at":"2026-11-02T00:00:00Z","status":"待进入窗口"}
+    restored=DashboardWorldlineOpportunity.model_validate_json(json.dumps(value))
+    assert restored.model_dump(mode="json") == value

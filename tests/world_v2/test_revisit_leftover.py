@@ -442,3 +442,83 @@ def test_grouped_revisit_preserves_both_authored_choices_without_filling_either(
 def test_revisit_does_not_silently_discard_an_invalid_whole_field_type(value):
     with pytest.raises(ValueError, match='come_back'):
         compile_slim_consider_payload(_slim_payload(come_back=value))
+
+
+def test_completed_short_revisit_does_not_shadow_pending_user_timeline_checkin() -> None:
+    receipt_timeline = SimpleNamespace(
+        event_id="event:receipt:timeline",
+        event_type="ExecutionReceiptRecorded",
+        world_revision=1,
+        logical_time=NOW,
+    )
+    receipt_short = SimpleNamespace(
+        event_id="event:receipt:short",
+        event_type="ExecutionReceiptRecorded",
+        world_revision=2,
+        logical_time=NOW + timedelta(minutes=5),
+    )
+    action_timeline = SimpleNamespace(action_id="action:timeline")
+    action_short = SimpleNamespace(action_id="action:short")
+    short_consideration_id = due_revisit_consideration_id("plan:short-wave")
+    projection = SimpleNamespace(
+        logical_time=NOW + timedelta(hours=3),
+        execution_receipts=(
+            SimpleNamespace(action_id="action:timeline", observed_state="delivered"),
+            SimpleNamespace(action_id="action:short", observed_state="delivered"),
+        ),
+        committed_world_event_refs=(receipt_timeline, receipt_short),
+        expression_plan_manifests=(
+            SimpleNamespace(
+                plan_id="plan:timeline-checkin",
+                revisit=SimpleNamespace(
+                    source_beat_id="beat:timeline",
+                    thought="他说下午四点面试结束，到点问问他顺不顺利",
+                    not_before=NOW + timedelta(hours=4),
+                    expires_at=NOW + timedelta(hours=4, seconds=60),
+                ),
+                beats=(SimpleNamespace(beat_id="beat:timeline", action=action_timeline),),
+            ),
+            SimpleNamespace(
+                plan_id="plan:short-wave",
+                revisit=SimpleNamespace(
+                    source_beat_id="beat:short",
+                    thought="刚发完还想补一句",
+                    not_before=NOW + timedelta(minutes=5, seconds=15),
+                    expires_at=NOW + timedelta(minutes=6, seconds=15),
+                ),
+                beats=(SimpleNamespace(beat_id="beat:short", action=action_short),),
+            ),
+        ),
+        trigger_processes=(
+            SimpleNamespace(
+                process_kind="proactive_action_deliberation",
+                state="completed",
+                source_evidence_ref=receipt_short.event_id,
+                trigger_ref="proactive-consideration:" + short_consideration_id,
+            ),
+        ),
+        message_observations=(),
+    )
+
+    context = attach_open_revisit_advisory({"slices": {}}, projection)
+    items = context["slices"]["advisories"]["items"]
+    assert len(items) == 1
+    candidates = items[0]["value"]["candidates"]
+    assert len(candidates) == 1
+    assert "他说下午四点面试结束" in candidates[0]["value"]
+    assert "刚发完还想补一句" not in candidates[0]["value"]
+
+
+def test_multi_day_user_timeline_come_back_compiles_up_to_seven_days() -> None:
+    compiled = compile_slim_consider_payload(
+        _slim_payload(
+            come_back={"thought": "他说三天后下午答辩结束，到时候去问他", "after_seconds": 259_200}
+        )
+    )
+    assert compiled is not None
+    revisit = compiled["expression_draft"]["revisit"]
+    assert revisit["thought"] == "他说三天后下午答辩结束，到时候去问他"
+    assert revisit["wait_seconds"] == 259_200
+    assert revisit["expires_after_seconds"] == 259_260
+
+

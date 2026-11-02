@@ -175,6 +175,20 @@ class FactV2AcceptanceRuntime:
     ) -> CommitResult:
         """Run the only accepted Fact-v2 materialization and ledger CAS path."""
 
+        batch = self.prepare_batch(
+            request=request, proposal_handle=proposal_handle, prepared=prepared, sources=sources,
+        )
+        return self.ledger.commit_accepted(batch, expected_cursor=request.cursor)
+
+    def prepare_batch(
+        self,
+        *,
+        request: FactV2AcceptanceEnvelopeRequestV2,
+        proposal_handle: PinnedFactCommitProposalAuthorityHandleV2,
+        prepared: PreparedFactCommitMaterializationV2,
+        sources: ResolvedFactCommitSourcesV2,
+    ):
+        """Build the same source-closed batch before its atomic ledger CAS."""
         envelope_handle = self._envelope_issuer.issue(
             proposal_reader=self._proposal_reader,
             proposal_handle=proposal_handle,
@@ -187,8 +201,7 @@ class FactV2AcceptanceRuntime:
             sources=sources,
         )
         bundle_handle = self._manifest_builder.build(plan_handle=plan_handle)
-        batch = self._recorder.prepare_batch(bundle_handle=bundle_handle)
-        return self.ledger.commit_accepted(batch, expected_cursor=request.cursor)
+        return self._recorder.prepare_batch(bundle_handle=bundle_handle)
 
 
 __all__ = ["FactV2AcceptanceRuntime"]

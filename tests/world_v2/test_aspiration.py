@@ -19,11 +19,6 @@ from companion_daemon.world_v2.aspiration_reducers import (
     reinforce_aspiration,
     revise_aspiration,
 )
-from companion_daemon.world_v2.aspiration_seed_policy import (
-    NOTHING_CANDIDATE_REF,
-    AspirationSeedCandidate,
-    AspirationWeightPolicy,
-)
 from companion_daemon.world_v2.event_identity import domain_idempotency_key
 from companion_daemon.world_v2.life_author_seed import ReviewedLifeSeedCatalog
 from companion_daemon.world_v2.local_chronology import LocalChronology
@@ -294,25 +289,6 @@ def _record_user_observation(app, *, event_id: str, text: str, at: datetime) -> 
     )
 
 
-def test_weight_policy_keeps_planting_a_rare_recorded_gate(tmp_path: Path) -> None:
-    catalog = ReviewedLifeSeedCatalog.from_yaml(
-        path=_seed(tmp_path / "seed.yaml", seeds=_THREE_SEEDS),
-        chronology=LocalChronology("Asia/Shanghai"),
-    )
-    seeds = {item.id: item for item in catalog.reviewed_aspiration_seeds}
-    assert set(seeds) == {"aspire-japan-trip", "aspire-liwa-seasons", "aspire-finish-reading"}
-
-    candidates = tuple(
-        AspirationSeedCandidate(token="a" * 63 + str(index), seed=seed)
-        for index, seed in enumerate(seeds.values())
-    )
-    weights = AspirationWeightPolicy().compile(candidates=candidates)
-    # Reviewed bases pass through untouched and the always-legal nothing
-    # candidate absorbs the rest: planting stays a ~7% per-check event
-    # (700+800+600 of 10_000), never a schedule.
-    for candidate in candidates:
-        assert weights[candidate.token] == candidate.seed.base_chance_bp
-    assert weights[NOTHING_CANDIDATE_REF] == 10_000 - 700 - 800 - 600
 
 
 def _active(planted_at: datetime, **overrides) -> AspirationProjection:

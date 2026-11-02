@@ -671,3 +671,59 @@ def test_ecology_does_not_keep_the_direct_freeze_path_enabled_by_default() -> No
     assert compiler.requests == []
     assert len(ledger.commits) == 1
     assert [event.event_type for event in ledger.commits[0][0]] == ["PhotoCandidateOpened"]
+
+
+def test_ecology_discovers_life_share_candidate_alongside_character_media_candidate() -> None:
+    from companion_daemon.world_v2.media_v2 import (
+        CharacterMediaCandidateContract,
+        MediaEvidenceSource,
+        PhotoCandidate,
+        character_media_contract_digest,
+    )
+
+    source = _ref("coexist-life", "ActivityStarted")
+    ev_source = MediaEvidenceSource(event_ref=source.event_id, payload_hash=source.payload_hash)
+    contract = CharacterMediaCandidateContract(
+        subject_ref="agent:companion",
+        kind="selfie",
+        allowed_capture_modes=("character_front_camera",),
+        allowed_character_visibility=("identifiable",),
+        authority_digest=character_media_contract_digest(
+            subject_ref="agent:companion",
+            kind="selfie",
+            source_events=(ev_source,),
+            allowed_capture_modes=("character_front_camera",),
+            allowed_character_visibility=("identifiable",),
+        ),
+    )
+    projection = _projection(
+        refs=(source,),
+        plans=(SimpleNamespace(
+            status="active", authority_origin=_origin(source.event_id), privacy_class="shareable",
+            last_transitioned_at=NOW, activity_kind="walk", location_ref="location:park",
+            participant_refs=("companion:celia",),
+        ),),
+    )
+    projection.photo_candidates = (
+        PhotoCandidate(
+            candidate_id="photo-candidate:character-media:selfie",
+            family="character_media",
+            privacy_ceiling="shareable",
+            source_event_refs=(source.event_id,),
+            opened_at=NOW,
+            expires_at=NOW + timedelta(hours=1),
+            ecology_category="character_media:selfie",
+            ecology_observed_at=NOW,
+            source_events=(ev_source,),
+            character_media_contract=contract,
+        ),
+    )
+    ledger = _Ledger(projection)
+    result = EventEcologyMediaCandidateRuntime(
+        ledger=ledger, sidecar=InMemoryImmutableMediaPayloadStore(), compiler=_Compiler(),
+    ).drain_once(
+        wake_event_ref=source.event_id, logical_time=NOW, actor="worker:event-ecology",
+        trace_id="trace:coexist", correlation_id="correlation:coexist",
+    )
+    assert result.status == "created"
+    assert len(result.candidate_ids) == 1

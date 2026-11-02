@@ -312,8 +312,10 @@ def tool_contract(*, capability_payload, source_refs, recall_allowed, compact_sy
         source_refs=source_refs, recall_allowed=recall_allowed,
         description=("Return exactly one choice per offered memory token, without extra or duplicate choices; "
                      "elapsed time never forces forgetting. "
-                     "When standing understandings are offered, update that existing ledger incrementally: "
+                     "When standing understandings are offered, compare with them first: "
                      "revise or merge existing aspects, retain only genuinely new aspects, or choose [] if unchanged. "
+                     "Write every understanding summary in plain, natural everyday first-person spoken thoughts, "
+                     "never as changelog/ledger entries (do not write 'XX这条线更新/收口/淡出', '框架不变', '受用', etc.). "
                      "understandings contains at most 3 updates TOTAL across the whole batch, not 3 per memory or facet. "
                      "Select which updates matter yourself. A source you choose to forget in choices cannot also support "
                      "an understanding in this batch. The top-level summary can explain retention/forgetting "

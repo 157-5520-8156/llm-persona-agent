@@ -438,6 +438,7 @@ def planning_event_offers(*, projection, publications, ledger, actor_ref):
                 or original.get("script", {}).get("planning") != planning.model_dump(mode="json")):
             raise ValueError("planning script differs from its original author")
         slots = {s.slot_id: s for s in planning.slots}
+        occurrence_token = digest(occurrence)
         for instance in instances:
             slot = slots[instance.slot_id]
             if instance.status != "scheduled" or slot.event_text is None:
@@ -453,7 +454,7 @@ def planning_event_offers(*, projection, publications, ledger, actor_ref):
                 "opens_at": instance.starts_at.isoformat(), "closes_at": instance.ends_at.isoformat(),
                 "basis_refs": [publication.source_event_ref],
                 "conditions": [{"source_ref": occurrence.occurrence_id, "ready_statuses": ["settled"],
-                                "invalid_statuses": [], "unchanged_token": digest(occurrence)}],
+                                "invalid_statuses": [], "unchanged_token": occurrence_token}],
                 "after_opportunities": [],
             }
             origin = {**original["central_authorship"], "actor_ref": actor_ref,

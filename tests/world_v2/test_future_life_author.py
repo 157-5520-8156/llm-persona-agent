@@ -7,9 +7,6 @@ from types import SimpleNamespace
 from zoneinfo import ZoneInfo
 
 
-from companion_daemon.world_v2.future_life_weight_policy import (
-    FutureLifeAuthorWeightPolicy,
-)
 from companion_daemon.world_v2.life_author_seed import ReviewedLifeSeedCatalog
 from companion_daemon.world_v2.local_chronology import LocalChronology
 from companion_daemon.world_v2.production_turn_application import (
@@ -339,36 +336,3 @@ def test_future_candidates_respect_the_seven_day_horizon_and_candidate_cap(
     )
 
 
-def test_mood_tilts_future_social_commitments_without_gating_them(
-    tmp_path: Path,
-) -> None:
-    catalog = ReviewedLifeSeedCatalog.from_yaml(
-        path=_seed(tmp_path / "seed.yaml"),
-        chronology=LocalChronology("Asia/Shanghai"),
-    )
-    candidates = catalog.future_candidates_at(
-        instant=NOW,
-        plans=(),
-        npcs=(SimpleNamespace(npc_id="fan-yuan", status="active"),),
-    )
-    social = next(item for item in candidates if item.opening.id == "future-club-meetup")
-    walk = next(item for item in candidates if item.opening.id == "future-lake-walk")
-    policy = FutureLifeAuthorWeightPolicy()
-
-    def episode(dimension: str) -> SimpleNamespace:
-        return SimpleNamespace(
-            status="active",
-            components=(SimpleNamespace(dimension=dimension, intensity_bp=8_000),),
-        )
-
-    baseline = policy.compile(candidates=(social, walk))
-    lonely = policy.compile(candidates=(social, walk), affect_episodes=(episode("loneliness"),))
-    heavy = policy.compile(candidates=(social, walk), affect_episodes=(episode("sadness"),))
-
-    # Loneliness reaches toward future company; non-lonely heaviness pulls
-    # away from promising company days ahead.  Every candidate keeps positive
-    # mass: mood is a tendency, never an eligibility rule.
-    assert lonely[social.token] > baseline[social.token]
-    assert heavy[social.token] < baseline[social.token]
-    assert heavy[walk.token] < baseline[walk.token]
-    assert all(value > 0 for value in (*lonely.values(), *heavy.values()))

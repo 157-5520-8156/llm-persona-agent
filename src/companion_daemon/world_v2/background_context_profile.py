@@ -70,6 +70,44 @@ class BackgroundContextProfile:
     omit_inventory_proofs: bool = False
 
 
+def _dialogue_entry_speaker(item: object) -> str | None:
+    if not isinstance(item, dict):
+        return None
+    speaker = item.get("speaker")
+    if isinstance(speaker, str) and speaker:
+        return speaker
+    value = item.get("value")
+    if isinstance(value, dict):
+        nested = value.get("speaker")
+        if isinstance(nested, str) and nested:
+            return nested
+    return None
+
+
+def _limit_dialogue_tail(entries: list[object], limit: int) -> list[object]:
+    if len(entries) <= limit or limit <= 0:
+        return entries
+    tail = entries[-limit:]
+    if limit < 2:
+        return tail
+    if any(_dialogue_entry_speaker(item) == "counterpart" for item in tail):
+        return tail
+    # When she sends a multi-bubble run longer than the window, a pure tail
+    # slice would evict his last message and leave only speaker="companion"
+    # turns. Retain the most recent counterpart turn at the head as anchor.
+    last_counterpart = next(
+        (
+            item
+            for item in reversed(entries[:-limit])
+            if _dialogue_entry_speaker(item) == "counterpart"
+        ),
+        None,
+    )
+    if last_counterpart is None:
+        return tail
+    return [last_counterpart, *entries[-(limit - 1):]]
+
+
 def _limit_material_items(value: object, limit: int, *, key: str) -> object:
     if limit <= 0 or not isinstance(limit, int):
         return value
@@ -84,15 +122,19 @@ def _limit_material_items(value: object, limit: int, *, key: str) -> object:
             "rows": rows[:limit],
         }
     if key == "recent_dialogue" and isinstance(value, dict) and "stable_turns" in value:
-        return recent_dialogue_material_entries(value)[-limit:]
+        return _limit_dialogue_tail(recent_dialogue_material_entries(value), limit)
     # Dialogue is chronological, unlike ranked facts/experiences.  Taking its
     # first N items erased the most recent answer while retaining the question.
     keep_tail = key in {"recent_dialogue", "folded_dialogue"}
     if isinstance(value, dict):
         items = value.get("items")
         if isinstance(items, list) and len(items) > limit:
+            if key == "recent_dialogue":
+                return {**value, "items": _limit_dialogue_tail(items, limit)}
             return {**value, "items": items[-limit:] if keep_tail else items[:limit]}
     if isinstance(value, list) and len(value) > limit:
+        if key == "recent_dialogue":
+            return _limit_dialogue_tail(value, limit)
         return value[-limit:] if keep_tail else value[:limit]
     return value
 
@@ -299,7 +341,7 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
         profile_id="proactive_contact",
         omit_inventory_proofs=True,
         purposes=frozenset({"proactive_contact"}),
-        snapshot_material_keys=(*_CHARACTER_CONTINUITY_MATERIALS, "advisories"),
+        snapshot_material_keys=(*_CHARACTER_CONTINUITY_MATERIALS, "photos_i_shared", "advisories"),
         snapshot_material_limits={**_CHARACTER_CONTINUITY_LIMITS, "advisories": 1},
     ),
     BackgroundContextProfile(
@@ -359,6 +401,7 @@ _PROFILES: tuple[BackgroundContextProfile, ...] = (
             "affect",
             "relevant_facts",
             "recent_dialogue",
+            "since_he_last_spoke",
             "private_impressions",
             "memory_understandings",
             "moments_i_can_share",

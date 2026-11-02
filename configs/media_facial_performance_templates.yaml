@@ -3,17 +3,17 @@ schema_version: media-facial-catalog-v1
 # This is a compatibility/weight catalog, not an event-to-expression lookup table.
 # A tactic may lead to several families; the stable seed chooses among legal candidates.
 tactic_affinities:
-  presence: [present_and_available, warm_connection, amusement_leaking]
-  reveal: [proud_display, amusement_leaking, warm_connection]
-  demonstration: [neutral_evidence, present_and_available, proud_display]
-  question: [consultative_check, deliberate_cuteness, present_and_available]
-  comparison: [consultative_check, mock_defiance, neutral_evidence]
-  contrast: [mock_defiance, amusement_leaking, comic_self_exposure, frustrated_complaint]
-  comic_hook: [deliberate_cuteness, mock_defiance, amusement_leaking, comic_self_exposure, embarrassed_repair]
+  presence: [present_and_available, tired_access, comic_self_exposure, frustrated_complaint, warm_connection, amusement_leaking]
+  reveal: [proud_display, neutral_evidence, comic_self_exposure, amusement_leaking, warm_connection]
+  demonstration: [neutral_evidence, frustrated_complaint, comic_self_exposure, tired_access, present_and_available, proud_display]
+  question: [consultative_check, mock_defiance, comic_self_exposure, deliberate_cuteness, present_and_available]
+  comparison: [consultative_check, mock_defiance, frustrated_complaint, neutral_evidence]
+  contrast: [frustrated_complaint, comic_self_exposure, mock_defiance, tired_access, amusement_leaking]
+  comic_hook: [comic_self_exposure, frustrated_complaint, mock_defiance, embarrassed_repair, deliberate_cuteness, amusement_leaking]
   celebration: [proud_display, amusement_leaking, warm_connection]
-  vulnerability: [vulnerable_disclosure, tired_access, embarrassed_repair]
+  vulnerability: [vulnerable_disclosure, tired_access, frustrated_complaint, embarrassed_repair]
   reassurance: [warm_connection, tender_private, present_and_available]
-  coordination: [neutral_evidence, consultative_check, present_and_available]
+  coordination: [neutral_evidence, frustrated_complaint, tired_access, consultative_check, present_and_available]
   affection: [tender_private, warm_connection, desire_withheld]
   nostalgia: [tender_private, warm_connection, desire_withheld]
   attraction: [desire_direct, desire_withheld, deliberate_cuteness, mock_defiance, tender_private]
@@ -50,13 +50,13 @@ micro_recipes:
       axes: {brow_action: settled, eye_aperture: natural, gaze_target: companion, gaze_sequence: companion_then_camera, nose_cheek_action: cheek_lift, mouth_action: small_smile, facial_asymmetry: dynamic_natural, display_intensity: low, performance_authorship: responsive_candid, temporal_phase: after_reaction, facial_energy: lively}
   amusement_leaking:
     - id: amusement_leaking_0
-      axes: {brow_action: soft_lift, eye_aperture: smile_narrowed, gaze_target: lens, gaze_sequence: just_returned_to_lens, nose_cheek_action: small_nose_scrunch, mouth_action: suppressed_smile, facial_asymmetry: dynamic_natural, display_intensity: clear, performance_authorship: spontaneous, temporal_phase: leaking, facial_energy: lively}
+      axes: {brow_action: soft_lift, eye_aperture: smile_narrowed, gaze_target: lens, gaze_sequence: just_returned_to_lens, nose_cheek_action: cheek_lift, mouth_action: suppressed_smile, facial_asymmetry: subtle_left, display_intensity: subtle, performance_authorship: spontaneous, temporal_phase: leaking, facial_energy: contained}
     - id: amusement_leaking_1
-      axes: {brow_action: neutral, eye_aperture: brief_squint, gaze_target: off_frame, gaze_sequence: caught_off_frame, nose_cheek_action: cheek_lift, mouth_action: asymmetric_half_smile, facial_asymmetry: subtle_left, display_intensity: clear, performance_authorship: spontaneous, temporal_phase: after_reaction, facial_energy: lively}
+      axes: {brow_action: neutral, eye_aperture: brief_squint, gaze_target: off_frame, gaze_sequence: caught_off_frame, nose_cheek_action: cheek_lift, mouth_action: asymmetric_half_smile, facial_asymmetry: subtle_left, display_intensity: subtle, performance_authorship: spontaneous, temporal_phase: after_reaction, facial_energy: lively}
     - id: amusement_leaking_2
-      axes: {brow_action: bilateral_lift, eye_aperture: brief_squeeze, gaze_target: lens, gaze_sequence: just_returned_to_lens, nose_cheek_action: small_nose_scrunch, mouth_action: open_laugh, facial_asymmetry: momentary_irregular, display_intensity: high, performance_authorship: responsive_candid, temporal_phase: apex, facial_energy: lively}
+      axes: {brow_action: bilateral_lift, eye_aperture: brief_squeeze, gaze_target: lens, gaze_sequence: just_returned_to_lens, nose_cheek_action: small_nose_scrunch, mouth_action: open_laugh, facial_asymmetry: momentary_irregular, display_intensity: medium, performance_authorship: responsive_candid, temporal_phase: apex, facial_energy: lively}
     - id: amusement_leaking_3
-      axes: {brow_action: settled, eye_aperture: smile_narrowed, gaze_target: screen_preview, gaze_sequence: screen_then_lens, nose_cheek_action: asymmetric_cheek, mouth_action: suppressed_smile, facial_asymmetry: subtle_right, display_intensity: medium, performance_authorship: selfie_micro_pose, temporal_phase: leaking, facial_energy: contained}
+      axes: {brow_action: settled, eye_aperture: smile_narrowed, gaze_target: screen_preview, gaze_sequence: screen_then_lens, nose_cheek_action: asymmetric_cheek, mouth_action: suppressed_smile, facial_asymmetry: subtle_right, display_intensity: subtle, performance_authorship: selfie_micro_pose, temporal_phase: leaking, facial_energy: contained}
   deliberate_cuteness:
     - id: deliberate_cuteness_0
       axes: {brow_action: soft_lift, eye_aperture: slightly_widened, gaze_target: lens, gaze_sequence: held_lens, nose_cheek_action: relaxed, mouth_action: subtle_pout, facial_asymmetry: balanced, display_intensity: clear, performance_authorship: deliberately_performed, temporal_phase: held_beat, facial_energy: held}
@@ -79,9 +79,9 @@ micro_recipes:
       axes: {brow_action: slight_knit, eye_aperture: brief_squint, gaze_target: off_frame, gaze_sequence: just_returned_to_lens, nose_cheek_action: one_cheek_tension, mouth_action: subtle_pout, facial_asymmetry: subtle_right, display_intensity: medium, performance_authorship: selfie_micro_pose, temporal_phase: held_beat, facial_energy: held}
   comic_self_exposure:
     - id: comic_self_exposure_0
-      axes: {brow_action: slight_inward_draw, eye_aperture: natural, gaze_target: lens, gaze_sequence: evidence_then_recipient, nose_cheek_action: small_nose_scrunch, mouth_action: lightly_pressed, facial_asymmetry: dynamic_natural, display_intensity: clear, performance_authorship: recipient_aware, temporal_phase: after_reaction, facial_energy: recovering}
+      axes: {brow_action: slight_inward_draw, eye_aperture: relaxed_heavy, gaze_target: lens, gaze_sequence: held_lens, nose_cheek_action: relaxed, mouth_action: lightly_pressed, facial_asymmetry: balanced, display_intensity: clear, performance_authorship: recipient_aware, temporal_phase: after_reaction, facial_energy: low}
     - id: comic_self_exposure_1
-      axes: {brow_action: settled, eye_aperture: relaxed_heavy, gaze_target: lens, gaze_sequence: held_lens, nose_cheek_action: relaxed, mouth_action: lightly_pressed, facial_asymmetry: balanced, display_intensity: medium, performance_authorship: playfully_performed, temporal_phase: held_beat, facial_energy: low}
+      axes: {brow_action: slight_inward_draw, eye_aperture: relaxed_heavy, gaze_target: lens, gaze_sequence: screen_then_lens, nose_cheek_action: relaxed, mouth_action: subtle_pout, facial_asymmetry: balanced, display_intensity: clear, performance_authorship: selfie_micro_pose, temporal_phase: held_beat, facial_energy: low}
     - id: comic_self_exposure_2
       axes: {brow_action: bilateral_lift, eye_aperture: wide_playful, gaze_target: primary_evidence, gaze_sequence: evidence_then_recipient, nose_cheek_action: small_nose_scrunch, mouth_action: mid_speech, facial_asymmetry: momentary_irregular, display_intensity: high, performance_authorship: responsive_candid, temporal_phase: after_reaction, facial_energy: lively}
   proud_display:
@@ -100,9 +100,9 @@ micro_recipes:
       axes: {brow_action: bilateral_lift, eye_aperture: slightly_widened, gaze_target: primary_evidence, gaze_sequence: evidence_then_recipient, nose_cheek_action: relaxed, mouth_action: mid_speech, facial_asymmetry: dynamic_natural, display_intensity: medium, performance_authorship: recipient_aware, temporal_phase: onset, facial_energy: contained}
   frustrated_complaint:
     - id: frustrated_complaint_0
-      axes: {brow_action: slight_inward_draw, eye_aperture: brief_squint, gaze_target: lens, gaze_sequence: held_lens, nose_cheek_action: one_cheek_tension, mouth_action: lightly_pressed, facial_asymmetry: dynamic_natural, display_intensity: clear, performance_authorship: recipient_aware, temporal_phase: after_reaction, facial_energy: contained}
+      axes: {brow_action: slight_inward_draw, eye_aperture: relaxed_heavy, gaze_target: lens, gaze_sequence: held_lens, nose_cheek_action: relaxed, mouth_action: lightly_pressed, facial_asymmetry: balanced, display_intensity: clear, performance_authorship: recipient_aware, temporal_phase: after_reaction, facial_energy: low}
     - id: frustrated_complaint_1
-      axes: {brow_action: slight_knit, eye_aperture: relaxed_heavy, gaze_target: lens, gaze_sequence: held_lens, nose_cheek_action: one_cheek_tension, mouth_action: mid_speech, facial_asymmetry: dynamic_natural, display_intensity: medium, performance_authorship: selfie_micro_pose, temporal_phase: apex, facial_energy: low}
+      axes: {brow_action: slight_knit, eye_aperture: relaxed_heavy, gaze_target: lens, gaze_sequence: screen_then_lens, nose_cheek_action: relaxed, mouth_action: subtle_pout, facial_asymmetry: balanced, display_intensity: clear, performance_authorship: selfie_micro_pose, temporal_phase: apex, facial_energy: low}
     - id: frustrated_complaint_2
       axes: {brow_action: slight_inward_draw, eye_aperture: brief_squeeze, gaze_target: off_frame, gaze_sequence: lens_then_away, nose_cheek_action: small_nose_scrunch, mouth_action: lightly_pressed, facial_asymmetry: momentary_irregular, display_intensity: medium, performance_authorship: responsive_candid, temporal_phase: after_reaction, facial_energy: recovering}
   embarrassed_repair:
@@ -177,20 +177,20 @@ expression_beats:
   amusement_leaking:
     - id: nose_scrunch_laugh
       requires: {nose_cheek_action: small_nose_scrunch}
-      visible_evidence: ["the bridge of the nose is gently scrunched", "the mouth is trying and failing to hold back a laugh"]
+      visible_evidence: ["a subtle upper-cheek lift softens the eyes while the nose bridge stays calm and straight", "the mouth corners hold back a quiet laugh without distorting the mid-face"]
     - id: laugh_recovery
       requires: {temporal_phase: after_reaction}
-      visible_evidence: ["the laugh has just passed", "eyes and mouth remain a little uneven while composure returns"]
+      visible_evidence: ["the laugh has just passed", "eyes and mouth remain gently relaxed while composure returns"]
   deliberate_cuteness:
     - id: tiny_pout_hold
       requires: {mouth_action: subtle_pout}
       visible_evidence: ["a tiny deliberate pout is held for a beat", "the gaze waits for the recipient's reaction without becoming doll-like"]
     - id: puffed_cheek_wait
       requires: {nose_cheek_action: cheek_puff}
-      visible_evidence: ["one small cheek puff is visible", "the face looks playfully self-aware rather than like a beauty pose"]
+      visible_evidence: ["a very faint cheek softness is visible without puffing or distorting the jawline", "the face looks playfully self-aware rather than like a beauty pose"]
     - id: nose_scrunch_after_head_shake
       requires: {nose_cheek_action: small_nose_scrunch, mouth_action: subtle_pout}
-      visible_evidence: ["the nose is lightly scrunched above a mock-serious pout", "a few loose hairs are not fully settled from a just-finished small head shake"]
+      visible_evidence: ["the nose bridge stays straight and unpinched above a subtle mock-serious pout", "a few loose hairs are not fully settled from a just-finished small head shake"]
   mock_defiance:
     - id: side_eye_nope
       requires: {brow_action: one_brow_lift}
@@ -201,7 +201,7 @@ expression_beats:
   comic_self_exposure:
     - id: deadpan_after_mess
       requires: {eye_aperture: relaxed_heavy}
-      visible_evidence: ["the eyes go deliberately flat for a comic beat", "the mouth stays pressed as if silently admitting the mess"]
+      visible_evidence: ["brows draw visibly inward in a clear, relatable '囧' (awkward/speechless) expression over unamused eyes", "her small mouth pulls into a wry, helpless '囧' press or awkward little grimace—vividly expressing 'look at this awkward mess I am stuck in' to her friend, never a calm or blank art portrait"]
     - id: caught_laughing_at_it
       requires: {mouth_action: mid_speech}
       visible_evidence: ["she is caught halfway through explaining what went wrong", "the reaction is visibly less controlled than a normal selfie"]
@@ -221,11 +221,11 @@ expression_beats:
       visible_evidence: ["the mouth is caught at the beginning of a question", "attention moves from the item or screen back to the recipient"]
   frustrated_complaint:
     - id: try_not_to_complain
-      requires: {brow_action: slight_knit}
-      visible_evidence: ["a small brow knit shows irritation without melodrama", "the mouth is caught before the complaint becomes a smile"]
+      requires: {eye_aperture: relaxed_heavy}
+      visible_evidence: ["inner brows visibly knit and droop into an unmistakable everyday '囧 / 无语' (helpless, exasperated 'why am I stuck in this') expression", "her small mouth makes a clear wry, unsmiling grimace/pout as if silently venting to her friend—never a serene, aloof, or melancholic art portrait"]
     - id: tiny_nope_scrunch
       requires: {nose_cheek_action: small_nose_scrunch}
-      visible_evidence: ["a quick nose scrunch makes the refusal comic", "the face reads like a live reaction rather than a fixed pout"]
+      visible_evidence: ["the nose bridge stays straight while a faint brow draw shows comic refusal", "the face reads like a live reaction rather than a fixed pout"]
   embarrassed_repair:
     - id: pout_after_mistake
       requires: {mouth_action: subtle_pout}

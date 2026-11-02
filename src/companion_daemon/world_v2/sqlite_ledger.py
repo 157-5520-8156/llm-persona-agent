@@ -28,7 +28,7 @@ from .batch_invariants import (
     reject_accepted_manifest_v3_without_recorder,
     validate_commit_batch,
 )
-from .errors import ConcurrencyConflict, IdempotencyConflict, LedgerIntegrityError
+from .errors import ConcurrencyConflict, IdempotencyConflict, LedgerIntegrityError, QQIngressAwaitingObservation
 from .event_identity import validate_event_identity
 from .ledger import (
     HistoricalLedgerEvent,
@@ -615,6 +615,69 @@ _OUTLOOK_ENTITY_FIELDS = (
     ("npcs", "npc_id", ("active",)),
     ("prehistory_records", "record.record_id", ()),
 )
+
+
+def _guard_qq_expression_dispatch_against_pending_ingress(
+    connection: sqlite3.Connection, state: ReducerState, events: Sequence[WorldEvent],
+) -> None:
+    """Fence unsent interruptible QQ expression beats behind persisted input.
+
+    Called after BEGIN IMMEDIATE and the ledger CAS, before reducer effects.
+    An exact coalesced batch is excluded by its persisted recipient and
+    platform-message identity; other queued non-control inputs are not. The
+    already-started provider effects and every receipt/recovery are left
+    untouched. No content is interpreted and no choice is made for the role.
+    """
+    action_ids = {
+        event.payload().get("action_id")
+        for event in events
+        if event.event_type == "ActionDispatchStarted"
+    }
+    if not action_ids:
+        return
+    prefix = "conversation:qq:c2c:"
+    potential = tuple(
+        action for action in state.actions
+        if action.action_id in action_ids
+        and action.expression_plan_id is not None
+        and action.expression_beat_id is not None
+        and action.target.startswith(prefix)
+    )
+    if not potential:
+        return
+    beats = {beat.beat_id: beat for beat in state.expression_beats}
+    candidates = []
+    for action in potential:
+        beat = beats.get(action.expression_beat_id)
+        if beat is None or beat.reconsider_policy == "never":
+            continue
+        recipient = action.target.removeprefix(prefix)
+        if recipient:
+            candidates.append((recipient, action.correlation_id))
+    if not candidates:
+        return
+    tables = {
+        row[0] for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' "
+            "AND name IN ('world_v2_qq_ingress_fragments','world_v2_qq_ingress_batches')"
+        )
+    }
+    if not tables:
+        return  # non-QQ or isolated ledger without a QQ ingress store
+    if len(tables) != 2:
+        raise LedgerIntegrityError("incomplete QQ ingress store")
+    for recipient, correlation_id in candidates:
+        pending = connection.execute(
+            "SELECT 1 FROM world_v2_qq_ingress_fragments f "
+            "LEFT JOIN world_v2_qq_ingress_batches b ON b.batch_id=f.batch_id "
+            "WHERE f.recipient_id=? AND f.state!='committed' "
+            "AND json_extract(f.payload_json,'$.content_shape')!='control' "
+            "AND COALESCE('qq:' || f.recipient_id || ':' || "
+            "json_extract(b.batch_json,'$.platform_message_id'),'') != ? LIMIT 1",
+            (recipient, correlation_id),
+        ).fetchone()
+        if pending is not None:
+            raise QQIngressAwaitingObservation("QQ input must become an Observation before old expression dispatch")
 
 
 class SQLiteWorldLedger:
@@ -1530,18 +1593,34 @@ class SQLiteWorldLedger:
         self._pending_head_state_ops = ops
         return canonical_state, state_hash
 
-    def _state_bytes_map_for(self, state_hash: str, fragments: dict[str, str]) -> dict[str, bytes]:
+    def _state_bytes_map_for(
+        self,
+        state_hash: str,
+        fragments: dict[str, str],
+        item_fragments: dict[str, tuple[str, ...]] | None = None,
+    ) -> dict[str, bytes | bytearray]:
         """Return (building lazily) the UTF-8 chunks of one fragment set."""
 
         cached = self._state_fragment_bytes
         if cached is not None and cached[0] == state_hash:
             return cached[1]
-        bytes_map = {name: fragment.encode("utf-8") for name, fragment in fragments.items()}
+        if item_fragments is None and self._state_fragment_cache is not None:
+            item_fragments = self._state_fragment_cache[2]
+        bytes_map: dict[str, bytes | bytearray] = {}
+        for name, fragment in fragments.items():
+            if (
+                fragment == "[...]"
+                and item_fragments is not None
+                and name in item_fragments
+            ):
+                fragment = "[" + ",".join(item_fragments[name]) + "]"
+                fragments[name] = fragment
+            bytes_map[name] = bytearray(fragment.encode("utf-8"))
         self._state_fragment_bytes = (state_hash, bytes_map)
         return bytes_map
 
     def _state_hash_from_fragment_bytes(
-        self, *, fragment_bytes: dict[str, bytes], cursor: ProjectionCursor
+        self, *, fragment_bytes: dict[str, bytes | bytearray], cursor: ProjectionCursor
     ) -> str:
         """Hash the exact ``_state_hash_material`` bytes from per-field chunks.
 
@@ -1595,23 +1674,24 @@ class SQLiteWorldLedger:
         if base is None or cache is None:
             raise LedgerIntegrityError("incremental state encode requires a verified base")
         previous, base_fragments, base_item_fragments = base
-        previous_bytes = self._state_bytes_map_for(cache[0], base_fragments)
-        fragments, item_fragments, ops, changed_fields = self._apply_state_delta_to_fragments(
-            previous=previous,
-            state=state,
-            fragments=dict(base_fragments),
-            item_fragments=dict(base_item_fragments),
+        previous_bytes = self._state_bytes_map_for(
+            cache[0], base_fragments, base_item_fragments
         )
         fragment_bytes = dict(previous_bytes)
-        for field_name in changed_fields:
-            fragment = fragments.get(field_name)
-            if fragment is None:
-                fragment_bytes.pop(field_name, None)
-            else:
-                fragment_bytes[field_name] = fragment.encode("utf-8")
-        state_hash = self._state_hash_from_fragment_bytes(
-            fragment_bytes=fragment_bytes, cursor=cursor
-        )
+        try:
+            fragments, item_fragments, ops, changed_fields = self._apply_state_delta_to_fragments(
+                previous=previous,
+                state=state,
+                fragments=dict(base_fragments),
+                item_fragments=dict(base_item_fragments),
+                fragment_bytes=fragment_bytes,
+            )
+            state_hash = self._state_hash_from_fragment_bytes(
+                fragment_bytes=fragment_bytes, cursor=cursor
+            )
+        except Exception:
+            self._state_fragment_bytes = None
+            raise
         self._state_fragment_cache = (state_hash, fragments, item_fragments)
         self._state_fragment_bytes = (state_hash, fragment_bytes)
         self._pending_head_state_ops = ops
@@ -1803,14 +1883,18 @@ class SQLiteWorldLedger:
                     new_bytes = state_bytes.get(field_name)
                     if new_bytes is None:
                         return None
-                    fragments[field_name] = new_bytes
+                    fragments[field_name] = (
+                        bytes(new_bytes) if isinstance(new_bytes, bytearray) else new_bytes
+                    )
                 else:
                     fragments.pop(field_name, None)
             elif field_name in fragments:
                 new_bytes = state_bytes.get(field_name)
                 if new_bytes is None:
                     return None
-                fragments[field_name] = new_bytes
+                fragments[field_name] = (
+                    bytes(new_bytes) if isinstance(new_bytes, bytearray) else new_bytes
+                )
             # Fields outside the semantic payload (trigger bookkeeping,
             # proposal audit lanes, ...) do not affect the semantic hash.
         fragments["world_revision"] = str(int(world_revision)).encode("ascii")
@@ -1839,11 +1923,25 @@ class SQLiteWorldLedger:
         """
 
         # Reducer .52 retirement is a projection-only cutover: immutable
-        # events and the just-reduced raw state remain untouched.  The
-        # incremental projection copier cannot observe fields changed only by
-        # that deterministic fold, so use the canonical constructor whenever
-        # the fold is material for this head.
-        if fold_retired_character_author_state(state) != state:
+        # events and the just-reduced raw state remain untouched.  When the
+        # fold only terminalizes retired ``trigger_processes`` and
+        # ``completed_trigger_ids`` (neither of which is in ``semantic_payload``),
+        # the incremental semantic hash and projection copier remain exact as
+        # long as both folded bookkeeping fields are copied onto the projection.
+        # Fall back to ``make_projection`` only when the fold cancels actions/
+        # beats/plans/reservations in the semantic payload.
+        folded = fold_retired_character_author_state(state)
+        if any(
+            getattr(folded, field_name) != getattr(state, field_name)
+            for field_name in (
+                "actions",
+                "pending_actions",
+                "budget_reservations",
+                "budget_accounts",
+                "expression_beats",
+                "expression_plans",
+            )
+        ):
             self._semantic_full_count += 1
             return make_projection(
                 world_id=self._world_id,
@@ -1879,22 +1977,15 @@ class SQLiteWorldLedger:
                 and base is not None
                 and self._head_projection_cache_row_identity == expected_identity
             ):
-                # The .52 retirement fold is projection-only: it never mutates
-                # the raw head state, so ``fold(state) == state`` (checked
-                # above) proves the incremental path is safe for the semantic
-                # payload.  But the *previous* head projection may still carry
-                # fold-derived bookkeeping (e.g. ``completed_trigger_ids``
-                # filled while an earlier commit's fold was material, then
-                # exempted by a later claim).  ``model_copy`` would retain
-                # that stale value, diverging from a cold replay.  Re-derive
-                # the fold-sensitive projection fields from the folded state
-                # so the incremental head always equals ``make_projection``.
-                folded = fold_retired_character_author_state(state)
+                # Re-derive the fold-sensitive projection fields from the
+                # folded state so the incremental head always equals
+                # ``make_projection``.
                 update: dict[str, object] = {
                     name: getattr(folded, name)
                     for name in changed_fields
                     if name in LedgerProjection.model_fields
                 }
+                update["trigger_processes"] = folded.trigger_processes
                 update["completed_trigger_ids"] = folded.completed_trigger_ids
                 update["world_revision"] = world_revision
                 update["deliberation_revision"] = deliberation_revision
@@ -1946,6 +2037,7 @@ class SQLiteWorldLedger:
         state: ReducerState,
         fragments: dict[str, str],
         item_fragments: dict[str, tuple[str, ...]],
+        fragment_bytes: dict[str, bytes | bytearray] | None = None,
     ) -> tuple[dict[str, str], dict[str, tuple[str, ...]], _HeadStateWriteOps, tuple[str, ...]]:
         """Patch verified previous-state fragments with one commit's delta.
 
@@ -1988,6 +2080,8 @@ class SQLiteWorldLedger:
                 if fragments.pop(field_name, None) is not None:
                     field_deletes.append(field_name)
                     changed_fields.append(field_name)
+                    if fragment_bytes is not None:
+                        fragment_bytes.pop(field_name, None)
                 item_fragments.pop(field_name, None)
                 continue
             old_items = item_fragments.get(field_name)
@@ -2024,18 +2118,50 @@ class SQLiteWorldLedger:
             if field_name in item_changes:
                 changed_indexes = item_changes[field_name]
                 old_items = item_fragments[field_name]
-                new_items = list(old_items[: len(new_value)])
-                new_items.extend([""] * (len(new_value) - len(new_items)))
+                old_len = len(old_items)
+                new_len = len(new_value)
+                is_pure_tail_append = (
+                    old_len > 0
+                    and new_len > old_len
+                    and changed_indexes == tuple(range(old_len, new_len))
+                )
+                new_items = list(old_items[:new_len])
+                new_items.extend([""] * (new_len - len(new_items)))
+                appended_fragments: list[str] = []
                 for index in sorted(changed_indexes):
                     item_fragment = _canonical_fragment(
                         _durable_item_json(field_name, _json_ready_item(new_value[index]))
                     )
                     new_items[index] = item_fragment
                     upserts.append((field_name, index, item_fragment))
-                if len(new_value) < len(old_items):
-                    tail_deletes.append((field_name, len(new_value)))
+                    if is_pure_tail_append:
+                        appended_fragments.append(item_fragment)
+                if new_len < old_len:
+                    tail_deletes.append((field_name, new_len))
                 item_fragments[field_name] = tuple(new_items)
-                fragments[field_name] = "[" + ",".join(new_items) + "]"
+                if (
+                    is_pure_tail_append
+                    and fragment_bytes is not None
+                    and field_name in fragment_bytes
+                ):
+                    existing_chunk = fragment_bytes[field_name]
+                    buf = (
+                        existing_chunk
+                        if isinstance(existing_chunk, bytearray)
+                        else bytearray(existing_chunk)
+                    )
+                    del buf[-1:]
+                    for item_fragment in appended_fragments:
+                        buf.extend(b",")
+                        buf.extend(item_fragment.encode("utf-8"))
+                    buf.extend(b"]")
+                    fragment_bytes[field_name] = buf
+                    fragments[field_name] = "[...]"
+                else:
+                    full_fragment = "[" + ",".join(new_items) + "]"
+                    fragments[field_name] = full_fragment
+                    if fragment_bytes is not None:
+                        fragment_bytes[field_name] = bytearray(full_fragment.encode("utf-8"))
                 changed_fields.append(field_name)
             else:
                 dumped_value = dumped[field_name]
@@ -2053,6 +2179,8 @@ class SQLiteWorldLedger:
                 field_deletes.append(field_name)
                 changed_fields.append(field_name)
                 fragments[field_name] = fragment
+                if fragment_bytes is not None:
+                    fragment_bytes[field_name] = bytearray(fragment.encode("utf-8"))
                 if fragment.startswith("[") and fragment != "[]":
                     items = _split_array_fragment_items(fragment)
                     item_fragments[field_name] = items
@@ -4263,6 +4391,12 @@ class SQLiteWorldLedger:
                 state = self._head_state_cache
             else:
                 state = self._decode_state(self._head_state_json_locked(head))
+            # An ingress fragment and ActionDispatchStarted can be written by
+            # different connections.  Decide their order inside this same
+            # BEGIN IMMEDIATE transaction, before committing the external
+            # handoff.  The queued QQ fragment is not yet a World fact and
+            # must first reach the normal Observation/reconsideration path.
+            _guard_qq_expression_dispatch_against_pending_ingress(connection, state, events)
             previous_state = state
             staged: list[tuple[WorldEvent, int, int, int, str, str]] = []
             for event, definition in zip(events, definitions, strict=True):
@@ -5646,7 +5780,7 @@ class SQLiteWorldLedger:
         """
         if not action_ids:
             return ()
-        if len(action_ids) > 512:
+        if len(action_ids) > 2048:
             raise ValueError("receipt action candidate budget exceeded")
         ids=tuple(sorted(action_ids))
         slots=",".join("?" for _ in ids)
@@ -6087,7 +6221,7 @@ class SQLiteWorldLedger:
             if size <= 16 * 1024 * 1024:
                 self._source_event_parse_cache[str(row['event_hash'])] = (event_json, event, size)
                 self._source_event_parse_cache_bytes += size
-                while (len(self._source_event_parse_cache) > 256
+                while (len(self._source_event_parse_cache) > 2048
                        or self._source_event_parse_cache_bytes > 16 * 1024 * 1024):
                     _, removed = self._source_event_parse_cache.popitem(last=False)
                     self._source_event_parse_cache_bytes -= removed[2]

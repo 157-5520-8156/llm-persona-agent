@@ -52,6 +52,12 @@ from .shared_private_invitation import pending_shared_private_invitation_advisor
 from .response_expectation_view import (
     pending_response_expectation,
     response_expectation_advisory,
+    unfulfilled_expectation_backlog_advisory,
+)
+from .revisit_intention_view import (
+    open_unfinished_revisit,
+    revisit_intention_advisory,
+    unfinished_revisits,
 )
 from .schemas import LedgerProjection, Observation, ProjectionCursor, WorldEvent
 
@@ -492,6 +498,12 @@ class PinnedTurnCompiler:
                 failure_code="interactive_budget_exhausted",
             )
         context_started = time.perf_counter()
+        context_budget_started = turn_budget.clock() if turn_budget is not None else None
+        context_entry_allowance = (
+            max(turn_budget.first_provider_entry_remaining(), 1.15)
+            if turn_budget is not None
+            else 0.0
+        )
         try:
             query = query_from_projection(
                 projection,
@@ -502,6 +514,7 @@ class PinnedTurnCompiler:
                 observation,
                 observation_event,
                 source_world_revision=stored[1].world_revision,
+                projection=projection,
             )
             capsule_operation = self._compile_capsule_with_source_context(
                 query=query,
@@ -544,6 +557,17 @@ class PinnedTurnCompiler:
             mechanism_summary = mechanism_consumption_summary(
                 capsule.capsule.model_content_json
             )
+            warm_snapshot = getattr(
+                getattr(self._deliberation, "_main", None),
+                "warm_inbound_snapshot",
+                None,
+            )
+            if callable(warm_snapshot):
+                await warm_snapshot(
+                    trigger_ref=observation_event.event_id,
+                    cursor=cursor,
+                    logical_time=projection.logical_time or observation_event.logical_time,
+                )
         except _RETRYABLE_CONTEXT_PREPARATION_ERRORS as exc:
             await self._raise_if_stale(cursor, exc)
             _LOG.warning(
@@ -574,6 +598,16 @@ class PinnedTurnCompiler:
             (time.perf_counter() - context_started) * 1000,
             (time.perf_counter() - started) * 1000,
         )
+        if turn_budget is not None and context_budget_started is not None:
+            context_budget_elapsed = max(0.0, turn_budget.clock() - context_budget_started)
+            context_overrun = max(0.0, context_budget_elapsed - context_entry_allowance)
+            if context_overrun > 0:
+                turn_budget = replace(
+                    turn_budget,
+                    started_at=turn_budget.started_at + context_overrun,
+                    deadline=turn_budget.deadline + context_overrun,
+                    hedge_at=turn_budget.hedge_at + context_overrun,
+                )
         # Keep an operator-readable answer to the most important production
         # question: did the character mechanisms reach this turn at all?  The
         # summary contains only counts/statuses and never logs model-facing
@@ -1066,6 +1100,8 @@ class PinnedTurnCompiler:
 
         if not self._pending_expectation_advisory:
             return ()
+        logical_time = projection.logical_time or observation_event.logical_time
+        advisories: list[InnerAdvisoryProjection] = []
         try:
             view = pending_response_expectation(
                 projection, before_world_revision=source_world_revision
@@ -1073,17 +1109,38 @@ class PinnedTurnCompiler:
         except (TypeError, ValueError):
             # Expectation advice is best-effort context.  A projection defect
             # must not make a normal user turn fail.
-            return ()
-        if view is None:
-            return ()
-        return (
-            response_expectation_advisory(
-                view,
-                source_ref=observation_event.event_id,
-                logical_time=projection.logical_time or observation_event.logical_time,
-                counterpart_replied=True,
-            ),
-        )
+            view = None
+        if view is not None and logical_time is not None:
+            advisories.append(
+                response_expectation_advisory(
+                    view,
+                    source_ref=observation_event.event_id,
+                    logical_time=logical_time,
+                    counterpart_replied=True,
+                )
+            )
+        try:
+            backlog = unfulfilled_expectation_backlog_advisory(
+                projection, before_world_revision=source_world_revision
+            )
+        except (TypeError, ValueError):
+            backlog = None
+        if backlog is not None:
+            advisories.append(backlog)
+        try:
+            revisit = open_unfinished_revisit(projection)
+            all_open = unfinished_revisits(projection, due_only=False)
+        except (TypeError, ValueError):
+            revisit = None
+            all_open = ()
+        if revisit is not None and logical_time is not None:
+            extra = tuple(item for item in all_open if item.plan_id != revisit.plan_id)
+            advisories.append(
+                revisit_intention_advisory(
+                    revisit, logical_time=logical_time, extra_views=extra
+                )
+            )
+        return tuple(advisories)
 
     def _aspiration_advisories(
         self, projection: LedgerProjection
@@ -1218,6 +1275,72 @@ class PinnedTurnCompiler:
             labels.append(None)
         return tuple(labels)
 
+    @staticmethod
+    def _resolve_quoted_reply_texts(
+        reply_refs: tuple[str, ...],
+        projection: LedgerProjection | None,
+    ) -> tuple[str, ...]:
+        """Resolve platform quote-reply refs against committed projection facts."""
+
+        if not reply_refs or projection is None:
+            return ()
+        payload_by_ref = {
+            item.payload_ref: item.text.strip()
+            for item in getattr(projection, "stored_message_payloads", ())
+            if isinstance(getattr(item, "payload_ref", None), str)
+            and isinstance(getattr(item, "text", None), str)
+            and item.text.strip()
+        }
+        action_text_by_id: dict[str, str] = {}
+        for manifest in getattr(projection, "expression_plan_manifests", ()):
+            for beat in getattr(manifest, "beats", ()):
+                action = getattr(beat, "action", None)
+                action_id = getattr(action, "action_id", None)
+                text = (
+                    beat.text.strip()
+                    if isinstance(getattr(beat, "text", None), str) and beat.text.strip()
+                    else payload_by_ref.get(getattr(beat, "payload_ref", ""))
+                )
+                if isinstance(action_id, str) and action_id and text:
+                    action_text_by_id[action_id] = text
+        for manifest in getattr(projection, "minimal_reply_manifests", ()):
+            action_id = getattr(manifest, "action_id", None)
+            text = payload_by_ref.get(getattr(manifest, "message_payload_ref", ""))
+            if isinstance(action_id, str) and action_id and text:
+                action_text_by_id[action_id] = text
+        by_ref: dict[str, str] = {}
+        for receipt in getattr(projection, "execution_receipts", ()):
+            provider_ref = getattr(receipt, "provider_ref", "")
+            action_id = getattr(receipt, "action_id", "")
+            if (
+                isinstance(provider_ref, str)
+                and provider_ref.startswith("platform:message_id:")
+                and action_id in action_text_by_id
+            ):
+                msg_id = provider_ref.removeprefix("platform:message_id:")
+                if msg_id:
+                    rendered = f"我：{action_text_by_id[action_id]}"
+                    by_ref[f"qq-message:{msg_id}"] = rendered
+                    by_ref[msg_id] = rendered
+        for obs_ref in getattr(projection, "message_observations", ()):
+            payload_ref = getattr(obs_ref, "payload_ref", None)
+            source_event_id = getattr(obs_ref, "source_event_id", None)
+            text = payload_by_ref.get(payload_ref) if isinstance(payload_ref, str) else None
+            if isinstance(source_event_id, str) and source_event_id and text:
+                rendered = f"对方：{text}"
+                by_ref[source_event_id] = rendered
+                if ":" in source_event_id:
+                    msg_id = source_event_id.rsplit(":", 1)[-1]
+                    if msg_id:
+                        by_ref.setdefault(f"qq-message:{msg_id}", rendered)
+                        by_ref.setdefault(msg_id, rendered)
+        resolved: list[str] = []
+        for ref in reply_refs:
+            matched = by_ref.get(ref)
+            if matched:
+                resolved.append(f"{ref} -> {matched}"[:512])
+        return tuple(resolved[:16])
+
     @classmethod
     def _trigger_message(
         cls,
@@ -1225,12 +1348,14 @@ class PinnedTurnCompiler:
         observation_event: WorldEvent,
         *,
         source_world_revision: int,
+        projection: LedgerProjection | None = None,
     ) -> TriggerMessage | None:
         """Expose committed inbound evidence, never fabricated contents or mood."""
 
         reaction_refs = cls._coalesced_provider_refs(observation, "reaction_refs")
         sticker_refs = cls._coalesced_provider_refs(observation, "sticker_refs")
         reply_refs = cls._coalesced_provider_refs(observation, "reply_refs")
+        quoted_reply_texts = cls._resolve_quoted_reply_texts(reply_refs, projection)
         if (
             observation.text is None
             and not observation.attachment_refs
@@ -1288,6 +1413,7 @@ class PinnedTurnCompiler:
             reaction_refs=reaction_refs,
             sticker_refs=sticker_refs,
             reply_refs=reply_refs,
+            quoted_reply_texts=quoted_reply_texts,
             inbound_surfaces=inbound_surfaces,
             observed_at=(
                 observation.received_at

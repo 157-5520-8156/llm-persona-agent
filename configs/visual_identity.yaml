@@ -1,22 +1,18 @@
 name: 沈知栀 / Celia Shen
-reference_asset: assets/reference/08-cafe-phone-canonical.png
+reference_asset: assets/reference/04-night-walk-turn.png
 reference_sets:
   everyday_selfie:
-    - assets/reference/08-cafe-phone-canonical.png
-    - assets/reference/01-headphones-candid.png
     - assets/reference/04-night-walk-turn.png
     - assets/reference/05-restaurant-seated.png
     - assets/reference/06-night-street-seated.png
-    - assets/reference/07-lakeside-turn.png
-    - assets/reference/10-sidewalk-turn.png
   relationship_private:
-    - assets/reference/08-cafe-phone-canonical.png
-    - assets/reference/02-bedtime-close-selfie.png
+    - assets/reference/04-night-walk-turn.png
     - assets/reference/05-restaurant-seated.png
+    - assets/reference/06-night-street-seated.png
   relationship_private_bold:
-    - assets/reference/08-cafe-phone-canonical.png
-    - assets/reference/03-tennis-selfie.png
-    - assets/reference/09-pool-selfie.png
+    - assets/reference/04-night-walk-turn.png
+    - assets/reference/05-restaurant-seated.png
+    - assets/reference/06-night-street-seated.png
 relationship_tiers:
   soft:
     reference_profile: relationship_private
@@ -65,21 +61,25 @@ media_capture_profiles:
     The character herself is holding the phone; retain believable arm-length framing and a warm 'I have to tell you this' immediacy.
     Keep her recognizably herself, dignified, and not humiliating, grotesque, sickly, or physically malformed.
 anchor_prompt: |
-  沈知栀是一个原创虚拟中国女大学生形象，20岁，气质温和、清淡、慢热。
-  她有自然黑色中长发，发量蓬松、常有轻微碎发，刘海自然落在额前。
-  五官清秀但不过度精致，眼神安静、略带倦意或若有所思；右侧脸颊有一颗浅色小痣。
-  穿搭偏真实校园和城市日常：宽松卫衣、针织开衫、牛仔外套、帆布包、运动服或简洁泳衣；按事件决定，不固定一套衣服。
-  整体不要像网红写真，也不要像明星脸；要像一个有生活感的原创虚拟角色。
+  沈知栀是一个原创中国女大学生形象，20岁，气质自然鲜活、温和慢热。
+  脸型与骨相（严格以参考图04/05/06为唯一身份基准）：小巧流畅的鹅蛋脸，下颌线清瘦收拢、下巴小巧自然（绝不宽腮、方颌或发腮）。
+  眉眼与鼻唇比例（严格还原参考图04/05/06）：自然柔和的野生眉；眼型是清澈自然的杏眼，双眼皮褶皱柔和；鼻梁纤细挺直、鼻头小巧秀气；人中偏短，嘴型小巧秀气（唇幅明显窄于两眼瞳距，上唇微翘柔和、下唇自然饱满，做任何微囧、无语、叹气或说话表情时都保持小嘴比例，绝不咧成大宽嘴）；右侧脸颊有一颗浅色小痣（位于右侧眼尾下方颧骨处）。
+  发型轮廓：自然蓬松的黑色中长发，额前有轻薄透气的八字/碎刘海，脸颊两侧有自然垂落的碎发贴合修饰轮廓。
+  穿搭偏真实校园和城市日常：宽松卫衣、针织开衫、牛仔外套、帆布包、运动服或简洁日常装；按事件决定，不固定一套衣服。
 selfie_style: |
-  手机前置摄像头或随手拍视角，自然光，构图轻微不完美。
-  表情克制而有微变化：走神、回望、刚睡醒、压住笑意或顺手看镜头都成立；不固定微笑或同一侧耳朵。
-  图片是虚拟生活照/角色图，不宣称为真实照片。
+  真实手机随手拍生活感（涵盖前置单手自拍、后置第一人称随手拍环境/物品、自己手部/身体局部入镜但不露脸、对镜拍、请路人或朋友抓拍等多种真实拍摄方式），绝不要拍成影楼摆拍、冷淡唯美写真或毫无沟通意图的纯艺术照。
+  物理与空间逻辑真实：
+  - 若是前置自拍（character_front_camera）：必须是真实的单手持机物理结构（一只手向镜头前方下缘举手机，另一只手自然放松或与现场互动；绝不能两只手都垂在身侧像别人拍的，也不要双手同时伸向镜头）；身体朝向与当前活动及周围环境的空间流向自然一致，绝不为迎合镜头而做出违背现场活动逻辑的180度突兀转身或僵硬摆拍。
+  - 若是后置随手拍或局部入镜（character_rear_camera）：第一人称自然视角拍眼前的现场、物品或自己的手/袖口/鞋/衣角，构图随性真实。
+  - 若是路人/同伴帮忙拍或定时拍（requested_helper/known_companion/timer_fixed）：双手解放，动作与现场互动自然。
+  表情与肢体必须直接传递她拍这张图想对对方说的潜台词，鲜活有互动感，绝不要空洞冷淡的模特艺术照表情。
+  呈现真实手机实拍的光学质感：柔和的手机传感器影调过渡、真实的环境明暗衰减与清透年轻肤质，不带CG渲染感、塑料磨皮或HDR面部补光。
 negative_prompt: |
   不要复用真实公众人物或网红脸。
   不要夸张滤镜、重度磨皮、性感姿势、暴露穿着、商业写真感。
   不要文字、水印、logo、畸形手指、过度锐化、过度二次元。
 consistency_notes:
-  - 日常照片固定使用 08 主身份锚点，并按冻结机位从同一日常参考集中选择至多一张角度辅助图；参考图只定义身份，不复制其衣装、场景、头偏、表情或单侧露耳。
+  - 日常照片固定使用 04 主身份锚点，并按冻结机位从同一日常参考集中选择至多一张角度辅助图（05/06）；参考图只定义身份，不复制其衣装、场景、头偏、表情或单侧露耳。
   - 纯侧颜、强回头或场景/衣装负担很重的素材只能标为 `angle_support` 或 `scene_only`：绝不单独承担身份生成，也绝不作为身份验收的主样本。身份验收始终以 `canonical_identity` 的近正面五官结构为主，角度图只补充该机位下的轮廓可行性。
   - 亲密关系素材只在 lover 阶段的明确请求或角色自主决定的低频情境中使用；保持非露骨。
   - OpenAI 后端通过参考图编辑接口保持一致性；本地 ComfyUI 工作流可用 $PROMPT、$NEGATIVE_PROMPT、$LORA_PATH 和 $REFERENCE_IMAGE_N 占位符接入 LoRA / IP-Adapter。

@@ -41,7 +41,7 @@ from ..present_prompt import (
 InboundToolPhase = Literal["gate", "initial", "after_recall", "final"]
 InboundToolTransport = Literal["atomic", "stream"]
 InboundToolSchemaDialect = Literal["standard", "deepseek-strict"]
-InboundAtomicEnvelopeVersion = Literal["1", "2", "3", "slim", "slim2"]
+InboundAtomicEnvelopeVersion = Literal["1", "2", "3", "slim", "slim2", "slim3", "slim4"]
 _CONTRACT_VERSION = "1"
 _COMPACT_GATE_CONTRACT_VERSION = "2"
 _REPLY_ONLY_APPRAISAL_FIELDS = (
@@ -288,19 +288,24 @@ def _deepseek_strict_union_padding_is_empty(field: str, value: object) -> bool:
 def normalize_compact_gate_transport(value: dict[str, object]) -> dict[str, object]:
     """Normalize the observed provider spelling of the compact-gate branch.
 
-    DeepSeek has returned ``result_code`` for the declared ``result_kind``
-    discriminator on this tool. Accept that spelling only as an exact two-key
-    transport envelope and only for known branches; payload validation and all
-    capability checks still run through the canonical ``result_kind`` path.
+    DeepSeek has returned ``result_code`` or ``result_mode`` for the declared
+    ``result_kind`` discriminator on this tool. Accept that spelling only as an
+    exact two-key transport envelope and only for known branches; payload
+    validation and all capability checks still run through the canonical
+    ``result_kind`` path.
     """
 
-    if "result_code" not in value:
+    alias_key = next(
+        (key for key in ("result_code", "result_mode") if key in value),
+        None,
+    )
+    if alias_key is None:
         return value
-    if "result_kind" in value:
+    if "result_kind" in value or ("result_code" in value and "result_mode" in value):
         raise ValueError("compact gate carrier has ambiguous branch discriminators")
-    if set(value) != {"result_code", "payload_json"}:
+    if set(value) != {alias_key, "payload_json"}:
         raise ValueError("compact gate result_code alias has an invalid transport shape")
-    kind = value.get("result_code")
+    kind = value.get(alias_key)
     if kind not in {"reply_only", "full_turn", "recall"}:
         raise ValueError("compact gate result_code alias is unavailable")
     return {"result_kind": kind, "payload_json": value["payload_json"]}
@@ -561,6 +566,7 @@ def expand_atomic_slim_payload(
     *,
     recall_allowed: bool,
     allow_nontext: bool = False,
+    require_media_choice: bool = False,
 ) -> dict[str, object]:
     """Compile the slim atomic carrier into the existing typed drafts.
 
@@ -602,6 +608,16 @@ def expand_atomic_slim_payload(
                     request[field] = sorted(set(values))
             payload = {**payload, "recall_request": request}
         return {"result_kind": "recall", **payload}
+    if require_media_choice:
+        if set(payload) == {"appraisal_draft", "expression_draft"}:
+            expression = payload.get("expression_draft")
+            choice = expression.get("media_request") if isinstance(expression, dict) else None
+            if not isinstance(choice, str) or choice not in {"none", "consider_available_candidate"}:
+                raise ValueError("本轮媒体能力可用，请在 expression_draft 明确选择 media_request；宿主不会替你选择。")
+        else:
+            photo = payload.get("photo")
+            if type(photo) is not bool and not (isinstance(photo, str) and photo.strip()):
+                raise ValueError("本轮媒体能力可用，请明确填写 photo=true、photo=false 或你选择的来源 ref；宿主不会替你选择。")
     compiled = compile_slim_consider_payload(payload, allow_nontext=allow_nontext)
     if compiled is None:
         if set(payload) == {"appraisal_draft", "expression_draft"}:
@@ -615,9 +631,9 @@ def _atomic_slim_tool_description(*, recall_allowed: bool) -> str:
         "One character decision for this pinned turn. Call the required function once. "
         "Choose result_kind and put the complete chosen object in payload_json as one "
         "JSON string. "
-        "result_kind=decision carries your slim decision object: the messages you choose "
-        "to send now (or an empty array for silence), meaning_of_this, my_state, and the "
-        "optional fields the system prompt lists. "
+        "result_kind=decision carries your slim decision object: the messages you choose to "
+        "send now (or an empty array for silence), my_state, photo (when media is available), "
+        "and any optional fields the system prompt lists (such as meaning_of_this, world_claims, affect, wait, come_back). "
         + (
             "result_kind=recall is available on this turn and carries exactly "
             "private_turn_state plus recall_request; choose it only when you want one "
@@ -1198,7 +1214,7 @@ class InboundToolContract:
     def unwrap(self, raw_arguments: str) -> str:
         """Validate and remove only the exact forced-tool transport wrapper."""
 
-        if self.identity.version in {"slim", "slim2"}:
+        if self.identity.version in {"slim", "slim2", "slim3", "slim4"}:
             try:
                 value = json.loads(raw_arguments, object_pairs_hook=_unique_compact_gate_object)
             except (TypeError, json.JSONDecodeError) as exc:
@@ -1211,7 +1227,8 @@ class InboundToolContract:
                 value = decode(value, recall_allowed=self.recall_allowed)
             inner = expand_atomic_slim_payload(
                 value, recall_allowed=self.recall_allowed,
-                allow_nontext=self.identity.version == "slim2",
+                allow_nontext=self.identity.version in {"slim2", "slim3", "slim4"},
+                require_media_choice=(self.identity.version in {"slim3", "slim4"} and self.capabilities.media_request_mode == "candidate_only"),
             )
             inner.pop("result_kind")
             return json.dumps(inner, ensure_ascii=False, separators=(",", ":"))
@@ -1583,15 +1600,15 @@ class InboundToolContracts:
             raise ValueError("unsupported inbound tool transport")
         if schema_dialect not in {"standard", "deepseek-strict"}:
             raise ValueError("unsupported inbound tool schema dialect")
-        if atomic_envelope_version not in {"1", "2", "3", "slim", "slim2"}:
+        if atomic_envelope_version not in {"1", "2", "3", "slim", "slim2", "slim3", "slim4"}:
             raise ValueError("unsupported atomic inbound envelope version")
         if atomic_envelope_version in {"2", "3"} and (
             transport != "atomic" or schema_dialect != "deepseek-strict"
         ):
             raise ValueError("versioned atomic transport requires the DeepSeek strict atomic dialect")
-        if atomic_envelope_version in {"slim", "slim2"} and transport != "atomic":
+        if atomic_envelope_version in {"slim", "slim2", "slim3", "slim4"} and transport != "atomic":
             raise ValueError("atomic slim transport requires the atomic carrier")
-        if atomic_envelope_version in {"slim", "slim2"} and (use_schema_references or evidence_first_schema):
+        if atomic_envelope_version in {"slim", "slim2", "slim3", "slim4"} and (use_schema_references or evidence_first_schema):
             # V4 carries the whole decision inside one opaque payload string, so
             # the schema-reference and evidence-first projections have nothing
             # left to shrink and must not silently change its carrier.
@@ -1611,14 +1628,14 @@ class InboundToolContracts:
         )
         tool_name = (
             f"character_inbound_{phase}_{atomic_envelope_version}"
-            if atomic_envelope_version in {"slim", "slim2"} and phase in {"initial", "after_recall"}
+            if atomic_envelope_version in {"slim", "slim2", "slim3", "slim4"} and phase in {"initial", "after_recall"}
             else f"character_inbound_{phase}_{transport}_{atomic_envelope_version}"
-            if atomic_envelope_version in {"slim", "slim2"}
+            if atomic_envelope_version in {"slim", "slim2", "slim3", "slim4"}
             else f"character_inbound_{phase}_v{contract_version}"
             if transport == "atomic" and phase in {"initial", "after_recall"}
             else f"character_inbound_{phase}_{transport}_v{contract_version}"
         )
-        if atomic_envelope_version in {"slim", "slim2"}:
+        if atomic_envelope_version in {"slim", "slim2", "slim3", "slim4"}:
             return self._atomic_slim_contract(
                 phase=phase, capabilities=capabilities, recall_allowed=recall_allowed,
                 tool_name=tool_name, schema_dialect=schema_dialect,

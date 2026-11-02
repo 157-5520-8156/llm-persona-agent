@@ -58,7 +58,9 @@ def world_life_response_source_refs(
         )
         if source is None or source.world_revision > evaluated_world_revision:
             continue
-        occurrence = next(x for x in state.world_occurrences if x.settlement_event_ref == ref)
+        occurrence = lookup_first(state.world_occurrences, "settlement_event_ref", ref)
+        if occurrence is None:
+            continue
         selected = next(
             (
                 x

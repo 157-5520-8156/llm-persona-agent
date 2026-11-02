@@ -29,6 +29,7 @@ from ..affect_target_bounds import (
     STANDARD_RESIDUE_OBJECT_REF,
     STANDARD_RESIDUE_SCHEMA_VERSION,
     lower_bounds_from_projection,
+    select_decay_object_ref,
 )
 from ..aspiration_events import (
     ASPIRATION_POLICY_REF,
@@ -719,8 +720,16 @@ class _WorldStimulusInteriorAuthorityHandler:
                 raise ValueError("world stimulus perception receipt is not pinned authority")
         if "silence_observation" in manifest.payload:
             from ..silence_observation import silence_observation
-            if (process_kind != "silence_appraisal" or manifest.payload["silence_observation"] != silence_observation(
-                    pinned, anchor_event_ref=source_event.event_id, actor_ref=request.actor_ref)):
+            expected_silence = silence_observation(
+                pinned, anchor_event_ref=source_event.event_id, actor_ref=request.actor_ref
+            )
+            recorded_silence = manifest.payload["silence_observation"]
+            if (
+                process_kind != "silence_appraisal"
+                or not isinstance(recorded_silence, dict)
+                or {k: v for k, v in recorded_silence.items() if k != "instruction"}
+                != {k: v for k, v in expected_silence.items() if k != "instruction"}
+            ):
                 raise ValueError("silence observation differs from its original World pin")
         pinned_affect_bounds = lower_bounds_from_projection(pinned)
         if manifest.payload.get("affect_target_lower_bounds") != pinned_affect_bounds.model_dump(
@@ -1052,12 +1061,17 @@ class _WorldStimulusInteriorAuthorityHandler:
                     affect_transition,
                     (InteriorAffectOpenTransition, InteriorAffectSupersedeTransition),
                 ):
+                    peak_intensity_bp = max(
+                        (item.target_intensity_bp for item in affect_transition.component_targets),
+                        default=0,
+                    )
+                    decay_object_ref = select_decay_object_ref(peak_intensity_bp)
                     affect_payload.update(
                         {
                             "decay_config": {
-                                "object_ref": STANDARD_DECAY_OBJECT_REF,
+                                "object_ref": decay_object_ref,
                                 "schema_version": STANDARD_DECAY_SCHEMA_VERSION,
-                                "payload_hash": "sha256:" + _digest(STANDARD_DECAY_OBJECT_REF),
+                                "payload_hash": "sha256:" + _digest(decay_object_ref),
                             },
                             "residue_config": {
                                 "object_ref": STANDARD_RESIDUE_OBJECT_REF,
@@ -1651,7 +1665,11 @@ class CharacterInteriorWorldStimulusRuntime:
         unresolved: list[_WorldStimulusLocatedSource] = []
         terminal_groups: dict[tuple[str, str], list[_WorldStimulusLocatedSource]] = {}
         for process in sorted(processes, key=self._health_process_sort_key):
-            durable = self._durable_opportunity_identity(projection, process.source_evidence_ref)
+            durable = self._durable_opportunity_identity(
+                projection,
+                process.source_evidence_ref,
+                process=process,
+            )
             if durable is not None:
                 identities[process.trigger_id] = durable
                 continue
@@ -1721,15 +1739,29 @@ class CharacterInteriorWorldStimulusRuntime:
         source_ref: str | None,
         *,
         model_audits=None,
+        process: TriggerProcess | None = None,
     ) -> CausalOpportunityIdentity | None:
         if source_ref is None:
             return None
+        revisit_epoch: str | None = None
+        if process is not None:
+            candidate_epoch = self._opportunity_identity(
+                process=process,
+                source_refs=(source_ref,),
+            ).epoch
+            if candidate_epoch == process.trigger_id:
+                revisit_epoch = process.trigger_id
         identities: dict[str, CausalOpportunityIdentity] = {}
         for model_audit in reversed(
             self._indexed_models(projection, source_ref) if model_audits is None else model_audits
         ):
             identity = self._audited_opportunity_identity(model_audit)
             if identity is None or source_ref not in identity.source_refs:
+                continue
+            if revisit_epoch is not None:
+                if identity.epoch != revisit_epoch:
+                    continue
+            elif identity.epoch.startswith("trigger:"):
                 continue
             identities[identity.opportunity_ref] = identity
         if len(identities) != 1:
@@ -2065,6 +2097,7 @@ class CharacterInteriorWorldStimulusRuntime:
         durable_identity = self._durable_opportunity_identity(
             await self._project(),
             source_event.event_id,
+            process=active,
         )
         if durable_identity is not None:
             identity = durable_identity
@@ -2677,7 +2710,10 @@ class CharacterInteriorWorldStimulusRuntime:
                 model_audits = (self._indexed_models(projection, source_ref)
                                 if indexed_read else audits_by_source.get(source_ref, ()))
                 durable_identity = self._durable_opportunity_identity(
-                    projection, source_ref, model_audits=model_audits,
+                    projection,
+                    source_ref,
+                    model_audits=model_audits,
+                    process=process,
                 )
                 identity = (
                     durable_identity
@@ -2849,9 +2885,23 @@ class CharacterInteriorWorldStimulusRuntime:
         canonical_refs = tuple(sorted(set(source_refs)))
         if not canonical_refs:
             raise ValueError("causal opportunity requires source refs")
+        epoch = canonical_refs[0]
+        if len(canonical_refs) == 1 and process.process_kind == "silence_appraisal":
+            from ..batch_invariants import silence_appraisal_trigger_identity
+
+            if process.trigger_id != silence_appraisal_trigger_identity(
+                self._ledger.world_id, canonical_refs[0]
+            ):
+                epoch = process.trigger_id
+        elif (
+            len(canonical_refs) == 1
+            and process.process_kind == "life_reflection"
+            and process.trigger_id != f"reflection:{canonical_refs[0]}"
+        ):
+            epoch = process.trigger_id
         return self._opportunity_runtime.identity_for_refs(
             canonical_refs,
-            epoch=canonical_refs[0],
+            epoch=epoch,
             policy=policy or self._policy_for_process(process),
         )
 

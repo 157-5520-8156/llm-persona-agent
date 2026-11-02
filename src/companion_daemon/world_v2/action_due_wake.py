@@ -180,7 +180,7 @@ class ActionDueWake:
             observed = self._now()
             self._diagnostics.record((observed - due).total_seconds() * 1_000)
             try:
-                await self._wake()
+                result = await self._wake()
             except asyncio.CancelledError:
                 return
             except IdempotencyConflict:
@@ -210,6 +210,14 @@ class ActionDueWake:
                 except asyncio.CancelledError:
                     return
                 continue
+            if getattr(result, "status", None) == "deferred_ingress":
+                # A persisted interjection must become an Observation before
+                # this old tail is reconsidered. Re-arming the already-due
+                # timer would spin; the ingress completion/scheduler refresh
+                # rebuilds it after the durable head changes (or on restart).
+                if generation == self._generation:
+                    self._task = None
+                return
             if generation == self._generation:
                 await self.refresh()
             return

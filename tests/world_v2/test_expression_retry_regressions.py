@@ -94,6 +94,7 @@ def _expression_response(
             "attended_source_refs": [],
         },
         "timing_choice": "now",
+        "turn_posture": "continue",
         "beats": [{"modality": "text", "text": text}],
         "cadence": "conversational",
         "stance": "answer_directly",

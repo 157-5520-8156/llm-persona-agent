@@ -11,8 +11,9 @@
 - 随机性可以决定机会、时机、注意力和候选环境，但不能伪造事实、越过权限或预先决定角色的行为。
 - 新机制必须回答两个问题：这是角色的决定，还是系统的硬边界？如果既非硬边界又替角色选择行为，不应进入生产路径。
 
-开始修改 World V2 前，先阅读 `CONTEXT.md` 与
-`docs/adr/0010-controlled-high-variance-character-agency.md`。如果实现与该宗旨冲突，
+开始修改 World V2 或排查线上问题前，先阅读 `CONTEXT.md`、
+`docs/adr/0010-controlled-high-variance-character-agency.md` 与
+`docs/operations/collaboration-and-operation-habits.md`。如果实现与该宗旨冲突，
 应先修正设计，而不是继续叠加补丁规则。
 
 ## 工程问题处理

@@ -194,7 +194,7 @@ def test_present_stage_note_steers_neither_toward_nor_away_from_closeness() -> N
     """The stage is evidence; the host must not lobby for or against movement."""
 
     instruction = slim_consider_instruction()
-    assert "no target stage and no preferred direction" in instruction
+    assert "没有目标阶段也没有偏好方向" in instruction
     assert "us_deltas" in instruction
     assert "这件事只有你能定" in instruction
     for discouragement in (

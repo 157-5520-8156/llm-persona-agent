@@ -511,6 +511,39 @@ def _current_attempt_is_role_owned_non_immediate_choice(
     return False
 
 
+def _has_outbound_delivery_since_observation(
+    projection: _ExpressionRetryProjection,
+    observation_world_revision: int,
+) -> bool:
+    """Whether any visible companion Action was delivered after the observation."""
+
+    if observation_world_revision <= 0:
+        return False
+    refs = tuple(
+        item
+        for item in getattr(projection, "committed_world_event_refs", ()) or ()
+        if getattr(item, "event_type", None) == "ExecutionReceiptRecorded"
+    )
+    receipts = tuple(getattr(projection, "execution_receipts", ()) or ())
+    if not refs or len(refs) != len(receipts):
+        return False
+    visible_action_ids = {
+        action.action_id
+        for action in getattr(projection, "actions", ()) or ()
+        if getattr(action, "layer", None) == "external_action"
+        and getattr(action, "kind", None)
+        in {"reply", "followup", "proactive_message", "sticker", "media_delivery"}
+    }
+    if not visible_action_ids:
+        return False
+    return any(
+        ref.world_revision > observation_world_revision
+        and getattr(receipt, "action_id", None) in visible_action_ids
+        and getattr(receipt, "observed_state", None) in {"provider_accepted", "delivered"}
+        for ref, receipt in zip(refs, receipts, strict=True)
+    )
+
+
 def expression_episode_technical_notice_candidates(
     projection: _ExpressionRetryProjection,
 ) -> tuple[ExpressionTechnicalNoticeCandidate, ...]:
@@ -538,6 +571,9 @@ def expression_episode_technical_notice_candidates(
     )
     latest_observation_id = getattr(latest, "observation_id", None)
     if not isinstance(latest_observation_id, str) or not latest_observation_id:
+        return ()
+    latest_world_revision = int(getattr(latest, "world_revision", 0) or 0)
+    if _has_outbound_delivery_since_observation(projection, latest_world_revision):
         return ()
 
     candidates: list[ExpressionTechnicalNoticeCandidate] = []

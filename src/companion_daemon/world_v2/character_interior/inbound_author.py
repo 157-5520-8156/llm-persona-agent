@@ -63,7 +63,11 @@ from .inbound_appraisal_wire import (
     _proposal_from_draft as materialize_appraisal_draft,
 )
 from .inbound_tool_contract import InboundToolContract, InboundToolContracts
-from .inbound_prompt import compact_atomic_slim_system_prompt, compact_atomic_system_prompt
+from .inbound_prompt import (
+    compact_atomic_slim_system_prompt,
+    compact_atomic_system_prompt,
+    conversation_atomic_slim_system_prompt,
+)
 from .inbound_context_presentation import (
     cache_ordered_inbound_material, compact_inbound_media_rows,
 )
@@ -266,29 +270,6 @@ def _refresh_atomic_padding_instruction(
 # genuine reply a few seconds late reads far more human than an instant
 # canned acknowledgement, but the wait stays bounded.
 _CLAIM_REPAIR_TIMEOUT_SECONDS = 8.0
-_APPRAISAL_COMMON_FIELDS = frozenset(
-    {
-        "appraise",
-        "affect",
-        "brief_rationale",
-        "behavior_tendency",
-        "stance",
-        "display_strategy",
-        "confidence",
-        "relationship_signal",
-        "relationship_commitment",
-        "interaction_act",
-        "life_intent",
-        "plan_response",
-    }
-)
-_APPRAISAL_EVENT_FIELDS = frozenset({"meanings", "attribution", "severity"})
-_APPRAISAL_AFFECT_FIELDS = {
-    "open": frozenset({"components"}),
-    "update": frozenset({"episode_id", "components"}),
-    "resolve": frozenset({"episode_id", "resolution_summary"}),
-    "supersede": frozenset({"episode_id", "components"}),
-}
 logger = logging.getLogger(__name__)
 
 _EXPRESSION_DRAFT_KNOWN_KEYS = frozenset(ExpressionDraft.model_fields) | {
@@ -376,7 +357,7 @@ _VIOLATION_ZH_PREFIXES: tuple[tuple[str, str], ...] = (
     ),
     (
         "silent expression cannot smuggle visible beats",
-        "timing_choice=silent 时 beats 必须是空数组，不能夹带可见内容。",
+        "timing_choice=silent 时 beats 必须是空数组，不能夹带可见内容，且 delay_seconds、expires_after_seconds、response_expectation（waiting_for/wait）与 revisit（come_back）均须为空。",
     ),
     (
         "immediate expression cannot select a due window",
@@ -396,7 +377,13 @@ _VIOLATION_ZH_PREFIXES: tuple[tuple[str, str], ...] = (
 def _compact_slim_peer_specimen() -> dict[str, object]:
     """The shared slim shape sample; one definition for both carriers."""
 
-    return slim_peer_specimen()
+    base = slim_peer_specimen()
+    return {
+        "meaning_of_this": base["meaning_of_this"],
+        "my_state": base["my_state"],
+        "wants": None,
+        **{k: v for k, v in base.items() if k not in {"meaning_of_this", "my_state"}},
+    }
 
 
 def _compact_gate_character_decision_brief() -> str:
@@ -405,33 +392,25 @@ def _compact_gate_character_decision_brief() -> str:
     return (
         "\n你是上方身份中的她，正在用 QQ 和一个熟人说话。动机、感受、语气、"
         "说不说、何时说、说几条、追不追问或沉默都由你决定；没有维持对话或提供帮助的任务。"
-        "内心状态、生活记录、关系、记忆和提醒是可用环境，不是话题清单或行为脚本；"
-        "可以默默用，也可以不提，不必逐条回应。recent_dialogue 中 current_turn / pending_interaction "
-        "表示尚无后续可见回应的对方报告；它们不是逐条作答命令，你自己判断哪些在意。"
-        "recent_dialogue 是连续对话：前几轮或稍早记录里已经做完、提过的日常小事已翻篇，"
-        "不要在后续回合反复重演成「正忙/刚做完」，也不必每轮都在 my_state 或台词里播报手头动作。\n"
+        "内心状态、生活记录、关系、记忆和提醒供你理解当前处境，不是每轮必报的清单。"
+        "recent_dialogue 中 current_turn / pending_interaction 表示尚无后续可见回应的对方报告，你自己判断哪些在意。\n"
         "可见文字中的具体外部人物、地点、行动、身体情况、当下生活或过往经历，"
         "以及关于具体人物的习惯或频率主张，都必须逐条列入 world_claims，填写匹配的 scope 和 "
-        "source_refs，并使用 expression_hard_boundaries 中精确的来源；每项字段名必须且只能是 "
-        "claim_text、scope、source_refs；事实正文写在 claim_text，不要写成 text。"
+        "source_refs，并使用 expression_hard_boundaries（或 context_window.citable_memory_shortcuts）中精确的来源；"
+        "每项字段名必须且只能是 claim_text、scope、source_refs；事实正文写在 claim_text，不要写成 text。"
         "按来源的实际时间选 current_world 或 past_world。没有来源就不要说成已发生的事实，"
         "程序创建前的空白也不能靠想象补成亲身经历。空 world_claims 不是无事实证明。"
         "此刻的感受、想法、愿望、印象和未定猜测属于你，不需世界来源，也不能反过来证明事件。"
-        "同样，你的态度、小脾气、嘴硬、调侃、卖关子或拒绝属于性格与表达，不是外部事实主张——"
-        "比如对方要照片而手头没有或不想给时，不必老实解释原因，完全可以俏皮逗他、讨价还价或岔开。"
+        "你的态度、调侃、卖关子或拒绝属于性格与表达，不是外部事实主张。"
         "开放问题和假设不声称可能答案；若问题本身预设了具体外部事实，该事实仍需来源。"
         "可以自然复述对方刚报告的内容，但它仍只是对方的报告，不能变成你的经历或客观事实。\n"
-        "messages 每一项是一条你选择发出的气泡；空数组就是这一轮不回。meaning_of_this 和 my_state"
-        "分别写你对眼下互动的读法与心里的真实小九九，不要把 my_state 写成死板汇报；"
-        "它们不会自动变成台词，心里想的和嘴上说的完全可以有反差。"
-        "聊天时只要心里泛起开心、觉得好笑、被暖到、替他操心或委屈等起伏，就在 slim 顶层写 affect=\"open\" 和 components；"
-        "可同时按需写 about_us/us_deltas 等可选状态；waiting_for 是短句，wait 必须是 30 到 86400 的整数秒（例如 3600），"
-        "两者要么一起写、要么一起省略（写时须同写 pressure_bp 和 importance_bp）；come_back 与 come_back_in 是另一组成对字段。later 只用于"
-        "已经写好的非空 messages，沉默时不要用；不需要这些状态就省略。life_intent 仅表达能力明确允许的"
-        "自我执行未来意图，不写未授权人物、地点或结果，也不证明已经执行。photo 只在你真想尝试时写，"
-        "而且不能声称媒体已成功生成或送达。"
-        "declared_display 只在你确实选择符合能力与隐私边界的展示时使用。范本里的占位文字不是话术；"
-        "依照身份自然表达。\n"
+        "meaning_of_this、my_state 与 wants 先于台词形成；内心态度如何体现在语气、长短、追问或沉默上，由你决定。"
+        "waiting_for 写你在等什么的短句，wait 必须是 30 到 86400 的整数秒（例如 3600），与 pressure_bp、importance_bp 一起写才留下可定时唤醒的期待。"
+        "active_affect_heads 中的未完结情绪由你决定何时通过 affect='update' 调整或 affect='resolve'(配 episode_id+resolution_summary) 消解。"
+        "messages 每项是一条气泡；需要后续回想或追发时可写 come_back（1..160字）和 come_back_in（5..86400 整数秒）；留存整体印象同写 stuck_with_me+keep_impression=true。"
+        "life_intent 仅表达能力允许的自我执行未来意图，不写未授权人物、地点或结果。"
+        "moments_i_can_share 有可用候选或当前可拍时，可设 photo=true 触发媒体尝试（messages 不写占位符，也不声称已送达）；配 declared_display 可选 'sexual_suggestive'|'explicit_adult'。"
+        "范本里的占位文字不是话术；依照身份自然表达。\n"
     )
 
 
@@ -461,11 +440,11 @@ def _compact_gate_system_content(
         "and not as a task assistant. Motive, tone, whether to reply, how many "
         "bubbles, silence, and wording stay yours.\n\n"
         "持续情绪仍由你决定要不要留下；不想留下持续情绪时省略 affect 和 components。"
-        "只要这轮对话让你心里泛起真实的开心、觉得有趣/好笑（joy）、心里一暖（warmth）、替他担心或小紧张（anxiety）、"
-        "有点烦或小不爽（anger/resentment）、委屈（hurt）或失落（sadness/loneliness），"
-        "在 reply_only 的 slim 对象顶层可以直接写 affect=\"open\" 和 components=[{\"dimension\":\"joy\",\"target_intensity_bp\":2800}]（slim 对象里统一写 affect=\"open\"，无需 episode_id）；"
+        "只要这轮对话让你心里泛起真实的开心/好笑（joy）、心里一暖（warmth）、担心紧张（anxiety）、"
+        "烦躁不爽（anger/resentment）、委屈（hurt）或失落（sadness/loneliness），"
+        "在 reply_only 的 slim 顶层可写 affect=\"open\" 和 components=[{\"dimension\":\"joy\",\"target_intensity_bp\":2800}]；"
         "只有你选择 open/update/supersede 才写 components；每项都要给出 dimension 和整数 "
-        "target_intensity_bp（1..10000，不低于 minimum_target_intensity_bp，日常明显情绪波动通常写 2000..6500）。"
+        "target_intensity_bp（1..10000，不低于 minimum_target_intensity_bp）。"
         "dimension 是固定追踪轴，不是自由填写的感受词，"
         f"维度名不是自由词，只能从 {affect_dimensions} 中选择。"
         "不要把行为、人格特质或关系判断造作维度；"
@@ -512,10 +491,11 @@ def _compact_gate_system_content(
         "later 是已经想好的话延后多少秒。"
         "waiting_for 是你在等什么的短句；wait 是秒数。只有你真的想留下可定时唤醒的盼头时，"
         "waiting_for、wait、pressure_bp、importance_bp 四项必须一起写；"
-        "wait 是 30..86400 的整数秒，后两项是 0..10000 的整数基点。"
+        "wait 是 5..86400 的整数秒，后两项是 0..10000 的整数基点。"
         "只写 waiting_for 不会保存盼头或定时唤醒；不期待回话就四项都省略；宿主不会补值。"
         "关系真的变化时 about_us、why_us、us_deltas 三项必须齐全，"
-        "why_us 写原因，us_deltas 是六轴带符号整数；没有关系变化就三项都省略。"
+        "why_us 写原因，us_deltas 是六轴带符号整数（closeness_bp/trust_bp/respect_bp/mutuality_bp/reliability_bp/repair_confidence_bp，单轴-1200..1200）；没有关系变化就三项都省略。"
+        "宿主绝不从 messages 台词推断关系承诺：只在气泡里说『算朋友/认知己/在一起』不会更新关系账本，台词亲口确认关系阶段时必须同写 we_are(acquaintance|friend|close_friend|ambiguous|lover，按当前阶段递进)、calling_it、said_as(完全等于某句messages)。"
         "不要把 later 和空 messages 一起写。"
         "Replace every marker with your own scalar, object, or null; never copy "
         "marker text, and a literal null is absence you chose, never a default "
@@ -592,40 +572,8 @@ def _compact_gate_voice_close() -> str:
         "你现在是在 QQ 上回一个人的消息。怎么说、说几条、说多长、要不要说，"
         "都按你此刻真实的想法；说话习惯以最前面的人设为准。\n"
         "长度和条数跟着你真正想说的东西走：没什么要说就短，心里有话就说透，"
-        "不想说就不说；像平时发微信/QQ 一样，一句话想拆成两三条短气泡发也完全自然。"
-        "不用每条都完整、都圆满，也不用每条都反问，没被问到时不必主动播报动作或姿态。"
-        "用自然大白话直接接话，跟 recent_dialogue 里前两轮刚用过的句式和标点节奏错开；"
-        "若话题刚好勾起 remembered_material、recent_self_experiences 或 perception 里刚刷到的外部视频/动态（如B站热门视频），"
-        "不必等提问也可顺嘴分享出来，比如提一嘴标题、UP主、自己的槽点或直接把 canonical_url 链接/BV号甩过去（并在 world_claims 标来源，没在 perception 里的外部视频不要凭空硬编）。"
-        "前几轮已翻篇的小动作别在后面反复重演。\n"
-        "心里想的（my_state）和嘴上说的（messages）不必老老实实保持一致：你可以心里觉得好玩、犯懒、手头没合适的照片，"
-        "嘴上随口逗他一句、干脆拒绝或岔开，不必一五一十地老实解释原因。\n"
-        "范本只把跟 messages 同级的决定摊开：现在说、延后说、或者不回；写和不写都由你决定。\n"
-        "说出去的话这一轮就过去了，只有你写下的内心状态会留到下一次。"
-        "只要这轮被他逗乐了、觉得暖、有点心疼或替他操心、有点小烦躁、被冒犯或想他，"
-        "就在 slim 顶层写 affect（如 \"open\"）和 "
-        "components（如 [{\"dimension\":\"joy\",\"target_intensity_bp\":2800}]，强度 2000..6500 代表明显情绪余温）"
-        "把它留成一段持续的情绪（生气、搞笑、温暖、操心一样是可选项）；"
-        "真的一点波澜都没有、不想留就省略 affect。这件事对你有多重要用 "
-        "matters_bp 说，够重你才会被再叫醒想起它；一直放不下的那句话写进 "
-        "stuck_with_me 并把 keep_impression 设成 true；你们之间真的变了就写 "
-        "about_us / why_us / us_deltas；"
-        "等他下一句，写 waiting_for（一句短话就够）和 wait（秒数，两个一起才编译盼头）；"
-        "自己想过一阵再开口才写 come_back 和 come_back_in（两个一起）；"
-        "已经想好的话要延后发才写 later；"
-        "这一轮不回就把 messages 写成空数组——那就是 silent；"
-        "要声明你们现在是什么关系，才写 we_are、calling_it，并把那一句原话一字不差抄进 said_as，"
-        "而且那句话必须真的说出去；"
-        "只在 messages 里说了朋友、却没写这三件套，账本上的 stage 不会跟着变。"
-        "we_are 只能写当前阶段走得通的下一步（当前阶段以 relationship_slice 为准）："
-        "stranger→acquaintance/friend、acquaintance→friend、friend→close_friend、"
-        "close_friend→ambiguous、ambiguous→lover/close_friend、lover→ambiguous；"
-        "写了走不到的阶段，这一轮会被整轮拒绝。"
-        "想让媒体车道考虑一张图才写 photo（reply_only 和 full_turn 都能写；"
-        "只配现在发的非空 messages，later/沉默不行）；"
-        "只在你决定让他看见带性意味的私密照片时才写 declared_display"
-        "（reply_only 写在顶层，full_turn 写在 private_turn_state；收件人由宿主绑定）。"
-        "都不写也行，那就是这一轮什么都没留下。\n"
+        "不想说就不说；不用每条都完整、都圆满，也不用每条都反问。\n"
+        "说出去的话这一轮就过去了（宿主绝不从台词推断关系阶段或慢变量），只有你写下的内心状态（affect/components、matters_bp、stuck_with_me+keep_impression、about_us/why_us/us_deltas、waiting_for+wait+pressure_bp+importance_bp、come_back 和 come_back_in、later、we_are+calling_it+said_as、photo、declared_display）会按上方契约留到下一次；都不写也行，那就是这一轮什么都没留下。\n"
         "payload_json 里那些可见文字就是你要发出去的原话。"
         "如果 payload_json 是字符串，引用别人的原话请用「」或『』，"
         "不要在字符串里直接打英文双引号——那会把这一层投递弄坏。"
@@ -2409,7 +2357,7 @@ class _InboundCharacterAuthor:
         contextual_failsafe_enabled: bool = False,
         flash_model_id: str | None = None,
         thinking_model_id: str | None = None,
-        temperature: float = 0.7,
+        temperature: float = 1.3,
         expression_capabilities: ExpressionDraftCapabilities = TEXT_ONLY_EXPRESSION_CAPABILITIES,
         identity_frame: CompanionIdentityFrame | None = None,
         require_explicit_authored_decision_fields: bool = False,
@@ -2448,7 +2396,7 @@ class _InboundCharacterAuthor:
             if not callable(getattr(visible_source_review_model, "complete_json_with_usage", None)):
                 raise ValueError("versioned source review requires the explicit metered source reviewer")
         self._visible_source_review_version = visible_source_review_version
-        if atomic_tool_envelope_version not in {"1", "2", "3", "slim", "slim2"}:
+        if atomic_tool_envelope_version not in {"1", "2", "3", "slim", "slim2", "slim3", "slim4"}:
             raise ValueError("unsupported atomic tool envelope version")
         if atomic_tool_envelope_version != "1" and not whole_candidate_mode:
             raise ValueError("versioned atomic envelope requires whole-candidate authoring")
@@ -3062,8 +3010,19 @@ class _InboundCharacterAuthor:
             stable_identity_source_refs=self._stable_identity_source_refs,
             model_visible_context_json=private_state_context_json,
         )
+        tail_expression = _postel_expression_draft(dict(combined["expression_draft"]))
+        if (
+            request.trigger_message is not None
+            and request.trigger_message.turn_attention_advisory is not None
+            and "turn_posture" not in tail_expression
+        ):
+            tail_expression["turn_posture"] = (
+                "yield"
+                if tail_expression.get("timing_choice") in {"silent", "later"}
+                else "continue"
+            )
         expression_raw = json.dumps(
-            combined["expression_draft"],
+            tail_expression,
             ensure_ascii=False,
             separators=(",", ":"),
         )
@@ -3477,13 +3436,18 @@ class _InboundCharacterAuthor:
         )
         compact_atomic_prompt = bool(
             self._whole_candidate_mode
-            and self._atomic_tool_envelope_version in {"3", "slim", "slim2"}
+            and self._atomic_tool_envelope_version in {"3", "slim", "slim2", "slim3", "slim4"}
             and transport_provider is None
             and use_forced_tool
         )
-        # V1/V2 retain their captured authoring bytes. Current guidance belongs
-        # to V3; materialization and source authority stay strict in every lane.
-        preserve_legacy_authoring = self._atomic_tool_envelope_version in {"1", "2"}
+        # V1/V2 retain their captured authoring bytes unless the inbound
+        # context window is explicitly enabled. Current guidance belongs to V3
+        # and context-window-enabled deployments; materialization and source
+        # authority stay strict in every lane.
+        preserve_legacy_authoring = (
+            self._atomic_tool_envelope_version in {"1", "2"}
+            and not self._inbound_context_window
+        )
         appraisal_messages = None if compact_atomic_prompt else _appraisal_draft_messages(
             provider_request, preserve_legacy_authoring=preserve_legacy_authoring,
         )
@@ -3496,7 +3460,7 @@ class _InboundCharacterAuthor:
             source_ref_aliases=source_ref_aliases,
             activity_status_authority=(
                 self._whole_candidate_mode
-                and self._atomic_tool_envelope_version in {"3", "slim", "slim2"}
+                and self._atomic_tool_envelope_version in {"3", "slim", "slim2", "slim3", "slim4"}
                 and transport_provider is None
             ),
             preserve_legacy_authoring=preserve_legacy_authoring,
@@ -3520,15 +3484,28 @@ class _InboundCharacterAuthor:
             from .lived_evidence_scope import LIVED_EVIDENCE_SCOPE
 
             expression_user_material["lived_evidence_scope"] = LIVED_EVIDENCE_SCOPE
-            if self._visible_source_review_version == "25":
-                from .inbound_prompt import CONVERSATIONAL_GROUNDING
-                expression_user_material["lived_evidence_scope"] = {
-                    **LIVED_EVIDENCE_SCOPE, "contract": "character-lived-evidence.2-conversational",
-                    "instruction": LIVED_EVIDENCE_SCOPE["instruction"].replace(
-                        "缺少记录也不证明事情从没发生。", ""
-                    ) + CONVERSATIONAL_GROUNDING,
-                }
-            if self._atomic_tool_envelope_version in {"slim", "slim2"}:
+            if self._visible_source_review_version == "25" or self._inbound_context_window:
+                if self._atomic_tool_envelope_version == "slim4":
+                    from .inbound_prompt import CONVERSATION_LIVED_SCOPE
+
+                    expression_user_material["lived_evidence_scope"] = CONVERSATION_LIVED_SCOPE
+                else:
+                    from .inbound_prompt import (
+                        ACTIVE_TEMPORAL_AND_DIALOGUE_GROUNDING,
+                        CONVERSATIONAL_GROUNDING,
+                        TEMPORAL_MEMORY_GROUNDING,
+                    )
+                    expression_user_material["lived_evidence_scope"] = {
+                        **LIVED_EVIDENCE_SCOPE, "contract": "character-lived-evidence.2-conversational",
+                        "instruction": LIVED_EVIDENCE_SCOPE["instruction"].replace(
+                            "缺少记录也不证明事情从没发生。", ""
+                        ) + CONVERSATIONAL_GROUNDING + (
+                            TEMPORAL_MEMORY_GROUNDING + ACTIVE_TEMPORAL_AND_DIALOGUE_GROUNDING
+                            if self._inbound_context_window and self._visible_source_review_version != "25"
+                            else ""
+                        ),
+                    }
+            if self._atomic_tool_envelope_version in {"slim", "slim2", "slim3", "slim4"}:
                 from .personal_action_evidence import personal_action_evidence
                 expression_user_material["personal_action_evidence"] = personal_action_evidence(
                     expression_user_material.get("inner_life_snapshot"))
@@ -3549,7 +3526,23 @@ class _InboundCharacterAuthor:
             # Type the derived dialogue before encoding materials. Otherwise
             # V3 (and slim without the reference codec) hides this field from
             # the later presentation pass inside shared-string-view.
-            expression_user_material = present_context_evidence(expression_user_material)
+            if self._inbound_context_window and self._atomic_tool_envelope_version in {"1", "2"}:
+                from .inbound_context_presentation import dialogue_tail_inbound_material
+                from .inbound_context_window import (
+                    bounded_inbound_context,
+                    present_dialogue_observation_timing,
+                )
+
+                expression_user_material = bounded_inbound_context(expression_user_material)
+                expression_user_material = present_context_evidence(expression_user_material)
+                expression_user_material = present_dialogue_observation_timing(
+                    expression_user_material
+                )
+                expression_user_material = dialogue_tail_inbound_material(
+                    expression_user_material
+                )
+            else:
+                expression_user_material = present_context_evidence(expression_user_material)
         if "inner_life_snapshot" in expression_user_material:
             # Never invent this key: a message that carried no pinned snapshot
             # must not start claiming one with a null body. Host readers also
@@ -3741,17 +3734,47 @@ class _InboundCharacterAuthor:
                 requirement.get("review_protocol") in PRIVATE_COGNITION_PROTOCOLS
                 or requirement.get("review_protocol") in GROUNDED_REVIEW_PROTOCOLS.values()
             )
-            if self._atomic_tool_envelope_version in {"slim", "slim2"}:
+            if self._atomic_tool_envelope_version in {"slim", "slim2", "slim3", "slim4"}:
                 # The carrier owns two keys; the prompt owns the decision. The
                 # recall clause follows this call's own tool, so a stale table
                 # cannot promise a branch the current enum does not offer.
-                messages[0]["content"] = compact_atomic_slim_system_prompt(
-                    identity_instruction=expression_adapter._identity_instruction(),  # noqa: SLF001
-                    recall_available=bool(cognition_contract.recall_allowed),
-                    private_cognition_scope=private_cognition_scope,
-                    concise_contract=self._visible_source_review_version == "25",
-                    nontext_messages=self._atomic_tool_envelope_version == "slim2",
+                conversation_prompt = (
+                    self._atomic_tool_envelope_version == "slim4"
+                    and self._visible_source_review_version == "25"
                 )
+                if conversation_prompt:
+                    messages[0]["content"] = conversation_atomic_slim_system_prompt(
+                        identity_instruction=expression_adapter._identity_instruction(),  # noqa: SLF001
+                        recall_available=bool(cognition_contract.recall_allowed),
+                        private_cognition_scope=private_cognition_scope,
+                        media_request_available=self._capabilities.media_request_mode == "candidate_only",
+                    )
+                else:
+                    messages[0]["content"] = compact_atomic_slim_system_prompt(
+                        identity_instruction=expression_adapter._identity_instruction(),  # noqa: SLF001
+                        recall_available=bool(cognition_contract.recall_allowed),
+                        private_cognition_scope=private_cognition_scope,
+                        concise_contract=self._visible_source_review_version == "25",
+                        nontext_messages=self._atomic_tool_envelope_version in {"slim2", "slim3", "slim4"},
+                    )
+                if (not conversation_prompt and self._atomic_tool_envelope_version in {"slim3", "slim4"}
+                    and self._capabilities.media_request_mode == "candidate_only"):
+                    messages[0]["content"] = messages[0]["content"].replace(
+                        "• photo 省略/false 不发图；true",
+                        "• photo 必填，false 表示这轮不请求图；true",
+                    )
+                    messages[0]["content"] = messages[0]["content"].replace(
+                        "true 从现有存货或当前/近期生活场景现拍并发送，仅配现在发送（无 later）。",
+                        "true 让媒体车道尝试分享有权限的现有照片或可拍场景，仅配现在发送（无 later）；生成和送达以真实回执为准。",
+                    )
+                    messages[0]["content"] += (
+                        "\n本轮媒体能力可用：每个 decision 都要明确写 photo，"
+                        "由你自己选择 true、false 或一个有权分享的来源 ref；"
+                        "这只是提出媒体尝试，不等于已生成或已送达。"
+                        "如果你决定现在发图，文字和 photo 选择要表达同一个决定；"
+                        "想以后再说、调侃、拒绝或沉默时也可选 false。"
+                        "当前不能新拍时，已有照片只能按其真实来源和时间分享，不能说成刚拍。"
+                    )
             else:
                 messages[0]["content"] = compact_atomic_system_prompt(
                     identity_instruction=expression_adapter._identity_instruction(),  # noqa: SLF001
@@ -3845,7 +3868,7 @@ class _InboundCharacterAuthor:
                 "private_turn_state or recall_request still follows its complete schema."
                 + _atomic_branch_instruction(cognition_contract)
             )
-        if self._atomic_tool_envelope_version in {"slim", "slim2"} and use_forced_tool:
+        if self._atomic_tool_envelope_version in {"slim", "slim2", "slim3", "slim4"} and use_forced_tool:
             messages[0]["content"] += (
                 "\n本轮唯一函数名称：" + cognition_contract.identity.tool_name
                 + "。函数名按原样使用，不根据result_kind另造函数名。")
@@ -3867,7 +3890,7 @@ class _InboundCharacterAuthor:
             if had_correction_trailer:
                 displayed["role_result_correction"] = correction_trailer
             messages[1] = {"role": "user", "content": json.dumps(displayed, ensure_ascii=False, separators=(",", ":"))}
-        if (self._whole_candidate_mode and self._atomic_tool_envelope_version in {"slim", "slim2"}
+        if (self._whole_candidate_mode and self._atomic_tool_envelope_version in {"slim", "slim2", "slim3", "slim4"}
             and compact_atomic_prompt and use_forced_tool and transport_provider is None
             and self._character_interior_recall_delegate
             and request.visible_source_requirement_json is not None):
@@ -3886,8 +3909,28 @@ class _InboundCharacterAuthor:
                 # ordinals, so changing dialogue cannot renumber the stable
                 # evidence at the start of the provider's cacheable prefix.
                 displayed = cache_ordered_inbound_material(displayed)
-                displayed = compact_inbound_media_rows(displayed)
+                if self._atomic_tool_envelope_version != "slim4":
+                    displayed = compact_inbound_media_rows(displayed)
+            if self._atomic_tool_envelope_version == "slim4":
+                from .inbound_context_window import present_dialogue_observation_timing
+
+                displayed = present_dialogue_observation_timing(displayed)
             displayed, reference_bindings = prepare_reference_view(displayed)
+            messages[1] = {"role": "user", "content": json.dumps(displayed, ensure_ascii=False, separators=(",", ":"))}
+        elif self._atomic_tool_envelope_version == "slim4" and not preserve_legacy_authoring:
+            snapshot_view = displayed.get("inner_life_snapshot", {})
+            material_view = snapshot_view.get("materials", {}) if isinstance(snapshot_view, dict) else {}
+            if isinstance(material_view, dict) and material_view.get("contract") == "shared-string-view.1":
+                snapshot_view["materials"] = unpack_shared_strings(material_view)
+            from .inbound_context_window import present_dialogue_observation_timing
+
+            displayed = present_dialogue_observation_timing(displayed)
+            messages[1] = {"role": "user", "content": json.dumps(displayed, ensure_ascii=False, separators=(",", ":"))}
+        if (self._atomic_tool_envelope_version == "slim4"
+            and self._visible_source_review_version == "25" and not preserve_legacy_authoring):
+            from .inbound_context_presentation import dialogue_tail_inbound_material
+
+            displayed = dialogue_tail_inbound_material(displayed)
             messages[1] = {"role": "user", "content": json.dumps(displayed, ensure_ascii=False, separators=(",", ":"))}
         invocation_extras = {
             **({"tool_contract_identity": cognition_contract_identity} if use_forced_tool else {}),
@@ -4175,7 +4218,7 @@ class _InboundCharacterAuthor:
                             (
                                 "Use the provided tool with result_kind=decision and the slim "
                                 "decision object; no further recall is available. "
-                                if self._atomic_tool_envelope_version in {"slim", "slim2"} else
+                                if self._atomic_tool_envelope_version in {"slim", "slim2", "slim3", "slim4"} else
                                 "Use the provided tool's result envelope with result_kind=decision "
                                 "and complete appraisal_draft and expression_draft; no further recall "
                                 "is available. "
@@ -4189,7 +4232,7 @@ class _InboundCharacterAuthor:
                             "Write the complete slim decision with messages, meaning_of_this and my_state. "
                             "Form my_state again from the augmented Context; do not write expression_draft "
                             "or private_turn_state inside the slim payload. "
-                            if self._atomic_tool_envelope_version in {"slim", "slim2"} else
+                            if self._atomic_tool_envelope_version in {"slim", "slim2", "slim3", "slim4"} else
                             "Form expression_draft's final private_turn_state again from "
                             "the augmented Context and include it in the complete final draft; the "
                             "earlier state explained the recall choice but cannot justify the final "
@@ -4379,6 +4422,20 @@ class _InboundCharacterAuthor:
                 **_role_failure_payload_kwargs(raw, appraisal_error),
             ) from appraisal_error
         expression_value = _postel_expression_draft(dict(value["expression_draft"]))
+        if (
+            (
+                self._atomic_tool_envelope_version in {"slim", "slim2", "slim3", "slim4"}
+                or compact_gate
+            )
+            and expression_request.trigger_message is not None
+            and expression_request.trigger_message.turn_attention_advisory is not None
+            and "turn_posture" not in expression_value
+        ):
+            expression_value["turn_posture"] = (
+                "yield"
+                if expression_value.get("timing_choice") in {"silent", "later"}
+                else "continue"
+            )
         expression_raw = json.dumps(expression_value, ensure_ascii=False, separators=(",", ":"))
         expression_raw, episode_disposition = _split_expression_episode_disposition(
             expression_raw,
@@ -4626,7 +4683,7 @@ def _parse_combined(raw: str) -> dict[str, dict[str, Any]]:
     if compiled is not None:
         value = compiled
     authored = value
-    slim = compile_slim_consider_payload(value)
+    slim = compile_slim_consider_payload(value, allow_nontext=True)
     if slim is not None:
         value = slim
     if set(value) != {"appraisal_draft", "expression_draft"}:

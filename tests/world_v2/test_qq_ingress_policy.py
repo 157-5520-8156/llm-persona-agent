@@ -1016,6 +1016,9 @@ async def test_burst_during_provider_joins_then_enters_as_one_interjection() -> 
     assert world.inbounds[1].text == "对了教练夸我进步啦\n晚上一起打游戏呀"
 
     world.release_first_turn.set()
+    # A fragment whose batch was already claimed may still finish its own
+    # (cadence-sized) hold; the manual clock only moves when driven.
+    await drive(lambda: all(task.done() for task in (first, second, third, fourth)))
     results = await asyncio.gather(first, second, third, fourth)
 
     assert all(item.status == "observed_only" for item in results)
@@ -1681,3 +1684,37 @@ async def test_host_restart_replays_claimed_batch_with_frozen_source_identity(
     assert world.inbounds[0].coalescing_metadata["batch_id"] == original.batch_id
     assert await host.drain_ingress_once() is None
     await host.aclose()
+
+
+@pytest.mark.asyncio
+async def test_attention_presence_hold_sizes_phone_pickup_window_and_bombardment_wake() -> None:
+    mode_holder = {"mode": "occupied"}
+
+    class _AttentionWorldHost(_WorldHost):
+        async def action_due_projection(self) -> object:
+            return SimpleNamespace(
+                actions=(),
+                v2_attention={
+                    "agent:companion": SimpleNamespace(mode=mode_holder["mode"])
+                },
+            )
+
+    host = QQC2CHost(
+        host=_AttentionWorldHost(),  # type: ignore[arg-type]
+        recipient_id="10001",
+        canonical_user_id="geoff",
+        ingress_store=MemoryQQIngressStore(),
+        ingress_now=lambda: NOW,
+        attention_presence_pacing_enabled=True,
+    )
+    assert await host._attention_presence_hold_seconds(now=NOW, burst_fragment_count=1) == 2.5
+    # Rapid 3-bubble bombardment wakes her attention faster even while occupied.
+    assert await host._attention_presence_hold_seconds(now=NOW, burst_fragment_count=3) == 0.6
+    # Deep focus widens the initial listening window further.
+    mode_holder["mode"] = "deep_focus"
+    assert await host._attention_presence_hold_seconds(now=NOW, burst_fragment_count=1) == 3.8
+    # When she just replied within the last 90 seconds (phone in hand), hold is 0.0s.
+    host._last_character_delivery_at = NOW - timedelta(seconds=20)
+    assert await host._attention_presence_hold_seconds(now=NOW, burst_fragment_count=1) == 0.0
+    await host.aclose()
+

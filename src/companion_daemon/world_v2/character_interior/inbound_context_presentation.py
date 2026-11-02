@@ -167,6 +167,36 @@ def cache_ordered_inbound_material(material: dict[str, object]) -> dict[str, obj
     ))
 
 
+def dialogue_tail_inbound_material(material: dict[str, object]) -> dict[str, object]:
+    """Keep the live conversation together at the end of a new author request.
+
+    Apply after reference encoding: aliases, source permissions, text and array
+    order are unchanged. This only orders object members before request hashing;
+    persisted requests and receipts never pass through this presentation step.
+    """
+    def tail(value: dict[str, object], keys: tuple[str, ...]) -> dict[str, object]:
+        return {
+            **{key: item for key, item in value.items() if key not in keys},
+            **{key: value[key] for key in keys if key in value},
+        }
+
+    result = dict(material)
+    snapshot = result.get("inner_life_snapshot")
+    if isinstance(snapshot, dict):
+        snapshot = dict(snapshot)
+        materials = snapshot.get("materials")
+        if isinstance(materials, dict) and materials.get("contract") != "shared-string-view.1":
+            materials = dict(materials)
+            dialogue = materials.get("recent_dialogue")
+            if isinstance(dialogue, dict) and isinstance(dialogue.get("stable_turns"), list):
+                materials["recent_dialogue"] = tail(dialogue, ("stable_turns", "volatile_last_turn"))
+            snapshot["materials"] = tail(
+                materials, ("advisories", "lived_moment", "conversation", "recent_dialogue")
+            )
+        result["inner_life_snapshot"] = tail(snapshot, ("materials",))
+    return tail(result, ("inner_life_snapshot", "current_trigger_message", "role_result_correction"))
+
+
 def compact_inbound_media_rows(material: dict[str, object]) -> dict[str, object]:
     """Lossless transport of the album, including all unavailable/expired entries."""
     snapshot = material.get("inner_life_snapshot")

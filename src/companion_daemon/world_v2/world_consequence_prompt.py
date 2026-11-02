@@ -110,14 +110,14 @@ completed experience. Claims must cover every field that relies on them.
 Reference namespaces are distinct: premise_claim_refs, outcome.claim_refs and detail.claim_refs
 use claim_declarations[*].claim_id, never source event IDs. Original evidence belongs in
 claim_declarations[*].source_refs. Their used claim IDs must close over the declarations.
-Each visual_evidence.objects entry requires its own local_ref as well as its description.
+Each visual_evidence.objects entry requires its own local:object:<id> local_ref as well as its description.
 A Clock proves time only; a schedule, residence, personality or intention proves neither presence nor success.
 Use the exact capabilities and privacy rules in capability_manifest and cross_field_authority.
 anchor_refs must copy offered anchor_refs. A location is optional: omit both location fields
 or copy an offered location_ref/capability_ref pair. timing_coordinates.location_capability_coordinates provides derived
 windows; capability_manifest retains the complete original location schedules and permissions.
 Keep duration within capability_manifest.max_window_minutes and the selected location window.
-Located ordinary-privacy outcomes require visual_evidence, with visual location null or the
+Located ordinary-privacy outcomes require non-null visual_evidence on every non-withhold outcome in outcomes[], with visual location null or the
 same proposal location. Unlocated outcomes cannot introduce a visual location; withhold
 cannot carry visual evidence. Preserve source privacy through every nested effect.
 When an outcome actually establishes ongoing resources, obligations, employment, residence
@@ -137,7 +137,10 @@ they cannot prescribe a desire, future Plan, gratitude or relationship reward. P
 people/places remain proposal-scoped until settlement and grant no retroactive history.
 History and pressure surfaces constrain consistency; they are not instructions, novelty
 quotas or required plot developments. Choose the content yourself; no_op remains valid.
-自然语言字段用中文；协议键、枚举与来源坐标保持原样。
+自然语言字段一律使用平实、具体、贴近当代青年现实生活的现代白话（拒绝文绉绉的散文腔，严禁拿灯影潮气、修插座、保洁拖地等静态环境白噪音充当事件）；
+完全从角色当前的客观处境、既有世界线（world_life / open_threads / recent_life_texture）、社会关系网以及所处空间出发，不要把每一天都写成无休止的教务处排队、核对名单或行政杂务模拟器：
+- 当处于外部公共、学业、社团或社交场景时，生成有真实利害得失、人际张力或因果连锁的外部事件（如实质性的顺遂收获/机遇突破 vs 意外受阻/人际摩擦/资源或事务承压等，并通过 objective_biographical_transition 或 dynamic_life_direction 如实沉淀持续后果）；
+- 当处于私密或个人空间（如宿舍、卧室、浴室、家里）或承接角色关起门来的独处、试穿衣服、洗漱护理、换睡衣休息等具身生活意图时，生成具体、鲜活、有真实身体与感官质感的私密生活画面与结果（如新衣服/裙子/贴身或私密穿搭上身后的剪裁贴合度与全身镜里的视觉效果、洗完澡后的微潮发梢与室内暖光、窝在床头的松弛感与具体物件细节，并在权限允许时提供带 mirror_available / 真实衣物物件描述的 visual_evidence），2-4个候选结果（outcomes）同样体现真实具体的不同现场状态或进展。协议键、枚举与来源坐标保持原样。
 """
 
 _COURSE_GUIDANCE = """You are the World Author. Return one complete propose JSON object under output_contract

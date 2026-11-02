@@ -567,3 +567,49 @@ async def test_bridge_is_unavailable_without_a_durable_result_store() -> None:
     assert result.not_renderable is not None
     assert result.not_renderable.reason_code == "planning_result_store_unavailable"
     assert legacy.calls == []
+
+
+@pytest.mark.asyncio
+async def test_sqlite_result_store_forwards_recent_plan_payloads_to_legacy_planner(tmp_path) -> None:
+    from companion_daemon.world_v2.event_media_planner_adapter import (
+        SQLiteEventMediaPlanningResultStore,
+    )
+
+    db_path = str(tmp_path / "media_result_store.sqlite")
+    store = SQLiteEventMediaPlanningResultStore(path=db_path, world_id="world:test")
+    sidecar, first_opp = _sidecar()
+    snapshot = _image_snapshot()
+    first_plan = _legacy_plan(opportunity=first_opp, snapshot=snapshot)
+    second_opp = first_opp.model_copy(update={"opportunity_id": "opportunity:bridge-2"})
+    second_plan = _legacy_plan(opportunity=second_opp, snapshot=snapshot)
+
+    seen_recent: list[tuple[object, ...]] = []
+
+    class _RecordingLegacyPlanner:
+        def __init__(self) -> None:
+            self.plans = [first_plan, second_plan]
+
+        async def plan(self, opportunity: event_media.MediaOpportunity, recent_media=()) -> event_media.PlanningResult:
+            del opportunity
+            seen_recent.append(tuple(recent_media))
+            return event_media.PlannedMedia(self.plans.pop(0))
+
+    adapter = EventMediaPlannerAdapter(
+        sidecar=sidecar,
+        legacy_planner=_RecordingLegacyPlanner(),  # type: ignore[arg-type]
+        result_store=store,
+    )
+    await adapter.plan(
+        opportunity=first_opp,
+        planning_request_id=planning_request_id(first_opp.opportunity_id),
+    )
+    await adapter.plan(
+        opportunity=second_opp,
+        planning_request_id=planning_request_id(second_opp.opportunity_id),
+    )
+    store.close()
+
+    assert len(seen_recent) == 2
+    assert seen_recent[0] == ()
+    assert len(seen_recent[1]) == 1
+    assert seen_recent[1][0]["plan_id"] == "event-plan:bridge"

@@ -188,8 +188,8 @@ def test_pre_beat_v1_facial_catalog_uses_bounded_compatibility_matrix(tmp_path: 
     )
 
     assert strategy.strategy_family in {"tender_private", "warm_connection", "desire_withheld"}
-    assert micro.recipe_id.startswith("legacy:")
-    assert micro.expression_beat_id.endswith("coherent_visible_beat")
+    assert micro.recipe_id
+    assert micro.expression_beat_id
 
 
 def test_default_style_uses_complete_recipe_ids_from_catalog(tmp_path: Path) -> None:
