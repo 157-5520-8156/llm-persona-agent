@@ -356,3 +356,98 @@ def test_action_pump_blocks_stale_later_and_still_allows_cadence_reply() -> None
     projection = _pump_projection(reply, extra=(sibling,))
     projection.logical_time = reply.not_before
     assert ActionPump._expression_dispatch_allowed(reply, projection)
+
+
+def test_partially_dispatched_multi_beat_plan_exposes_unsent_siblings_in_queued_facts() -> None:
+    beat1 = _spoken(
+        action_id="action:proactive:3e08ce",
+        plan_id="plan:proactive:fcc999",
+        at=NOW,
+        kind="proactive_message",
+        state="delivered",
+    )
+    beat2 = SimpleNamespace(
+        action_id="action:proactive:b42a99",
+        kind="proactive_message",
+        state="authorized",
+        logical_time=NOW,
+        not_before=None,
+        expires_at=NOW + timedelta(minutes=10),
+        expression_plan_id="plan:proactive:fcc999",
+        expression_beat_id="beat:proactive:fcc999:2",
+        payload_ref="payload:proactive:2",
+    )
+    beat3 = SimpleNamespace(
+        action_id="action:proactive:0128f8",
+        kind="proactive_message",
+        state="scheduled",
+        logical_time=NOW,
+        not_before=None,
+        expires_at=NOW + timedelta(minutes=10),
+        expression_plan_id="plan:proactive:fcc999",
+        expression_beat_id="beat:proactive:fcc999:3",
+        payload_ref="payload:proactive:3",
+    )
+    beats = (
+        SimpleNamespace(
+            beat_id="beat:proactive:fcc999:2",
+            action_id=beat2.action_id,
+            payload_ref=beat2.payload_ref,
+            event_ref="event:beat:proactive:2",
+        ),
+        SimpleNamespace(
+            beat_id="beat:proactive:fcc999:3",
+            action_id=beat3.action_id,
+            payload_ref=beat3.payload_ref,
+            event_ref="event:beat:proactive:3",
+        ),
+    )
+    refs = (
+        SimpleNamespace(
+            event_id="event:beat:proactive:2",
+            event_type="ExpressionBeatAuthorized",
+            logical_time=NOW,
+            world_revision=10,
+            payload_hash=HASH,
+        ),
+        SimpleNamespace(
+            event_id="event:beat:proactive:3",
+            event_type="ExpressionBeatAuthorized",
+            logical_time=NOW,
+            world_revision=11,
+            payload_hash=HASH,
+        ),
+        SimpleNamespace(
+            event_id="event:obs:interrupt",
+            event_type="ObservationRecorded",
+            logical_time=NOW + timedelta(seconds=5),
+            world_revision=12,
+            payload_hash=HASH,
+        ),
+    )
+    payloads = (
+        SimpleNamespace(
+            payload_ref="payload:proactive:2",
+            text="书里有个字我不认得 你念给我听听",
+        ),
+        SimpleNamespace(
+            payload_ref="payload:proactive:3",
+            text="算了 还是我自己翻字典吧 指望你不如指望这本散文集",
+        ),
+    )
+    projection = _projection(
+        actions=(beat3, beat1, beat2),
+        beats=beats,
+        refs=refs,
+        payloads=payloads,
+        logical_time=NOW + timedelta(seconds=5),
+    )
+
+    facts = queued_later_facts(projection, logical_time=projection.logical_time)
+
+    assert [item.text for item in facts] == [
+        "书里有个字我不认得 你念给我听听",
+        "算了 还是我自己翻字典吧 指望你不如指望这本散文集",
+    ]
+    assert all(item.he_spoke_after is True for item in facts)
+

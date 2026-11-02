@@ -151,7 +151,13 @@ def _unfinished_revisits(projection, *, due_only: bool) -> list[DueUnfinishedRev
             (ref.world_revision for ref in delivered_by_action.values()),
             default=0,
         )
-        if (
+        superseded_after_due = any(
+            ref.world_revision > delivered_ref.world_revision
+            and isinstance(getattr(ref, "logical_time", None), datetime)
+            and ref.logical_time >= not_before
+            for ref in delivered_by_action.values()
+        )
+        if superseded_after_due or (
             logical_time > expires_at
             and delivered_ref.world_revision < latest_delivered_revision
         ):

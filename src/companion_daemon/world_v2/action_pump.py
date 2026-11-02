@@ -256,10 +256,33 @@ class ActionPump:
                 item
                 for item in projection.actions
                 if self._is_eligible(item, target_action_id, excluded_action_ids)
-                if item.state == "authorized" and self._expression_dispatch_allowed(item, projection)
+                if item.state == "authorized"
+                and self._is_due(action=item, logical_time=projection.logical_time)
+                and self._dependencies_satisfied(action=item, actions=projection.actions)
+                and self._expression_dispatch_allowed(item, projection)
             ),
             None,
         )
+        if action is None:
+            has_ready_scheduled = any(
+                self._is_eligible(item, target_action_id, excluded_action_ids)
+                and item.state == "scheduled"
+                and self._is_due(action=item, logical_time=projection.logical_time)
+                and self._dependencies_satisfied(action=item, actions=projection.actions)
+                and self._expression_dispatch_allowed(item, projection)
+                for item in projection.actions
+            )
+            if not has_ready_scheduled:
+                action = next(
+                    (
+                        item
+                        for item in projection.actions
+                        if self._is_eligible(item, target_action_id, excluded_action_ids)
+                        if item.state == "authorized"
+                        and self._expression_dispatch_allowed(item, projection)
+                    ),
+                    None,
+                )
         if action is not None:
             # The HTTP ingress has already authorized a specific Action and
             # can safely use one atomic lifecycle batch when it is due and all

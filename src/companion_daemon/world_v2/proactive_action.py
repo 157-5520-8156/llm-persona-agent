@@ -2095,6 +2095,7 @@ class ProactiveActionRunResult(FrozenModel):
     source_ref: str | None = None
     proposal_id: str | None = None
     action_id: str | None = None
+    authorized_action_ids: tuple[str, ...] = ()
     reason_code: str | None = None
     next_retry_at: datetime | None = None
     retry_ordinal: int = Field(default=0, ge=0)
@@ -2355,14 +2356,19 @@ class ProactiveActionRuntime:
             proposal=proposal,
         )
         current = await self._project()
-        existing = next(
+        intent_order = {
+            f"{proposal.proposal_id}:{intent.intent_id}": index
+            for index, intent in enumerate(proposal.action_intents)
+        }
+        existing_actions = sorted(
             (
                 item
                 for item in current.actions
                 if item.intent_ref.startswith(proposal.proposal_id + ":")
             ),
-            None,
+            key=lambda item: (intent_order.get(item.intent_ref, 999), item.action_id),
         )
+        existing = existing_actions[0] if existing_actions else None
         if existing is not None:
             await self._settle_authored_emotion(
                 proposal=proposal, audit=audit, opportunity=opportunity
@@ -2375,6 +2381,7 @@ class ProactiveActionRuntime:
                 source_ref=opportunity.source_event_ref,
                 proposal_id=proposal.proposal_id,
                 action_id=existing.action_id,
+                authorized_action_ids=tuple(item.action_id for item in existing_actions),
             )
         if proposal.proactive_grounding_outcome == "rejected":
             await self._settle_authored_emotion(
@@ -2506,6 +2513,7 @@ class ProactiveActionRuntime:
                     source_ref=opportunity.source_event_ref,
                     proposal_id=proposal.proposal_id,
                 )
+        authorized_action_ids = tuple(item.action.action_id for item in material.beats)
         action_id = (
             existing.action_id if existing is not None else material.beats[0].action.action_id
         )
@@ -2525,6 +2533,7 @@ class ProactiveActionRuntime:
             source_ref=opportunity.source_event_ref,
             proposal_id=proposal.proposal_id,
             action_id=action_id,
+            authorized_action_ids=authorized_action_ids,
         )
 
     async def drain_one(self) -> ProactiveActionRunResult:

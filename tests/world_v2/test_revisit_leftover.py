@@ -522,3 +522,62 @@ def test_multi_day_user_timeline_come_back_compiles_up_to_seven_days() -> None:
     assert revisit["expires_after_seconds"] == 259_260
 
 
+@pytest.mark.asyncio
+async def test_due_revisit_already_superseded_by_newer_reply_after_wait_opened_does_not_refire() -> None:
+    compiler, projection, committed = _compiler_fixture(receptive=False)
+    receipt = _receipt_event()
+    committed.append(receipt)
+    compiler._ledger.lookup_event_commit = (  # noqa: SLF001
+        lambda event_id: (receipt, SimpleNamespace(world_revision=1))
+        if event_id == receipt.event_id
+        else None
+    )
+    action_revisit = SimpleNamespace(
+        action_id="action:revisit",
+        kind="reply",
+        state="delivered",
+        logical_time=NOW,
+    )
+    action_newer = SimpleNamespace(
+        action_id="action:newer-reply",
+        kind="reply",
+        state="delivered",
+        logical_time=NOW + timedelta(minutes=5),
+    )
+    projection.actions = (action_revisit, action_newer)
+    projection.execution_receipts = (
+        SimpleNamespace(action_id="action:revisit", observed_state="delivered"),
+        SimpleNamespace(action_id="action:newer-reply", observed_state="delivered"),
+    )
+    projection.committed_world_event_refs = (
+        SimpleNamespace(
+            event_id=receipt.event_id,
+            event_type="ExecutionReceiptRecorded",
+            world_revision=1,
+            logical_time=NOW,
+        ),
+        SimpleNamespace(
+            event_id="event:receipt:newer",
+            event_type="ExecutionReceiptRecorded",
+            world_revision=2,
+            logical_time=NOW + timedelta(minutes=5),
+        ),
+    )
+    projection.expression_plan_manifests = (
+        SimpleNamespace(
+            plan_id="plan:revisit",
+            revisit=SimpleNamespace(
+                source_beat_id="beat:revisit",
+                thought="他说文盲有没有下文，顺回去逗他一句。",
+                not_before=NOW + timedelta(minutes=4),
+                expires_at=NOW + timedelta(minutes=5),
+            ),
+            beats=(SimpleNamespace(beat_id="beat:revisit", action=action_revisit),),
+        ),
+    )
+    projection.logical_time = NOW + timedelta(minutes=5)
+
+    assert await compiler.next_opportunity(projection) is None
+
+
+

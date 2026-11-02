@@ -1125,3 +1125,102 @@ async def test_pending_lookup_rejects_a_receipt_from_another_provider_reference(
     with pytest.raises(ValueError, match="pending provider reference"):
         await runtime.drain_actions_once()
     assert ledger.project().actions[0].state == "dispatch_started"
+
+
+@pytest.mark.asyncio
+async def test_multi_beat_expression_drains_in_dependency_order_even_when_hash_order_inverts() -> None:
+    ledger = WorldLedger.in_memory(world_id=WORLD)
+    account = BudgetAccount(
+        account_id="account:chat", category="chat", window_id="test", limit=100
+    )
+    beat1 = _action().model_copy(
+        update={
+            "action_id": "action:expression-plan:3e08ce",
+            "idempotency_key": "action-pump:3e08ce",
+            "budget_reservation_id": "reservation:3e08ce",
+            "target": "conversation:qq:c2c:2759284998",
+            "dependencies": (),
+        }
+    )
+    beat2 = _action().model_copy(
+        update={
+            "action_id": "action:expression-plan:b42a99",
+            "idempotency_key": "action-pump:b42a99",
+            "budget_reservation_id": "reservation:b42a99",
+            "target": "conversation:qq:c2c:2759284998",
+            "dependencies": (beat1.action_id,),
+        }
+    )
+    beat3 = _action().model_copy(
+        update={
+            "action_id": "action:expression-plan:0128f8",
+            "idempotency_key": "action-pump:0128f8",
+            "budget_reservation_id": "reservation:0128f8",
+            "target": "conversation:qq:c2c:2759284998",
+            "dependencies": (beat2.action_id,),
+        }
+    )
+    events = [
+        _event(
+            "BudgetAccountConfigured",
+            {"account": account.model_dump(mode="json")},
+            "account",
+        )
+    ]
+    for index, beat in enumerate((beat1, beat2, beat3), start=1):
+        reservation = BudgetReservation(
+            reservation_id=beat.budget_reservation_id,
+            account_id=account.account_id,
+            action_id=beat.action_id,
+            category="chat",
+            amount_limit=10,
+        )
+        events.append(
+            _event(
+                "BudgetReserved",
+                {"reservation": reservation.model_dump(mode="json")},
+                f"reserved:{index}",
+            )
+        )
+        events.append(
+            _event(
+                "ActionAuthorized",
+                {"action": beat.model_dump(mode="json")},
+                f"authorized:{index}",
+            )
+        )
+    ledger.commit(tuple(events), expected_world_revision=0, expected_deliberation_revision=0)
+    dispatched_ids: list[str] = []
+
+    class _OrderedDeliveredExecutor(_DeliveredExecutor):
+        async def dispatch(self, action: Action) -> ProviderReceipt:
+            dispatched_ids.append(action.action_id)
+            return ProviderReceipt(
+                provider_receipt_id=f"provider-event:{action.action_id}",
+                action_id=action.action_id,
+                idempotency_key=action.idempotency_key,
+                provider="provider:test",
+                provider_ref=f"provider-ref:{action.action_id}",
+                status="delivered",
+                artifact_refs=(),
+                cost_actual=3,
+                received_at=NOW,
+                raw_payload_hash="sha256:provider-reply-1",
+            )
+
+    runtime = WorldRuntime(
+        world_id=WORLD,
+        ledger=ledger,
+        action_executor=_OrderedDeliveredExecutor(),
+        action_pump_owner="pump:primary",
+    )
+
+    first = await runtime.drain_actions_once()
+    second = await runtime.drain_actions_once()
+    third = await runtime.drain_actions_once()
+
+    assert first is not None and first.status == "settled"
+    assert second is not None and second.status == "settled"
+    assert third is not None and third.status == "settled"
+    assert dispatched_ids == [beat1.action_id, beat2.action_id, beat3.action_id]
+

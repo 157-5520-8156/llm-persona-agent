@@ -347,14 +347,68 @@ def iter_queued_later_followups(projection: object) -> tuple[object, ...]:
     return tuple(items)
 
 
+def _iter_pending_outbound_actions(projection: object) -> tuple[object, ...]:
+    """Authorized later followups plus unsent beats of partially-sent or gated plans."""
+
+    from .expression_reconsideration import expression_beat_is_gated
+
+    actions = getattr(projection, "actions", ()) or ()
+    partially_visible_plans = {
+        getattr(item, "expression_plan_id", None)
+        for item in actions
+        if getattr(item, "kind", None) in _VISIBLE_SPEECH_KINDS
+        and getattr(item, "state", None) in _VISIBLE_SPEECH_STATES
+        and isinstance(getattr(item, "expression_plan_id", None), str)
+    }
+    has_trigger_processes = bool(getattr(projection, "trigger_processes", None))
+    items = []
+    for action in actions:
+        if getattr(action, "state", None) not in LATER_FOLLOWUP_STATES:
+            continue
+        action_id = getattr(action, "action_id", None)
+        if not isinstance(action_id, str):
+            continue
+        if is_later_followup(action):
+            if later_refresh_is_terminal(projection, action_id):
+                continue
+            items.append(action)
+            continue
+        plan_id = getattr(action, "expression_plan_id", None)
+        beat_id = getattr(action, "expression_beat_id", None)
+        if (
+            getattr(action, "kind", None) not in _VISIBLE_SPEECH_KINDS
+            or not isinstance(plan_id, str)
+            or not isinstance(beat_id, str)
+        ):
+            continue
+        is_gated = False
+        if has_trigger_processes:
+            try:
+                is_gated = expression_beat_is_gated(
+                    projection=projection, plan_id=plan_id, beat_id=beat_id
+                )
+            except Exception:
+                is_gated = False
+        if plan_id in partially_visible_plans or is_gated:
+            items.append(action)
+    items.sort(
+        key=lambda item: (
+            getattr(item, "not_before", None) or getattr(item, "logical_time"),
+            getattr(item, "expression_beat_id", "") or "",
+            getattr(item, "action_id", ""),
+        )
+    )
+    return tuple(items)
+
+
 def queued_later_facts(
     projection: object, *, logical_time: datetime | None
 ) -> tuple[QueuedLaterExpressionFact, ...]:
-    """Compile queued later followups as facts. Missing text or authority drops the row."""
+    """Compile queued later followups and unsent sibling beats as facts."""
 
     del logical_time
     facts: list[QueuedLaterExpressionFact] = []
-    for action in iter_queued_later_followups(projection):
+    for action in _iter_pending_outbound_actions(projection):
         beat = _beat_for_action(projection, action)
         if beat is None:
             continue
@@ -365,7 +419,7 @@ def queued_later_facts(
         )
         authority = _authority_for_beat(projection, beat)
         written_at = getattr(action, "logical_time", None)
-        send_at = getattr(action, "not_before", None)
+        send_at = getattr(action, "not_before", None) or written_at
         plan_id = getattr(action, "expression_plan_id", None)
         beat_id = getattr(action, "expression_beat_id", None)
         action_id = getattr(action, "action_id", None)
