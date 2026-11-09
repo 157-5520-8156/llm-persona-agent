@@ -1634,7 +1634,28 @@ def _build_memory_tree_index(
     logical_time: object = None,
 ) -> dict[str, list[str]]:
     """Build a compact 3-layer nested memory title index (Layer 1 front / Layer 2 recent / Layer 3 deep)."""
-    if not shortcuts:
+    entries: list[Mapping[str, object]] = list(shortcuts)
+    if not entries:
+        for slice_name, raw_slice in (
+            ("selected_recall", materials.get("selected_recall")),
+            ("recent_self_experiences", materials.get("recent_self_experiences")),
+            ("automatic_prefetch", materials.get("automatic_prefetch")),
+        ):
+            items = (
+                raw_slice.get("items")
+                if isinstance(raw_slice, Mapping) and isinstance(raw_slice.get("items"), list)
+                else raw_slice
+                if isinstance(raw_slice, list)
+                else ()
+            )
+            for idx, item in enumerate(items):
+                if not isinstance(item, Mapping):
+                    continue
+                alias = str(item.get("source_ref") or item.get("influence_id") or f"{slice_name}:{idx}").strip()
+                preview = str(item.get("text") or item.get("what_happened") or item.get("summary") or "").replace("\n", " ").strip()
+                if alias and preview:
+                    entries.append({"alias": alias, "slice": slice_name, "preview": preview})
+    if not entries:
         return {}
     recalled_boost_refs = _collect_recalled_boost_refs(materials)
     aliases_map = boundaries.get("source_ref_aliases") if isinstance(boundaries, Mapping) else None
@@ -1643,11 +1664,11 @@ def _build_memory_tree_index(
         if isinstance(aliases_map, Mapping)
         else {}
     )
-    boosted_aliases = {ref_to_alias.get(r, r) for r in recalled_boost_refs}
+    boosted_aliases = {ref_to_alias.get(r, r) for r in recalled_boost_refs} | recalled_boost_refs
     layer_1_front: list[str] = []
     layer_2_recent: list[str] = []
     layer_3_deep: list[str] = []
-    for entry in shortcuts:
+    for entry in entries:
         if not isinstance(entry, Mapping):
             continue
         alias = str(entry.get("alias") or "").strip()

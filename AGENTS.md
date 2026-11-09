@@ -27,7 +27,7 @@
 - **唯一权威仓库与分支**：主工作区为 `/Users/geoff/Projects/Girl-Agent`，唯一权威主干分支为 `main`。任何 Agent（包括 Codex、Claude、Antigravity 子 Agent）开始任务前必须确认当前位于 `/Users/geoff/Projects/Girl-Agent` 的 `main` 最新提交（或从最新 `main` 派生），严禁误入 `/Users/geoff/Projects/Girl-Agent-*` 或 `~/.codex/worktrees/*` 等历史旧 worktree，也严禁从过时的 `codex/*`、`worktree-*` 分支检出旧代码覆盖主干。
 - **唯一线上运行环境与配置**：
   - 线上配置唯一真源为仓库根目录 `.env` 与 `configs/character.yaml`（虚拟环境固定为 `/Users/geoff/Projects/Girl-Agent/.venv`）。
-  - 线上常驻服务唯一入口为 macOS LaunchAgent `com.girl-agent.napcat`（`~/Library/LaunchAgents/com.girl-agent.napcat.plist`），生产数据库位于 `output/2026-11-01-qq-c2c/world_v2.sqlite3`。
+  - 线上常驻服务唯一入口为 macOS LaunchAgent `com.girl-agent.napcat`（`~/Library/LaunchAgents/com.girl-agent.napcat.plist` -> `~/Library/Application Support/Girl-Agent/run-production-napcat.sh`），生产数据库固定为 `data/companion.epoch2.sqlite`。
 - **角色模型采样温度基线**：
   - 主角色模型（DeepSeek `deepseek-chat`）温度基线为 `WORLD_V2_CHARACTER_TEMPERATURE=1.3`（定义于 `.env` 与 `src/companion_daemon/world_v2/character_interior/production.py`）。
   - 智谱 GLM 系列模型（`glm-4.7-flash` / `GLM-5.3-Flash`，温度有效区间 `[0.0, 1.0]`）在角色相关调用中固定封顶为 `temperature=1.0` 且关闭 `thinking`。
