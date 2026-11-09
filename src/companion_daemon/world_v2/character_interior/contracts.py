@@ -2299,10 +2299,32 @@ def _walking_in_recent_self_stories(
             )
             if len(reaction_clean) > 68:
                 reaction_clean = reaction_clean[:67].rstrip("，、 ") + "…"
+        exp_anchors = _extract_concrete_story_anchors(f"{cause_raw} {scene_raw}")
+        has_shareable_photo = False
+        if isinstance(materials, Mapping):
+            album = materials.get("moments_i_can_share")
+            album_items = (
+                album.get("items")
+                if isinstance(album, Mapping) and isinstance(album.get("items"), list)
+                else ()
+            )
+            for m_item in album_items:
+                if not isinstance(m_item, Mapping):
+                    continue
+                if m_item.get("photo_in_hand") is not True or m_item.get("hold_reason"):
+                    continue
+                m_ref = str(m_item.get("source_ref") or "").strip()
+                m_what = str(m_item.get("what_happened") or "").strip()
+                if (m_ref and m_ref in self_ids) or (
+                    m_what and exp_anchors and len(exp_anchors & _extract_concrete_story_anchors(m_what)) >= 2
+                ):
+                    has_shareable_photo = True
+                    break
+        photo_tag = "｜当时顺手拍了照片在手头可发" if has_shareable_photo else ""
         inner_part = (
-            f"（当时反应：{reaction_clean}｜私下亲历，尚未在聊天细说）"
+            f"（当时反应：{reaction_clean}{photo_tag}｜私下亲历，尚未在聊天细说）"
             if reaction_clean
-            else "（私下亲历，尚未在聊天细说）"
+            else f"（私下亲历，尚未在聊天细说{photo_tag}）"
         )
         unshared_str = f"{time_tag}{chat_origin}{full_scene}{inner_part}"
         shared_str = f"{time_tag}{chat_origin}{short_scene}（此前已在聊天提过，勿重复当新事展开）"
@@ -2320,7 +2342,7 @@ def _walking_in_recent_self_stories(
                 "is_shared": is_shared,
                 "self_ids": self_ids,
                 "link_refs": link_refs,
-                "anchors": _extract_concrete_story_anchors(f"{cause_raw} {scene_raw}"),
+                "anchors": exp_anchors,
             }
         )
 
@@ -2757,11 +2779,21 @@ def _walking_in_recent_browsed_tidbit(
         )
         if not is_external or (not headline and not subj_sum):
             continue
-        headline_clean = headline.rstrip("。；; ").replace("\n", " ")
+        headline_clean = (
+            headline.rstrip("。；; ")
+            .replace("\n", " ")
+            .replace("。", "，")
+            .replace("；", "，")
+            .replace(";", "，")
+        )
         if len(headline_clean) > 38:
             headline_clean = headline_clean[:37].rstrip("，、 ") + "…"
         sum_clean = _to_first_person_self_reference(
-            subj_sum.rstrip("。；; ").replace("\n", " ").replace("。", "，").replace("；", "，")
+            subj_sum.rstrip("。；; ")
+            .replace("\n", " ")
+            .replace("。", "，")
+            .replace("；", "，")
+            .replace(";", "，")
         )
         if len(sum_clean) > 46:
             sum_clean = sum_clean[:45].rstrip("，、 ") + "…"
@@ -2769,6 +2801,13 @@ def _walking_in_recent_browsed_tidbit(
             combined = f"{headline_clean}（{sum_clean}）"
         else:
             combined = sum_clean or headline_clean
+        chat_origin = _find_chat_to_life_origin(
+            item,
+            cause_raw=headline,
+            scene_raw=subj_sum,
+            occ_at=_instant(item.get("accepted_at") or item.get("occurred_at")),
+            materials=materials,
+        )
         disclosed = _lookup_disclosed_claim(
             (item.get("source_ref"), item.get("influence_id")),
             materials=materials,
@@ -2776,6 +2815,7 @@ def _walking_in_recent_browsed_tidbit(
         is_shared = (
             disclosed is not None
             or item.get("shared_in_chat") is True
+            or item.get("already_shared_in_chat") is True
             or (
                 bool(companion_texts)
                 and not _is_unshared_in_companion_dialogue(f"{headline} {subj_sum}", companion_texts)
@@ -2783,7 +2823,7 @@ def _walking_in_recent_browsed_tidbit(
         )
         status_tag = "此前已在聊天提过" if is_shared else "刚刷到的闲事，尚未跟他说过"
         clause = (
-            f"手边刚刷到的闲事：{combined}"
+            f"手边刚刷到的闲事：{chat_origin}{combined}"
             f"（{status_tag}，闲聊或想岔开话题时可随手提起，不提亦可）"
         )
         if is_shared:

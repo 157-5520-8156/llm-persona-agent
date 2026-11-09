@@ -2006,3 +2006,114 @@ def test_four_pillar_story_clusters_core_atlas_and_scope_alignment() -> None:
         )
 
 
+def test_media_and_bilibili_perception_causal_chain_linkage():
+    from datetime import datetime
+    from companion_daemon.world_v2.character_interior.contracts import _rendered_lived_moment
+
+    now_iso = "2026-11-09T20:00:00+08:00"
+    materials = {
+        "recent_dialogue": {
+            "stable_turns": [
+                {
+                    "dialogue_id": "diag:cp:cat-meme",
+                    "speaker": "counterpart",
+                    "occurred_at": "2026-11-09T18:00:00+08:00",
+                    "text": "今天看到三花猫抢烤肠，太搞笑了吧",
+                }
+            ]
+        },
+        "recent_self_experiences": {
+            "items": [
+                {
+                    "source_ref": "experience:canteen-sausage",
+                    "experience_id": "experience:canteen-sausage",
+                    "context_kind": "committed_experience",
+                    "occurred_at": "2026-11-09T19:00:00+08:00",
+                    "what_happened": "去河西食堂买烤肠，结果被操场边的三花猫盯上了，分了半根给它",
+                }
+            ]
+        },
+        "moments_i_can_share": {
+            "availability": "available",
+            "available_count": 1,
+            "already_sent_count": 1,
+            "items": [
+                {
+                    "source_ref": "experience:canteen-sausage",
+                    "photo_in_hand": True,
+                    "privacy_class": "shareable",
+                    "what_happened": "三花猫蹲在食堂台阶上啃半根烤肠",
+                }
+            ],
+        },
+        "photos_i_shared": [
+            {
+                "delivery_id": "deliv:1",
+                "about": "昨晚自习室桌上的热可可",
+                "he_spoke_after": True,
+                "when": "昨天",
+            }
+        ],
+        "perception": [
+            {
+                "source_ref": "life-influence:external-perception:bilibili:cat-sausage",
+                "influence_id": "life-influence:external-perception:bilibili:cat-sausage",
+                "accepted_at": "2026-11-09T19:30:00+08:00",
+                "headline": "三花猫为了抢一根烤肠能有多拼",
+                "subjective_summary": "刷到这个三花猫抢烤肠的视频差点笑出声，跟刚才食堂那只一模一样",
+            }
+        ],
+        "relevant_facts": [
+            {
+                "source_ref": "fact:shared-cocoa",
+                "text": "昨晚聊起自习室的热可可，他夸杯子好看",
+            }
+        ],
+        "memory_understandings": [
+            {
+                "status": "active",
+                "facet": "subjective_relationship",
+                "summary": "每次给他发随手拍的小日常他都会认真接话，让我很愿意跟他分享手头的新鲜事",
+            }
+        ],
+        "relationship": [
+            {
+                "stage": "close_friend",
+                "variables": {"closeness_bp": 6500, "trust_bp": 6800},
+                "recent_authored_signals": [{"signal_code": "自然分享日常的默契"}],
+            }
+        ],
+    }
+    lived = _rendered_lived_moment(materials, datetime.fromisoformat(now_iso))
+    assert lived is not None
+    assert "当时顺手拍了照片在手头可发" in lived
+    assert "手边刚刷到的闲事：[由头：此前聊天他提过「今天看到三花猫抢烤肠，太搞笑了吧」]三花猫为了抢一根烤肠能有多拼" in lived
+
+    packet = {
+        "current_trigger_message": {"text": "你在干嘛呢？"},
+        "inner_life_snapshot": {
+            "cursor": {"logical_time": now_iso},
+            "materials": {**materials, "lived_moment": lived},
+        },
+        "expression_hard_boundaries": {
+            "source_ref_aliases": {
+                "S01": "experience:canteen-sausage",
+                "S02": "life-influence:external-perception:bilibili:cat-sausage",
+                "S03": "fact:shared-cocoa",
+            },
+            "world_claim_source_refs": {
+                "past_world": ["S01", "S02", "S03"],
+                "shared_history": ["S02", "S03"],
+            },
+        },
+    }
+    bounded = bounded_inbound_context(packet)
+    atlas = bounded["context_window"]["core_life_atlas"]
+    arcs = "\n".join(atlas.get("active_life_arcs_and_recent_clusters", []))
+    assert "[手头有照可发]" in arcs
+    assert "[冲浪动态]" in arcs
+    shared_ms = "\n".join(atlas.get("shared_history_and_relationship_milestones", []))
+    assert "曾发过照片「昨晚自习室桌上的热可可」，他已回" in shared_ms
+
+
+

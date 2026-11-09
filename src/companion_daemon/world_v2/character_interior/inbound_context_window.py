@@ -1535,14 +1535,14 @@ def _citable_memory_shortcuts(
             )
             inferred_unshared = (
                 not explicit_shared
-                and slice_name in {"recent_self_experiences", "remembered_material", "automatic_prefetch"}
+                and slice_name in {"recent_self_experiences", "remembered_material", "automatic_prefetch", "perception"}
                 and (
                     (is_prehistory_item and _has_disclosure_ledger(materials))
                     or _is_unshared_in_companion_dialogue(preview, companion_texts)
                 )
             )
             unshared_flag = bool(
-                "shared_history" not in scopes
+                ("shared_history" not in scopes or slice_name == "perception")
                 and (explicit_unshared or inferred_unshared)
             )
             is_landmark = (
@@ -1577,6 +1577,7 @@ def _citable_memory_shortcuts(
                             "recent_self_experiences",
                             "remembered_material",
                             "automatic_prefetch",
+                            "perception",
                         }
                         else 38
                     )
@@ -1803,11 +1804,35 @@ def _build_core_life_atlas(
         else {}
     )
     exp_by_ref: dict[str, Mapping[str, object]] = {}
-    for exp in _material_entries(materials, "recent_self_experiences"):
-        if isinstance(exp, Mapping):
-            eref = str(exp.get("source_ref") or exp.get("experience_id") or "").strip()
-            if eref:
-                exp_by_ref[eref] = exp
+    for slice_k in ("recent_self_experiences", "perception"):
+        for exp in _material_entries(materials, slice_k):
+            if isinstance(exp, Mapping):
+                for k in ("source_ref", "experience_id", "influence_id"):
+                    eref = str(exp.get(k) or "").strip()
+                    if eref:
+                        exp_by_ref[eref] = exp
+
+    shareable_photo_refs: set[str] = set()
+    shareable_photo_anchors: list[set[str]] = []
+    album = materials.get("moments_i_can_share")
+    album_items = (
+        album.get("items")
+        if isinstance(album, Mapping) and isinstance(album.get("items"), list)
+        else ()
+    )
+    for m_item in album_items:
+        if not isinstance(m_item, Mapping):
+            continue
+        if m_item.get("photo_in_hand") is not True or m_item.get("hold_reason"):
+            continue
+        m_ref = str(m_item.get("source_ref") or "").strip()
+        if m_ref:
+            shareable_photo_refs.add(m_ref)
+        m_what = str(m_item.get("what_happened") or "").strip()
+        if m_what:
+            m_anc = _extract_concrete_story_anchors(m_what)
+            if m_anc:
+                shareable_photo_anchors.append(m_anc)
 
     prehistory_records: list[dict[str, object]] = []
     active_exp_records: list[dict[str, object]] = []
@@ -1849,7 +1874,7 @@ def _build_core_life_atlas(
                     "anchors": _extract_concrete_story_anchors(preview),
                 }
             )
-        elif slice_name in {"recent_self_experiences", "biographical_context"}:
+        elif slice_name in {"recent_self_experiences", "biographical_context", "perception"}:
             raw_exp = exp_by_ref.get(canonical, {})
             extra_txt = ""
             if isinstance(raw_exp, Mapping):
@@ -1862,19 +1887,28 @@ def _build_core_life_atlas(
                     for v in (
                         raw_exp.get("intention_summary"),
                         raw_exp.get("trigger_summary"),
+                        raw_exp.get("headline"),
+                        raw_exp.get("subjective_summary"),
                         io_map.get("intended_text"),
                         cr_map.get("response_text"),
                     )
                     if isinstance(v, str) and v
                 )
+            exp_anc = _extract_concrete_story_anchors(f"{preview} {extra_txt}")
+            has_photo = (
+                bool(canonical and canonical in shareable_photo_refs)
+                or any(len(exp_anc & p_anc) >= 2 for p_anc in shareable_photo_anchors)
+            )
+            photo_badge = "[手头有照可发]" if has_photo else ""
+            browsed_badge = "[冲浪动态]" if slice_name == "perception" else ""
             active_exp_records.append(
                 {
                     "alias": alias,
                     "canonical": canonical,
-                    "share_tag": share_tag,
+                    "share_tag": f"{share_tag}{browsed_badge}{photo_badge}",
                     "shared_flag": shared_flag,
                     "preview": preview[:140],
-                    "anchors": _extract_concrete_story_anchors(f"{preview} {extra_txt}"),
+                    "anchors": exp_anc,
                     "raw_exp": raw_exp,
                 }
             )
@@ -1988,9 +2022,23 @@ def _build_core_life_atlas(
     shared_photo_note = ""
     for ph in shared_photos[:1]:
         if isinstance(ph, Mapping) and ph.get("privacy_class") != "withhold":
-            ph_sum = str(ph.get("caption") or ph.get("summary") or ph.get("scene_note") or "").strip()
+            ph_sum = str(
+                ph.get("about")
+                or ph.get("caption")
+                or ph.get("summary")
+                or ph.get("scene_note")
+                or ph.get("line")
+                or ""
+            ).strip()
             if ph_sum:
-                shared_photo_note = f"曾发过照片「{ph_sum[:32]}」"
+                spoke_tag = (
+                    "，他已回"
+                    if ph.get("he_spoke_after") is True
+                    else "，他尚未回这张"
+                    if ph.get("he_spoke_after") is False
+                    else ""
+                )
+                shared_photo_note = f"曾发过照片「{ph_sum[:32]}」{spoke_tag}"
 
     if shared_interaction_records and (rel_understandings or rel_sig_str):
         first_inter = shared_interaction_records[0]
