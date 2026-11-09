@@ -1295,11 +1295,23 @@ def _annotate_unshared_materials_and_trigger(result: dict, materials: dict) -> N
     understandings = materials.get("memory_understandings")
     if isinstance(understandings, list):
         for mu in understandings:
-            if not isinstance(mu, dict) or mu.get("facet") == "subjective_relationship":
+            if not isinstance(mu, dict):
                 continue
             mu_sum = str(mu.get("summary") or "").strip()
-            if mu_sum and _is_unshared_in_companion_dialogue(mu_sum, companion_texts):
+            if not mu_sum:
+                continue
+            if mu.get("facet") == "subjective_relationship" and any(
+                k in mu_sum for k in ("Geoff", "他回我", "回我消息", "守着别人消息")
+            ):
+                continue
+            if _is_unshared_in_companion_dialogue(mu_sum, companion_texts):
                 unshared_texts.append(mu_sum)
+            else:
+                for sub_s in re.split(r"[。；;！？\n]+", mu_sum):
+                    if len(sub_s.strip()) >= 8 and _is_unshared_in_companion_dialogue(
+                        sub_s.strip(), companion_texts
+                    ):
+                        unshared_texts.append(sub_s.strip())
     cur_msg = result.get("current_trigger_message")
     if not isinstance(cur_msg, dict) or not unshared_texts:
         return

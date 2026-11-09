@@ -1057,7 +1057,10 @@ def _extract_authored_relationship_note(
 
 
 def _walking_in_relational_tension(
-    relationship: object, protagonist_npc_relationships: object = None
+    relationship: object,
+    protagonist_npc_relationships: object = None,
+    *,
+    companion_texts: Sequence[str] = (),
 ) -> str | None:
     """Surface self-authored relationship notes without hardcoded attitude scripts."""
 
@@ -1097,6 +1100,8 @@ def _walking_in_relational_tension(
             continue
         npc_note = _extract_authored_relationship_note(npc_entry, is_npc=True)
         if npc_note:
+            if companion_texts and _is_unshared_in_companion_dialogue(npc_note, companion_texts):
+                npc_note += "（所涉私下处境未在聊天提过）"
             all_pieces.append(npc_note)
             break
 
@@ -1660,7 +1665,9 @@ def _walking_in_life_weight(
         )
 
     rel_clause = _walking_in_relational_tension(
-        relationship, protagonist_npc_relationships
+        relationship,
+        protagonist_npc_relationships,
+        companion_texts=companion_texts,
     )
     if rel_clause:
         clauses.append(rel_clause)
@@ -1759,11 +1766,23 @@ def _walking_in_stage_posture(
         )
         if len(clean) > 200:
             clean = clean[:199].rstrip("，、 ") + "…"
-        if (
-            facet_str != "subjective_relationship"
-            and _is_unshared_in_companion_dialogue(summary, companion_texts)
-        ):
-            clean += "（所涉私下处境未在聊天提过）"
+        is_counterpart_rel = facet_str == "subjective_relationship" and any(
+            k in summary for k in ("Geoff", "他回我", "回我消息", "守着别人消息", "等我")
+        )
+        if not is_counterpart_rel and companion_texts:
+            if _is_unshared_in_companion_dialogue(summary, companion_texts):
+                clean += "（所涉私下处境未在聊天提过）"
+            else:
+                sub_sentences = [
+                    s.strip()
+                    for s in re.split(r"[。；;！？\n]+", summary)
+                    if len(s.strip()) >= 8
+                ]
+                if len(sub_sentences) >= 2 and any(
+                    _is_unshared_in_companion_dialogue(s, companion_texts)
+                    for s in sub_sentences
+                ):
+                    clean += "（其中新近私下处境未在聊天提过）"
         candidates.append((prio, idx, facet_str, clean))
     if not candidates:
         return None
