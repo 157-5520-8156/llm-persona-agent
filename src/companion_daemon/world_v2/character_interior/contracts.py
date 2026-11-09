@@ -1179,9 +1179,18 @@ def compile_chat_disclosure_ledger(projection: object) -> ChatDisclosureLedger:
         if getattr(r, "observed_state", None) in {"provider_accepted", "delivered", "unknown"}
         and isinstance(getattr(r, "action_id", None), str)
     }
-    if not delivered_actions:
-        return ChatDisclosureLedger()
-    stored_payloads = getattr(projection, "stored_message_payloads", {}) or {}
+    raw_stored_payloads = getattr(projection, "stored_message_payloads", ()) or ()
+    stored_payloads: dict[str, str] = {}
+    if isinstance(raw_stored_payloads, Mapping):
+        for k, v in raw_stored_payloads.items():
+            if isinstance(k, str) and isinstance(v, str):
+                stored_payloads[k] = v
+    else:
+        for item in raw_stored_payloads:
+            pref = getattr(item, "payload_ref", None)
+            txt = getattr(item, "text", None)
+            if isinstance(pref, str) and isinstance(txt, str):
+                stored_payloads[pref] = txt
     proposal_audits = {
         getattr(a, "proposal_id", ""): a
         for a in (getattr(projection, "proposal_audits", ()) or ())
@@ -1193,12 +1202,23 @@ def compile_chat_disclosure_ledger(projection: object) -> ChatDisclosureLedger:
 
     for manifest in getattr(projection, "expression_plan_manifests", ()) or ():
         beats = getattr(manifest, "beats", ()) or ()
-        delivered_beats = [b for b in beats if getattr(b, "action_id", None) in delivered_actions]
+        delivered_beats = []
+        for b in beats:
+            act_id = getattr(b, "action_id", None) or getattr(
+                getattr(b, "action", None), "action_id", None
+            )
+            if act_id in delivered_actions or (
+                not delivered_actions and getattr(manifest, "acceptance_event_ref", None)
+            ):
+                delivered_beats.append(b)
         if not delivered_beats:
             continue
         for b in delivered_beats:
             pref = getattr(b, "payload_ref", None)
-            txt = stored_payloads.get(pref) if isinstance(pref, str) else None
+            txt = (
+                getattr(b, "text", None)
+                or (stored_payloads.get(pref) if isinstance(pref, str) else None)
+            )
             if isinstance(txt, str) and txt.strip() and txt.strip() not in seen_texts:
                 seen_texts.add(txt.strip())
                 texts.append(txt.strip())
@@ -1219,8 +1239,13 @@ def compile_chat_disclosure_ledger(projection: object) -> ChatDisclosureLedger:
     for m_reply in getattr(projection, "minimal_reply_manifests", ()) or ():
         if getattr(m_reply, "action_id", None) not in delivered_actions:
             continue
-        pref = getattr(m_reply, "payload_ref", None)
-        txt = stored_payloads.get(pref) if isinstance(pref, str) else None
+        pref = getattr(m_reply, "payload_ref", None) or getattr(
+            m_reply, "message_payload_ref", None
+        )
+        txt = (
+            getattr(m_reply, "text", None)
+            or (stored_payloads.get(pref) if isinstance(pref, str) else None)
+        )
         if isinstance(txt, str) and txt.strip() and txt.strip() not in seen_texts:
             seen_texts.add(txt.strip())
             texts.append(txt.strip())
@@ -1306,9 +1331,19 @@ def chat_disclosure_ledger_scope(
         _ACTIVE_CHAT_DISCLOSURE_LEDGER.reset(token)
 
 
+def _has_disclosure_ledger(materials: Mapping[str, object] | None = None) -> bool:
+    if _ACTIVE_CHAT_DISCLOSURE_LEDGER.get() is not None:
+        return True
+    if isinstance(materials, Mapping) and materials.get("chat_disclosure_ledger") is not None:
+        return True
+    return False
+
+
 def _lookup_disclosed_claim(
     refs: Sequence[object],
     materials: Mapping[str, object] | None = None,
+    *,
+    coordinate_summary: str | None = None,
 ) -> dict[str, str] | None:
     disclosed_map: Mapping[str, dict[str, str]] | None = None
     active = _ACTIVE_CHAT_DISCLOSURE_LEDGER.get()
@@ -1331,6 +1366,18 @@ def _lookup_disclosed_claim(
             found = disclosed_map.get(key)
             if isinstance(found, dict) and found.get("claim_text"):
                 return found
+    if isinstance(coordinate_summary, str) and coordinate_summary.strip():
+        for key, entry in disclosed_map.items():
+            if (
+                isinstance(key, str)
+                and key.startswith("biography-coordinate:sha256:")
+                and isinstance(entry, dict)
+                and isinstance(entry.get("claim_text"), str)
+                and not _is_unshared_in_companion_dialogue(
+                    coordinate_summary, (entry["claim_text"],)
+                )
+            ):
+                return entry
     return None
 
 
@@ -1500,7 +1547,8 @@ def _walking_in_life_weight(
                         item.get("coordinate_ref"),
                         item.get("settlement_event_ref"),
                         item.get("source_ref"),
-                    )
+                    ),
+                    coordinate_summary=summary,
                 )
                 if disclosed_coord is not None or item.get("shared_in_chat") is True:
                     cleaned += "（此前已在聊天提过）"
@@ -1961,7 +2009,8 @@ def _walking_in_spontaneous_memory_flash(
             item.get("shared_in_chat") is True
             or item.get("already_shared_in_chat") is True
             or (
-                item.get("shared_in_chat") is not False
+                not _has_disclosure_ledger(materials)
+                and item.get("shared_in_chat") is not False
                 and companion_texts
                 and not _is_unshared_in_companion_dialogue(clean_text, companion_texts)
             )
@@ -1971,7 +2020,7 @@ def _walking_in_spontaneous_memory_flash(
             status_tag = "过往经历，从未在聊天提过"
         return (
             f"脑海顺带闪过的旧事：{clean_text}"
-            f"（{status_tag}；仅心头自然闪回，是否顺势提起完全由你决定）"
+            f"（{status_tag}，仅心头自然闪回，是否顺势提起完全由你决定）"
         )
     return None
 

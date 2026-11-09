@@ -773,6 +773,7 @@ def bounded_inbound_context(packet, *, include_delivery_overlap=False):
         "接下来自己的安排：",
         "心里记挂的个人心愿/打算：",
         "近期身上悬着的处境：",
+        "脑海顺带闪过的旧事：",
         "今日近期课表/日程：",
         "此刻情绪余波：",
         "此刻心里的关系拉扯：",
@@ -810,6 +811,7 @@ def bounded_inbound_context(packet, *, include_delivery_overlap=False):
                     "接下来自己的安排：",
                     "心里记挂的个人心愿/打算：",
                     "近期身上悬着的处境：",
+                    "脑海顺带闪过的旧事：",
                     "此刻情绪余波：",
                     "此刻心里的关系拉扯：",
                     "今日近期课表/日程：",
@@ -1104,6 +1106,7 @@ def _annotate_unshared_materials_and_trigger(result: dict, materials: dict) -> N
         _CJK_PARTICLES,
         _GENERIC_CHAT_BIGRAMS,
         _extract_companion_chat_texts,
+        _has_disclosure_ledger,
         _is_unshared_in_companion_dialogue,
         _lookup_disclosed_claim,
     )
@@ -1137,11 +1140,17 @@ def _annotate_unshared_materials_and_trigger(result: dict, materials: dict) -> N
                         coord.get("source_ref"),
                     ),
                     materials=materials,
+                    coordinate_summary=summary,
                 )
                 if disclosed is not None:
                     coord["shared_in_chat"] = True
                     coord["previously_shared_claim"] = disclosed["claim_text"][:72]
                     coord.pop("counterpart_prior_knowledge", None)
+                    disclosed_corpus = [*companion_texts, disclosed["claim_text"]]
+                    for sub_clause in re.split(r"[，。；！？—]+", summary):
+                        sub_c = sub_clause.strip()
+                        if len(sub_c) >= 4 and _is_unshared_in_companion_dialogue(sub_c, disclosed_corpus):
+                            unshared_texts.append(sub_c)
                 elif coord.get("shared_in_chat") is False or (
                     coord.get("shared_in_chat") is None
                     and _is_unshared_in_companion_dialogue(summary, companion_texts)
@@ -1242,6 +1251,10 @@ def _annotate_unshared_materials_and_trigger(result: dict, materials: dict) -> N
                 )
                 or ""
             ).strip()
+            is_prehistory_rec = (
+                "prehistory-record:" in str(rec_item.get("source_ref") or "")
+                or isinstance(pre_meta, dict)
+            )
             disclosed = _lookup_disclosed_claim(ref_candidates, materials=materials)
             if disclosed is not None:
                 rec_item["shared_in_chat"] = True
@@ -1251,7 +1264,10 @@ def _annotate_unshared_materials_and_trigger(result: dict, materials: dict) -> N
                 rec_item.get("shared_in_chat") is False
                 or (
                     rec_item.get("shared_in_chat") is None
-                    and _is_unshared_in_companion_dialogue(rec_text, companion_texts)
+                    and (
+                        (is_prehistory_rec and _has_disclosure_ledger(materials))
+                        or _is_unshared_in_companion_dialogue(rec_text, companion_texts)
+                    )
                 )
             ):
                 rec_item["shared_in_chat"] = False
@@ -1357,6 +1373,7 @@ def _citable_memory_shortcuts(
     seen_aliases: set[str] = set()
     from .contracts import (
         _extract_companion_chat_texts,
+        _has_disclosure_ledger,
         _is_unshared_in_companion_dialogue,
         _lookup_disclosed_claim,
     )
@@ -1463,10 +1480,17 @@ def _citable_memory_shortcuts(
                 or item.get("already_shared_in_chat") is True
                 or item.get("shared_in_chat") is True
             )
+            is_prehistory_item = (
+                "prehistory-record:" in str(canonical_ref or src_ref or "")
+                or isinstance(item.get("prehistory"), dict)
+            )
             inferred_unshared = (
                 not explicit_shared
                 and slice_name in {"recent_self_experiences", "remembered_material", "automatic_prefetch"}
-                and _is_unshared_in_companion_dialogue(preview, companion_texts)
+                and (
+                    (is_prehistory_item and _has_disclosure_ledger(materials))
+                    or _is_unshared_in_companion_dialogue(preview, companion_texts)
+                )
             )
             unshared_flag = bool(
                 "shared_history" not in scopes
@@ -1525,6 +1549,7 @@ def _citable_memory_shortcuts(
                     val.get("settlement_event_ref"),
                 ),
                 materials=materials,
+                coordinate_summary=bio_preview,
             )
             bio_unshared = disclosed_bio is None and (
                 val.get("shared_in_chat") is False

@@ -1514,7 +1514,7 @@ def test_chat_disclosure_ledger_and_spontaneous_prehistory_flash():
         assert "文学社换届碰头把下周末读书会筹备直接压给沈知栀（此前已在聊天提过）" in lived
         assert "学工办305勤工助学岗只剩两个候补名额（私下处境，未在聊天提过）" in lived
         assert "脑海顺带闪过的旧事：第二次交换活动前，知栀答应确认几个人会不会来" in lived
-        assert "过往经历，从未在聊天提过；仅心头自然闪回，是否顺势提起完全由你决定" in lived
+        assert "过往经历，从未在聊天提过，仅心头自然闪回，是否顺势提起完全由你决定" in lived
 
         packet = {
             "current_trigger_message": {
