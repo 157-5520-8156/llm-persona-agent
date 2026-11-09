@@ -558,6 +558,11 @@ class LifeContentCompiler:
     @staticmethod
     def _present_materials(candidate_rows, budget):
         remaining = budget.max_total_characters if budget is not None else None
+        remaining_exp = (
+            max(budget.max_total_characters, 2_400)
+            if budget is not None and budget.max_total_characters >= 1_440
+            else None
+        )
         settled: list[LifeContentExcerpt] = []
         experiences_out: list[RecentExperienceContextItem] = []
         suppressions: list[LifeContentSuppression] = []
@@ -565,8 +570,14 @@ class LifeContentCompiler:
             if suppression is not None:
                 suppressions.append(suppression)
             elif item is not None:
+                is_exp = isinstance(item, RecentExperienceContextItem)
+                lane_remaining = (
+                    remaining_exp
+                    if (is_exp and remaining_exp is not None)
+                    else remaining
+                )
                 if budget is not None:
-                    original = item.content if isinstance(item, RecentExperienceContextItem) else item
+                    original = item.content if is_exp else item
                     try:
                         bounded = original.bounded(budget.max_item_characters)
                     except ValueError:
@@ -580,11 +591,11 @@ class LifeContentCompiler:
                         continue
                     if bounded is not original:
                         item = (item.model_copy(update={"content": bounded})
-                                if isinstance(item, RecentExperienceContextItem) else bounded)
-                if remaining is not None and remaining <= 0:
+                                if is_exp else bounded)
+                if lane_remaining is not None and lane_remaining <= 0:
                     content_id = (
                         item.content.content_id
-                        if isinstance(item, RecentExperienceContextItem)
+                        if is_exp
                         else item.content_id
                     )
                     suppressions.append(
@@ -592,16 +603,16 @@ class LifeContentCompiler:
                             content_id=content_id,
                             source_entity_id=(
                                 item.experience_id
-                                if isinstance(item, RecentExperienceContextItem)
+                                if is_exp
                                 else item.source_entity_id
                             ),
                             reason="budget_exhausted",
                         )
                     )
                 else:
-                    original = item.content if isinstance(item, RecentExperienceContextItem) else item
+                    original = item.content if is_exp else item
                     try:
-                        content = original if remaining is None else original.bounded(remaining)
+                        content = original if lane_remaining is None else original.bounded(lane_remaining)
                     except ValueError:
                         suppressions.append(LifeContentSuppression(
                             content_id=original.content_id,
@@ -609,9 +620,11 @@ class LifeContentCompiler:
                             reason="budget_exhausted",
                         ))
                         continue
-                    if isinstance(item, RecentExperienceContextItem):
+                    if is_exp:
                         view = item if content is original else item.model_copy(update={"content": content})
-                        if remaining is not None:
+                        if remaining_exp is not None:
+                            remaining_exp -= content.text_characters()
+                        elif remaining is not None:
                             remaining -= content.text_characters()
                         experiences_out.append(view)
                     else:

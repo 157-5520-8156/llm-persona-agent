@@ -767,6 +767,7 @@ def bounded_inbound_context(packet, *, include_delivery_overlap=False):
         "此前个人打算：",
         "刚经历：",
         "近期连续状态轨迹：",
+        "近日亲历的具体经过：",
         "当下环境：",
         "眼前环境余光：",
         "近期活法与心气：",
@@ -808,6 +809,7 @@ def bounded_inbound_context(packet, *, include_delivery_overlap=False):
                     "此前个人打算：",
                     "刚经历：",
                     "近期连续状态轨迹：",
+                    "近日亲历的具体经过：",
                     "当下环境：",
                     "眼前环境余光：",
                     "近期活法与心气：",
@@ -1559,7 +1561,18 @@ def _citable_memory_shortcuts(
                     if unshared_flag
                     else {}
                 ),
-                "preview": preview.replace("\n", " ").strip()[:38],
+                "preview": preview.replace("\n", " ").strip()[
+                    : (
+                        96
+                        if slice_name
+                        in {
+                            "recent_self_experiences",
+                            "remembered_material",
+                            "automatic_prefetch",
+                        }
+                        else 38
+                    )
+                ],
             })
     bio_coords = boundaries.get("biographical_coordinate_authority")
     if isinstance(bio_coords, list):

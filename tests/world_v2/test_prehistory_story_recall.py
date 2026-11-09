@@ -692,3 +692,81 @@ def test_unreviewed_claim_materialization_keeps_proof_for_presented_inner_life_m
             )
     finally:
         ledger.close()
+
+
+def test_lived_moment_surfaces_recent_self_stories_and_rich_prehistory_flash():
+    from datetime import UTC, datetime
+    from companion_daemon.world_v2.character_interior.contracts import _lived_moment
+    from companion_daemon.world_v2.character_interior.inbound_context_window import (
+        bounded_inbound_context,
+    )
+    from companion_daemon.world_v2.model_context_reading import present_context_evidence
+
+    logical_time = datetime(2026, 11, 9, 12, 0, tzinfo=UTC)
+    recent_self_experiences = {
+        "availability": "available",
+        "items": [
+            {
+                "context_kind": "committed_experience",
+                "experience_id": "experience:work-study-window",
+                "source_ref": "experience:work-study-window",
+                "occurred_from": "2026-11-09T00:30:00Z",
+                "occurred_to": "2026-11-09T01:01:00Z",
+                "privacy_class": "personal",
+                "content": {
+                    "world_consequence": {
+                        "environment": {
+                            "text": "八点半前赶到行政楼305学工窗口交勤工助学申请表，走廊里排起长队，前排女生低声催室友赶紧过来占位置。"
+                        }
+                    },
+                    "character_response": {
+                        "response_text": "我捏着订好的材料站在队尾，暗自庆幸出门早没被卡在截点外。"
+                    },
+                },
+            }
+        ],
+    }
+    remembered_material = [
+        {
+            "source_ref": "prehistory-record:celia-expanded-growing-g01",
+            "text": (
+                "高二暑假在家里小书店帮忙看店时，暴雨把门口台阶淋透了，"
+                "她把靠门的旧杂志一摞摞搬进里间，顺手替躲雨的初中生递了张干毛巾，"
+                "等雨停后自己坐在小板凳上把受潮的书页一页页吹干。"
+            ),
+        }
+    ]
+    lm = _lived_moment(
+        week_diary=[],
+        logical_time=logical_time,
+        recent_self_experiences=recent_self_experiences,
+        remembered_material=remembered_material,
+        companion_texts=("今天刚去跑了一趟教务处",),
+    )
+    assert lm is not None
+    assert "近日亲历的具体经过：[今天09:01]八点半前赶到行政楼305学工窗口交勤工助学申请表" in lm
+    assert "当时反应：我捏着订好的材料站在队尾" in lm
+    assert "私下亲历，尚未在聊天细说" in lm
+    assert "脑海顺带闪过的旧事：" in lm
+    assert "等雨停后自己坐在小板凳上把受潮的书页一页页吹干" in lm
+
+    packet = {
+        "inner_life_snapshot": {
+            "contract": "inner-life-snapshot.1",
+            "materials": {
+                "logical_time": "2026-11-09T12:00:00Z",
+                "week_diary": [{"date": "2026-11-09", "lines": ["上午出门"]}],
+                "lived_moment": lm,
+                "recent_self_experiences": recent_self_experiences,
+                "remembered_material": remembered_material,
+            },
+        },
+        "current_trigger_message": {"text": "今天去窗口交表排队差点没赶上"},
+    }
+    presented = present_context_evidence(packet)
+    assert "近日亲历的具体经过：" in presented["inner_life_snapshot"]["materials"]["lived_moment"]["current_moment"]
+    bounded = bounded_inbound_context(packet)
+    inner_moment = bounded["current_trigger_message"]["current_inner_moment"]
+    assert "近日亲历的具体经过：[今天09:01]八点半前赶到行政楼305学工窗口交勤工助学申请表" in inner_moment
+    assert "脑海顺带闪过的旧事：" in inner_moment
+

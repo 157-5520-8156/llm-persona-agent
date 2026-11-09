@@ -513,7 +513,9 @@ def _relevant_prehistory_memory_link_refs(
         doc_texts = (*base_texts, *stage_cues) if seed else base_texts
         overlap = substantive_cue_features & _recall_features(doc_texts)
         if not overlap or (
-            not any(len(feature) >= 3 for feature in overlap) and len(overlap) < 2
+            not seed
+            and not any(len(feature) >= 3 for feature in overlap)
+            and len(overlap) < 2
         ):
             continue
         if seed:
@@ -540,6 +542,21 @@ def _relevant_prehistory_memory_link_refs(
             )
             rel_bp += jitter
         ranked.append((rank_score, rel_bp, item.candidate_id))
+    if not ranked and seed.startswith("lived-assoc:") and eligible:
+        fallback_scored = [
+            (
+                int.from_bytes(
+                    hashlib.sha256(
+                        f"prehistory-fallback.1:{seed}:{item.candidate_id}".encode("utf-8")
+                    ).digest()[:4],
+                    "big",
+                ),
+                item.candidate_id,
+            )
+            for item in eligible
+        ]
+        fallback_scored.sort(key=lambda row: (-row[0], row[1]))
+        return (fallback_scored[0][1],)
     ranked.sort(key=lambda row: (-row[0], -row[1], row[2]))
     return (ranked[0][2],) if ranked else ()
 
@@ -3274,6 +3291,20 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                                 logical_time=query.logical_time,
                                 query_text=assoc_cue,
                                 seed=f"lived-assoc:{query.trigger_ref}:{query.ledger_sequence}",
+                            )
+                    if inbound_prehistory_links:
+                        existing_mem_ids = {item.candidate_id for item in context_memories}
+                        promoted_prehistory = tuple(
+                            item
+                            for item in memory_retrievals.items
+                            if item.candidate_id in inbound_prehistory_links
+                            and item.candidate_id not in existing_mem_ids
+                        )
+                        if promoted_prehistory:
+                            context_memories = (*context_memories, *promoted_prehistory)
+                            continuity_rank_overrides = continuity_rank_overrides | frozenset(
+                                ("active_memory_candidates", item.candidate_id)
+                                for item in promoted_prehistory
                             )
                     attention_request = build_automatic_recall_request(
                         observation_text=trigger_dialogue.text,

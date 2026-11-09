@@ -1722,10 +1722,24 @@ def compile_inner_life_snapshot(
              and _is_typed_settled_world_item(item, source_envelopes=source_envelopes)))]
         for lane in ("world_life", "recent_experiences")
     ]
+    has_world_planning_in_lane0 = len(experience_lanes) == 2 and any(
+        isinstance(e, dict) and e.get("world_planning") for e in experience_lanes[0]
+    )
+    if has_world_planning_in_lane0:
+        experience_lanes[0] = [
+            *(e for e in experience_lanes[0] if not (isinstance(e, dict) and e.get("world_planning"))),
+            *(e for e in experience_lanes[0] if isinstance(e, dict) and e.get("world_planning")),
+        ]
     recent = [entries[0] for entries in experience_lanes if entries]
-    if len(recent) < PRESENT_EXPERIENCE_ITEM_LIMIT:
-        recent.extend(entry for entries in experience_lanes for entry in entries[1:])
-    selected = recent[:PRESENT_EXPERIENCE_ITEM_LIMIT]
+    exp_limit = max(PRESENT_EXPERIENCE_ITEM_LIMIT, 4) if has_world_planning_in_lane0 else PRESENT_EXPERIENCE_ITEM_LIMIT
+    if len(recent) < exp_limit:
+        tail_lanes = (
+            (experience_lanes[1], experience_lanes[0])
+            if has_world_planning_in_lane0
+            else experience_lanes
+        )
+        recent.extend(entry for entries in tail_lanes for entry in entries[1:])
+    selected = recent[:exp_limit]
     lived = [entry for entry in selected if not is_pending_world_material(entry)]
     pending = [entry for entry in selected if is_pending_world_material(entry)]
     materials["recent_self_experiences"] = (

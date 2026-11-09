@@ -1980,6 +1980,136 @@ def _walking_in_continuous_trajectory(
     return f"近期连续状态轨迹：今天已接连经历 {len(ended_labels[:3])} 段日常（{chain_str}）"
 
 
+def _walking_in_recent_self_stories(
+    *,
+    recent_self_experiences: object = None,
+    logical_time: datetime | None = None,
+    companion_texts: Sequence[str] = (),
+    materials: Mapping[str, object] | None = None,
+) -> str | None:
+    """Surface concrete scenes and inner reactions from recent committed personal experiences."""
+    exp_items = (
+        recent_self_experiences.get("items")
+        if isinstance(recent_self_experiences, Mapping)
+        and isinstance(recent_self_experiences.get("items"), list)
+        else recent_self_experiences
+        if isinstance(recent_self_experiences, list)
+        else []
+    )
+    if not isinstance(exp_items, list) or not exp_items:
+        return None
+    zone = ZoneInfo("Asia/Shanghai")
+    local_now = logical_time.astimezone(zone) if logical_time is not None else None
+    stories: list[str] = []
+    for exp in exp_items:
+        if not isinstance(exp, Mapping) or exp.get("privacy_class") == "withhold":
+            continue
+        is_committed_exp = (
+            exp.get("context_kind") == "committed_experience"
+            or exp.get("source_kind") == "committed_experience"
+            or bool(exp.get("experience_id"))
+            or str(exp.get("source_ref") or "").startswith("experience:")
+        )
+        if not is_committed_exp:
+            continue
+        if exp.get("epistemic_status") == "intended_not_completed":
+            continue
+        occ_at = _instant(
+            exp.get("settled_at")
+            or exp.get("occurred_to")
+            or exp.get("occurred_at")
+            or exp.get("occurred_from")
+        )
+        time_tag = ""
+        if occ_at is not None and local_now is not None:
+            age_hours = (logical_time - occ_at).total_seconds() / 3600.0
+            if age_hours < -0.5 or age_hours > 72:
+                continue
+            occ_local = occ_at.astimezone(zone)
+            day_diff = (local_now.date() - occ_local.date()).days
+            if day_diff == 0:
+                time_tag = f"[今天{occ_local.strftime('%H:%M')}]"
+            elif day_diff == 1:
+                time_tag = f"[昨天{occ_local.strftime('%H:%M')}]"
+            else:
+                time_tag = f"[{occ_local.strftime('%m-%d %H:%M')}]"
+
+        content_map = exp.get("content") if isinstance(exp.get("content"), Mapping) else {}
+        wc = (
+            content_map.get("world_consequence")
+            if isinstance(content_map.get("world_consequence"), Mapping)
+            else {}
+        )
+        env = wc.get("environment") if isinstance(wc.get("environment"), Mapping) else {}
+        auth_res = (
+            wc.get("authorized_attempt_result")
+            if isinstance(wc.get("authorized_attempt_result"), Mapping)
+            else {}
+        )
+        cr = (
+            content_map.get("character_response")
+            if isinstance(content_map.get("character_response"), Mapping)
+            else {}
+        )
+        scene_raw = str(
+            env.get("text")
+            or auth_res.get("text")
+            or exp.get("what_happened")
+            or exp.get("summary")
+            or exp.get("text")
+            or content_map.get("text")
+            or ""
+        ).strip()
+        reaction_raw = str(cr.get("response_text") or "").strip()
+        if not scene_raw:
+            continue
+        scene_clean = _to_first_person_self_reference(
+            scene_raw.rstrip("。；; ").replace("\n", " ").replace("。", "，").replace("；", "，")
+        )
+        if len(scene_clean) > 92:
+            scene_clean = scene_clean[:91].rstrip("，、 ") + "…"
+        reaction_clean = ""
+        if reaction_raw:
+            reaction_clean = _to_first_person_self_reference(
+                reaction_raw.rstrip("。；; ").replace("\n", " ").replace("。", "，").replace("；", "，")
+            )
+            if len(reaction_clean) > 54:
+                reaction_clean = reaction_clean[:53].rstrip("，、 ") + "…"
+        disclosed = _lookup_disclosed_claim(
+            (
+                exp.get("source_ref"),
+                exp.get("experience_id"),
+                content_map.get("content_id") if isinstance(content_map, Mapping) else None,
+                content_map.get("source_entity_id") if isinstance(content_map, Mapping) else None,
+            ),
+            materials=materials,
+        )
+        is_shared = (
+            disclosed is not None
+            or exp.get("shared_in_chat") is True
+            or (
+                not _has_disclosure_ledger(materials)
+                and exp.get("shared_in_chat") is not False
+                and bool(companion_texts)
+                and not _is_unshared_in_companion_dialogue(scene_clean, companion_texts)
+            )
+        )
+        status_note = "此前已在聊天提过" if is_shared else "私下亲历，尚未在聊天细说"
+        inner_part = (
+            f"（当时反应：{reaction_clean}｜{status_note}）"
+            if reaction_clean
+            else f"（{status_note}）"
+        )
+        entry_str = f"{time_tag}{scene_clean}{inner_part}"
+        if entry_str not in stories:
+            stories.append(entry_str)
+        if len(stories) >= 3:
+            break
+    if not stories:
+        return None
+    return "近日亲历的具体经过：" + "｜".join(stories)
+
+
 def _walking_in_spontaneous_memory_flash(
     *,
     automatic_prefetch: object = None,
@@ -2058,8 +2188,8 @@ def _walking_in_spontaneous_memory_flash(
         )
         if not clean_text:
             continue
-        if len(clean_text) > 78:
-            clean_text = clean_text[:77].rstrip("，、 ") + "…"
+        if len(clean_text) > 165:
+            clean_text = clean_text[:164].rstrip("，、 ") + "…"
         disclosed = _lookup_disclosed_claim(ref_candidates, materials=materials)
         if disclosed is not None:
             claim_preview = disclosed["claim_text"].replace("\n", " ").strip()
@@ -2447,6 +2577,14 @@ def _lived_moment(
     )
     if trajectory_line:
         parts.append(trajectory_line)
+    recent_stories_line = _walking_in_recent_self_stories(
+        recent_self_experiences=recent_self_experiences,
+        logical_time=logical_time,
+        companion_texts=companion_texts,
+        materials=materials,
+    )
+    if recent_stories_line:
+        parts.append(recent_stories_line)
     env_line = _walking_in_environment(recent_self_experiences, logical_time)
     if env_line:
         parts.append(env_line)
