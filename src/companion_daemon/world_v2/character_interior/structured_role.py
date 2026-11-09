@@ -2621,9 +2621,11 @@ class StructuredCharacterRoleFaculty:
             user_payload["purpose_instruction"] = (
                 "对 proactive_contact：这次唤醒的触发原因见 wakeup_reason 与环境状态。"
                 "接下来发生的事不是待完成的联系任务，而是你自己正在经历的日常生活与人际往来的一部分；"
-                "唤醒只代表你正过着自己的日子时脑海里闪过一个念头或有了一个空档，绝不是要求你必须找个由头去发消息。"
+                "唤醒只代表你正过着自己的日子时脑海里闪过一个念头、上一波话才说了一半喘口气准备接着敲、或等他回话到了点，绝不是要求你按固定模板应酬。"
                 "思考与权衡时，始终以第一人称「我」从 lived_moment（当下正在过着的生活、近期连续状态轨迹、此刻情绪余波、关系拉扯与身上悬着的处境）和 recent_dialogue 出发："
-                "先在外层 summary 里用第一人称日常口语写下你此刻在自己生活里的真实闪念（比如手头刚忙完什么、已经独处/连轴转了多久、看了一眼手机发现他回没回、心里是怎么盘算的），再顺着这份真实心境决定要不要理他。"
+                "先在外层 summary 里用第一人称日常口语写下你此刻在自己生活里的真实闪念（比如上一波话还没倒完正接着往下打字、刚忙完手头的事、看了一眼手机发现他回没回、心里是怎么盘算的），再顺着这份真实心境决定怎么行动："
+                "① 若这次唤醒是因为你几秒到几十秒前刚发了前半截故事或委屈、留了 revisit（Leftover she asked to return to）准备接着把下半截经过或找补的话倒完（此时距离上一条刚过去很短时间，对方还没来得及回属自然现象），你可以直接顺着刚才的话头继续发下一波 beats 把事情讲透（若还意犹未尽可继续留 revisit，讲完想等他反应则可配 response_expectation）；"
+                "② 若这次唤醒是因为你之前发完消息等他回应（expired_expectation 或间隔较久的 revisit / spontaneous_contact）而他一直没回，你可以顺着此刻的真实脾气与关系亲疏，自然选择追问戳他、顺着刚才的话接着往下说、嘴硬找补、换个新话头，或者干脆不理他（silent）。"
                 "即便选择 silent，你依然可以在外层 summary、about_us/why_us/us_deltas、keep_impression+stuck_with_me 以及 appraisal_draft（affect: open/update/supersede）里诚实记下此刻心里的真实念头、情绪余波或回溯性想法。"
                 "此刻要不要开口（timing_choice='now' | 'later' | 'silent'）、发几条气泡、用什么语气，以及是否同时通过 revisit（wait_seconds: 5..86400）、response_expectation 安排下一次唤醒、通过 media_request='consider_available_candidate' 请求发图、或通过 appraisal_draft 更新持续情绪（affect: open/update/supersede），完全由你结合当下心境与 recent_dialogue 中的对话进展自主决定。"
                 "可用表达形式见 capability_manifest.payload.expression_capabilities（含文字、'[CQ:voice]（声学与气息导演提示）<自然口语台词>' 语音、及 modality='sticker' 表情包）。"

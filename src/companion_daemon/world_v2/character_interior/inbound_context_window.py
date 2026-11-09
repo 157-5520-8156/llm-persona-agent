@@ -1099,6 +1099,12 @@ def bounded_inbound_context(packet, *, include_delivery_overlap=False):
             boundaries=result.get("expression_hard_boundaries"),
             logical_time=raw_logical_time,
         )
+        core_life_atlas = _build_core_life_atlas(
+            materials,
+            shortcuts,
+            boundaries=result.get("expression_hard_boundaries"),
+            logical_time=raw_logical_time,
+        )
         _annotate_unshared_materials_and_trigger(result, materials)
     has_correction = "role_result_correction" in result
     correction = result.pop("role_result_correction", None)
@@ -1111,6 +1117,7 @@ def bounded_inbound_context(packet, *, include_delivery_overlap=False):
         "omitted": omitted,
         **({"citable_memory_shortcuts": shortcuts} if shortcuts else {}),
         **({"memory_tree": memory_tree} if memory_tree else {}),
+        **({"core_life_atlas": core_life_atlas} if core_life_atlas else {}),
         "instruction": (
             "这是本轮展示窗口，不是全部历史。旧发言和旧解释仍可检索；没展示不证明没发生。"
             "当前情绪、关系、事实和未完成事项仍保留，如何回应由你决定。"
@@ -1442,7 +1449,8 @@ def _citable_memory_shortcuts(
                 continue
             p_title = item.get("title") or item.get("headline")
             p_sum = (
-                item.get("subjective_summary")
+                item.get("what_happened")
+                or item.get("subjective_summary")
                 or item.get("licensed_summary")
                 or item.get("summary")
                 or item.get("content_summary")
@@ -1766,3 +1774,133 @@ def _build_memory_tree_index(
     if layer_3_deep:
         tree["layer_3_deep"] = layer_3_deep
     return tree
+
+
+def _build_core_life_atlas(
+    materials: Mapping[str, object],
+    shortcuts: Sequence[Mapping[str, object]],
+    *,
+    boundaries: object = None,
+    logical_time: object = None,
+) -> dict[str, list[str]]:
+    """Compile a strictly bounded (<3.5k chars) 3-slot Core Life & Relationship Atlas."""
+    _ = logical_time
+    aliases_map = boundaries.get("source_ref_aliases") if isinstance(boundaries, Mapping) else None
+    alias_to_canonical = (
+        {
+            alias: canonical
+            for alias, canonical in aliases_map.items()
+            if isinstance(alias, str) and isinstance(canonical, str)
+        }
+        if isinstance(aliases_map, Mapping)
+        else {}
+    )
+    prehistory_unshared: list[str] = []
+    prehistory_shared: list[str] = []
+    shared_milestones: list[str] = []
+    active_arcs_unshared: list[str] = []
+    active_arcs_shared: list[str] = []
+
+    for sc in shortcuts:
+        if not isinstance(sc, Mapping):
+            continue
+        alias = str(sc.get("alias") or "").strip()
+        preview = str(sc.get("preview") or "").strip()
+        slice_name = str(sc.get("slice") or "")
+        scopes = sc.get("scopes") if isinstance(sc.get("scopes"), list) else []
+        if not alias or not preview:
+            continue
+        canonical = alias_to_canonical.get(alias, "")
+        shared_flag = sc.get("shared_in_chat")
+        share_tag = (
+            "[未聊过]"
+            if shared_flag is False
+            else "[已聊过]"
+            if shared_flag is True
+            else ""
+        )
+        is_prehistory = "prehistory-record:" in canonical or (
+            slice_name in {"automatic_prefetch", "remembered_material", "selected_recall"}
+            and "past_world" in scopes
+            and "shared_history" not in scopes
+            and not canonical.startswith(("experience:", "life-influence:", "dialogue"))
+        )
+        if is_prehistory:
+            line = f"[{alias}]{share_tag} {preview[:140]}"
+            if shared_flag is True:
+                if line not in prehistory_shared:
+                    prehistory_shared.append(line)
+            else:
+                if line not in prehistory_unshared:
+                    prehistory_unshared.append(line)
+        elif slice_name in {"recent_self_experiences", "biographical_context"}:
+            line = f"[{alias}]{share_tag} {preview[:140]}"
+            if shared_flag is True:
+                if line not in active_arcs_shared:
+                    active_arcs_shared.append(line)
+            else:
+                if line not in active_arcs_unshared:
+                    active_arcs_unshared.append(line)
+        elif slice_name == "relevant_facts" or "shared_history" in scopes:
+            line = f"[{alias}] {preview[:110]}"
+            if line not in shared_milestones and len(shared_milestones) < 5:
+                shared_milestones.append(line)
+
+    from .contracts import _material_entries
+
+    rel_entries = _material_entries(materials, "relationship")
+    for rel in rel_entries[:1]:
+        if not isinstance(rel, Mapping) or rel.get("privacy_class") == "withhold":
+            continue
+        stage = str(rel.get("stage") or "").strip()
+        vars_map = rel.get("variables") if isinstance(rel.get("variables"), Mapping) else {}
+        c_bp = vars_map.get("closeness_bp")
+        t_bp = vars_map.get("trust_bp")
+        coord_str = (
+            f"阶段={stage} 亲近={c_bp}bp 信任={t_bp}bp"
+            if stage and isinstance(c_bp, int) and isinstance(t_bp, int)
+            else f"阶段={stage}"
+            if stage
+            else ""
+        )
+        sig_str = ""
+        raw_sigs = rel.get("recent_authored_signals")
+        if isinstance(raw_sigs, (list, tuple)):
+            for sig in raw_sigs[:1]:
+                if isinstance(sig, Mapping) and isinstance(sig.get("signal_code"), str):
+                    sig_str = sig["signal_code"].strip()[:80]
+        if not sig_str and isinstance(materials.get("lived_moment"), str):
+            lm_str = materials["lived_moment"]
+            marker = "我最近对我们关系的定性与感受："
+            if marker in lm_str:
+                sig_str = lm_str.split(marker, 1)[1].split("｜", 1)[0].split("。", 1)[0].strip()[:80]
+        rel_line = "｜".join(p for p in (coord_str, sig_str) if p)
+        if rel_line:
+            shared_milestones.insert(0, f"[关系底色] {rel_line}")
+
+    understandings = _material_entries(materials, "memory_understandings")
+    for mu in understandings:
+        if not isinstance(mu, Mapping) or mu.get("status") not in {None, "active"}:
+            continue
+        facet = str(mu.get("facet") or "").strip()
+        summary = str(mu.get("summary") or "").replace("\n", " ").strip()
+        if not summary:
+            continue
+        if facet in {"subjective_relationship", "emotional_continuity", "expression_stance"}:
+            if len(shared_milestones) < 5:
+                shared_milestones.append(f"[长期体会:{facet}] {summary[:115]}")
+        elif facet in {"private_self", "aspirations_conflicts"}:
+            if len(active_arcs_unshared) + len(active_arcs_shared) < 5:
+                active_arcs_unshared.append(f"[阶段心气:{facet}] {summary[:115]}")
+
+    atlas: dict[str, list[str]] = {}
+    prehistory_slot = (prehistory_unshared + prehistory_shared)[:4]
+    if prehistory_slot:
+        atlas["prehistory_story_clusters"] = prehistory_slot
+    if shared_milestones:
+        atlas["shared_history_and_relationship_milestones"] = shared_milestones[:5]
+    arcs_slot = (active_arcs_unshared + active_arcs_shared)[:5]
+    if arcs_slot:
+        atlas["active_life_arcs_and_recent_clusters"] = arcs_slot
+    return atlas
+

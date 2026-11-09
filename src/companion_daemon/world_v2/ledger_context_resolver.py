@@ -561,6 +561,81 @@ def _relevant_prehistory_memory_link_refs(
     return (ranked[0][2],) if ranked else ()
 
 
+def _expand_prehistory_story_cluster_candidates(
+    items: Sequence[MemoryRetrievalItem],
+    *,
+    primary_candidate_ids: tuple[str, ...],
+    existing_candidate_ids: set[str],
+    actor_ref: str,
+    max_total_candidates: int = 3,
+) -> tuple[MemoryRetrievalItem, ...]:
+    """Promote the primary prehistory candidate plus up to 1-2 causal neighbors in its story cluster."""
+    primary_items = [
+        item
+        for item in items
+        if item.candidate_id in primary_candidate_ids
+        and item.candidate_id not in existing_candidate_ids
+    ]
+    if not primary_items:
+        return ()
+    related_record_ids: set[str] = set()
+    shared_episode_refs: set[str] = set()
+    for p_item in primary_items:
+        for excerpt in p_item.source_excerpts:
+            if (
+                excerpt.source_kind != "prehistory"
+                or excerpt.prehistory is None
+                or excerpt.prehistory.actor_ref != actor_ref
+            ):
+                continue
+            related_record_ids.update(excerpt.prehistory.related_record_refs)
+            story = excerpt.prehistory.story
+            if story is not None:
+                for rel in getattr(story, "relations", ()) or ():
+                    for attr in ("left_record_id", "right_record_id", "other_record_ref"):
+                        val = getattr(rel, attr, None)
+                        if isinstance(val, str) and val:
+                            related_record_ids.add(val)
+            for ep in excerpt.prehistory.episodes:
+                ep_ref = getattr(ep, "episode_ref", None)
+                if isinstance(ep_ref, str) and ep_ref:
+                    shared_episode_refs.add(ep_ref)
+    if not related_record_ids and not shared_episode_refs:
+        return tuple(primary_items)
+    remaining_budget = max(0, max_total_candidates - len(existing_candidate_ids) - len(primary_items))
+    if remaining_budget <= 0:
+        return tuple(primary_items)
+    exclude_ids = existing_candidate_ids | {item.candidate_id for item in primary_items}
+    neighbor_scored: list[tuple[int, datetime, str, MemoryRetrievalItem]] = []
+    for item in items:
+        if item.candidate_id in exclude_ids or item.privacy_ceiling == "withhold":
+            continue
+        best_tier: int | None = None
+        occ_dt = datetime.min.replace(tzinfo=UTC)
+        for excerpt in item.source_excerpts:
+            if (
+                excerpt.source_kind != "prehistory"
+                or excerpt.prehistory is None
+                or excerpt.prehistory.actor_ref != actor_ref
+            ):
+                continue
+            occ_dt = excerpt.prehistory.occurred_from
+            if excerpt.source_id in related_record_ids:
+                best_tier = 0
+                break
+            if shared_episode_refs and any(
+                getattr(ep, "episode_ref", None) in shared_episode_refs
+                for ep in excerpt.prehistory.episodes
+            ):
+                best_tier = 1
+        if best_tier is not None:
+            neighbor_scored.append((best_tier, occ_dt, item.candidate_id, item))
+    neighbor_scored.sort(key=lambda row: (row[0], row[1], row[2]))
+    neighbors = [row[3] for row in neighbor_scored[:remaining_budget]]
+    return tuple([*primary_items, *neighbors])
+
+
+
 def context_capsule_compiler_from_ledger(
     *,
     ledger: LedgerPort,
@@ -3294,11 +3369,11 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                             )
                     if inbound_prehistory_links:
                         existing_mem_ids = {item.candidate_id for item in context_memories}
-                        promoted_prehistory = tuple(
-                            item
-                            for item in memory_retrievals.items
-                            if item.candidate_id in inbound_prehistory_links
-                            and item.candidate_id not in existing_mem_ids
+                        promoted_prehistory = _expand_prehistory_story_cluster_candidates(
+                            memory_retrievals.items,
+                            primary_candidate_ids=inbound_prehistory_links,
+                            existing_candidate_ids=existing_mem_ids,
+                            actor_ref=query.actor_ref,
                         )
                         if promoted_prehistory:
                             context_memories = (*context_memories, *promoted_prehistory)

@@ -2538,6 +2538,12 @@ def compile_slim_consider_payload(
                     isinstance(ref, str) for ref in c_copy["source_refs"]
                 ):
                     c_copy["source_refs"] = list(dict.fromkeys(c_copy["source_refs"]))
+                if (
+                    not (isinstance(c_copy.get("scope"), str) and c_copy["scope"].strip())
+                    and isinstance(c_copy.get("source_refs"), list)
+                    and c_copy["source_refs"]
+                ):
+                    c_copy["scope"] = "past_world"
                 normalized_claims.append(c_copy)
             else:
                 normalized_claims.append(claim)

@@ -2847,6 +2847,92 @@ def materialize_expression_plan_beats(
     return ExpressionPlanBeatMaterialization(beat_values=beat_values, intents=intents)
 
 
+def _align_inbound_world_claim_scopes(
+    value: dict[str, object],
+    *,
+    request: ModelInput,
+    stable_identity_source_refs: frozenset[str] = frozenset(),
+    prehistory_source_authority_context_json: str | None = None,
+) -> dict[str, object]:
+    """Deterministically align world_claims[].scope when cited source_refs are valid pinned authorities."""
+    claims = value.get("world_claims")
+    if not isinstance(claims, list) or not claims:
+        return value
+    try:
+        context = json.loads(request.model_content_json)
+    except (TypeError, json.JSONDecodeError):
+        return value
+    if not isinstance(context, dict):
+        return value
+    try:
+        allowed = _world_claim_source_refs_by_scope(
+            context=context,
+            request=request,
+            stable_identity_source_refs=stable_identity_source_refs,
+            counterpart_message_source_refs=current_counterpart_report_source_refs(
+                context=context,
+                request=request,
+            ),
+            prehistory_source_authority_context_json=prehistory_source_authority_context_json,
+        )
+    except Exception:
+        return value
+    scope_priority = (
+        "past_world",
+        "current_world",
+        "shared_history",
+        "counterpart_history",
+        "stable_identity",
+    )
+    all_pinned = set().union(*(allowed.get(sc, set()) for sc in scope_priority))
+    if not all_pinned:
+        return value
+    aligned_claims: list[object] = []
+    changed = False
+    for claim in claims:
+        if not isinstance(claim, dict):
+            aligned_claims.append(claim)
+            continue
+        scope = claim.get("scope")
+        if scope == "subjective_or_hypothetical":
+            aligned_claims.append(claim)
+            continue
+        raw_refs = claim.get("source_refs")
+        if not isinstance(raw_refs, (list, tuple)) or not raw_refs or not all(isinstance(r, str) and r for r in raw_refs):
+            aligned_claims.append(claim)
+            continue
+        ref_set = set(raw_refs)
+        # If any cited ref is not a pinned world-claim authority in any scope, leave untouched so validation fails closed.
+        if not ref_set.issubset(all_pinned):
+            aligned_claims.append(claim)
+            continue
+        if isinstance(scope, str) and scope in allowed and ref_set.issubset(allowed[scope]):
+            aligned_claims.append(claim)
+            continue
+        # Check if a single scope covers all cited refs of this claim.
+        matching_single_scope = next(
+            (sc for sc in scope_priority if ref_set.issubset(allowed.get(sc, set()))),
+            None,
+        )
+        if matching_single_scope is not None:
+            aligned_claims.append({**claim, "scope": matching_single_scope})
+            changed = True
+            continue
+        # Otherwise, every ref is pinned in at least one scope, but the model bundled multi-scope story cluster refs into one claim.
+        # Partition deterministically by scope so each ref is validated in its exact semantic lane.
+        remaining = list(dict.fromkeys(raw_refs))
+        for sc in scope_priority:
+            sc_allowed = allowed.get(sc, set())
+            sc_refs = [r for r in remaining if r in sc_allowed]
+            if sc_refs:
+                aligned_claims.append({**claim, "scope": sc, "source_refs": sc_refs})
+                remaining = [r for r in remaining if r not in sc_allowed]
+        changed = True
+    if not changed:
+        return value
+    return {**value, "world_claims": aligned_claims}
+
+
 def materialize_expression_draft(
     *,
     value: dict[str, object],
@@ -2878,6 +2964,12 @@ def materialize_expression_draft(
         source_ref_aliases=aliases,
     )
     value = normalize_expression_draft_wire(value)
+    value = _align_inbound_world_claim_scopes(
+        value,
+        request=request,
+        stable_identity_source_refs=stable_identity_source_refs,
+        prehistory_source_authority_context_json=prehistory_source_authority_context_json,
+    )
     # JSON arrays are the natural wire representation of immutable tuples.
     # Field validators remain strict about every scalar and cross-field rule.
     draft = ExpressionDraft.model_validate_json(_canonical_json(value), strict=True)

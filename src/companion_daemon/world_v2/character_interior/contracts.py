@@ -1571,7 +1571,8 @@ def _walking_in_life_weight(
     if isinstance(bio, Mapping) and bio.get("privacy_class") != "withhold":
         raw_coords = bio.get("settled_biographical_coordinates")
         if isinstance(raw_coords, list):
-            weight_summaries: list[str] = []
+            unshared_weight_summaries: list[str] = []
+            shared_weight_summaries: list[str] = []
             for item in reversed(raw_coords):
                 if not isinstance(item, Mapping) or item.get("privacy_class") == "withhold":
                     continue
@@ -1596,8 +1597,10 @@ def _walking_in_life_weight(
                     ),
                     coordinate_summary=summary,
                 )
+                is_already_shared = False
                 if disclosed_coord is not None or item.get("shared_in_chat") is True:
                     cleaned += "（此前已在聊天提过）"
+                    is_already_shared = True
                 elif item.get("shared_in_chat") is False:
                     cleaned += "（私下处境，未在聊天提过）"
                 elif item.get("privacy_class") == "private":
@@ -1608,14 +1611,19 @@ def _walking_in_life_weight(
                         if s_local.date() != logical_time.astimezone(zone).date():
                             cleaned = f"[{s_local.strftime('%m-%d')}旧事]{cleaned}"
                     cleaned += "（仅私密心事底色，无对外陈述权限，勿在回复中提及细节）"
+                    is_already_shared = True
                 elif item.get("shared_in_chat") is None and _is_unshared_in_companion_dialogue(
                     summary, companion_texts
                 ):
                     cleaned += "（私下处境，未在聊天提过）"
-                if cleaned not in weight_summaries:
-                    weight_summaries.append(cleaned)
-                if len(weight_summaries) >= 5:
+                else:
+                    is_already_shared = bool(companion_texts)
+                target_list = shared_weight_summaries if is_already_shared else unshared_weight_summaries
+                if cleaned not in unshared_weight_summaries and cleaned not in shared_weight_summaries:
+                    target_list.append(cleaned)
+                if len(unshared_weight_summaries) + len(shared_weight_summaries) >= 5:
                     break
+            weight_summaries = (unshared_weight_summaries + shared_weight_summaries)[:5]
             if weight_summaries:
                 clauses.append("近期身上悬着的处境：" + "｜".join(weight_summaries))
 
@@ -1987,7 +1995,7 @@ def _walking_in_recent_self_stories(
     companion_texts: Sequence[str] = (),
     materials: Mapping[str, object] | None = None,
 ) -> str | None:
-    """Surface concrete scenes and inner reactions from recent committed personal experiences."""
+    """Surface concrete causal story arcs from recent committed personal experiences, prioritizing unshared ones and demoting already-shared ones."""
     exp_items = (
         recent_self_experiences.get("items")
         if isinstance(recent_self_experiences, Mapping)
@@ -2000,7 +2008,8 @@ def _walking_in_recent_self_stories(
         return None
     zone = ZoneInfo("Asia/Shanghai")
     local_now = logical_time.astimezone(zone) if logical_time is not None else None
-    stories: list[str] = []
+    unshared_stories: list[str] = []
+    shared_stories: list[str] = []
     for exp in exp_items:
         if not isinstance(exp, Mapping) or exp.get("privacy_class") == "withhold":
             continue
@@ -2046,14 +2055,30 @@ def _walking_in_recent_self_stories(
             if isinstance(wc.get("authorized_attempt_result"), Mapping)
             else {}
         )
+        intent_out = (
+            wc.get("intention_outcome")
+            if isinstance(wc.get("intention_outcome"), Mapping)
+            else {}
+        )
         cr = (
             content_map.get("character_response")
             if isinstance(content_map.get("character_response"), Mapping)
             else {}
         )
+        cause_raw = str(
+            intent_out.get("intended_text")
+            or intent_out.get("intention_text")
+            or (
+                content_map.get("intention", {}).get("text")
+                if isinstance(content_map.get("intention"), Mapping)
+                else ""
+            )
+            or ""
+        ).strip()
         scene_raw = str(
             env.get("text")
             or auth_res.get("text")
+            or intent_out.get("outcome_text")
             or exp.get("what_happened")
             or exp.get("summary")
             or exp.get("text")
@@ -2066,15 +2091,12 @@ def _walking_in_recent_self_stories(
         scene_clean = _to_first_person_self_reference(
             scene_raw.rstrip("。；; ").replace("\n", " ").replace("。", "，").replace("；", "，")
         )
-        if len(scene_clean) > 92:
-            scene_clean = scene_clean[:91].rstrip("，、 ") + "…"
-        reaction_clean = ""
-        if reaction_raw:
-            reaction_clean = _to_first_person_self_reference(
-                reaction_raw.rstrip("。；; ").replace("\n", " ").replace("。", "，").replace("；", "，")
-            )
-            if len(reaction_clean) > 54:
-                reaction_clean = reaction_clean[:53].rstrip("，、 ") + "…"
+        if cause_raw:
+            cause_clean = _to_first_person_self_reference(
+                cause_raw.rstrip("。；; ").replace("\n", " ").replace("。", "，").replace("；", "，")
+            )[:38]
+            if cause_clean and cause_clean[:8] not in scene_clean:
+                scene_clean = f"原本打算{cause_clean} → {scene_clean}"
         disclosed = _lookup_disclosed_claim(
             (
                 exp.get("source_ref"),
@@ -2094,17 +2116,36 @@ def _walking_in_recent_self_stories(
                 and not _is_unshared_in_companion_dialogue(scene_clean, companion_texts)
             )
         )
-        status_note = "此前已在聊天提过" if is_shared else "私下亲历，尚未在聊天细说"
-        inner_part = (
-            f"（当时反应：{reaction_clean}｜{status_note}）"
-            if reaction_clean
-            else f"（{status_note}）"
-        )
-        entry_str = f"{time_tag}{scene_clean}{inner_part}"
-        if entry_str not in stories:
-            stories.append(entry_str)
-        if len(stories) >= 3:
-            break
+        if is_shared:
+            if len(scene_clean) > 54:
+                scene_clean = scene_clean[:53].rstrip("，、 ") + "…"
+            entry_str = f"{time_tag}{scene_clean}（此前已在聊天提过，勿重复当新事展开）"
+            if entry_str not in shared_stories:
+                shared_stories.append(entry_str)
+        else:
+            if len(scene_clean) > 128:
+                scene_clean = scene_clean[:127].rstrip("，、 ") + "…"
+            reaction_clean = ""
+            if reaction_raw:
+                reaction_clean = _to_first_person_self_reference(
+                    reaction_raw.rstrip("。；; ").replace("\n", " ").replace("。", "，").replace("；", "，")
+                )
+                if len(reaction_clean) > 68:
+                    reaction_clean = reaction_clean[:67].rstrip("，、 ") + "…"
+            inner_part = (
+                f"（当时反应：{reaction_clean}｜私下亲历，尚未在聊天细说）"
+                if reaction_clean
+                else "（私下亲历，尚未在聊天细说）"
+            )
+            entry_str = f"{time_tag}{scene_clean}{inner_part}"
+            if entry_str not in unshared_stories:
+                unshared_stories.append(entry_str)
+    if unshared_stories:
+        stories = unshared_stories[:3]
+        if len(stories) < 2 and shared_stories:
+            stories.append(shared_stories[0])
+    else:
+        stories = shared_stories[:2]
     if not stories:
         return None
     return "近日亲历的具体经过：" + "｜".join(stories)
@@ -2117,7 +2158,7 @@ def _walking_in_spontaneous_memory_flash(
     companion_texts: Sequence[str] = (),
     materials: Mapping[str, object] | None = None,
 ) -> str | None:
-    """Surface one associatively recalled prehistory memory in lived_moment with clear chat disclosure status."""
+    """Surface associatively recalled prehistory memory (and causal story neighbors) in lived_moment, prioritizing unshared memories."""
     candidates: list[Mapping[str, object]] = []
     if isinstance(automatic_prefetch, Mapping) and isinstance(automatic_prefetch.get("items"), list):
         for it in automatic_prefetch["items"]:
@@ -2132,6 +2173,8 @@ def _walking_in_spontaneous_memory_flash(
             if isinstance(it, Mapping):
                 candidates.append(it)
 
+    parsed_prehistory: list[dict[str, object]] = []
+    seen_clean_texts: set[str] = set()
     for item in candidates:
         if item.get("privacy_class") == "withhold" or item.get("privacy_ceiling") == "withhold":
             continue
@@ -2157,15 +2200,35 @@ def _walking_in_spontaneous_memory_flash(
             continue
         raw_text = ""
         ref_candidates: list[object] = [src_ref]
+        record_ids: set[str] = set()
+        related_ids: set[str] = set()
+        episode_refs: set[str] = set()
+        if src_ref.startswith("prehistory-record:"):
+            record_ids.add(src_ref.split(":window:", 1)[0])
         if isinstance(prehistory_meta, Mapping):
+            for r_id in prehistory_meta.get("related_record_refs") or ():
+                if isinstance(r_id, str) and r_id:
+                    related_ids.add(r_id)
+            for ep in prehistory_meta.get("episodes") or ():
+                if isinstance(ep, Mapping) and isinstance(ep.get("episode_ref"), str):
+                    episode_refs.add(ep["episode_ref"])
             story_meta = prehistory_meta.get("story")
-            if isinstance(story_meta, Mapping) and story_meta.get("record_ref"):
-                ref_candidates.append(story_meta.get("record_ref"))
+            if isinstance(story_meta, Mapping):
+                rec_ref = story_meta.get("record_ref")
+                if isinstance(rec_ref, str) and rec_ref:
+                    ref_candidates.append(rec_ref)
+                    record_ids.add(rec_ref)
+                for rel in story_meta.get("relations") or ():
+                    if isinstance(rel, Mapping):
+                        for k in ("left_record_id", "right_record_id", "other_record_ref"):
+                            v = rel.get(k)
+                            if isinstance(v, str) and v:
+                                related_ids.add(v)
         if isinstance(item.get("text"), str) and item["text"].strip():
             raw_text = item["text"].strip()
         elif isinstance(item.get("source_excerpt"), str) and item["source_excerpt"].strip():
             raw_text = item["source_excerpt"].strip()
-        elif isinstance(excerpts, list):
+        if isinstance(excerpts, list):
             for ex in excerpts:
                 if isinstance(ex, str) and ex.strip():
                     if not raw_text:
@@ -2174,6 +2237,25 @@ def _walking_in_spontaneous_memory_flash(
                     ref_candidates.extend(
                         (ex.get("source_id"), ex.get("authority_event_ref"), ex.get("source_ref"))
                     )
+                    sid = ex.get("source_id")
+                    if isinstance(sid, str) and sid.startswith("prehistory-record:"):
+                        record_ids.add(sid.split(":window:", 1)[0])
+                    ex_pre = ex.get("prehistory")
+                    if isinstance(ex_pre, Mapping):
+                        for r_id in ex_pre.get("related_record_refs") or ():
+                            if isinstance(r_id, str) and r_id:
+                                related_ids.add(r_id)
+                        for ep in ex_pre.get("episodes") or ():
+                            if isinstance(ep, Mapping) and isinstance(ep.get("episode_ref"), str):
+                                episode_refs.add(ep["episode_ref"])
+                        ex_story = ex_pre.get("story")
+                        if isinstance(ex_story, Mapping):
+                            for rel in ex_story.get("relations") or ():
+                                if isinstance(rel, Mapping):
+                                    for k in ("left_record_id", "right_record_id", "other_record_ref"):
+                                        v = rel.get(k)
+                                        if isinstance(v, str) and v:
+                                            related_ids.add(v)
                     if not raw_text and isinstance(ex.get("text"), str) and ex["text"].strip():
                         raw_text = ex["text"].strip()
         if not raw_text:
@@ -2186,12 +2268,15 @@ def _walking_in_spontaneous_memory_flash(
             .replace("。", "，")
             .replace("；", "，")
         )
-        if not clean_text:
+        if not clean_text or clean_text in seen_clean_texts:
             continue
+        seen_clean_texts.add(clean_text)
         if len(clean_text) > 165:
             clean_text = clean_text[:164].rstrip("，、 ") + "…"
         disclosed = _lookup_disclosed_claim(ref_candidates, materials=materials)
+        is_shared = False
         if disclosed is not None:
+            is_shared = True
             claim_preview = disclosed["claim_text"].replace("\n", " ").strip()
             if len(claim_preview) > 26:
                 claim_preview = claim_preview[:25] + "…"
@@ -2206,14 +2291,54 @@ def _walking_in_spontaneous_memory_flash(
                 and not _is_unshared_in_companion_dialogue(clean_text, companion_texts)
             )
         ):
+            is_shared = True
             status_tag = "此前已在聊天提过"
         else:
             status_tag = "过往经历，从未在聊天提过"
-        return (
-            f"脑海顺带闪过的旧事：{clean_text}"
-            f"（{status_tag}，仅心头自然闪回，是否顺势提起完全由你决定）"
+        parsed_prehistory.append(
+            {
+                "clean_text": clean_text,
+                "is_shared": is_shared,
+                "status_tag": status_tag,
+                "record_ids": record_ids,
+                "related_ids": related_ids,
+                "episode_refs": episode_refs,
+            }
         )
-    return None
+    if not parsed_prehistory:
+        return None
+    primary = next((p for p in parsed_prehistory if not p["is_shared"]), parsed_prehistory[0])
+    primary_text = str(primary["clean_text"])
+    status_tag = str(primary["status_tag"])
+    primary_rec_ids: set[str] = set(primary["record_ids"])  # type: ignore[arg-type]
+    primary_rel_ids: set[str] = set(primary["related_ids"])  # type: ignore[arg-type]
+    primary_ep_refs: set[str] = set(primary["episode_refs"])  # type: ignore[arg-type]
+    neighbor_text = ""
+    for candidate in parsed_prehistory:
+        if candidate is primary:
+            continue
+        cand_rec_ids: set[str] = set(candidate["record_ids"])  # type: ignore[arg-type]
+        cand_rel_ids: set[str] = set(candidate["related_ids"])  # type: ignore[arg-type]
+        cand_ep_refs: set[str] = set(candidate["episode_refs"])  # type: ignore[arg-type]
+        is_causal_neighbor = bool(
+            (cand_rec_ids & primary_rel_ids)
+            or (primary_rec_ids & cand_rel_ids)
+            or (cand_ep_refs and (cand_ep_refs & primary_ep_refs))
+        )
+        if is_causal_neighbor:
+            neighbor_text = str(candidate["clean_text"])[:92]
+            if len(str(candidate["clean_text"])) > 92:
+                neighbor_text = neighbor_text.rstrip("，、 ") + "…"
+            break
+    body_text = (
+        f"{primary_text}｜关联前因/后续：{neighbor_text}"
+        if neighbor_text
+        else primary_text
+    )
+    return (
+        f"脑海顺带闪过的旧事：{body_text}"
+        f"（{status_tag}，仅心头自然闪回，是否顺势提起完全由你决定）"
+    )
 
 
 _DYNAMIC_COUNTERPART_FACT_PREDICATES: frozenset[str] = frozenset(

@@ -1693,3 +1693,289 @@ def test_lived_moment_surfaces_counterpart_life_browsed_tidbit_and_shared_callba
     assert "S01" in shortcuts
     assert "铁锅/不锈钢锅都能用" in shortcuts["S01"]["preview"]
 
+
+def test_four_pillar_story_clusters_core_atlas_and_scope_alignment() -> None:
+    import json
+    from datetime import datetime
+    import pytest
+    from companion_daemon.world_v2.character_interior.contracts import _rendered_lived_moment
+    from companion_daemon.world_v2.character_interior.inbound_context_window import (
+        bounded_inbound_context,
+    )
+    from companion_daemon.world_v2.deliberation import ModelInput, ModelRoute, TriggerMessage
+    from companion_daemon.world_v2.expression_draft import (
+        TEXT_ONLY_EXPRESSION_CAPABILITIES,
+        materialize_expression_draft,
+    )
+    from companion_daemon.world_v2.present_prompt import compile_slim_consider_payload
+
+    logical_time = datetime.fromisoformat("2026-11-08T20:00:00+08:00")
+    materials = {
+        "relationship": [
+            {
+                "subject_ref": "user:geoff",
+                "stage": "close_friend",
+                "variables": {"closeness_bp": 6400, "trust_bp": 6800},
+                "recent_authored_signals": [
+                    {
+                        "signal_code": "在他面前越来越不设防，受了委屈第一个想找他倒苦水",
+                        "rationale_code": "每次吐槽他都会认真听完接住",
+                    }
+                ],
+            }
+        ],
+        "memory_understandings": [
+            {
+                "facet": "subjective_relationship",
+                "status": "active",
+                "summary": "跟Geoff已经熟到可以连发一串消息倒苦水，不用端着。",
+            },
+            {
+                "facet": "private_self",
+                "status": "active",
+                "summary": "社团换届和征文这两天堆在一起，心里绷得有点紧。",
+            },
+        ],
+        "recent_self_experiences": {
+            "availability": "available",
+            "items": [
+                {
+                    "context_kind": "committed_experience",
+                    "experience_id": "experience:already-shared-breakfast",
+                    "source_ref": "experience:already-shared-breakfast",
+                    "settled_at": "2026-11-08T01:00:00Z",
+                    "shared_in_chat": True,
+                    "content": {
+                        "world_consequence": {
+                            "environment": {"text": "早上在河西食堂买到了最后两个热腾腾的豆沙包。"}
+                        }
+                    },
+                },
+                {
+                    "context_kind": "committed_experience",
+                    "experience_id": "experience:unshared-club-drama",
+                    "source_ref": "experience:unshared-club-drama",
+                    "settled_at": "2026-11-08T10:30:00Z",
+                    "shared_in_chat": False,
+                    "content": {
+                        "world_consequence": {
+                            "intention_outcome": {
+                                "intended_text": "去活动室跟林晚核对周六读书会借桌子和签到分工",
+                            },
+                            "environment": {
+                                "text": "周叙临时说去拍作业把外联借桌子的活全甩出来，林晚当场把场地审批表也推到知栀手边。"
+                            },
+                        },
+                        "character_response": {
+                            "response_text": "我盯着那叠临时甩过来的表格又气又闷，憋着没在现场发作。"
+                        },
+                    },
+                },
+                {
+                    "context_kind": "committed_experience",
+                    "experience_id": "experience:unshared-printer-jam",
+                    "source_ref": "experience:unshared-printer-jam",
+                    "settled_at": "2026-11-08T11:15:00Z",
+                    "shared_in_chat": False,
+                    "content": {
+                        "world_consequence": {
+                            "environment": {
+                                "text": "去文印店打场地审批表时机器卡纸，排在后面的男生还一直催。"
+                            }
+                        },
+                        "character_response": {
+                            "response_text": "本来就被甩锅憋了一肚子火，卡纸那一刻差点当场鼻子发酸。"
+                        },
+                    },
+                },
+            ],
+        },
+        "automatic_prefetch": {
+            "items": [
+                {
+                    "source_ref": "prehistory-record:celia-expanded-university-u10:window:0:400",
+                    "shared_in_chat": False,
+                    "text": "[事件发生时间 2025-04-01] 大一下学期办第二次闲置交换前，知栀负责确认摊主名单，结果活动当天早上两个人临时爽约。",
+                    "prehistory": {
+                        "related_record_refs": ["prehistory-record:celia-expanded-university-u11"],
+                        "story": {"record_ref": "prehistory-record:celia-expanded-university-u10"},
+                    },
+                },
+                {
+                    "source_ref": "prehistory-record:celia-expanded-university-u11:window:0:400",
+                    "shared_in_chat": False,
+                    "text": "[事件发生时间 2025-04-02] 活动结束后知栀一个人留到天黑把多借的折叠桌搬回仓库，回宿舍手腕酸得抬不起来。",
+                    "prehistory": {
+                        "related_record_refs": ["prehistory-record:celia-expanded-university-u10"],
+                        "story": {"record_ref": "prehistory-record:celia-expanded-university-u11"},
+                    },
+                },
+            ]
+        },
+    }
+
+    lived = _rendered_lived_moment(materials, logical_time, actor_ref="agent:companion")
+    assert lived is not None
+    # Unshared recent stories carry full causal chain (原本打算 -> 经过 -> 当时反应) and demote already-shared ones when >=2 unshared exist
+    assert "原本打算去活动室跟林晚核对周六读书会借桌子和签到分工 → 周叙临时说去拍作业" in lived
+    assert "当时反应：我盯着那叠临时甩过来的表格又气又闷" in lived
+    assert "早上在河西食堂买到了最后两个热腾腾的豆沙包" not in lived
+    # Prehistory spontaneous flash stitches causal neighbor into a complete story arc
+    assert "大一下学期办第二次闲置交换前" in lived
+    assert "｜关联前因/后续：活动结束后我一个人留到天黑把多借的折叠桌搬回仓库" in lived
+
+    packet = {
+        "inner_life_snapshot": {
+            "cursor": {"logical_time": logical_time.isoformat()},
+            "materials": {**materials, "lived_moment": lived},
+        },
+        "current_trigger_message": {"text": "看你今天好像一直没怎么说话，怎么啦？"},
+        "expression_hard_boundaries": {
+            "source_ref_aliases": {
+                "S01": "experience:unshared-club-drama",
+                "S02": "experience:unshared-printer-jam",
+                "S03": "prehistory-record:celia-expanded-university-u10:window:0:400",
+            },
+            "world_claim_source_refs": {
+                "past_world": ["S01", "S02", "S03"],
+            },
+        },
+    }
+    bounded = bounded_inbound_context(packet)
+    atlas = bounded["context_window"]["core_life_atlas"]
+    assert "prehistory_story_clusters" in atlas
+    assert any("[S03][未聊过]" in item for item in atlas["prehistory_story_clusters"])
+    assert "shared_history_and_relationship_milestones" in atlas
+    assert any("受了委屈第一个想找他倒苦水" in item for item in atlas["shared_history_and_relationship_milestones"])
+    assert "active_life_arcs_and_recent_clusters" in atlas
+    assert any("[S01][未聊过]" in item for item in atlas["active_life_arcs_and_recent_clusters"])
+    assert len(json.dumps(atlas, ensure_ascii=False)) <= 3500
+
+    # Test Pillar 2: missing scope in slim payload + automatic scope alignment & multi-scope splitting in materialize_expression_draft
+    slim_compiled = compile_slim_consider_payload(
+        {
+            "meaning_of_this": "他看出来我心情不好主动问我怎么了",
+            "my_state": "一肚子委屈正好憋不住了，先把刚才活动室被甩锅的事倒出来，隔十秒再接着把文印店卡纸的事讲完",
+            "messages": [
+                "别提了，我今天差点在活动室气死",
+                "本来去跟林晚核对周六读书会的分工，结果周叙临时说去拍作业直接把借桌子的活全甩出来了",
+                "林晚倒好，顺手把场地审批表也推给我",
+            ],
+            "come_back": {
+                "thought": "接着跟他吐槽去文印店打表还遇上卡纸、以及大一办闲置交换那次也是自己搬桌子到天黑的委屈",
+                "after_seconds": 12,
+            },
+            "world_claims": [
+                {
+                    "claim_text": "周叙临时去拍作业把借桌子的活甩出来，林晚把场地审批表推给我",
+                    # Model omitted scope or wrote current_world for a settled experience
+                    "source_refs": ["S01"],
+                }
+            ],
+        }
+    )
+    assert slim_compiled is not None
+    assert slim_compiled["expression_draft"]["world_claims"][0]["scope"] == "past_world"
+    assert slim_compiled["expression_draft"]["revisit"]["wait_seconds"] == 12
+
+    model_context = {
+        "world_id": "world:test",
+        "actor_ref": "agent:companion",
+        "logical_time": logical_time.isoformat(),
+        "slices": {
+            "current_situation": {
+                "availability": "available",
+                "items": [
+                    {
+                        "item_ref": "situation:now",
+                        "source_ref": "situation:now",
+                        "value": {"location": "dorm"},
+                        "source_bindings": [
+                            {
+                                "source_kind": "committed_event",
+                                "authority_type": "situation_source:world_life",
+                                "ref": "situation:now",
+                                "source_world_revision": 5,
+                                "immutable_hash": "a" * 64,
+                            }
+                        ],
+                    }
+                ],
+            },
+            "recent_experiences": {
+                "availability": "available",
+                "items": [
+                    {
+                        "item_ref": "experience:unshared-club-drama",
+                        "source_ref": "experience:unshared-club-drama",
+                        "value": {"summary": "活动室甩锅"},
+                        "source_bindings": [
+                            {
+                                "source_kind": "committed_event",
+                                "authority_type": "ExperienceCommitted",
+                                "ref": "experience:unshared-club-drama",
+                                "source_world_revision": 4,
+                                "immutable_hash": "b" * 64,
+                            }
+                        ],
+                    }
+                ],
+            },
+        },
+    }
+    req = ModelInput(
+        call_id="call:pillar2",
+        attempt_id="attempt:pillar2",
+        route=ModelRoute(tier="flash", reason_code="test", router_version="1"),
+        capsule_id="c" * 64,
+        trigger_ref="event:obs:1",
+        evaluated_world_revision=5,
+        evaluated_deliberation_revision=2,
+        evaluated_ledger_sequence=10,
+        model_content_json=json.dumps(model_context, ensure_ascii=False),
+        trigger_message=TriggerMessage(
+            event_ref="event:obs:1",
+            event_payload_hash="sha256:" + "d" * 64,
+            source_world_revision=5,
+            observation_ref="obs:1",
+            actor="user:geoff",
+            channel="qq:c2c",
+            reply_target="qq:c2c:geoff",
+            text="怎么啦？",
+        ),
+    )
+    # Even if the model writes scope="current_world" on a past_world experience or bundles current_world + past_world refs,
+    # materialize_expression_draft deterministically aligns/partitions pinned refs to their authorized scopes:
+    proposal = materialize_expression_draft(
+        value={
+            **slim_compiled["expression_draft"],
+            "world_claims": [
+                {
+                    "claim_text": "现在在寝室，刚才在活动室被甩锅",
+                    "scope": "current_world",
+                    "source_refs": ["situation:now", "experience:unshared-club-drama"],
+                }
+            ],
+        },
+        request=req,
+        capabilities=TEXT_ONLY_EXPRESSION_CAPABILITIES,
+    )
+    assert proposal.proposal_id.startswith("proposal:expression:")
+    # Unpinned source_refs still fail closed!
+    with pytest.raises(ValueError, match="outside its semantic source lane"):
+        materialize_expression_draft(
+            value={
+                **slim_compiled["expression_draft"],
+                "world_claims": [
+                    {
+                        "claim_text": "编造的外部事件",
+                        "scope": "past_world",
+                        "source_refs": ["experience:fabricated-not-in-context"],
+                    }
+                ],
+            },
+            request=req,
+            capabilities=TEXT_ONLY_EXPRESSION_CAPABILITIES,
+        )
+
+
