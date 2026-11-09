@@ -459,6 +459,10 @@ def _recall_material(messages: list[dict[str, str]]) -> dict[str, object] | None
     materials = snapshot.get("materials")
     if not isinstance(materials, dict):
         return None
+    if materials.get("contract") == "shared-string-view.1" and isinstance(
+        materials.get("value"), dict
+    ):
+        materials = materials["value"]
     selected = materials.get("selected_recall")
     if not isinstance(selected, dict):
         return None

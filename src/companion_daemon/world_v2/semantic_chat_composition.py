@@ -1232,6 +1232,7 @@ def build_semantic_chat_composition(
             owned_closeables.append(text_shadow_observer)
         character_interior = compose_production_character_interior(
             flash_model=flash_model,
+            character_temperature=settings.world_v2_character_temperature,
             ordinary_text_review_mode=settings.world_v2_ordinary_text_review_mode,
             text_shadow_observer=text_shadow_observer,
             thinking_model=thinking_model,

@@ -65,6 +65,16 @@ def select_decay_object_ref(max_intensity_bp: int) -> str:
     return STANDARD_DECAY_OBJECT_REF
 
 
+def select_decay_half_life(max_intensity_bp: int) -> int:
+    """Return the installed decay half-life in seconds for an intensity."""
+
+    if max_intensity_bp >= 4_200:
+        return DEEP_DECAY_HALF_LIFE_SECONDS
+    if max_intensity_bp >= 2_500:
+        return SUSTAINED_DECAY_HALF_LIFE_SECONDS
+    return STANDARD_DECAY_HALF_LIFE_SECONDS
+
+
 class AffectTargetDimensionLowerBound(FrozenModel):
     """One dimension's reducer-acceptable minimum at the pinned cursor."""
 

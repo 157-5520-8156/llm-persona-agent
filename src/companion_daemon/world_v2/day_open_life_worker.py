@@ -254,8 +254,56 @@ class DayOpenLifeWorker:
                 attempts=(DayOpenAttempt(ordinal=1, opportunity=opportunity),),
             ))
         if row is None:
+            import os
+
             records = self.store.records(self.actor_ref)
-            completion = latest_completion_source(projection, actor_ref=self.actor_ref, include_abandoned=True, allow_existing_plans=True)
+            raw_interval = os.environ.get("WORLD_V2_ACTIVITY_MIN_INTERVAL_SECONDS", "").strip()
+            try:
+                min_interval = int(raw_interval) if raw_interval else 0
+            except ValueError:
+                min_interval = 0
+            has_live_agenda = min_interval > 0 and any(
+                x.owner_actor_ref == self.actor_ref
+                and x.status in {"planned", "active", "paused"}
+                and (
+                    x.scheduled_window is None
+                    or projection.logical_time is None
+                    or x.scheduled_window.closes_at > projection.logical_time
+                )
+                for x in projection.plans
+            )
+            last_attempt_at = max(
+                (
+                    attempt.opportunity.logical_time
+                    for item in records
+                    for attempt in item.attempts
+                    if attempt.opportunity.logical_time is not None
+                ),
+                default=None,
+            )
+            cooldown_active = (
+                min_interval > 0
+                and last_attempt_at is not None
+                and projection.logical_time is not None
+                and projection.logical_time
+                < last_attempt_at + timedelta(seconds=max(min_interval, 14_400))
+            )
+            completion = (
+                None
+                if has_live_agenda or cooldown_active
+                else latest_completion_source(
+                    projection,
+                    actor_ref=self.actor_ref,
+                    include_abandoned=True,
+                    allow_existing_plans=(min_interval <= 0),
+                )
+            )
+            if (
+                min_interval > 0
+                and completion is not None
+                and completion.event_ref.startswith("event:world-plan-response:")
+            ):
+                completion = None
             if completion is not None and any(
                 x.completion_source is not None and x.completion_source.event_ref == completion.event_ref
                 for x in records

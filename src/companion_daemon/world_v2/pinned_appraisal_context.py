@@ -109,8 +109,17 @@ def compile_pinned_appraisals(*, projection, query, ledger) -> PinnedAppraisalCo
         else:
             raise ValueError("appraisal inventory has another event authority")
         if native != appraisal:
-            raise ValueError("appraisal inventory differs from its accepted native value")
-        records.append(PinnedAppraisalRecord(value=native, source=source))
+            same_structure = (
+                len(native.hypotheses) == len(appraisal.hypotheses)
+                and all(
+                    nh == ah.model_copy(update={"meaning": nh.meaning})
+                    for nh, ah in zip(native.hypotheses, appraisal.hypotheses)
+                )
+                and native.model_copy(update={"hypotheses": appraisal.hypotheses}) == appraisal
+            )
+            if not same_structure:
+                raise ValueError("appraisal inventory differs from its accepted native value")
+        records.append(PinnedAppraisalRecord(value=appraisal, source=source))
     return PinnedAppraisalContext(
         world_id=query.world_id, owner_actor_ref=query.actor_ref,
         snapshot_hash=query.snapshot_hash, cursor=query.cursor, logical_at=query.logical_time,

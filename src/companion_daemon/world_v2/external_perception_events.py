@@ -117,7 +117,7 @@ class ExternalPerceptionSelection(FrozenModel):
     snapshot: FrozenExternalSignalSnapshot
     channel: ExternalPerceptionChannelProof
     subjective_summary: str = Field(min_length=1, max_length=2_000)
-    epistemic_notes: str = Field(min_length=1, max_length=2_000)
+    epistemic_notes: str = Field(default="", max_length=2_000)
     attended_context_refs: tuple[str, ...] = Field(default=(), max_length=64)
     privacy_class: Literal["public", "shareable", "personal", "private", "withhold"]
 
@@ -199,7 +199,7 @@ class ExternalPerceptionRecordedPayload(FrozenModel):
     snapshot_event_payload_hash: str = Field(pattern=_HASH)
     channel: ExternalPerceptionChannelProof
     subjective_summary: str = Field(min_length=1, max_length=2_000)
-    epistemic_notes: str = Field(min_length=1, max_length=2_000)
+    epistemic_notes: str = Field(default="", max_length=2_000)
     attended_context_refs: tuple[str, ...] = Field(default=(), max_length=64)
     attention_model_result_ref: str = Field(min_length=1, max_length=256)
     attention_model_event_ref: str = Field(min_length=1, max_length=512)
@@ -235,7 +235,7 @@ class ExternalPerceptionLifeInfluenceView(FrozenModel):
     licensed_summary: str = Field(default="", max_length=8_000)
     canonical_url: str | None = Field(default=None, max_length=4_096)
     may_quote: bool
-    source_uncertainty: str = Field(min_length=1, max_length=2_000)
+    source_uncertainty: str = Field(default="", max_length=2_000)
     correction_lineage_refs: tuple[str, ...]
     channel: ExternalPerceptionChannelProof
     subjective_summary: str = Field(min_length=1, max_length=2_000)

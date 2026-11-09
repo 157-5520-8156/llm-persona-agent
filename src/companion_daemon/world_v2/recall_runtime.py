@@ -433,6 +433,8 @@ class RecallCoordinator:
         )
         self._prefetch_delivery_lock = threading.Lock()
         self._prefetch_delivery_health = _PrefetchDeliveryHealth()
+        self._recalled_boost_lock = threading.Lock()
+        self._recalled_boost_counts: OrderedDict[str, int] = OrderedDict()
 
     @classmethod
     def from_built_index(
@@ -1216,6 +1218,18 @@ class RecallCoordinator:
                 accessibility_seed=accessibility_seed,
                 semantic=True,
             )
+            with self._recalled_boost_lock:
+                for hit in result.hits:
+                    ref_key = hit.document.source_item_ref or (
+                        hit.document.source_refs[0]
+                        if hit.document.source_refs
+                        else hit.document.document_id
+                    )
+                    if ref_key:
+                        prev_count = self._recalled_boost_counts.pop(ref_key, 0)
+                        self._recalled_boost_counts[ref_key] = prev_count + 1
+                        while len(self._recalled_boost_counts) > 128:
+                            self._recalled_boost_counts.popitem(last=False)
             return self._issue_trace(
                 mode="character_pull",
                 trigger_ref=trigger_ref,
@@ -1225,6 +1239,11 @@ class RecallCoordinator:
             )
         finally:
             self._end_recall()
+
+    def recalled_boost_snapshot(self) -> dict[str, int]:
+        """Return bounded read-triggered recall counts for explicit character_pull hits."""
+        with self._recalled_boost_lock:
+            return dict(self._recalled_boost_counts)
 
     def world_author_history(self, *, expected_cursor, trigger_ref, actor_ref, query_text, link_refs=(),
                              eligible_source_refs=None):

@@ -7,6 +7,7 @@ import hashlib
 import json
 
 from .character_prehistory import PrehistoryArchiveProjection, PrehistoryRecordProjection
+from .immutable_value_cache import immutable_value_cache
 from .prehistory_memory_source import resolve_prehistory_memory_source
 from .projection_lookup import lookup_first
 from .fact_events import FACT_PAYLOAD_MODELS
@@ -642,19 +643,16 @@ def _resolve_source(
             _resolved_prehistory[binding] = (row, archive)
         return row.record.privacy_class
     if binding.source_kind == "fact":
-        transition = next(
-            (
-                item
-                for item in fact_history
-                if item.fact_id == binding.source_id
+        transition = lookup_first(
+            fact_history,
+            "accepted_event_ref",
+            binding.authority_event_ref,
+            predicate=lambda item: (
+                item.fact_id == binding.source_id
                 and item.entity_revision == binding.source_entity_revision
-                and item.accepted_event_ref == binding.authority_event_ref
             ),
-            None,
         )
-        current = next(
-            (item for item in facts if item.fact_id == binding.source_id), None
-        )
+        current = lookup_first(facts, "fact_id", binding.source_id)
         if (
             authority.event_type not in {*FACT_PAYLOAD_MODELS, "FactCommittedV2"}
             or transition is None
@@ -669,24 +667,20 @@ def _resolve_source(
             raise ValueError("memory Fact source is not the current active head")
         return transition.values_after.privacy_class
     if binding.source_kind == "experience":
-        transition = next(
-            (
-                item
-                for item in experience_history
-                if item.experience_id == binding.source_id
+        transition = lookup_first(
+            experience_history,
+            "accepted_event_ref",
+            binding.authority_event_ref,
+            predicate=lambda item: (
+                item.experience_id == binding.source_id
                 and item.entity_revision == binding.source_entity_revision
-                and item.accepted_event_ref == binding.authority_event_ref
             ),
-            None,
         )
-        current = next(
-            (
-                item
-                for item in experiences
-                if isinstance(item, ExperienceProjection)
-                and item.experience_id == binding.source_id
-            ),
-            None,
+        current = lookup_first(
+            experiences,
+            "experience_id",
+            binding.source_id,
+            predicate=lambda item: isinstance(item, ExperienceProjection),
         )
         if (
             authority.event_type != "ExperienceCommitted"
@@ -703,19 +697,16 @@ def _resolve_source(
         ):
             raise ValueError("memory source changed the accepted paired Experience")
         return transition.values_after.privacy_class
-    transition = next(
-        (
-            item
-            for item in thread_history
-            if item.thread_id == binding.source_id
+    transition = lookup_first(
+        thread_history,
+        "accepted_event_ref",
+        binding.authority_event_ref,
+        predicate=lambda item: (
+            item.thread_id == binding.source_id
             and item.entity_revision == binding.source_entity_revision
-            and item.accepted_event_ref == binding.authority_event_ref
         ),
-        None,
     )
-    current = next(
-        (item for item in threads if item.thread_id == binding.source_id), None
-    )
+    current = lookup_first(threads, "thread_id", binding.source_id)
     if (
         not authority.event_type.startswith("Thread")
         or transition is None
@@ -834,6 +825,7 @@ def _evaluate_memory_retrieval(
     return tuple(decisions)
 
 
+@immutable_value_cache(maxsize=4096)
 def _canonical_hash(value) -> str:
     encoded = json.dumps(
         value.model_dump(mode="json"),

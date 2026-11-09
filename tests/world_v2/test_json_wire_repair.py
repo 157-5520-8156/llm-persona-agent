@@ -30,6 +30,16 @@ def test_escape_unescaped_quotes_in_dialogue() -> None:
     )
 
 
+def test_escape_unescaped_quotes_followed_by_ascii_comma_or_colon_in_value() -> None:
+    raw = (
+        '{"my_state":"他说"小师妹", 还说什么"带她": 真是气死我了, "再也不理他"才怪",'
+        '"messages":["切, 谁管你跟"小师妹", 玩得开心就行"]}'
+    )
+    decoded = loads_one_json_object(raw)
+    assert decoded["my_state"] == '他说"小师妹", 还说什么"带她": 真是气死我了, "再也不理他"才怪'
+    assert decoded["messages"] == ['切, 谁管你跟"小师妹", 玩得开心就行']
+
+
 def test_close_unclosed_json_containers_appends_missing_wrapper() -> None:
     text = '{"result":{"status":"ok"}'
     assert close_unclosed_json_containers(text) == '{"result":{"status":"ok"}}'
@@ -66,3 +76,36 @@ def test_loads_one_json_object_rejects_truncated_string() -> None:
 def test_loads_one_json_object_rejects_array_root() -> None:
     with pytest.raises(ValueError, match="got type=list"):
         loads_one_json_object("[1, 2]")
+
+
+def test_loads_one_json_object_merges_split_array_with_object_item() -> None:
+    raw = (
+        '{"messages":["哦，行"],["头疼就去吃药喝水，谁盯你了"],'
+        '["早上那几句就当吵到你了，是我多事"],{"sticker_id":"meme:cat_slump"}]}'
+    )
+    decoded = loads_one_json_object(raw)
+    assert decoded["messages"] == [
+        "哦，行",
+        "头疼就去吃药喝水，谁盯你了",
+        "早上那几句就当吵到你了，是我多事",
+        {"sticker_id": "meme:cat_slump"},
+    ]
+
+
+def test_loads_one_json_object_repairs_quoted_closing_brace_in_object() -> None:
+    raw = (
+        '{"components":[{"component_id":"@r:73","dimension":"anxiety",'
+        '"target_intensity_bp":1300,"}"}]}'
+    )
+    decoded = loads_one_json_object(raw)
+    assert decoded == {
+        "components": [
+            {
+                "component_id": "@r:73",
+                "dimension": "anxiety",
+                "target_intensity_bp": 1300,
+            }
+        ]
+    }
+
+

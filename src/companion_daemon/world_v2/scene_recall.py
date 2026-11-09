@@ -22,6 +22,15 @@ def select_scene_context(*, hits, ranked, eligible_rows, query, index_version, q
 
     if query.story_window is not None or not any(hit.document.prehistory is not None for hit in hits):
         return hits
+    if (
+        query.automatic_attention is not None
+        and hits[0].document.prehistory is None
+        and not any(
+            hit.document.prehistory is not None and hit.structured_score_bp > 0
+            for hit in hits
+        )
+    ):
+        return hits
 
     def record_ref(document):
         return document.source_item_ref.split(':window:', 1)[0]

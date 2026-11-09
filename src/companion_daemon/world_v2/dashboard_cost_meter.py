@@ -8,9 +8,11 @@ import sqlite3
 from zoneinfo import ZoneInfo
 
 _SHANGHAI = ZoneInfo("Asia/Shanghai")
-# Metered pay-per-use rate for GLM-5.3-Flash on EdgeFn (~0.36 CNY / 1M tokens).
-# NOTE: GLM-5.3-Flash is billed per token (NOT free / subscription); field names retain legacy compatibility.
-_SUBSCRIPTION_EQUIV_CNY_PER_MILLION_TOKENS = 0.36
+# Metered pay-per-token rates for GLM-5.3-Flash (CNY / 1M tokens):
+# Input (cache miss): ¥0.80/M, Input (cache hit): ¥0.23/M, Output: ¥2.80/M.
+_GLM_INPUT_MISS_CNY_PER_MILLION_TOKENS = 0.80
+_GLM_CACHE_HIT_CNY_PER_MILLION_TOKENS = 0.23
+_GLM_OUTPUT_CNY_PER_MILLION_TOKENS = 2.80
 
 PURPOSE_LABELS: dict[str, tuple[str, str]] = {
     "life_development_draft": ("世界推演与远景规划", "后台生活与演化"),
@@ -466,30 +468,73 @@ def build_dashboard_cost_snapshot(
         sub_conn = sqlite3.connect(f"file:{sub_path}?mode=ro", uri=True, timeout=5.0)
         try:
             if _table_exists(sub_conn, "subscription_requests"):
+                sub_cols = {
+                    row[1]
+                    for row in sub_conn.execute(
+                        "PRAGMA table_info(subscription_requests)"
+                    ).fetchall()
+                }
+                has_token_breakdown = {
+                    "prompt_tokens",
+                    "completion_tokens",
+                    "cache_hit_tokens",
+                    "cache_miss_tokens",
+                    "cost_cny",
+                }.issubset(sub_cols)
+                sub_query = (
+                    "SELECT created_at, purpose, model, reserved_tokens, reported_tokens, status, latency_ms, "
+                    "prompt_tokens, completion_tokens, cache_hit_tokens, cache_miss_tokens, cost_cny "
+                    "FROM subscription_requests ORDER BY rowid DESC"
+                    if has_token_breakdown
+                    else "SELECT created_at, purpose, model, reserved_tokens, reported_tokens, status, latency_ms, "
+                    "NULL, NULL, NULL, NULL, NULL "
+                    "FROM subscription_requests ORDER BY rowid DESC"
+                )
                 sub_recent_collected = 0
                 for (
                     created_at,
                     purpose,
                     model_name,
-                    reserved_tokens,
+                    _reserved_tokens,
                     reported_tokens,
                     status,
                     latency_ms,
-                ) in sub_conn.execute(
-                    "SELECT created_at, purpose, model, reserved_tokens, reported_tokens, status, latency_ms "
-                    "FROM subscription_requests ORDER BY rowid DESC"
-                ):
+                    sub_prompt_tokens,
+                    sub_completion_tokens,
+                    sub_cache_hit_tokens,
+                    sub_cache_miss_tokens,
+                    sub_cost_cny,
+                ) in sub_conn.execute(sub_query):
                     day_str, clock_str, ts = _to_shanghai_date_and_clock(created_at)
-                    t_tok = int(
-                        reported_tokens
+                    # Never charge reserved_tokens when a call failed or had no reported usage.
+                    t_tok = (
+                        int(reported_tokens)
                         if reported_tokens is not None and int(reported_tokens) > 0
-                        else (reserved_tokens or 0)
+                        else 0
                     )
-                    cny = t_tok * _SUBSCRIPTION_EQUIV_CNY_PER_MILLION_TOKENS / 1_000_000.0
+                    p_tok = int(sub_prompt_tokens or 0) if t_tok > 0 else 0
+                    c_tok = int(sub_completion_tokens or 0) if t_tok > 0 else 0
+                    h_tok = int(sub_cache_hit_tokens or 0) if t_tok > 0 else 0
+                    m_tok = int(sub_cache_miss_tokens or 0) if t_tok > 0 else 0
+                    if t_tok > 0 and p_tok == 0 and c_tok == 0:
+                        p_tok = t_tok
+                        m_tok = max(0, p_tok - h_tok)
+                    if t_tok <= 0:
+                        cny = 0.0
+                    elif sub_cost_cny is not None and float(sub_cost_cny) > 0:
+                        cny = float(sub_cost_cny)
+                    else:
+                        if m_tok == 0 and p_tok > h_tok:
+                            m_tok = p_tok - h_tok
+                        cny = (
+                            h_tok * _GLM_CACHE_HIT_CNY_PER_MILLION_TOKENS
+                            + m_tok * _GLM_INPUT_MISS_CNY_PER_MILLION_TOKENS
+                            + c_tok * _GLM_OUTPUT_CNY_PER_MILLION_TOKENS
+                        ) / 1_000_000.0
                     purpose_key = str(purpose or "unknown")
                     model_key = str(model_name or "GLM-5.3-Flash")
                     p_entry = ensure_purpose(purpose_key)
-                    m_entry = ensure_model(model_key, "subscription", "subscription")
+                    m_entry = ensure_model(model_key, "glm", "subscription")
 
                     all_time_sub_equiv_cny += cny
                     all_time_model_cny += cny
@@ -498,10 +543,14 @@ def build_dashboard_cost_snapshot(
 
                     p_entry["all_time_calls"] = int(p_entry["all_time_calls"]) + 1
                     p_entry["all_time_tokens"] = int(p_entry["all_time_tokens"]) + t_tok
+                    p_entry["all_time_prompt_tokens"] = int(p_entry["all_time_prompt_tokens"]) + p_tok
+                    p_entry["all_time_cache_hit_tokens"] = int(p_entry["all_time_cache_hit_tokens"]) + h_tok
                     p_entry["all_time_cny"] = float(p_entry["all_time_cny"]) + cny
 
                     m_entry["all_time_calls"] = int(m_entry["all_time_calls"]) + 1
                     m_entry["all_time_tokens"] = int(m_entry["all_time_tokens"]) + t_tok
+                    m_entry["all_time_prompt_tokens"] = int(m_entry["all_time_prompt_tokens"]) + p_tok
+                    m_entry["all_time_cache_hit_tokens"] = int(m_entry["all_time_cache_hit_tokens"]) + h_tok
                     m_entry["all_time_cny"] = float(m_entry["all_time_cny"]) + cny
                     if latency_ms is not None and float(latency_ms) > 0:
                         m_entry["latency_sum_ms"] = float(m_entry["latency_sum_ms"]) + float(latency_ms)
@@ -531,6 +580,9 @@ def build_dashboard_cost_snapshot(
                         today_model_cny += cny
                         today_calls += 1
                         today_total_tokens += t_tok
+                        today_prompt_tokens += p_tok
+                        today_completion_tokens += c_tok
+                        today_cache_hit_tokens += h_tok
                         p_entry["today_calls"] = int(p_entry["today_calls"]) + 1
                         p_entry["today_tokens"] = int(p_entry["today_tokens"]) + t_tok
                         p_entry["today_cny"] = float(p_entry["today_cny"]) + cny
@@ -545,6 +597,7 @@ def build_dashboard_cost_snapshot(
                         d_entry["total_cny"] = float(d_entry["total_cny"]) + cny
                         d_entry["calls"] = int(d_entry["calls"]) + 1
                         d_entry["total_tokens"] = int(d_entry["total_tokens"]) + t_tok
+                        d_entry["cache_hit_tokens"] = int(d_entry["cache_hit_tokens"]) + h_tok
                         if p_entry["category"] == "前台聊天与表达":
                             d_entry["interactive_cny"] = float(d_entry["interactive_cny"]) + cny
                         else:
@@ -563,7 +616,7 @@ def build_dashboard_cost_snapshot(
                                     "model": model_key,
                                     "billing_mode": "subscription",
                                     "total_tokens": t_tok,
-                                    "cache_hit_tokens": 0,
+                                    "cache_hit_tokens": h_tok,
                                     "cost_cny": round(cny, 4),
                                     "latency_ms": int(latency_ms or 0),
                                     "status": str(status or "succeeded"),

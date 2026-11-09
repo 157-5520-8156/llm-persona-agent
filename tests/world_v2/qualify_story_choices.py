@@ -167,9 +167,7 @@ async def main(args):
         raise ValueError("explicit --real-glm and isolated private-audits output required")
     root.mkdir(parents=True, exist_ok=True)
     os.environ["COMPANION_DISABLE_DEBUG_USAGE_LEDGER"] = "1"
-    settings = Settings(_env_file=(Path('/Users/geoff/Projects/Girl-Agent/.env'),
-        Path.home()/'Library/Application Support/Girl-Agent/production-text-policy.env',
-        Path('configs/glm-background.env.example'), Path.home()/'Library/Application Support/Girl-Agent/background-provider.env'))
+    settings = Settings(_env_file=Path('/Users/geoff/Projects/Girl-Agent/.env'))
     assert settings.world_v2_background_provider == "glm" and settings.world_v2_background_model == "GLM-5.3-Flash"
     usage = SubscriptionTokenLedger(root / "usage.sqlite")
     models = [BackgroundGLMModel(settings.world_v2_background_api_key, settings.world_v2_background_base_url,

@@ -2062,20 +2062,18 @@ class LifeDevelopmentRuntime:
         if min_interval <= 0:
             return False
         state = projection if projection is not None else self._ledger.project()
-        last_proposal = next(
-            (
-                ref.logical_time
-                for ref in reversed(state.committed_world_event_refs)
-                if ref.event_id.startswith((
-                    "event:life-development:proposal:",
-                    "event:life-development:model-result:",
-                ))
-            ),
-            None,
-        )
-        if last_proposal is None:
+        candidates = [
+            ref.logical_time
+            for ref in reversed(state.committed_world_event_refs)
+            if ref.event_id.startswith("event:life-development:")
+            and ref.logical_time is not None
+        ]
+        last_author_time = getattr(self, "_last_author_logical_time", None)
+        if last_author_time is not None:
+            candidates.append(last_author_time)
+        if not candidates:
             return False
-        return state.logical_time < last_proposal + timedelta(seconds=min_interval)
+        return state.logical_time < max(candidates) + timedelta(seconds=min_interval)
 
     def pending_completed_activity_ref(self, *, after_world_revision: int | None = None) -> str | None:
         """Latest completed attempt, without reviving a historical backlog."""
@@ -2405,6 +2403,7 @@ class LifeDevelopmentRuntime:
                     wake=wake, manifest=world_manifest,
                 )
                 occasion_mode = occasion_mode_for_draw(occasion_draw)
+            self._last_author_logical_time = wake.logical_time
             world_run = await self._world_author_draft(
                 context=world_context,
                 logical_time=wake.logical_time,
@@ -5693,13 +5692,17 @@ class LifeDevelopmentRuntime:
             messages = [*messages, {"role": "assistant", "content": rejected_raw}, correction]
         request_hash = _messages_hash(messages)
         request_binding = record_world_author_request(content_store=self._store, messages=messages)
+        origin = getattr(self._world_author, "authority_origin", self._world_author)
+        author_provider = str(getattr(origin, "provider", "")).lower()
+        author_model = str(getattr(origin, "model", "")).lower()
+        author_temp = 1.3 if ("deepseek" in author_provider or "deepseek" in author_model) else (1.0 if ("glm" in author_provider or "glm" in author_model) else 0.6)
         try:
             with model_call_scope("life_development_source_rewrite"):
                 tool_contract = recover_world_consequence_author_tool(
                     messages=messages, provider=self._world_author,
                 )
                 raw = await complete_json_object(
-                    self._world_author, messages, temperature=0.6, **tool_contract,
+                    self._world_author, messages, temperature=author_temp, **tool_contract,
                 )
         except Exception as exc:
             if not _is_expected_model_transport_failure(exc):
@@ -5873,10 +5876,14 @@ class LifeDevelopmentRuntime:
                     request_binding = record_world_author_request(
                         content_store=self._store, messages=messages,
                     )
+                rewritten_origin = getattr(completion_rewriter, "authority_origin", completion_rewriter)
+                rewritten_provider = str(getattr(rewritten_origin, "provider", "")).lower()
+                rewritten_model = str(getattr(rewritten_origin, "model", "")).lower()
+                rewritten_temp = 1.3 if ("deepseek" in rewritten_provider or "deepseek" in rewritten_model) else (1.0 if ("glm" in rewritten_provider or "glm" in rewritten_model) else (0.3 if ordinal else 0.6))
                 rewritten_raw = await complete_json_object(
                     completion_rewriter,
                     messages,
-                    temperature=(0.3 if ordinal else 0.6),
+                    temperature=rewritten_temp,
                 )
             except Exception as exc:
                 if not _is_expected_model_transport_failure(exc):
@@ -6142,6 +6149,10 @@ class LifeDevelopmentRuntime:
                     request_binding = record_world_author_request(
                         content_store=self._store, messages=messages,
                     )
+                author_origin = getattr(self._world_author, "authority_origin", self._world_author)
+                author_provider = str(getattr(author_origin, "provider", "")).lower()
+                author_model = str(getattr(author_origin, "model", "")).lower()
+                author_temp = 1.3 if ("deepseek" in author_provider or "deepseek" in author_model) else (1.0 if ("glm" in author_provider or "glm" in author_model) else (0.3 if ordinal else 0.6))
                 with model_call_scope(
                     "life_development_draft",
                     action_id=f"life-development:{logical_time.isoformat()}:{ordinal}",
@@ -6149,11 +6160,7 @@ class LifeDevelopmentRuntime:
                     raw = await complete_json_object(
                         self._world_author,
                         messages,
-                        # The corrective attempt names an exact violation; a
-                        # lower temperature makes the repair deterministic
-                        # instead of resampling the same unstable
-                        # high-temperature output.
-                        temperature=(0.3 if ordinal else 0.6),
+                        temperature=author_temp,
                         **tool_contract,
                     )
             except (

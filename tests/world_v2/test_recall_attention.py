@@ -161,3 +161,52 @@ def test_relevant_prehistory_link_survives_automatic_recall_link_budget() -> Non
     assert len(request.link_refs) == 1
     assert request.link_refs == tuple(sorted(set(request.link_refs)))
     assert request.link_refs == ("memory:prehistory:celia-workshop-photos",)
+
+
+def test_automatic_recall_preserves_newest_dialogue_tail_and_appraisal_meaning() -> None:
+    request = build_automatic_recall_request(
+        observation_text="我吃了啊，你忘了吗",
+        recent_dialogue_values=(
+            {"speaker": "counterpart", "text": "不是，看你吃的太素了"},
+            {"speaker": "counterpart", "text": "给你改善改善伙食"},
+            {"speaker": "companion", "text": "外卖的把子肉真香，青菜豆腐汤也刚好解腻"},
+            {"speaker": "companion", "text": "你自己吃了没啊，别光顾着投喂我"},
+        ),
+        affect_values=(
+            {
+                "components": [
+                    {"dimension": "warmth", "intensity_bp": 4500},
+                    {"dimension": "unease", "intensity_bp": 2600},
+                ]
+            },
+        ),
+        appraisal_values=(
+            {
+                "accepted_at": "2026-11-02T10:30:00Z",
+                "confidence_bp": 6500,
+                "expires_at": "2026-11-05T15:40:00+08:00",
+                "hypotheses": [{"meaning": "旧的解读"}],
+            },
+            {
+                "accepted_at": "2026-11-02T13:35:00Z",
+                "confidence_bp": 8200,
+                "expires_at": "2026-11-05T18:40:00+08:00",
+                "hypotheses": [
+                    {"meaning": "他点把子肉和青菜豆腐汤是看我吃得素想给我改善伙食"}
+                ],
+            },
+        ),
+        relationship_values=({"stage": "familiar", "temperature": "warm"},),
+        situation_value={
+            "time_segment": "evening",
+            "social_environment": {"relation": "alone"},
+        },
+        open_thread_values=({"kind": "topic_open"},),
+    )
+
+    assert len(request.query_text) <= 256
+    assert "外卖的把子肉真香" in request.query_text
+    assert "你自己吃了没啊，别光顾着投喂我" in request.query_text
+    assert "他点把子肉和青菜豆腐汤是看我吃得素想给我改善伙食" in request.query_text
+    assert "confidence_bp" not in request.query_text
+    assert "expires_at" not in request.query_text

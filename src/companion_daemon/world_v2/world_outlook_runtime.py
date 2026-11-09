@@ -1126,7 +1126,21 @@ class WorldOutlookRuntime:
         if generation is None or self._verified_head_source != verification_key:
             original = self.ledger.project_at(ProjectionCursor(**evidence["cursor"]))
             if original.semantic_hash != evidence["snapshot_hash"]:
-                raise ValueError("outlook belongs to a different source history")
+                head_ref = evidence.get("head_event_ref")
+                head_hash = evidence.get("head_event_payload_hash")
+                last_ref = (
+                    original.committed_world_event_refs[-1]
+                    if original.committed_world_event_refs
+                    else None
+                )
+                if (
+                    cursor_of(original) == cursor_of(state)
+                    or not head_ref
+                    or last_ref is None
+                    or last_ref.event_id != head_ref
+                    or last_ref.payload_hash != head_hash
+                ):
+                    raise ValueError("outlook belongs to a different source history")
             if generation is not None:
                 self._verified_head_source = verification_key
         from .world_outlook_execution import occurrence_ref
@@ -1426,6 +1440,8 @@ class WorldOutlookRuntime:
         if view.get("needs_revision") or preparation["due"] or preparation["outline_due"]:
             dates.append(max(now, cooldown_due) if cooldown_due is not None else now)
         due = min(dates, default=None)
+        if due is not None and cooldown_due is not None:
+            due = max(due, cooldown_due)
         if due is None or due > now:
             return due
         _, running, key = self._refresh_identity(state, view, npc_refs, prior_head)
@@ -1814,10 +1830,14 @@ class WorldOutlookRuntime:
                             "failure_code": "outlook_author_outcome_unknown",
                         }
                         return self.health()
+                    outlook_origin = getattr(self.author, "authority_origin", self.author)
+                    outlook_provider = str(getattr(outlook_origin, "provider", "")).lower()
+                    outlook_model = str(getattr(outlook_origin, "model", "")).lower()
+                    outlook_temp = 1.3 if ("deepseek" in outlook_provider or "deepseek" in outlook_model) else (1.0 if ("glm" in outlook_provider or "glm" in outlook_model) else 0.3)
                     with model_call_scope(
                         "life_development_draft", action_id=f"world-outlook:{input_key}:{ordinal}"
                     ):
-                        raw = await complete_json_object(self.author, messages, temperature=0.3,
+                        raw = await complete_json_object(self.author, messages, temperature=outlook_temp,
                             **({"tools": response_tools, "tool_choice": {"type": "function", "function": {"name": "world_outlook_v6"}}} if response_tools else {}))
                 obj = decode_outlook_response(raw, request_raw=messages[1]["content"], response_tools=response_tools)
                 kept_current = False
@@ -2134,6 +2154,14 @@ class WorldOutlookRuntime:
                         "response_hash": digest(raw),
                         "cursor": cursor_of(projection),
                         "snapshot_hash": projection.semantic_hash,
+                        **(
+                            {
+                                "head_event_ref": projection.committed_world_event_refs[-1].event_id,
+                                "head_event_payload_hash": projection.committed_world_event_refs[-1].payload_hash,
+                            }
+                            if projection.committed_world_event_refs
+                            else {}
+                        ),
                         **({"execution_source_review": execution_source_review} if execution_source_review is not None else {}),
                         **({"configured_identity_source_ref": pinned_packet["configured_companion_identity"]["source_ref"]}
                            if "configured_companion_identity" in pinned_packet else {}),

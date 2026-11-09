@@ -1128,6 +1128,11 @@ class RecallCorpusCompiler:
                 # Her solitary session stays single records; a lone counterpart
                 # message remains an episode.
                 continue
+            if not any(
+                any(ch.isalnum() or "\u4e00" <= ch <= "\u9fff" for ch in item.text)
+                for item, _r, _b in window
+            ):
+                continue
             body = "一段聊天：\n" + "\n".join(_episode_line(item) for item, _ref, _bindings in window)
             first, last = window[0][0], window[-1][0]
             privacy = max(

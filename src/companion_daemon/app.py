@@ -836,6 +836,105 @@ async def world_v2_dashboard_cost(
     )
 
 
+@app.get("/world-v2/dashboard/studio")
+async def world_v2_dashboard_studio(
+    request: Request,
+    x_world_v2_internal_token: str | None = Header(default=None),
+) -> Response:
+    _require_world_v2_dashboard_access(request, x_world_v2_internal_token)
+    from .world_v2.counterpart_world_interaction import build_dashboard_studio_snapshot
+
+    settings = _http_v2_settings(request.app)
+    payload = await asyncio.to_thread(
+        build_dashboard_studio_snapshot, settings.database_path
+    )
+    return JSONResponse(
+        content=payload,
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
+@app.post("/world-v2/dashboard/interactions")
+async def world_v2_dashboard_create_interaction(
+    request: Request,
+    x_world_v2_internal_token: str | None = Header(default=None),
+) -> Response:
+    _require_world_v2_dashboard_access(request, x_world_v2_internal_token)
+    from .world_v2.counterpart_world_interaction import (
+        build_dashboard_studio_snapshot,
+        create_counterpart_interaction,
+    )
+
+    try:
+        body = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="invalid json body") from exc
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="json object required")
+
+    settings = _http_v2_settings(request.app)
+    try:
+        created = await asyncio.to_thread(
+            create_counterpart_interaction,
+            settings.database_path,
+            kind=str(body.get("kind") or "instant_delivery"),
+            title=str(body.get("title") or ""),
+            detail=str(body.get("detail") or ""),
+            sender_note=str(body.get("sender_note") or ""),
+            target_place=str(body.get("target_place") or ""),
+            eta_minutes=int(body.get("eta_minutes") if body.get("eta_minutes") is not None else 15),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    studio = await asyncio.to_thread(
+        build_dashboard_studio_snapshot, settings.database_path
+    )
+    return JSONResponse(
+        content={"created": created, "studio": studio},
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
+@app.post("/world-v2/dashboard/interactions/{interaction_id}/receive")
+async def world_v2_dashboard_receive_interaction(
+    interaction_id: str,
+    request: Request,
+    x_world_v2_internal_token: str | None = Header(default=None),
+) -> Response:
+    _require_world_v2_dashboard_access(request, x_world_v2_internal_token)
+    from .world_v2.counterpart_world_interaction import (
+        build_dashboard_studio_snapshot,
+        settle_counterpart_interaction_now,
+    )
+
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+
+    settings = _http_v2_settings(request.app)
+    try:
+        settled = await asyncio.to_thread(
+            settle_counterpart_interaction_now,
+            settings.database_path,
+            interaction_id=interaction_id,
+            receiver_note=str(body.get("receiver_note") or ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    studio = await asyncio.to_thread(
+        build_dashboard_studio_snapshot, settings.database_path
+    )
+    return JSONResponse(
+        content={"settled": settled, "studio": studio},
+        headers={"Cache-Control": "private, no-store"},
+    )
+
+
 
 @app.post("/messages", response_model=None)
 async def post_message(

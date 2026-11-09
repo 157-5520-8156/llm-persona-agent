@@ -635,7 +635,12 @@ class WorldLifeContextCompiler:
                 ):
                     planned_activities.append(planned)
         planned_activities.sort(key=lambda item: (
-            item.scheduled_window.opens_at, item.activity_event_ref,
+            (
+                projection.logical_time is not None
+                and item.scheduled_window.closes_at < projection.logical_time
+            ),
+            item.scheduled_window.opens_at,
+            item.activity_event_ref,
         ))
         from .activity_lifecycle_state import lifecycle_states_from_projection
 

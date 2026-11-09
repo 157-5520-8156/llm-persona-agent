@@ -11,9 +11,9 @@ from .schema_core import FrozenModel
 
 _INDEXES = OrderedDict()
 _LOCK = RLock()
-_MAX_INDEXES = 32
-_MAX_INDEX_ROWS = 100_000
-_MAX_RETAINED_ROWS = 200_000
+_MAX_INDEXES = 64
+_MAX_INDEX_ROWS = 250_000
+_MAX_RETAINED_ROWS = 1_000_000
 _RETAINED_ROWS = 0
 _BUILD_AFTER_LOOKUPS = 4
 _REPLAY_INDEXES = ContextVar("projection_replay_indexes", default=None)

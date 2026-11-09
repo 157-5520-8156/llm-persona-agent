@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import threading
 from functools import lru_cache
-from .associative_recall import _text_recall_features
+from .associative_recall import _GENERIC_CONVERSATIONAL_NGRAMS, _text_recall_features
 import hashlib
 import json
 import math
@@ -46,7 +46,7 @@ from .sqlite_coordination import configure_shared_sqlite_connection, sqlite_writ
 # of receipt JSON. Keep the increase bounded to six hits rather than clipping
 # the final story beat under the former four-scene packing ceiling.
 RECALL_MODEL_READING_MAX_BYTES = 7_000
-RECALL_RESULT_MAX_BYTES = 14_000
+RECALL_RESULT_MAX_BYTES = 22_000
 # Only a selected, reviewed prehistory story may use this larger source-closed
 # pack. The observed five-scene chain is ~10.6 KB for model reading and ~21.7
 # KB for its audit result; ordinary Recall keeps the smaller budgets above.
@@ -905,7 +905,7 @@ class _RecallIndexCore:
         # phrase through another source lane. Source/type diversity breaks
         # ties when cues are already covered (including semantic-only recall).
         # Eligibility and both byte budgets still apply before each selection.
-        query_spans = _lexical_feature_spans(lexical_text)
+        query_spans = _topical_lexical_feature_spans(lexical_text)
         groups_by_id = {
             hit.document.document_id: _matched_query_groups(
                 query_spans, features_by_id[hit.document.document_id],
@@ -969,7 +969,11 @@ class _RecallIndexCore:
                 # Reorder only when a newly accepted hit changes coverage.
                 if ordered_for_selection_count != len(selected):
                     remaining.sort(key=lambda item: (
-                        -novelty(item[2])[0], -novelty(item[2])[1], -item[0], item[1],
+                        -(item[0] + min(novelty(item[2])[0], 2) * 300 + novelty(item[2])[1] * 100),
+                        -novelty(item[2])[0],
+                        -novelty(item[2])[1],
+                        -item[0],
+                        item[1],
                     ))
                     ordered_for_selection_count = len(selected)
                 for anchor in selected:
@@ -2106,6 +2110,41 @@ def _lexical_feature_spans(text: str) -> tuple[tuple[int, int, str], ...]:
     return tuple(spans)
 
 
+_TOPICAL_LEXICAL_STOP_TERMS = _GENERIC_CONVERSATIONAL_NGRAMS | frozenset({
+    "为什么", "为什", "那件", "件事", "那件事", "下午", "上午", "晚上", "昨晚", "早上",
+    "心里", "没数", "突然", "么突", "么突然", "里没", "还不", "不是", "是因", "因为",
+    "不肯", "好好", "不是因", "是因为", "天为", "然给", "今天为", "天为什", "什么突",
+    "突然给", "心里没", "里没数", "午说", "还不是", "为你下", "下午说", "肯好", "怕你省",
+    "不肯好", "肯好好", "说的", "着不", "省着不", "着不肯",
+})
+_GRAMMATICAL_PARTICLE_CHARS = tuple("的了吗呢吧啊呀")
+_PRONOUN_BOUNDARY_CHARS = ("我", "你", "他", "她", "咱")
+
+
+def _topical_lexical_feature_spans(text: str) -> tuple[tuple[int, int, str], ...]:
+    raw_spans = _lexical_feature_spans(text)
+    filtered = tuple(
+        span for span in raw_spans
+        if span[2] not in _TOPICAL_LEXICAL_STOP_TERMS
+        and not any(particle in span[2] for particle in _GRAMMATICAL_PARTICLE_CHARS)
+        and not (
+            len(span[2]) == 2
+            and (
+                span[2].startswith(_PRONOUN_BOUNDARY_CHARS)
+                or span[2].endswith(_PRONOUN_BOUNDARY_CHARS)
+            )
+        )
+        and not (
+            len(span[2]) == 3
+            and (
+                (span[2].startswith(_PRONOUN_BOUNDARY_CHARS) and span[2][1:] in _TOPICAL_LEXICAL_STOP_TERMS)
+                or (span[2].endswith(_PRONOUN_BOUNDARY_CHARS) and span[2][:-1] in _TOPICAL_LEXICAL_STOP_TERMS)
+            )
+        )
+    )
+    return filtered or raw_spans
+
+
 # The associative reader and ranked index use the same normalized n-grams.
 # Share one byte-bounded cache instead of retaining the same strings twice.
 _lexical_features = _text_recall_features
@@ -2150,8 +2189,14 @@ def _corpus_lexical_scores(
     strongest match per overlap group, preserving full-query coverage and
     distinct separated cues. Frequencies use eligible documents only.
     """
-    spans = _lexical_feature_spans(query_text)
-    query = frozenset(term for _, _, term in spans)
+    topical_spans = _topical_lexical_feature_spans(query_text)
+    topical_query = frozenset(term for _, _, term in topical_spans)
+    if any(topical_query & document for document in documents):
+        spans = topical_spans
+        query = topical_query
+    else:
+        spans = _lexical_feature_spans(query_text)
+        query = frozenset(term for _, _, term in spans)
     frequencies = {term: sum(term in document for document in documents) for term in query}
     weights = {term: math.log1p((len(documents) - count + 0.5) / (count + 0.5))
                for term, count in frequencies.items() if count}

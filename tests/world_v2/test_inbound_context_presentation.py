@@ -36,8 +36,18 @@ def test_dialogue_tail_keeps_every_value_and_places_protocol_before_conversation
     result = _dialogue_tail(encoded)
     assert expand_reference_view(result, bindings) == original
     assert packet == original
-    assert list(result)[-3:] == ["inner_life_snapshot", "current_trigger_message", "role_result_correction"]
-    assert list(result["inner_life_snapshot"])[-1] == "materials"
+    assert list(result)[-5:] == [
+        "inner_life_snapshot",
+        "expression_hard_boundaries",
+        "request",
+        "current_trigger_message",
+        "role_result_correction",
+    ]
+    assert list(result["inner_life_snapshot"])[-3:] == [
+        "materials",
+        "cursor",
+        "source_refs",
+    ]
     materials = result["inner_life_snapshot"]["materials"]
     assert list(materials)[-2:] == ["conversation", "recent_dialogue"]
     assert list(materials["recent_dialogue"])[-2:] == ["stable_turns", "volatile_last_turn"]
@@ -92,7 +102,7 @@ def test_ordering_keeps_values_permissions_and_source_decoding_exact():
 
 
 def test_changing_dialogue_does_not_renumber_stable_source_or_break_its_prefix():
-    views = [prepare_reference_view(cache_ordered_inbound_material(_packet(text, cursor)))[0]
+    views = [_dialogue_tail(prepare_reference_view(cache_ordered_inbound_material(_packet(text, cursor)))[0])
              for text, cursor in [('昨天怎么样', 12), ('以前的生日呢', 13)]]
     stable = [v['inner_life_snapshot']['materials']['stable_self'] for v in views]
     assert stable[0] == stable[1]
@@ -172,6 +182,32 @@ def test_flat_memory_rows_reject_colliding_or_noncanonical_paths():
             unpack_flat_literal_rows(packet)
 
 
+def test_reference_codec_interns_world_claim_source_refs_by_scope_losslessly():
+    refs = [f"event:settled:{index:02d}:" + "f" * 64 for index in range(25)]
+    packet = {
+        "capability_manifest": {
+            "payload": {
+                "world_claim_source_lanes": {
+                    "contract": "proactive-world-claim-source-lanes.1",
+                    "source_refs_by_scope": {
+                        "current_world": refs[:10],
+                        "past_world": refs[5:20],
+                        "shared_history": refs[10:],
+                        "counterpart_history": [],
+                        "stable_identity": [refs[0]],
+                    },
+                }
+            }
+        }
+    }
+    view, bindings = prepare_reference_view(packet)
+    assert bindings is not None
+    encoded_scopes = view["capability_manifest"]["payload"]["world_claim_source_lanes"]["source_refs_by_scope"]
+    assert all(item.startswith("@r:") for item in encoded_scopes["current_world"])
+    assert len(json.dumps(view)) < len(json.dumps(packet)) * 0.35
+    assert expand_reference_view(view, bindings) == packet
+
+
 @pytest.mark.asyncio
 async def test_short_authored_feedback_keeps_wait_and_next_input_complete(tmp_path, monkeypatch):
     """Use the existing author/reviewer/SQLite seam; no scripted host reply."""
@@ -219,8 +255,10 @@ async def test_short_authored_feedback_keeps_wait_and_next_input_complete(tmp_pa
         ]
         retained = [row.get("text") for row in rows if isinstance(row, dict)]
         assert "\n".join(parts) in retained and feedback in retained and next_text in retained
-        assert list(first_view)[-2:] == ["inner_life_snapshot", "current_trigger_message"]
-        assert list(second_view)[-2:] == ["inner_life_snapshot", "current_trigger_message"]
+        assert list(first_view)[-1] == "current_trigger_message"
+        assert list(second_view)[-1] == "current_trigger_message"
+        assert list(first_view).index("inner_life_snapshot") < list(first_view).index("request")
+        assert list(second_view).index("inner_life_snapshot") < list(second_view).index("request")
         replay = app.export_replay_evidence()
         assert replay.projection.semantic_hash == replay.replay.semantic_hash
 

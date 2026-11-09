@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections import OrderedDict
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 import hashlib
 import json
 import math
@@ -20,6 +20,7 @@ from .memory_consolidation_contract import MemoryReviewBatch, validate_payload
 from .memory_consolidation_contract import source_texts
 from .memory_retrieval import MemoryRetrievalCompiler
 from .immutable_value_cache import immutable_value_cache
+from .projection_lookup import lookup_last
 from .proposal_audit_schemas import ModelResultRecordedPayload
 from .schemas import MemoryCandidateProjection, ProjectionCursor
 
@@ -214,6 +215,7 @@ class MemoryUnderstandingReader:
         self._schedule_generation = None
         self._read_lock = RLock()
         self._read_cache: OrderedDict[tuple[object, ...], UnderstandingSnapshot] = OrderedDict()
+        self._batch_cache: OrderedDict[tuple[object, ...], object] = OrderedDict()
         self._retrieval_compiler = (
             MemoryRetrievalCompiler(ledger=self.ledger, life_content_store=self.store)
             if self.store is not None
@@ -403,9 +405,16 @@ class MemoryUnderstandingReader:
         # committed before this receipt under the very same author.
         for effect_ref in effect_refs:
             located_effect = self.ledger.lookup_event_commit(effect_ref)
-            effect = (committed.get(effect_ref) if committed is not None else
-                      self.ledger.resolve_committed_event_refs((effect_ref,),
-                          at_world_revision=projection.world_revision).get(effect_ref))
+            effect = (
+                committed.get(effect_ref)
+                if isinstance(committed, dict)
+                else lookup_last(committed, "event_id", effect_ref)
+                if committed is not None
+                else self.ledger.resolve_committed_event_refs(
+                    (effect_ref,),
+                    at_world_revision=projection.world_revision,
+                ).get(effect_ref)
+            )
             if (effect is None or located_effect is None
                     or located_effect[1].ledger_sequence >= receipt_commit.ledger_sequence
                     or located_effect[0].world_id != projection.world_id
@@ -421,16 +430,27 @@ class MemoryUnderstandingReader:
         from .life_content_store import SQLiteImmutableLifeContentStore
         from .context_read_scope import current_content_snapshot
 
+        active_snapshot = current_content_snapshot(self.store)
+        snapshot_generations = (
+            getattr(active_snapshot, "generations", None)
+            if active_snapshot is not None
+            else None
+        )
         can_cache = (
             type(self.ledger) is SQLiteWorldLedger
             and type(self.store) is SQLiteImmutableLifeContentStore
             and "lookup_event_commit" not in vars(self.ledger)
             and "read_exact" not in vars(self.store)
-            and current_content_snapshot(self.store) is None
+            and (active_snapshot is None or snapshot_generations is not None)
+        )
+        store_generations = (
+            snapshot_generations
+            if snapshot_generations is not None
+            else (self.store.read_generations() if can_cache else None)
         )
         generation_before = (
-            (self.ledger.verified_history_generation(), *self.store.read_generations())
-            if can_cache
+            (self.ledger.verified_history_generation(), *store_generations)
+            if can_cache and store_generations is not None
             else None
         )
         cache_key = (
@@ -455,7 +475,7 @@ class MemoryUnderstandingReader:
                      if p.process_kind == "memory_consolidation_review" and p.state == "terminal"
                      and (p.runtime_outcome_ref or "").startswith("memory-consolidation:reviewed:")}
         versions, retired, acknowledged, failures = [], set(), set(), []
-        committed = {e.event_id: e for e in projection.committed_world_event_refs}
+        committed = projection.committed_world_event_refs
         # Read only memory-batch receipts, never every completed process in a
         # months-long ledger on each chat.
         receipts = [located for p in processes.values() if p.attempt_ids
@@ -470,7 +490,63 @@ class MemoryUnderstandingReader:
             if process is None:
                 continue
             try:
-                verified = self._validated_batch(projection, process, event, receipt_commit, committed=committed)
+                batch_key = (
+                    (
+                        projection.world_id,
+                        self.actor_ref,
+                        process.trigger_id,
+                        process.trigger_ref,
+                        process.source_evidence_ref,
+                        process.runtime_outcome_ref,
+                        event.event_id,
+                        event.payload_hash,
+                        receipt_commit.ledger_sequence,
+                        generation_before[0],
+                        generation_before[2],
+                    )
+                    if generation_before is not None
+                    else None
+                )
+                verified = None
+                if batch_key is not None:
+                    with self._read_lock:
+                        cached_batch = self._batch_cache.get(batch_key)
+                        if cached_batch is not None:
+                            self._batch_cache.move_to_end(batch_key)
+                            cached_verified, effect_hashes = cached_batch
+                            if all(
+                                (eff := lookup_last(committed, "event_id", ref)) is not None
+                                and eff.payload_hash == expected_hash
+                                for ref, expected_hash in effect_hashes
+                            ):
+                                verified = cached_verified
+                if verified is None:
+                    verified = self._validated_batch(projection, process, event, receipt_commit, committed=committed)
+                    if (
+                        batch_key is not None
+                        and generation_before is not None
+                        and (self.ledger.verified_history_generation(), *self.store.read_generations()) == generation_before
+                    ):
+                        if verified is None:
+                            effect_hashes = ()
+                        else:
+                            batch_obj, cand_map, _ = verified
+                            effect_hashes = tuple(
+                                (
+                                    ref,
+                                    lookup_last(committed, "event_id", ref).payload_hash,
+                                )
+                                for choice in batch_obj.choices
+                                for ref in (
+                                    "event:memory-consolidation:effect:"
+                                    + digest([process.trigger_id, cand_map[choice.candidate_token].candidate_id]),
+                                )
+                            )
+                        with self._read_lock:
+                            self._batch_cache[batch_key] = (verified, effect_hashes)
+                            self._batch_cache.move_to_end(batch_key)
+                            while len(self._batch_cache) > 128:
+                                self._batch_cache.popitem(last=False)
                 if verified is None:
                     continue
                 batch, candidates, previous = verified
@@ -547,8 +623,8 @@ class MemoryUnderstandingReader:
                     self._read_cache.popitem(last=False)
         return snapshot
 
-    def context_candidates(self, projection, primary, snapshot, *, limit=4):
-        """Exact reviewed story links and standing sources, not social rules."""
+    def context_candidates(self, projection, primary, snapshot, *, limit=8, exclude_ids=frozenset()):
+        """Exact reviewed story links, standing sources, and recent personal life experiences."""
         wanted = {b.source_id for c in primary for b in c.values.source_bindings}
         related = set()
         for row in projection.prehistory_records:
@@ -556,15 +632,51 @@ class MemoryUnderstandingReader:
                 related.update(row.record.related_record_refs)
         wanted.update(related)
         standing = {c.candidate_id for v in snapshot.active[-8:] for c in v.sources}
-        primary_ids = {c.candidate_id for c in primary}
-        available = [c for c in projection.memory_candidates
-                     if c.values.status == "active" and c.candidate_id not in primary_ids
-                     and (c.candidate_id in standing or any(b.source_id in wanted for b in c.values.source_bindings))]
-        available.sort(key=lambda c: (
+        excluded = {c.candidate_id for c in primary} | set(exclude_ids)
+        direct = [c for c in projection.memory_candidates
+                  if c.values.status == "active" and c.candidate_id not in excluded
+                  and (c.candidate_id in standing or any(b.source_id in wanted for b in c.values.source_bindings))]
+        direct.sort(key=lambda c: (
             not any(b.source_id in related for b in c.values.source_bindings),
             -c.values.retrieval_strength_bp, c.candidate_id,
         ))
-        return tuple(available[:limit])
+        selected = list(direct[:limit])
+        if len(selected) < limit and projection.logical_time is not None:
+            selected_ids = excluded | {c.candidate_id for c in selected}
+            cutoff = projection.logical_time - timedelta(days=7)
+            recent_exp = [
+                c for c in projection.memory_candidates
+                if c.values.status == "active"
+                and c.candidate_id not in selected_ids
+                and c.opened_at >= cutoff
+                and c.values.salience.autobiographical_relevance_bp >= 5500
+                and any(
+                    b.source_kind == "experience"
+                    and b.source_id.startswith("experience:character-life-response:")
+                    for b in c.values.source_bindings
+                )
+            ]
+            recent_exp.sort(
+                key=lambda c: (
+                    c.opened_at.date(),
+                    c.values.retrieval_strength_bp
+                    + c.values.salience.autobiographical_relevance_bp
+                    + c.values.salience.future_utility_bp
+                    + c.values.salience.emotional_residue_bp
+                    + c.values.salience.relationship_relevance_bp,
+                    c.candidate_id,
+                ),
+                reverse=True,
+            )
+            seen_days = set()
+            for c in recent_exp:
+                day = c.opened_at.date()
+                if day not in seen_days:
+                    seen_days.add(day)
+                    selected.append(c)
+                    if len(selected) >= limit:
+                        break
+        return tuple(selected[:limit])
 
 
 def install_understanding_context(context, snapshot, *, limit=6, offered_refs=None):

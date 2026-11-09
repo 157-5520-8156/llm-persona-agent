@@ -245,7 +245,7 @@ def test_conversation_prompt_retains_authority_and_capabilities_without_social_s
     assert prompt.startswith(CONVERSATION_PROMPT_VERSION + "\n")
     assert prompt.count(identity) == 1
     assert prompt.count(PRIVATE_COGNITION_INSTRUCTION) == 1
-    assert (_current_slim_recall_instruction() in prompt) is recall
+    assert (_current_slim_recall_instruction().replace("、meaning_of_this", "") in prompt) is recall
     for boundary in (
         "系统启动以前的过去", "缺少记录表示未知", "不得无依据否认", "计划只证明意图",
         "结束只证明生命周期结束", "不自动证明你亲眼看见",
@@ -255,12 +255,24 @@ def test_conversation_prompt_retains_authority_and_capabilities_without_social_s
         "active_affect_heads", "affect_target_bounds", "episode_id", "component_id",
         "5..86400", "每轴每轮±500", "实际阶段变化仍以送达为准",
         "技术失败不替你选择沉默", "动机、态度、措辞", "都由你决定",
+        "不是绑架后续回合的永久守则",
     ):
         assert boundary in prompt
-    for script in ("先定内心再出动作", "以及他的言下之意", "嗯哼我在听", "5..20 秒短", "热聊中想快点追问"):
+    for script in (
+        "先定内心再出动作",
+        "以及他的言下之意",
+        "嗯哼我在听",
+        "5..20 秒短",
+        "热聊中想快点追问",
+        "绝不写",
+        "固定三段式",
+    ):
         assert script not in prompt
+    assert "meaning_of_this" not in prompt
     if media:
-        assert "photo 必填" in prompt and all(key in prompt for key in SLIM_CONSIDER_KEYS)
+        assert "photo 必填" in prompt and all(
+            key in prompt for key in (SLIM_CONSIDER_KEYS - {"meaning_of_this"})
+        )
         assert "请求只授权尝试" in prompt and "declared_display" in prompt
     else:
         assert "本轮没有媒体请求能力" in prompt and "photo 必填" not in prompt

@@ -17,7 +17,7 @@ from .schema_core import FrozenModel
 _CacheInfo = namedtuple("CacheInfo", "hits misses maxsize currsize")
 _IMMUTABLE_MODELS: OrderedDict[int, ref] = OrderedDict()
 _IMMUTABLE_MODELS_LOCK = RLock()
-_IMMUTABLE_MODELS_MAXSIZE = 8192
+_IMMUTABLE_MODELS_MAXSIZE = 65536
 
 
 def _immutable(value, seen=None):

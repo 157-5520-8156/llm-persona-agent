@@ -30,6 +30,7 @@ from .affect_target_bounds import (
     SUSTAINED_DECAY_HALF_LIFE_SECONDS,
     SUSTAINED_DECAY_OBJECT_REF,
     lower_bounds_from_projection,
+    select_decay_half_life,
 )
 from .decision_proposal_authority import DecisionProposalAuthorityReader
 from .event_identity import domain_idempotency_key
@@ -551,6 +552,7 @@ class AffectProposalCompiler:
                     episode=episode,
                     evidence=evidence,
                     meanings=meanings,
+                    cluster=cluster,
                     identity_world_revision=identity_world_revision,
                 )
             return self._compile_supersede(
@@ -692,6 +694,7 @@ class AffectProposalCompiler:
         episode,
         evidence,
         meanings,
+        cluster: str | None = None,
         identity_world_revision,
     ) -> AffectProposalProjection:
         """Compile the role's exact component revisions without a merge timeout."""
@@ -708,17 +711,64 @@ class AffectProposalCompiler:
         if not isinstance(targets, list) or not targets:
             raise AffectProposalCompilerError("component_targets_invalid")
         current_by_id = {item.component_id: item for item in episode.components}
+        current_by_dimension = {item.dimension: item for item in episode.components}
         selected: dict[str, tuple[object, int]] = {}
+        new_dimensions: dict[str, int] = {}
         baseline_by_dimension = {
             item.dimension: item.baseline_bp for item in projection.affect_baselines
         }
+        template_component = episode.components[0] if episode.components else None
+        effective_cluster = (
+            cluster
+            if isinstance(cluster, str) and cluster
+            else (template_component.source_cluster_ref if template_component is not None else "")
+        )
         for target in targets:
             if not isinstance(target, dict):
                 raise AffectProposalCompilerError("component_targets_invalid")
             component_id = target.get("component_id")
             dimension = target.get("dimension")
             intensity = target.get("target_intensity_bp")
-            component = current_by_id.get(component_id)
+            if (
+                component_id is None
+                and isinstance(dimension, str)
+                and dimension in _DIMENSIONS
+                and dimension not in current_by_dimension
+            ):
+                if (
+                    template_component is None
+                    or not effective_cluster
+                    or dimension in new_dimensions
+                    or isinstance(intensity, bool)
+                    or not isinstance(intensity, int)
+                    or not 1 <= intensity <= 10_000
+                ):
+                    raise AffectProposalCompilerError("component_target_invalid")
+                if any(
+                    other.status == "active"
+                    and other.episode_id != episode.episode_id
+                    and any(
+                        item.dimension == dimension
+                        and item.source_cluster_ref == effective_cluster
+                        for item in other.components
+                    )
+                    for other in projection.affect_episodes
+                ):
+                    raise AffectProposalCompilerError("component_target_invalid")
+                minimum = max(
+                    template_component.decay_profile.floor_bp,
+                    template_component.residue_bp,
+                    baseline_by_dimension.get(dimension, 0),
+                )
+                if intensity < minimum:
+                    raise AffectProposalCompilerError("component_target_below_lower_bound")
+                new_dimensions[dimension] = intensity
+                continue
+            if component_id is None and isinstance(dimension, str) and dimension in current_by_dimension:
+                component = current_by_dimension[dimension]
+                component_id = component.component_id
+            else:
+                component = current_by_id.get(component_id)
             if (
                 component is None
                 or component_id in selected
@@ -762,6 +812,31 @@ class AffectProposalCompiler:
                 continue
             after = selected_target[1]
             delta = after - before
+            target_half_life = select_decay_half_life(after)
+            updated_decay_profile = (
+                AffectDecayProfileProjection(
+                    kind=component.decay_profile.kind,
+                    half_life_seconds=target_half_life,
+                    floor_bp=component.decay_profile.floor_bp,
+                    delay_seconds=component.decay_profile.delay_seconds,
+                    config_version=component.decay_profile.config_version,
+                    algorithm_version=component.decay_profile.algorithm_version,
+                    table_digest=component.decay_profile.table_digest,
+                    rounding_mode=component.decay_profile.rounding_mode,
+                    config_digest=affect_decay_config_digest(
+                        kind=component.decay_profile.kind,
+                        half_life_seconds=target_half_life,
+                        floor_bp=component.decay_profile.floor_bp,
+                        delay_seconds=component.decay_profile.delay_seconds,
+                        config_version=component.decay_profile.config_version,
+                        algorithm_version=component.decay_profile.algorithm_version,
+                        table_digest=component.decay_profile.table_digest,
+                        rounding_mode=component.decay_profile.rounding_mode,
+                    ),
+                )
+                if target_half_life > component.decay_profile.half_life_seconds
+                else component.decay_profile
+            )
             updates.append(
                 AffectComponentUpdate(
                     component_id=component.component_id,
@@ -781,10 +856,74 @@ class AffectProposalCompiler:
                             "decay_anchor_at": at,
                             "last_stimulus_at": at,
                             "last_updated_at": at,
+                            "decay_profile": updated_decay_profile,
                         }
                     ),
                 )
             )
+        if new_dimensions and template_component is not None:
+            source = authority.audit
+            for new_dim, new_intensity in new_dimensions.items():
+                new_comp_id = (
+                    f"component:{new_dim}:compiled:"
+                    f"{_digest([source.proposal_id, change.change_id, new_dim])}"
+                )
+                new_half_life = max(
+                    template_component.decay_profile.half_life_seconds,
+                    select_decay_half_life(new_intensity),
+                )
+                new_decay_profile = (
+                    AffectDecayProfileProjection(
+                        kind=template_component.decay_profile.kind,
+                        half_life_seconds=new_half_life,
+                        floor_bp=template_component.decay_profile.floor_bp,
+                        delay_seconds=template_component.decay_profile.delay_seconds,
+                        config_version=template_component.decay_profile.config_version,
+                        algorithm_version=template_component.decay_profile.algorithm_version,
+                        table_digest=template_component.decay_profile.table_digest,
+                        rounding_mode=template_component.decay_profile.rounding_mode,
+                        config_digest=affect_decay_config_digest(
+                            kind=template_component.decay_profile.kind,
+                            half_life_seconds=new_half_life,
+                            floor_bp=template_component.decay_profile.floor_bp,
+                            delay_seconds=template_component.decay_profile.delay_seconds,
+                            config_version=template_component.decay_profile.config_version,
+                            algorithm_version=template_component.decay_profile.algorithm_version,
+                            table_digest=template_component.decay_profile.table_digest,
+                            rounding_mode=template_component.decay_profile.rounding_mode,
+                        ),
+                    )
+                    if new_half_life > template_component.decay_profile.half_life_seconds
+                    else template_component.decay_profile
+                )
+                new_comp = AffectComponentProjection(
+                    component_id=new_comp_id,
+                    dimension=new_dim,
+                    source_cluster_ref=effective_cluster,
+                    appraisal_refs=meanings,
+                    intensity_bp=new_intensity,
+                    decay_anchor_intensity_bp=new_intensity,
+                    opened_at=at,
+                    decay_anchor_at=at,
+                    decay_not_before=at
+                    + timedelta(seconds=new_decay_profile.delay_seconds),
+                    last_stimulus_at=at,
+                    last_updated_at=at,
+                    decay_profile=new_decay_profile,
+                    residue_bp=template_component.residue_bp,
+                )
+                updates.append(
+                    AffectComponentUpdate(
+                        component_id=new_comp_id,
+                        operation="open_component",
+                        before_intensity_bp=0,
+                        proposed_delta_bp=new_intensity,
+                        accepted_delta_bp=new_intensity,
+                        after_intensity_bp=new_intensity,
+                        appraisal_refs=meanings,
+                        updated_component=new_comp,
+                    )
+                )
         return self._compiled_update_projection(
             authority=authority,
             change=change,

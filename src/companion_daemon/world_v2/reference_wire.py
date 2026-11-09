@@ -146,7 +146,7 @@ def _reference_field(key):
 
 
 def _reference_map_parent(path):
-    return bool(path) and path[-1] in {"token_map", "source_ref_aliases"}
+    return bool(path) and path[-1] in {"token_map", "source_ref_aliases", "source_refs_by_scope"}
 
 
 _HOST_IDENTITY_PATHS = frozenset({
@@ -288,7 +288,18 @@ def reference_schema(schema, dictionary):
             return deepcopy(node)
         result = map_schema_children(node, visit)
         if isinstance(result.get("enum"), list):
-            result["enum"] = [forward.get(v, v) if isinstance(v, str) else v for v in result["enum"]]
+            has_mapped = any(isinstance(v, str) and v in forward for v in result["enum"])
+            mapped = [forward.get(v, v) if isinstance(v, str) else v for v in result["enum"]]
+            if has_mapped and dictionary.get("contract") == BINDINGS_CONTRACT:
+                def _enum_sort_key(item: object) -> tuple[int, int, str]:
+                    if isinstance(item, str) and item.startswith(prefix):
+                        tail = item[len(prefix):]
+                        if tail.isdigit():
+                            return (0, int(tail), item)
+                    return (1, 0, str(item))
+
+                mapped = sorted(mapped, key=_enum_sort_key)
+            result["enum"] = mapped
         if isinstance(result.get("const"), str):
             result["const"] = forward.get(result["const"], result["const"])
         if result.get("type") == "string" and isinstance(result.get("pattern"), str):
@@ -335,20 +346,102 @@ def expand_inbound_arguments(raw, dictionary):
             value[key] = item
         return value
 
-    value = json.loads(raw, object_pairs_hook=unique)
+    def _loads(text):
+        try:
+            return json.loads(text, object_pairs_hook=unique)
+        except json.JSONDecodeError:
+            from .json_wire_repair import loads_one_json_object
+            return loads_one_json_object(text, object_pairs_hook=unique)
+
+    value = _loads(raw)
     outer_extras = isinstance(value, dict) and isinstance(value.get('extras_json'), str)
     if outer_extras:
-        value['extras_json'] = json.loads(value['extras_json'], object_pairs_hook=unique)
+        value['extras_json'] = _loads(value['extras_json'])
     string_payload = isinstance(value, dict) and isinstance(value.get('payload_json'), str)
     if string_payload:
-        value['payload_json'] = json.loads(value['payload_json'], object_pairs_hook=unique)
+        value['payload_json'] = _loads(value['payload_json'])
     nested_payload = None
     result = value.get('result') if isinstance(value, dict) else None
     if isinstance(result, dict):
         field = 'extras_json' if result.get('result_kind') == 'decision' else 'payload_json'
         if isinstance(result.get(field), str):
-            result[field] = json.loads(result[field], object_pairs_hook=unique)
+            result[field] = _loads(result[field])
             nested_payload = field
+    prefix = dictionary.get('prefix') if isinstance(dictionary, dict) else None
+    entries = dictionary.get('entries') if isinstance(dictionary, dict) else None
+    if isinstance(prefix, str) and isinstance(entries, dict):
+        token_pattern = re.compile(
+            r'[\(（\[]?\s*' + re.escape(prefix) + r'[0-9A-Za-z_.:-]+\s*[\)）\]]?'
+        )
+
+        def _clean_inbound_node(node, key=None):
+            if isinstance(node, str):
+                if key == 'my_state':
+                    node = (
+                        node.replace('「', '')
+                        .replace('」', '')
+                        .replace('『', '')
+                        .replace('』', '')
+                    )
+                stripped = node.strip()
+                if stripped in entries:
+                    return stripped
+                if prefix not in node:
+                    return node
+                if stripped.startswith(prefix):
+                    tail = stripped[len(prefix):]
+                    if re.fullmatch(r'S\d+', tail) or ':' in tail:
+                        return tail
+                if not (key and _reference_field(key)):
+                    cleaned = token_pattern.sub('', node).strip()
+                    return cleaned if cleaned else node.replace(prefix, '')
+                return node
+            if isinstance(node, dict):
+                cleaned_dict = {}
+                for k, v in node.items():
+                    if k in {'my_state_note_removed', 'keep_immediate'}:
+                        continue
+                    if k == 'typing' and (isinstance(v, bool) or v is None) and 'messages' in node:
+                        continue
+                    if k == 'wanting' and 'wants' not in node:
+                        k = 'wants'
+                    if (
+                        k in {'component_id', 'episode_id'}
+                        and isinstance(v, str)
+                        and prefix in v
+                        and v.strip() not in entries
+                    ):
+                        tail = v.strip()[len(prefix):] if v.strip().startswith(prefix) else ''
+                        if ':' in tail:
+                            cleaned_dict[k] = tail
+                        continue
+                    cleaned_dict[k] = _clean_inbound_node(v, key=k)
+                return cleaned_dict
+            if isinstance(node, list):
+                if key == 'messages':
+                    flattened = []
+                    for item in node:
+                        if isinstance(item, list):
+                            flattened.extend(item)
+                        else:
+                            flattened.append(item)
+                    node = flattened
+                if key and _reference_field(key):
+                    out_list = []
+                    for item in node:
+                        c_item = _clean_inbound_node(item, key=key)
+                        if (
+                            isinstance(c_item, str)
+                            and prefix in c_item
+                            and c_item not in entries
+                        ):
+                            continue
+                        out_list.append(c_item)
+                    return out_list
+                return [_clean_inbound_node(item, key=key) for item in node]
+            return node
+
+        value = _clean_inbound_node(value)
     value = expand_reference_values(value, dictionary)
     if string_payload:
         value['payload_json'] = _wire(value['payload_json'])

@@ -1257,6 +1257,24 @@ class DashboardHomeSnapshotModule:
         self._cached_snapshot = snapshot
         return snapshot
 
+    def capture_memory_hierarchy(self):
+        from .dashboard_memory_hierarchy import compile_dashboard_memory_hierarchy
+
+        projection = self._ledger.project()
+        cursor = ProjectionCursor(
+            world_revision=projection.world_revision,
+            deliberation_revision=projection.deliberation_revision,
+            ledger_sequence=projection.ledger_sequence,
+        )
+        actor_ref = _companion_actor_ref(projection) or "agent:companion"
+        return compile_dashboard_memory_hierarchy(
+            projection=projection,
+            cursor=cursor,
+            ledger=self._ledger,
+            life_content_store=self._life_content_store,
+            actor_ref=actor_ref,
+        )
+
     @staticmethod
     def _room(
         *,

@@ -22,6 +22,7 @@ from .later_expression_freshness import (
     later_refresh_action_id_matching,
     later_refresh_consideration_id,
     later_refresh_is_terminal,
+    later_refresh_process,
 )
 from .ledger import LedgerPort
 from .random_authority import RandomAuthority, RandomDrawRecordedPayload
@@ -261,9 +262,13 @@ _LONG_SILENCE_CONSIDERATION_PREFIX = (
 _SITUATION_INDEPENDENT_CONSIDERATION_PREFIX = (
     "consideration:social-initiative:situation-independent:"
 )
+_COUNTERPART_INTERACTION_CONSIDERATION_PREFIX = (
+    "consideration:social-initiative:counterpart-interaction:"
+)
 SHARED_OUTREACH_BUDGET_REASON = "budget:shared_outreach"
 LONG_SILENCE_OCCASION_REASON = "occasion:long_silence"
 SITUATION_INDEPENDENT_OCCASION_REASON = "occasion:situation_independent"
+COUNTERPART_INTERACTION_OCCASION_REASON = "occasion:counterpart_interaction"
 PRIVATE_IMPRESSION_OPPORTUNITY_CONTEXT = (
     "An unresolved private impression is eligible for consideration. "
     "Timing evidence only; she still decides whether to speak, wait, or stay silent."
@@ -306,9 +311,23 @@ def situation_independent_consideration_id(*, stimulus_anchor_event_id: str) -> 
     ).hexdigest()
 
 
+def counterpart_interaction_consideration_id(*, settlement_event_id: str) -> str:
+    """One effect-once identity for a counterpart-participating world settlement."""
+
+    return _COUNTERPART_INTERACTION_CONSIDERATION_PREFIX + hashlib.sha256(
+        json.dumps(
+            {"settlement_event_id": settlement_event_id},
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+
+
 def is_shared_outreach_consideration_id(consideration_id: str) -> bool:
-    return consideration_id.startswith(_LONG_SILENCE_CONSIDERATION_PREFIX) or (
-        consideration_id.startswith(_SITUATION_INDEPENDENT_CONSIDERATION_PREFIX)
+    return (
+        consideration_id.startswith(_LONG_SILENCE_CONSIDERATION_PREFIX)
+        or consideration_id.startswith(_SITUATION_INDEPENDENT_CONSIDERATION_PREFIX)
+        or consideration_id.startswith(_PRIVATE_IMPRESSION_CONSIDERATION_PREFIX)
     )
 
 
@@ -334,7 +353,7 @@ def private_impression_opportunity_context() -> str:
     return PRIVATE_IMPRESSION_OPPORTUNITY_CONTEXT
 
 
-def living_private_impression(projection):
+def living_private_impression(projection, *, include_non_counterpart: bool = False):
     """Return the newest active impression with a committed origin, or None.
 
     Presence is eligibility for a consider. This reader does not inspect
@@ -345,6 +364,12 @@ def living_private_impression(projection):
     for impression in getattr(projection, "private_impressions", ()):
         if getattr(impression, "status", None) != "active":
             continue
+        if not include_non_counterpart:
+            subject_ref = getattr(impression, "subject_ref", None)
+            if isinstance(subject_ref, str) and subject_ref.startswith(
+                ("agent:", "actor:", "npc:")
+            ):
+                continue
         impression_id = getattr(impression, "impression_id", None)
         origin = getattr(impression, "origin", None)
         accepted = getattr(origin, "accepted_event_ref", None)
@@ -488,7 +513,7 @@ class SocialInitiativeContextPolicy:
                     guarded = max(guarded, intensity)
         if approach > guarded and approach >= 5_000:
             affect_reason = "affect:approach"
-        elif guarded >= 5_000:
+        elif guarded >= 5_000 or (guarded >= 3_200 and guarded > approach):
             affect_reason = "affect:guarded"
         else:
             affect_reason = "affect:neutral"
@@ -886,6 +911,13 @@ class SocialInitiativeCompiler:
             return await self._hitch_situation_materials(
                 projection, logical_time, declared
             )
+        counterpart_ix = await self._counterpart_interaction_situation_contact(
+            projection,
+            logical_time,
+            excluded_consideration_ids=excluded_consideration_ids,
+        )
+        if counterpart_ix is not None:
+            return counterpart_ix
         if recent_contact is not None and (
             logical_time - recent_contact
         ).total_seconds() < effective_contact_cooldown_seconds(
@@ -991,6 +1023,16 @@ class SocialInitiativeCompiler:
 
         if declared_due is not None and declared_due <= logical_time:
             return declared_due
+        counterpart_ix = await self._counterpart_interaction_situation_contact(
+            projection,
+            logical_time,
+            excluded_consideration_ids=frozenset(),
+            allow_future=True,
+        )
+        if counterpart_ix is not None and counterpart_ix.scheduled_for is not None:
+            if counterpart_ix.scheduled_for <= logical_time:
+                return counterpart_ix.scheduled_for
+            declared_due = earliest(counterpart_ix.scheduled_for)
         recent_contact = max(
             (
                 item.logical_time
@@ -1268,7 +1310,9 @@ class SocialInitiativeCompiler:
                     source_id = expired.plan_id
                 stimulus_event_refs = ()
             elif event.event_type == "PrivateImpressionAccepted":
-                impression = living_private_impression(projection)
+                impression = living_private_impression(
+                    projection, include_non_counterpart=True
+                )
                 if (
                     impression is None
                     or impression.origin.accepted_event_ref != source_ref.event_id
@@ -1297,6 +1341,10 @@ class SocialInitiativeCompiler:
                     continue
                 source_kind = "situation_change"
                 if consideration_id.startswith(
+                    _COUNTERPART_INTERACTION_CONSIDERATION_PREFIX
+                ):
+                    source_id = "counterpart-interaction:" + source_ref.event_id
+                elif consideration_id.startswith(
                     _SITUATION_INDEPENDENT_CONSIDERATION_PREFIX
                 ):
                     source_id = "situation-independent:" + source_ref.event_id
@@ -1313,6 +1361,7 @@ class SocialInitiativeCompiler:
                             and event.logical_time
                             <= item.logical_time
                             < event.logical_time + _SITUATION_WINDOW
+                            and item.world_revision >= source_ref.world_revision
                             and item.world_revision > latest_message_revision
                         ),
                     )
@@ -1371,6 +1420,15 @@ class SocialInitiativeCompiler:
                 or not process.trigger_ref.startswith(
                     "proactive-consideration:consideration:social-initiative:"
                 )
+                or process.trigger_ref.startswith(
+                    (
+                        "proactive-consideration:consideration:social-initiative:revisit:",
+                        "proactive-consideration:consideration:social-initiative:expectation-expiry:",
+                        "proactive-consideration:consideration:social-initiative:due-thread:",
+                        "proactive-consideration:consideration:social-initiative:due-commitment:",
+                        "proactive-consideration:consideration:social-initiative:later-refresh:",
+                    )
+                )
             ):
                 continue
             prior_trigger_id = getattr(process, "trigger_id", None)
@@ -1418,6 +1476,12 @@ class SocialInitiativeCompiler:
         it never reuses the old model result or invents a motive/wording.
         """
 
+        if (
+            not allow_future
+            and is_overnight_local(logical_time)
+            and self._policy.consideration_band_override_seconds is None
+        ):
+            return None
         latest_message_revision = (
             projection.message_observations[-1].world_revision
             if projection.message_observations
@@ -1431,6 +1495,15 @@ class SocialInitiativeCompiler:
                 or process.source_evidence_ref is None
                 or not process.trigger_ref.startswith(
                     "proactive-consideration:consideration:social-initiative:"
+                )
+                or process.trigger_ref.startswith(
+                    (
+                        "proactive-consideration:consideration:social-initiative:revisit:",
+                        "proactive-consideration:consideration:social-initiative:expectation-expiry:",
+                        "proactive-consideration:consideration:social-initiative:due-thread:",
+                        "proactive-consideration:consideration:social-initiative:due-commitment:",
+                        "proactive-consideration:consideration:social-initiative:later-refresh:",
+                    )
                 )
             ):
                 continue
@@ -1908,7 +1981,9 @@ class SocialInitiativeCompiler:
             else:
                 source_id = f"retry:{source_ref.event_id}"
         elif source_kind == "private_impression":
-            impression = living_private_impression(projection)
+            impression = living_private_impression(
+                projection, include_non_counterpart=True
+            )
             if (
                 impression is None
                 or impression.origin.accepted_event_ref != source_ref.event_id
@@ -1932,6 +2007,7 @@ class SocialInitiativeCompiler:
                     and event.logical_time
                     <= item.logical_time
                     < event.logical_time + _SITUATION_WINDOW
+                    and item.world_revision >= source_ref.world_revision
                     and item.world_revision > latest_message_revision
                     and item.world_revision <= failed_audit.evaluated_world_revision
                 ),
@@ -1974,20 +2050,19 @@ class SocialInitiativeCompiler:
             ):
                 continue
             consideration_id = later_refresh_consideration_id(action_id)
-            if consideration_id in excluded_consideration_ids:
+            sibling_cids = {
+                later_refresh_consideration_id(str(getattr(item, "action_id", "")))
+                for item in getattr(projection, "actions", ())
+                if getattr(item, "expression_plan_id", None) == plan_id
+                and isinstance(getattr(item, "action_id", None), str)
+            }
+            if consideration_id in excluded_consideration_ids or (
+                sibling_cids & excluded_consideration_ids
+            ):
                 continue
             if later_refresh_is_terminal(projection, action_id):
                 continue
-            prefix = "proactive-consideration:" + consideration_id
-            existing = next(
-                (
-                    item
-                    for item in getattr(projection, "trigger_processes", ())
-                    if item.process_kind == "proactive_action_deliberation"
-                    and item.trigger_ref == prefix
-                ),
-                None,
-            )
+            existing = later_refresh_process(projection, action_id=action_id)
             if existing is not None:
                 continue
             beat = next(
@@ -2073,7 +2148,7 @@ class SocialInitiativeCompiler:
             if getattr(item, "process_kind", None) == "proactive_action_deliberation"
             and getattr(item, "state", None) == "terminal"
             and str(getattr(item, "trigger_ref", "") or "").startswith(
-                "proactive-consideration:consideration:social-initiative:expectation-expiry:"
+                "proactive-consideration:consideration:social-initiative:"
             )
             and str(getattr(item, "runtime_outcome_ref", "") or "").startswith(
                 "proactive:authorized:"
@@ -2305,8 +2380,44 @@ class SocialInitiativeCompiler:
             )
             if opportunity is not None:
                 candidates.append((due.opens_at, opportunity))
+        completed_unanswered_proactive_revisions = [
+            self._source_world_revision(projection, str(item.source_evidence_ref))
+            for item in getattr(projection, "trigger_processes", ())
+            if getattr(item, "process_kind", None) == "proactive_action_deliberation"
+            and getattr(item, "state", None) == "terminal"
+            and str(getattr(item, "trigger_ref", "") or "").startswith(
+                "proactive-consideration:consideration:social-initiative:"
+            )
+            and str(getattr(item, "runtime_outcome_ref", "") or "").startswith(
+                "proactive:authorized:"
+            )
+            and getattr(item, "source_evidence_ref", None)
+            and self._source_world_revision(projection, str(item.source_evidence_ref))
+            > latest_message_revision
+        ]
+        first_proactive_revisit_revision = (
+            min(completed_unanswered_proactive_revisions)
+            if completed_unanswered_proactive_revisions
+            else None
+        )
+        manifest_action_kind_by_plan_id = {
+            manifest.plan_id: getattr(
+                getattr(manifest.beats[0], "action", None),
+                "kind",
+                getattr(getattr(manifest.beats[0], "action", None), "action_type", None),
+            )
+            for manifest in getattr(projection, "expression_plan_manifests", ())
+            if getattr(manifest, "beats", ())
+        }
         for leftover in unfinished_revisits(projection, due_only=not allow_future):
             consideration_id = due_revisit_consideration_id(leftover.plan_id)
+            if (
+                first_proactive_revisit_revision is not None
+                and manifest_action_kind_by_plan_id.get(leftover.plan_id)
+                in {"proactive_message", "followup"}
+                and leftover.receipt_world_revision > first_proactive_revisit_revision
+            ):
+                continue
             if (
                 consideration_id not in excluded_consideration_ids
                 and not self._terminal_consideration(projection, consideration_id)
@@ -2383,6 +2494,8 @@ class SocialInitiativeCompiler:
         impression prose, invent a message, or decide whether she speaks.
         """
 
+        if unanswered_proactive_outreach_count(projection) >= 1:
+            return None
         impression = living_private_impression(projection)
         if impression is None:
             return None
@@ -2448,7 +2561,10 @@ class SocialInitiativeCompiler:
             consideration_id = process.trigger_ref.removeprefix(
                 "proactive-consideration:"
             )
-            if not is_shared_outreach_consideration_id(consideration_id):
+            if not (
+                is_shared_outreach_consideration_id(consideration_id)
+                or outcome.startswith("proactive:authorized:")
+            ):
                 continue
             if consideration_id in seen_considerations:
                 continue
@@ -2574,6 +2690,104 @@ class SocialInitiativeCompiler:
         if source is None or source[0].event_type != "ObservationRecorded":
             return None
         return latest, source
+
+    async def _counterpart_interaction_situation_contact(
+        self,
+        projection,
+        logical_time: datetime,
+        *,
+        excluded_consideration_ids: frozenset[str],
+        allow_future: bool = False,
+    ):
+        """Mint a situation_change consider when a counterpart-participating world event settles.
+
+        A takeaway delivered from the user or a parcel signed for by the user is
+        a direct counterpart interaction in the physical world, not solo ambient
+        life outreach. It must not be dropped by the solo daily outreach cap or
+        overwritten by a later solo world-outlook event before she has considered
+        whether to react (now / later / silent).
+        """
+
+        observed = await self._latest_user_observation_source(projection)
+        if observed is None:
+            return None
+        latest_message_revision = (
+            projection.message_observations[-1].world_revision
+            if projection.message_observations
+            else 0
+        )
+        counterpart_settlement_refs: set[str] = set()
+        for occ in getattr(projection, "world_occurrences", ()):
+            if getattr(occ, "status", None) != "settled":
+                continue
+            settlement_ref = getattr(occ, "settlement_event_ref", None)
+            if not isinstance(settlement_ref, str) or not settlement_ref:
+                continue
+            participants = tuple(getattr(occ, "participant_refs", ()) or ())
+            if self._actor_ref not in participants:
+                continue
+            occ_id = str(getattr(occ, "occurrence_id", "") or "")
+            if any(str(p).startswith("user:") for p in participants) or occ_id.startswith(
+                "occurrence:life-aftermath:counterpart-ix-"
+            ):
+                counterpart_settlement_refs.add(settlement_ref)
+        if not counterpart_settlement_refs:
+            return None
+        candidate_refs = sorted(
+            (
+                item
+                for item in getattr(projection, "committed_world_event_refs", ())
+                if item.event_id in counterpart_settlement_refs
+                and item.world_revision > latest_message_revision
+                and (allow_future or item.logical_time <= logical_time)
+            ),
+            key=lambda item: (item.logical_time, item.world_revision, item.event_id),
+        )
+        for ref in candidate_refs:
+            consideration_id = counterpart_interaction_consideration_id(
+                settlement_event_id=ref.event_id
+            )
+            if consideration_id in excluded_consideration_ids:
+                continue
+            if self._terminal_consideration(projection, consideration_id):
+                continue
+            if self._terminal_consideration(
+                projection,
+                situation_independent_consideration_id(
+                    stimulus_anchor_event_id=ref.event_id
+                ),
+            ):
+                continue
+            observable = await self._observable_stimulus_refs(
+                projection,
+                tuple(
+                    item
+                    for item in projection.committed_world_event_refs
+                    if item.event_type in _SITUATION_STIMULUS_EVENT_TYPES
+                    and ref.logical_time
+                    <= item.logical_time
+                    < ref.logical_time + _SITUATION_WINDOW
+                    and item.world_revision >= ref.world_revision
+                    and item.world_revision > latest_message_revision
+                ),
+            )
+            stimulus_event_refs = tuple(item.event_id for item in observable)
+            if not stimulus_event_refs or stimulus_event_refs[0] != ref.event_id:
+                stimulus_event_refs = (ref.event_id,)
+            return await self._from_source(
+                source_kind="situation_change",
+                source_id="counterpart-interaction:" + ref.event_id,
+                source_event_ref=ref.event_id,
+                source_world_revision=ref.world_revision,
+                consideration_id=consideration_id,
+                scheduled_for=ref.logical_time,
+                cadence_reason_codes=(
+                    COUNTERPART_INTERACTION_OCCASION_REASON,
+                    "stimulus:situation_change",
+                ),
+                stimulus_event_refs=stimulus_event_refs,
+            )
+        return None
 
     async def _situation_independent_contact(
         self,
@@ -2910,6 +3124,8 @@ class SocialInitiativeCompiler:
         except (TypeError, ValueError, AttributeError):
             pending = None
         if pending is not None:
+            return None
+        if unanswered_proactive_outreach_count(projection) >= 1:
             return None
         hot_dropoff = (
             elapsed < self._policy.spontaneous_idle_seconds

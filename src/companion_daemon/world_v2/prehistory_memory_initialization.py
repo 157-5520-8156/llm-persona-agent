@@ -19,6 +19,7 @@ from .schemas import (
     WorldEvent,
 )
 from .character_prehistory import digest
+from .immutable_value_cache import immutable_value_cache
 from .prehistory_memory_source import prehistory_memory_binding, resolve_prehistory_memory_source
 
 EVENT_TYPE = "PrehistoryMemoryInitializationRecorded"
@@ -49,6 +50,7 @@ def initial_retrieval_defaults():
     )
 
 
+@immutable_value_cache(maxsize=1024)
 def initialization_event_id(world_id, source):
     return "event:prehistory-memory:initialization:" + digest(
         [world_id, source.model_dump(mode="json")]

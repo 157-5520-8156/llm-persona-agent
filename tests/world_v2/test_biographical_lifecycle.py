@@ -296,6 +296,65 @@ def test_later_settlement_rebases_new_identity_onto_existing_coordinate_head(
     assert reopened.project().biographical_coordinates == (coordinate,)
 
 
+def test_coordinate_update_can_expand_overlapping_replacement_namespace(
+    tmp_path: Path,
+) -> None:
+    world_id = "world:biography:coordinate-expand-namespace"
+    logical_at = datetime(2026, 7, 28, 4, 0, tzinfo=UTC)
+    ledger = SQLiteWorldLedger(
+        path=tmp_path / "coordinate-expand-namespace.sqlite",
+        world_id=world_id,
+    )
+    clock = _clock_advance(
+        world_id=world_id,
+        event_id="clock:coordinate-expand-namespace",
+        origin=logical_at - timedelta(minutes=10),
+        target=logical_at,
+    )
+    _commit_event(ledger, clock)
+    first = BiographicalCoordinateReplacement.create(
+        coordinate_ref="biography:roommate_ultimatum_open",
+        summary="室友提出摊牌条件。",
+        context_tags=("roommate:ultimatum_pending",),
+        replaces_context_tag_prefixes=("roommate:",),
+        privacy_class="private",
+    )
+    second = BiographicalCoordinateReplacement.create(
+        coordinate_ref="biography:roommate_ultimatum_open",
+        summary="社团换届结果落地，室友关系随之重新摆位。",
+        context_tags=("club:core_list_new", "roommate:lin_won_election"),
+        replaces_context_tag_prefixes=("club:", "roommate:"),
+        privacy_class="personal",
+    )
+    _commit_settled_effect_occurrence(
+        ledger=ledger,
+        clock=clock,
+        occurrence_id="coordinate-expand-first",
+        context_pack_ref="life-context:coordinate-expand-first",
+        context_tags=("role:first",),
+        duration_days=30,
+        include_reviewed_life_arc_effect=False,
+        adopt_dynamic_life_direction=False,
+        objective_biographical_transition=first,
+    )
+    _commit_settled_effect_occurrence(
+        ledger=ledger,
+        clock=clock,
+        occurrence_id="coordinate-expand-second",
+        context_pack_ref="life-context:coordinate-expand-second",
+        context_tags=("role:second",),
+        duration_days=30,
+        include_reviewed_life_arc_effect=False,
+        adopt_dynamic_life_direction=False,
+        objective_biographical_transition=second,
+    )
+
+    coordinate = ledger.project().biographical_coordinates[0]
+    assert coordinate.coordinate_ref == "biography:roommate_ultimatum_open"
+    assert coordinate.replaces_context_tag_prefixes == ("club:", "roommate:")
+    assert coordinate.entity_revision == 2
+
+
 def test_biography_derives_one_continuous_residence_and_active_arc_overrides_it() -> None:
     lifecycle = BiographicalLifecycleCatalog.from_yaml(
         path=Path("configs/world_seed.yaml"),
@@ -1420,6 +1479,109 @@ async def test_world_contingency_draw_does_not_adopt_a_dynamic_life_arc(
     assert chosen.dynamic_life_arc_context == arc
     assert proposal.adopt_proposed_life_direction is False
     assert ledger.project().pending_biographical_settlements == ()
+
+
+@pytest.mark.asyncio
+async def test_world_contingency_rebases_stale_outcome_proposal_across_world_revision(
+    tmp_path: Path,
+) -> None:
+    """An interrupted outcome proposal from an older world_revision rebases cleanly on retry."""
+
+    world_id = "world:biography:contingency-rebase-stale-proposal"
+    started_at = datetime(2026, 7, 28, 4, 0, tzinfo=UTC)
+    ledger = SQLiteWorldLedger(
+        path=tmp_path / "contingency-rebase-stale-proposal.sqlite",
+        world_id=world_id,
+    )
+    first_clock = _clock_advance(
+        world_id=world_id,
+        event_id="clock:contingency-rebase:start",
+        origin=started_at - timedelta(minutes=10),
+        target=started_at,
+    )
+    _commit_event(ledger, first_clock)
+    occurrence, candidate_texts = _commit_active_long_lived_occurrence(
+        ledger=ledger,
+        clock=first_clock,
+        include_reviewed_life_arc_effect=False,
+        causal_authority="world_contingency",
+    )
+    wake_at = occurrence.time_window.closes_at
+    wake = _event(
+        world_id=world_id,
+        event_id="clock:contingency-rebase:settle-1",
+        event_type="ClockAdvanced",
+        logical_at=wake_at,
+        payload={
+            "logical_time_from": started_at.isoformat(),
+            "logical_time_to": wake_at.isoformat(),
+        },
+    )
+    _commit_event(ledger, wake)
+    content_store = InMemoryImmutableLifeContentStore()
+    for candidate, text in zip(occurrence.candidate_outcomes, candidate_texts, strict=True):
+        assert candidate.content_ref is not None
+        assert candidate.content_payload_hash is not None
+        content_store.put_if_absent(
+            StoredLifeContent(
+                content_ref=candidate.content_ref,
+                content_kind="outcome_candidate",
+                content_payload_hash=candidate.content_payload_hash,
+                text=text,
+            )
+        )
+    runtime = LifeAftermathRuntime(
+        ledger=ledger,
+        catalog=SimpleNamespace(),
+        occurrence_content=OccurrenceContentCoordinator(
+            ledger=ledger,
+            store=content_store,
+        ),
+        content_store=content_store,
+        owner_actor_ref="actor:companion",
+        character_interior=SimpleNamespace(consider=lambda _opp: None),
+    )
+    original_commit = runtime._commit
+
+    def _interrupt_settlement(events, *, commit_id):  # type: ignore[no-untyped-def]
+        if commit_id.startswith("commit:life-aftermath:settlement:"):
+            raise RuntimeError("simulated interruption before settlement commit")
+        return original_commit(events, commit_id=commit_id)
+
+    runtime._commit = _interrupt_settlement  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="simulated interruption"):
+        await runtime.advance_once(
+            wake_event_ref=wake.event_id,
+            trace_id="trace:contingency-rebase:1",
+            correlation_id="correlation:contingency-rebase",
+        )
+    runtime._commit = original_commit  # type: ignore[method-assign]
+
+    later_at = wake_at + timedelta(minutes=10)
+    later_wake = _event(
+        world_id=world_id,
+        event_id="clock:contingency-rebase:settle-2",
+        event_type="ClockAdvanced",
+        logical_at=later_at,
+        payload={
+            "logical_time_from": wake_at.isoformat(),
+            "logical_time_to": later_at.isoformat(),
+        },
+    )
+    _commit_event(ledger, later_wake)
+
+    result = await runtime.advance_once(
+        wake_event_ref=later_wake.event_id,
+        trace_id="trace:contingency-rebase:2",
+        correlation_id="correlation:contingency-rebase",
+    )
+    assert result.status == "settled"
+    settled_occ = next(
+        item
+        for item in ledger.project().world_occurrences
+        if item.occurrence_id == occurrence.occurrence_id
+    )
+    assert settled_occ.status == "settled"
 
 
 @pytest.mark.asyncio

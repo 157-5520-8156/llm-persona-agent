@@ -449,6 +449,330 @@ def test_lived_moment_surfaces_life_weight_affect_carryover_and_upcoming_class_s
     )
 
 
+def test_lived_moment_surfaces_mixed_valence_gloss_relational_tension_and_four_life_pressures() -> None:
+    from datetime import datetime
+    from companion_daemon.world_v2.character_interior.contracts import _rendered_lived_moment
+    from companion_daemon.world_v2.character_interior.inbound_appraisal_wire import (
+        _existing_affect_components,
+    )
+    from companion_daemon.world_v2.model_context_reading import present_context_evidence
+
+    logical_time = datetime.fromisoformat("2026-11-06T22:30:00+08:00")
+    materials = {
+        "biographical_context": {
+            "season": "autumn",
+            "settled_biographical_coordinates": [
+                {
+                    "coordinate_ref": "coord:allowance",
+                    "category": "finance",
+                    "summary": "家里老店周转困难，本月生活费减半至1000元。",
+                    "privacy_class": "private",
+                    "shared_in_chat": False,
+                },
+                {
+                    "coordinate_ref": "coord:roommate-conflict",
+                    "category": "interpersonal",
+                    "summary": "林晚就社团招新物资分配给出最后通牒，宿舍气氛持续冷淡。",
+                    "privacy_class": "private",
+                    "shared_in_chat": False,
+                },
+                {
+                    "coordinate_ref": "coord:part-time",
+                    "category": "employment",
+                    "summary": "已申请校内勤工助学岗，正等排班消息。",
+                    "privacy_class": "personal",
+                },
+                {
+                    "coordinate_ref": "coord:eval",
+                    "category": "academic",
+                    "summary": "综测材料有一页页码不符需重印补交。",
+                    "privacy_class": "personal",
+                },
+            ],
+        },
+        "affect": [
+            {
+                "episode_id": "affect:resentment-softened",
+                "status": "active",
+                "components": [
+                    {"dimension": "resentment", "intensity_bp": 560},
+                    {"dimension": "warmth", "intensity_bp": 620},
+                ],
+            }
+        ],
+        "relationship": [
+            {
+                "subject_ref": "user:geoff",
+                "stage": "friend",
+                "variables": {
+                    "closeness_bp": 1900,
+                    "trust_bp": 1095,
+                    "respect_bp": 1230,
+                    "mutuality_bp": 1135,
+                    "reliability_bp": 140,
+                    "repair_confidence_bp": 445,
+                },
+                "temperature": {
+                    "warmth_bp": 2320,
+                    "friction_bp": 278,
+                    "strain_bp": 139,
+                },
+            }
+        ],
+    }
+    moment = _rendered_lived_moment(materials, logical_time)
+    assert moment is not None
+    assert "家里老店周转困难，本月生活费减半至1000元" in moment
+    assert "林晚就社团招新物资分配给出最后通牒，宿舍气氛持续冷淡" in moment
+    assert "此刻情绪余波：温暖/熨帖(620bp)、郁结/闷气(560bp)" in moment
+    assert "前头那点不爽和委屈还没散干净" not in moment
+    assert "此刻心里的关系拉扯：当前关系状态坐标：亲近1900bp、信任1095bp、靠谱度140bp、修复信心445bp" in moment
+
+    presented = present_context_evidence(
+        {"inner_life_snapshot": {"contract": "inner-life-snapshot.1", "materials": {**materials, "lived_moment": moment}}}
+    )["inner_life_snapshot"]["materials"]
+    current_moment = presented["lived_moment"]["current_moment"]
+    assert "此刻心里的关系拉扯：" in current_moment
+    assert "此刻情绪余波：" in current_moment
+
+    updated_targets = _existing_affect_components(
+        [
+            {"dimension": "resentment", "target_intensity_bp": 480},
+            {"dimension": "warmth", "target_intensity_bp": 650},
+        ],
+        head={
+            "episode_id": "affect:resentment-softened",
+            "components": [
+                {
+                    "component_id": "comp:resentment:1",
+                    "dimension": "resentment",
+                    "minimum_target_intensity_bp": 300,
+                }
+            ],
+        },
+    )
+    assert updated_targets == [
+        {
+            "component_id": "comp:resentment:1",
+            "dimension": "resentment",
+            "target_intensity_bp": 480,
+        },
+        {
+            "dimension": "warmth",
+            "target_intensity_bp": 650,
+        },
+    ]
+
+
+def test_lived_moment_surfaces_character_authored_relationship_and_npc_signals() -> None:
+    from datetime import datetime
+    from companion_daemon.world_v2.character_interior.contracts import _rendered_lived_moment
+    from companion_daemon.world_v2.character_interior.inbound_context_window import (
+        bounded_inbound_context,
+    )
+
+    logical_time = datetime.fromisoformat("2026-11-06T22:30:00+08:00")
+    materials = {
+        "relationship": [
+            {
+                "subject_ref": "user:geoff",
+                "stage": "friend",
+                "variables": {
+                    "closeness_bp": 950,
+                    "trust_bp": 920,
+                },
+                "recent_authored_signals": [
+                    {
+                        "signal_code": "现在只把他当聊得来的普通朋友，还没往男女那方面想",
+                        "rationale_code": "平时就是随口贫两句日常，相处起来挺轻松",
+                        "confidence_bp": 8000,
+                    }
+                ],
+            }
+        ],
+        "protagonist_npc_relationships": [
+            {
+                "subject_ref": "npc:roommate-lin",
+                "stage": "friend",
+                "recent_authored_signals": [
+                    {
+                        "signal_code": "林还在赶今晚的DDL，心里多少替室友捏把汗",
+                        "rationale_code": "看到室友在自习室对着电脑发愁",
+                        "confidence_bp": 7500,
+                    }
+                ],
+            }
+        ],
+    }
+    moment = _rendered_lived_moment(materials, logical_time)
+    assert moment is not None
+    assert (
+        "此刻心里的关系拉扯：我最近对我们关系的定性与感受：现在只把他当聊得来的普通朋友，还没往男女那方面想（平时就是随口贫两句日常，相处起来挺轻松）｜"
+        "我最近对身边人（npc:roommate-lin）的感受：林还在赶今晚的DDL，心里多少替室友捏把汗（看到室友在自习室对着电脑发愁）。"
+        == moment
+    )
+
+    packet = {
+        "current_trigger_message": {"text": "在干嘛呢"},
+        "inner_life_snapshot": {
+            "contract": "inner-life-snapshot.1",
+            "materials": {
+                **materials,
+                "lived_moment": moment,
+            },
+        },
+    }
+    bounded = bounded_inbound_context(packet)
+    assert "我最近对我们关系的定性与感受：现在只把他当聊得来的普通朋友" in bounded["inner_life_snapshot"]["materials"]["lived_moment"]
+    assert "我最近对身边人（npc:roommate-lin）的感受：林还在赶今晚的DDL" in bounded["inner_life_snapshot"]["materials"]["lived_moment"]
+    assert "我最近对我们关系的定性与感受：现在只把他当聊得来的普通朋友" in bounded["current_trigger_message"]["current_inner_moment"]
+
+    estranged_moment = _rendered_lived_moment(
+        {
+            "relationship": [
+                {
+                    "subject_ref": "user:stranger",
+                    "stage": "acquaintance",
+                    "variables": {
+                        "closeness_bp": 450,
+                        "trust_bp": 500,
+                        "respect_bp": 600,
+                    },
+                    "temperature": {"friction_bp": 420},
+                }
+            ]
+        },
+        logical_time,
+    )
+    assert estranged_moment is not None
+    assert "当前关系状态坐标：亲近450bp、信任500bp" in estranged_moment
+
+
+def test_lived_moment_and_current_inner_moment_surface_active_occurrence_self_agenda_and_recent_activity() -> None:
+    from datetime import datetime
+    from companion_daemon.world_v2.character_interior.contracts import _rendered_lived_moment
+    from companion_daemon.world_v2.character_interior.inbound_context_window import (
+        bounded_inbound_context,
+    )
+    from companion_daemon.world_v2.model_context_reading import present_context_evidence
+
+    logical_time = datetime.fromisoformat("2026-11-08T15:30:00+08:00")
+    materials = {
+        "current_activities": [
+            {
+                "plan_id": "plan:library-essay",
+                "activity_kind": "study.self_study",
+                "status": "active",
+                "active_since": "2026-11-08T14:50:00+08:00",
+                "accepted_intention": {"text": "在图书馆三楼整理现当代文学读书笔记"},
+            }
+        ],
+        "pending_world_occurrences": {
+            "availability": "available",
+            "items": [
+                {
+                    "occurrence_id": "occ:withheld",
+                    "status": "active",
+                    "privacy_class": "withhold",
+                    "premise": {"text": "绝不应泄露的隐藏进行中事件"},
+                },
+                {
+                    "occurrence_id": "occ:detail-step-2",
+                    "status": "active",
+                    "privacy_class": "personal",
+                    "activated_at": "2026-11-08T15:15:00+08:00",
+                    "premise": {
+                        "text": "长桌斜对面的男生不小心碰倒保温杯，水洒到插座边引起一阵小骚动。"
+                    },
+                },
+            ],
+        },
+        "planned_activities": [
+            {
+                "plan_id": "plan:evening-walk",
+                "activity_kind": "leisure.walk",
+                "status": "planned",
+                "scheduled_window": {
+                    "opens_at": "2026-11-08T18:00:00+08:00",
+                    "closes_at": "2026-11-08T19:00:00+08:00",
+                },
+                "accepted_intention": {"text": "去丽娃河边散步透透气"},
+            }
+        ],
+        "aspirations": [
+            {
+                "aspiration_id": "asp:book-essay",
+                "status": "active",
+                "privacy_class": "personal",
+                "text": "月底前把张爱玲短篇对比那篇读书札记写完投给院刊",
+            }
+        ],
+    }
+    moment = _rendered_lived_moment(materials, logical_time, actor_ref="agent:companion")
+    assert moment is not None
+    assert "绝不应泄露的隐藏进行中事件" not in moment
+    assert "此刻正在：在图书馆三楼整理现当代文学读书笔记（40 分钟前开始）" in moment
+    assert "此刻身边正发生：长桌斜对面的男生不小心碰倒保温杯，水洒到插座边引起一阵小骚动（15 分钟前开始）" in moment
+    assert "接下来自己的安排：18:00–19:00 去丽娃河边散步透透气" in moment
+    assert "心里记挂的个人心愿/打算：月底前把张爱玲短篇对比那篇读书札记写完投给院刊" in moment
+
+    packet = {
+        "current_trigger_message": {"text": "你在干嘛呀"},
+        "inner_life_snapshot": {
+            "contract": "inner-life-snapshot.1",
+            "cursor": {"logical_time": logical_time.isoformat()},
+            "materials": {
+                **materials,
+                "lived_moment": moment,
+            },
+        },
+    }
+    presented = present_context_evidence(packet)
+    bounded = bounded_inbound_context(presented)
+    inner_moment = bounded["current_trigger_message"]["current_inner_moment"]
+    assert "此刻身边正发生：长桌斜对面的男生不小心碰倒保温杯" in inner_moment
+    assert "接下来自己的安排：18:00–19:00 去丽娃河边散步透透气（仅个人打算，未开始）" in inner_moment
+    assert "心里记挂的个人心愿/打算：月底前把张爱玲短篇对比那篇读书札记写完投给院刊" in inner_moment
+
+    just_finished_materials = {
+        "recently_ended_activities": [
+            {
+                "plan_id": "plan:dance-practice",
+                "activity_kind": "club.rehearsal",
+                "status": "completed",
+                "ended_at": "2026-11-08T15:10:00+08:00",
+                "accepted_intention": {"text": "在活动中心排练祈月舞收尾动作。"},
+            }
+        ]
+    }
+    finished_moment = _rendered_lived_moment(
+        just_finished_materials, logical_time, actor_ref="agent:companion"
+    )
+    assert finished_moment is not None
+    assert "此前个人打算：在活动中心排练祈月舞收尾动作（20 分钟前时段已过，仅原定意图，无实际成行记录，勿称已去或已办完）" in finished_moment
+    finished_packet = {
+        "current_trigger_message": {"text": "忙完了吗"},
+        "inner_life_snapshot": {
+            "contract": "inner-life-snapshot.1",
+            "cursor": {"logical_time": logical_time.isoformat()},
+            "materials": {
+                **just_finished_materials,
+                "lived_moment": finished_moment,
+            },
+        },
+    }
+    finished_bounded = bounded_inbound_context(present_context_evidence(finished_packet))
+    assert (
+        "此前个人打算：在活动中心排练祈月舞收尾动作（20 分钟前时段已过，仅原定意图，无实际成行记录，勿称已去或已办完）"
+        in finished_bounded["current_trigger_message"]["current_inner_moment"]
+    )
+
+
+
+
+
+
+
 
 
 

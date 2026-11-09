@@ -82,9 +82,16 @@ def _permits_eligible_source_subject(
     if isinstance(row.get("settled_life_support"), dict):
         if pointer.startswith("/item/value/content/world_consequence/environment/"):
             return claim_scope in {"environment", "external_fact"} and subject_role in NONPERSONAL
+        if pointer.startswith("/item/value/world_planning/scheduled_items/"):
+            return claim_scope in {"environment", "external_fact"} and subject_role in NONPERSONAL
         if pointer.startswith("/item/value/content/world_consequence/authorized_attempt_result/"):
             return claim_scope == "external_fact" and subject_role == owner
         return False
+    if material.get("kind") == "biographical_coordinate":
+        if pointer in {"/material/value/summary", "/material/value/context_summary"}:
+            if claim_scope in {"environment", "external_fact"}:
+                return subject_role == owner or subject_role in NONPERSONAL
+        return subject_role == owner
     if (
         material.get("kind") == "current_counterpart_report"
         or (material.get("lane") == "recent_dialogue" and material.get("authority") == "counterpart_report_only")

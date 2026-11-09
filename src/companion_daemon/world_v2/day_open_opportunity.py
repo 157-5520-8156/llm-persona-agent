@@ -181,6 +181,7 @@ def day_open_reconsideration_due(ledger, *, actor_ref):
 
 def pending_activity_continuation_source(ledger, *, actor_ref, projection):
     """Shared producer/consumer eligibility for one genuine owned ending."""
+    import os
     from .activity_continuation_source import latest_completion_source
 
     try:
@@ -192,7 +193,44 @@ def pending_activity_continuation_source(ledger, *, actor_ref, projection):
     records = store.records(actor_ref)
     if any(not row.terminal for row in records):
         return None  # Existing retries retain their own pin and deadline.
-    source = latest_completion_source(projection, actor_ref=actor_ref, include_abandoned=True, allow_existing_plans=True)
+    raw_interval = os.environ.get("WORLD_V2_ACTIVITY_MIN_INTERVAL_SECONDS", "").strip()
+    try:
+        min_interval = int(raw_interval) if raw_interval else 0
+    except ValueError:
+        min_interval = 0
+    if min_interval > 0:
+        has_live_agenda = any(
+            x.owner_actor_ref == actor_ref
+            and x.status in {"planned", "active", "paused"}
+            and (
+                x.scheduled_window is None
+                or x.scheduled_window.closes_at > projection.logical_time
+            )
+            for x in projection.plans
+        )
+        if has_live_agenda:
+            return None
+        last_attempt_at = max(
+            (
+                attempt.opportunity.logical_time
+                for row in records
+                for attempt in row.attempts
+                if attempt.opportunity.logical_time is not None
+            ),
+            default=None,
+        )
+        if last_attempt_at is not None and projection.logical_time < last_attempt_at + timedelta(
+            seconds=max(min_interval, 14_400)
+        ):
+            return None
+    source = latest_completion_source(
+        projection,
+        actor_ref=actor_ref,
+        include_abandoned=True,
+        allow_existing_plans=(min_interval <= 0),
+    )
+    if min_interval > 0 and source is not None and source.event_ref.startswith("event:world-plan-response:"):
+        return None
     if source is None or any(
         row.completion_source is not None and row.completion_source.event_ref == source.event_ref
         for row in records

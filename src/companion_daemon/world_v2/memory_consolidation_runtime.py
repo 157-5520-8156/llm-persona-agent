@@ -99,14 +99,21 @@ class MemoryConsolidationRuntime(MemoryReviewLease):
             return None
         if min_interval <= 0:
             return None
-        last_opened = next(
-            (
-                ref.logical_time
-                for ref in reversed(projection.committed_world_event_refs)
-                if ref.event_id.startswith("event:memory-consolidation:open:")
-            ),
-            None,
-        )
+        candidates_ts = [
+            ref.logical_time
+            for ref in projection.committed_world_event_refs
+            if ref.event_id.startswith((
+                "event:memory-consolidation:open:",
+                "event:memory-consolidation:effect:",
+            ))
+            and ref.logical_time is not None
+        ]
+        for proc in getattr(projection, "trigger_processes", ()):
+            if getattr(proc, "process_kind", None) == self.PROCESS_KIND:
+                lease = getattr(proc, "claim_lease", None)
+                if lease is not None and getattr(lease, "acquired_at", None) is not None:
+                    candidates_ts.append(lease.acquired_at)
+        last_opened = max(candidates_ts, default=None)
         if last_opened is None:
             return None
         return last_opened + timedelta(seconds=min_interval)
@@ -154,6 +161,7 @@ class MemoryConsolidationRuntime(MemoryReviewLease):
         # This preserves the original full-filter result without reading the
         # entire backlog for every job; no failure is turned into model text.
         readable = {}
+        unreadable_seen = set()
         while due:
             first_batch = tuple(balanced_memory_batch(due))
             unread = tuple(c for c in first_batch if c.candidate_id not in readable)
@@ -169,6 +177,7 @@ class MemoryConsolidationRuntime(MemoryReviewLease):
             unreadable_ids = {c.candidate_id for c in unread} - readable.keys()
             if not unreadable_ids:
                 break
+            unreadable_seen.update(unreadable_ids)
             due = [c for c in due if c.candidate_id not in unreadable_ids]
         else:
             return None
@@ -178,7 +187,7 @@ class MemoryConsolidationRuntime(MemoryReviewLease):
         # Actual role cognition still resolves full receipt, source and privacy
         # authority. Idle polling needs only the incremental review schedule.
         snapshot = await asyncio.to_thread(self._understandings.read, projection)
-        related = self._understandings.context_candidates(projection, due, snapshot)
+        related = self._understandings.context_candidates(projection, due, snapshot, exclude_ids=unreadable_seen)
         context_view = await asyncio.to_thread(
             MemoryRetrievalCompiler(ledger=self._ledger, life_content_store=self._content,
                                     max_excerpt_characters=1200).compile,
@@ -293,9 +302,11 @@ class MemoryConsolidationRuntime(MemoryReviewLease):
                                   for i, r in enumerate(job["context_readings"])],
                 understanding_instruction=(
                     "understandings=[]表示没有新的长期理解，完全正常。只有值得留下的才记录，最多3条。"
-                    "先对照已有的standing_understandings：已有方面不再retain；只换一种说法而没有实质变化就不更新。"
-                    "新证据补充或改变旧方面选revise，同一方面的重复记录选merge；retain仅用于此前没有的新方面。"
-                    "summary必须用自然平实的日常第一人称大白话直接写你记住的事与想法，绝不写成工作台账或进度汇报（禁止写『XX这条线更新/收口/淡出』『框架不变』『受用』『余温』等套话）。"
+                    "理解用于从你自己的真实生活处境（家里近况与经济压力、学业与勤工助学、社团与身边人关系、与对方的相处经历）提炼出这一阶段的行为习惯、自我要求与处事心气："
+                    "写清因为自己所处的具体生活处境，所以这一阶段做事养成了什么习惯、对自己有什么要求（例如因为家里变故或经济吃紧，所以最近做事都要注意什么、要自立不给家里添麻烦）。"
+                    "单次事件的具体金额、具体日期或编号已保存在底层记忆并由evidence_quotes绑定；修订旧的standing_understandings时直接整句重写为当前阶段的完整理解，不在旧句末尾机械续写，也不必在长期理解里背诵单次事件数字。"
+                    "已有方面若已准确表达了生活处境与阶段习惯且无实质变化就不更新；同一方面的重复记录选merge；retain仅用于此前没有的新方面；已翻篇的具体事务选release放下。"
+                    "summary用自然平实的纯中文日常第一人称大白话写你自己的生活处境与阶段要求，不夹杂英文单词，不写成空泛格言或工作台账。"
                     "不要通过另起名字重复旧观点，只有有意义的差异才分别留下。"
                     "可以把新经历与旧记忆连起来、加强或修正已有理解；选择revise更新同一方面，"
                     "merge只合并你认为同一方面的重复理解，不要把不同人和不同事情压成一条总心得。"
@@ -305,7 +316,7 @@ class MemoryConsolidationRuntime(MemoryReviewLease):
                     "理解与信心是你的，可犹豫、负面或改变；不代表新增外部经历或强制当前情绪。"
                     "不需要重复已有原文，更不能新增来源里没有的人物、行动、对话和结果。"
                     "事实摘录的subject_ref和speaker_ref表示主体与说话者，不要把对方的‘我’当成你自己的经历。"
-                    "涉及自主生活或NPC互动时，summary须保留具体NPC姓名或身份，不要把与NPC（如社团同学、室友）的约定或互动写成与聊天对象的事。"
+                    "不要把与身边人的经历混淆成与聊天对象的事。"
                 ),
             )
         opportunity = _memory_opportunity(world_id=projection.world_id, actor_ref=self._actor_ref,

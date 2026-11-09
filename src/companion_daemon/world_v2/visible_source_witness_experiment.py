@@ -103,7 +103,14 @@ def _reading(material: dict, pointer: str) -> tuple[str, bool]:
     # a filesystem path, a remote ref, or instructions in a metadata field.
     if not (
         pointer.startswith("/item/value/")
-        or pointer in {"/item/value", "/message/text", "/material/value"}
+        or pointer
+        in {
+            "/item/value",
+            "/message/text",
+            "/material/value",
+            "/material/value/summary",
+            "/material/value/context_summary",
+        }
         or pointer.startswith("/messages/")
     ):
         raise ValueError("witness pointer must select an original evidence body")
@@ -152,6 +159,8 @@ def _permits(row: dict, scope: Scope, pointer: str) -> bool:
     if isinstance(row.get("settled_life_support"), dict):
         if pointer.startswith("/item/value/content/world_consequence/environment/"):
             return scope == "environment"
+        if pointer.startswith("/item/value/world_planning/scheduled_items/"):
+            return scope in {"environment", "external_fact"}
         if pointer.startswith("/item/value/content/world_consequence/authorized_attempt_result/"):
             return scope == "external_fact"
         return False

@@ -567,3 +567,73 @@ def test_materializer_never_clamps_a_target_below_pinned_bound() -> None:
             ),
             request=_request(hurt_minimum_bp=4200),
         )
+
+
+def test_materializer_accepts_active_affect_head_preserved_by_inner_life_snapshot_when_capsule_slice_truncates() -> None:
+    from companion_daemon.world_v2.character_interior.inbound_turn import (
+        _living_affect_binding_slice,
+    )
+    from companion_daemon.world_v2.character_interior.snapshot_compiler import (
+        compile_inner_life_snapshot,
+    )
+
+    request = _request(active_affect=True)
+    content = json.loads(request.model_content_json)
+    first_item = content["slices"]["affect_episodes"]["items"][0]
+    second_item = json.loads(json.dumps(first_item))
+    second_item["item_ref"] = "affect:existing:2"
+    second_item["source_ref"] = "affect:existing:2"
+    second_item["attention_source_refs"] = ["event:affect:existing:2"]
+    second_item["value"].update(
+        episode_id="affect:existing:2",
+        entity_revision=2,
+        origin={"accepted_event_ref": "event:affect:existing:2"},
+    )
+    second_item["value"]["components"][0].update(
+        component_id="component:warmth:2",
+        dimension="warmth",
+        intensity_bp=2600,
+    )
+    # Simulate ContextCapsule dropping the 2nd episode from slices["affect_episodes"]
+    # while install_living_state_context preserved both in slices["living_affect"].
+    snapshot_context = json.loads(json.dumps(content))
+    snapshot_context["slices"]["living_affect"] = {
+        "availability": "available",
+        "items": [first_item, second_item],
+    }
+    snapshot = compile_inner_life_snapshot(snapshot_context)
+
+    repinned = _living_affect_binding_slice(
+        snapshot,
+        content["slices"]["affect_episodes"],
+    )
+    assert repinned is not None
+    assert [item["source_ref"] for item in repinned["items"]] == [
+        "affect:existing:1",
+        "affect:existing:2",
+    ]
+    # Also verify that even if only inner_life_snapshot.model_view() is present on
+    # ModelInput without slices["affect_episodes"] having the 2nd item, the 2nd
+    # active affect head is offered and accepted for update/resolve/supersede.
+    content["inner_life_snapshot"] = snapshot.model_view()
+    truncated_request = request.model_copy(
+        update={"model_content_json": json.dumps(content)}
+    )
+    proposal = _materialize(
+        _appraisal(
+            affect="update",
+            episode_id="affect:existing:2",
+            components=[
+                {
+                    "component_id": "component:warmth:2",
+                    "dimension": "warmth",
+                    "target_intensity_bp": 3100,
+                }
+            ],
+        ),
+        request=truncated_request,
+    )
+    affect_change = proposal.proposed_changes[1]
+    assert affect_change.transition == "update"
+    assert affect_change.target_id == "affect:existing:2"
+    assert affect_change.expected_entity_revision == 2

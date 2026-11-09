@@ -60,6 +60,24 @@ def test_extract_voice_tag_and_clean_spoken_text() -> None:
     assert cleaned == "（轻声笑）我刚回寝室啦"
     assert clean_spoken_text_for_tts(cleaned) == "我刚回寝室啦"
 
+    # Real stage directions from production turns 3777 and 3779 must never be read aloud
+    assert (
+        clean_spoken_text_for_tts(
+            "（压低声音，带点困意的嘟囔）那我真把手机扣过去睡了啊……你也赶紧闭眼，别熬太晚，晚安。"
+        )
+        == "那我真把手机扣过去睡了啊……你也赶紧闭眼，别熬太晚，晚安。"
+    )
+    assert (
+        clean_spoken_text_for_tts("（轻轻笑着）好啦，真睡了，你也早点休息。")
+        == "好啦，真睡了，你也早点休息。"
+    )
+    assert (
+        clean_spoken_text_for_tts(
+            "（气声很小，拖着一半睡意）刚闭上眼，突然想起明天上午还有古代汉语……得赶紧睡实了，不然明早肯定起不来。"
+        )
+        == "刚闭上眼，突然想起明天上午还有古代汉语……得赶紧睡实了，不然明早肯定起不来。"
+    )
+
     is_plain, plain_text = extract_voice_tag_and_clean_text("普通打字消息")
     assert is_plain is False
     assert plain_text == "普通打字消息"
@@ -316,9 +334,58 @@ async def test_onebot_reply_target_sends_record_for_voice_tag_and_falls_back_to_
         "companion_daemon.world_v2.qq_voice.synthesize_companion_voice_note",
         fake_synth_none,
     )
-    resp2 = await target.reply(content="[CQ:voice]如果语音合成不可用就自动降级成文字")
+    resp2 = await target.reply(content="[CQ:voice]（轻轻笑着）如果语音合成不可用就自动降级成文字")
     assert resp2["retcode"] == 0
     assert len(sent_payloads) == 1
     _, payload2 = sent_payloads[0]
     assert isinstance(payload2, dict)
     assert payload2["message"] == "如果语音合成不可用就自动降级成文字"
+
+
+def test_phone_mic_voice_realism_produces_non_stationary_handheld_audio() -> None:
+    from companion_daemon.world_v2.qq_voice import apply_phone_mic_voice_realism
+
+    raw_wav = _sample_wav_bytes()
+    out_wav = apply_phone_mic_voice_realism(raw_wav)
+    assert out_wav.startswith(b"RIFF")
+    assert len(out_wav) > len(raw_wav)
+    with wave.open(io.BytesIO(out_wav), "rb") as wf:
+        assert wf.getnchannels() == 1
+        assert wf.getsampwidth() == 2
+        assert wf.getframerate() == 16000
+        assert wf.getnframes() > 8000
+
+
+@pytest.mark.asyncio
+async def test_doubao_seed_tts_synthesis_when_doubao_key_configured(tmp_path: Path) -> None:
+    pcm_chunk = base64.b64encode(b"\x01\x00" * 12000).decode("ascii")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
+        assert request.headers["X-Api-Key"] == "test-doubao-speech-key"
+        assert request.headers["X-Api-Resource-Id"] == "seed-tts-2.0"
+        body = json.loads(request.content.decode("utf-8"))
+        assert body["req_params"]["speaker"] == "zh_female_vv_uranus_bigtts"
+        assert body["req_params"]["text"] == "好啦，真睡了，你也早点休息。"
+        stream_line = json.dumps({"code": 0, "data": pcm_chunk}) + "\n"
+        return httpx.Response(200, content=stream_line.encode("utf-8"))
+
+    settings = Settings(
+        DOUBAO_SPEECH_API_KEY="test-doubao-speech-key",
+        DOUBAO_SPEECH_RESOURCE_ID="seed-tts-2.0",
+        DOUBAO_SPEECH_VOICE="zh_female_vv_uranus_bigtts",
+        VOICE_TTS_VOICE="zh_female_vv_uranus_bigtts",
+        VOICE_ENABLED=True,
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        note = await synthesize_companion_voice_note(
+            "[CQ:voice]（轻轻笑着）好啦，真睡了，你也早点休息。",
+            settings=settings,
+            http_client=client,
+            delivered_dir=tmp_path,
+        )
+    assert note is not None
+    assert note.spoken_text == "好啦，真睡了，你也早点休息。"
+    assert note.model_name == "seed-tts-2.0"
+    assert "Vivi 2.0" in note.voice_name
+    assert note.audio_bytes.startswith(b"RIFF")

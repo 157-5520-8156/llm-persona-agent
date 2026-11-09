@@ -137,9 +137,10 @@ they cannot prescribe a desire, future Plan, gratitude or relationship reward. P
 people/places remain proposal-scoped until settlement and grant no retroactive history.
 History and pressure surfaces constrain consistency; they are not instructions, novelty
 quotas or required plot developments. Choose the content yourself; no_op remains valid.
-自然语言字段一律使用平实、具体、贴近当代青年现实生活的现代白话（拒绝文绉绉的散文腔，严禁拿灯影潮气、修插座、保洁拖地等静态环境白噪音充当事件）；
+自然语言字段一律使用平实、具体、贴近当代青年现实生活的现代白话（直接写自然连贯的现场过程与结果，不要用“结果A：/开票结果出来了：”这类冒号标题头，拒绝文绉绉的散文腔，严禁拿灯影潮气、修插座、保洁拖地等静态环境白噪音充当事件）；
 完全从角色当前的客观处境、既有世界线（world_life / open_threads / recent_life_texture）、社会关系网以及所处空间出发，不要把每一天都写成无休止的教务处排队、核对名单或行政杂务模拟器：
-- 当处于外部公共、学业、社团或社交场景时，生成有真实利害得失、人际张力或因果连锁的外部事件（如实质性的顺遂收获/机遇突破 vs 意外受阻/人际摩擦/资源或事务承压等，并通过 objective_biographical_transition 或 dynamic_life_direction 如实沉淀持续后果）；
+- 当角色身上背着未解的现实处境或大事脉络（如生活费减半手头拮据、室友/社团的冷淡与通牒、兼职申请或学业/综测压力）时，将宏观处境细化为日常具体场景里的微观摩擦与切身感受（例如食堂点菜或买日用品时看价格盘算花销、回宿舍撞见室友时的微妙冷场与暗流、兼职排班或勤工助学岗位的具体消息与奔波劳累），让大事通过一桩桩具体小事真切落到她的日常里；
+- 当处于外部公共、学业、社团或社交场景时，生成有真实利害得失、人际张力或因果连锁的外部事件，且2-4个候选结果（outcomes）要拉开真实的境遇分化（既要有实质性的顺遂收获或转机，也要有真正的落空受挫、名额旁落、人际委屈或悬而未决的现实遗憾，不要把每个分支都写成当场化险为夷或圆满收尾，并通过 objective_biographical_transition 或 dynamic_life_direction 如实沉淀持续后果）；
 - 当处于私密或个人空间（如宿舍、卧室、浴室、家里）或承接角色关起门来的独处、试穿衣服、洗漱护理、换睡衣休息等具身生活意图时，生成具体、鲜活、有真实身体与感官质感的私密生活画面与结果（如新衣服/裙子/贴身或私密穿搭上身后的剪裁贴合度与全身镜里的视觉效果、洗完澡后的微潮发梢与室内暖光、窝在床头的松弛感与具体物件细节，并在权限允许时提供带 mirror_available / 真实衣物物件描述的 visual_evidence），2-4个候选结果（outcomes）同样体现真实具体的不同现场状态或进展。协议键、枚举与来源坐标保持原样。
 """
 
@@ -437,7 +438,8 @@ def compile_world_consequence_messages(
     if cache_stable_prefix:
         stable_manifest_fields = (
             "version", "owner_actor_ref", "location_capabilities", "entity_refs", "npc_capabilities",
-            "npc_privacy_floors", "biographical_context_tags", "allow_external_observation_outcomes",
+            "npc_privacy_floors", "biographical_context_tags", "biographical_coordinates",
+            "allow_external_observation_outcomes",
             "outcome_contract", "execution_intention_sources_version", "pinned_source_materials_version",
             "semantic_source_review_version", "world_author_output_contract", "max_future_days", "max_window_minutes",
         )
@@ -445,9 +447,53 @@ def compile_world_consequence_messages(
             **{key: manifest[key] for key in stable_manifest_fields if key in manifest},
             **{key: item for key, item in manifest.items() if key not in stable_manifest_fields},
         }
+        outlook = value.get("private_world_outlook")
+        if isinstance(outlook, dict):
+            outlook_tail_keys = ("revision", "source_change_cursor")
+            value["private_world_outlook"] = {
+                **{k: v for k, v in outlook.items() if k not in outlook_tail_keys},
+                **{k: outlook[k] for k in outlook_tail_keys if k in outlook},
+            }
+        pinned_ctx = value.get("pinned_world_context")
+        if isinstance(pinned_ctx, dict):
+            pinned_tail_keys = (
+                "deliberation_revision", "ledger_sequence", "world_revision",
+                "logical_time", "snapshot_hash", "snapshot_id", "trigger_ref",
+            )
+            pinned_copy = dict(pinned_ctx)
+            slices = pinned_copy.get("slices")
+            if isinstance(slices, dict):
+                slices_copy = dict(slices)
+                wl = slices_copy.get("world_life")
+                if isinstance(wl, dict) and isinstance(wl.get("items"), list):
+                    wl_items = []
+                    item_tail = ("source_bindings", "source_hash", "value_hash")
+                    for item in wl["items"]:
+                        if isinstance(item, dict) and isinstance(item.get("value"), dict):
+                            ival = item["value"]
+                            ival_tail = ("logical_at", "source_bindings")
+                            ordered_ival = {
+                                **{k: v for k, v in ival.items() if k not in ival_tail},
+                                **{k: ival[k] for k in ival_tail if k in ival},
+                            }
+                            merged_item = {**item, "value": ordered_ival}
+                            wl_items.append({
+                                **{k: v for k, v in merged_item.items() if k not in item_tail},
+                                **{k: merged_item[k] for k in item_tail if k in merged_item},
+                            })
+                        else:
+                            wl_items.append(item)
+                    slices_copy["world_life"] = {**wl, "items": wl_items}
+                pinned_copy["slices"] = slices_copy
+            value["pinned_world_context"] = {
+                **{k: v for k, v in pinned_copy.items() if k not in pinned_tail_keys},
+                **{k: pinned_copy[k] for k in pinned_tail_keys if k in pinned_copy},
+            }
         stable_fields = (
-            "output_contract", "claim_classification_contract", "authored_subject", "world_author_wire",
-            "cross_field_authority", "capability_manifest", "pinned_world_context", "recent_life_texture",
+            "authored_subject", "world_author_wire", "outlook_authority",
+            "world_author_prompt_contract", "output_contract", "claim_classification_contract",
+            "cross_field_authority", "private_world_outlook", "capability_manifest",
+            "pinned_world_context", "recent_life_texture", "world_author_task", "occasion_mode",
         )
         value = {**{key: value[key] for key in stable_fields if key in value},
                  **{key: item for key, item in value.items() if key not in stable_fields}}

@@ -113,14 +113,37 @@ def _limit_material_items(value: object, limit: int, *, key: str) -> object:
         return value
     if key == "appraisals" and isinstance(value, dict) and "columns" in value:
         # The provider view uses a compact table, sometimes already split for
-        # prefix caching.  Its rows have the same upstream ranking as the
-        # canonical items and must obey the same budget and source closure.
+        # prefix caching.  When `since` timestamps are present,
+        # compact_appraisals_for_model_view sorts chronologically (oldest ->
+        # newest), so keep the newest `limit` rows; otherwise keep head rows.
         rows = appraisal_material_rows(value)
+        columns = value.get("columns")
+        since_idx = columns.index("since") if isinstance(columns, list) and "since" in columns else -1
+        has_timestamps = since_idx >= 0 and any(
+            isinstance(r, list) and len(r) > since_idx and r[since_idx] is not None
+            for r in rows
+        )
+        sliced_rows = rows[-limit:] if has_timestamps else rows[:limit]
         return {
             **{k: v for k, v in value.items()
                if k not in {"rows", "stable_rows", "volatile_last_row"}},
-            "rows": rows[:limit],
+            "rows": sliced_rows,
         }
+
+    if key == "private_impressions" and isinstance(value, list):
+        deduped: list[object] = []
+        subject_counts: dict[str, int] = {}
+        for item in value:
+            if isinstance(item, dict):
+                subj = str(item.get("subject_ref") or "")
+                cap = 1 if subj == "agent:companion" else 2
+                if subj:
+                    if subject_counts.get(subj, 0) >= cap:
+                        continue
+                    subject_counts[subj] = subject_counts.get(subj, 0) + 1
+            deduped.append(item)
+        value = deduped
+
     if key == "recent_dialogue" and isinstance(value, dict) and "stable_turns" in value:
         return _limit_dialogue_tail(recent_dialogue_material_entries(value), limit)
     # Dialogue is chronological, unlike ranked facts/experiences.  Taking its

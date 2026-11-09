@@ -13217,7 +13217,10 @@ def _world_occurrence_settled(state: ReducerState, event: WorldEvent) -> Reducer
         )
         if (
             previous is not None
-            and previous.replaces_context_tag_prefixes != direction.replaces_context_tag_prefixes
+            and not (
+                set(previous.replaces_context_tag_prefixes)
+                & set(direction.replaces_context_tag_prefixes)
+            )
         ):
             raise ValueError("a biographical coordinate cannot change its replacement namespace")
         projected_direction = BiographicalCoordinateProjection(

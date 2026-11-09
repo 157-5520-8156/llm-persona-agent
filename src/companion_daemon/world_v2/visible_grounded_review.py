@@ -228,12 +228,20 @@ class PreparedGroundedReview:
                 if len(selected) != len(set(selected)) or any(ref not in catalog for ref in selected):
                     raise GroundedReviewWireFailure("unknown or duplicate grounded source reading")
                 reason = None
-                for ref in fact.reading_ids:
-                    reading = catalog[ref]
-                    if (reading.get("source_family") == "accepted_fact_value"
-                            or [fact.claim_scope, fact.subject_role] not in reading["permissions"]
-                            or fact.claim_scope == "activity_lifecycle" and reading["pointer"] not in LIFECYCLE_FIELDS):
-                        reason = "source_permission_denied"
+                if any(
+                    catalog[ref].get("source_family") == "accepted_fact_value"
+                    for ref in fact.reading_ids
+                ):
+                    reason = "source_permission_denied"
+                elif fact.reading_ids and not any(
+                    [fact.claim_scope, fact.subject_role] in catalog[ref]["permissions"]
+                    and (
+                        fact.claim_scope != "activity_lifecycle"
+                        or catalog[ref]["pointer"] in LIFECYCLE_FIELDS
+                    )
+                    for ref in fact.reading_ids
+                ):
+                    reason = "source_permission_denied"
                 for selection in fact.fact_value_selections:
                     try:
                         require_fact_value_selection(

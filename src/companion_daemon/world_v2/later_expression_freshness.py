@@ -131,11 +131,30 @@ def later_refresh_consideration_id(action_id: str) -> str:
 
 
 def later_refresh_process(projection: object, *, action_id: str):
-    prefix = "proactive-consideration:" + later_refresh_consideration_id(action_id)
+    actions = getattr(projection, "actions", ()) or ()
+    target = next(
+        (item for item in actions if getattr(item, "action_id", None) == action_id),
+        None,
+    )
+    plan_id = getattr(target, "expression_plan_id", None)
+    candidate_action_ids = {action_id}
+    if isinstance(plan_id, str) and plan_id:
+        for item in actions:
+            sibling_id = getattr(item, "action_id", None)
+            if (
+                isinstance(sibling_id, str)
+                and getattr(item, "expression_plan_id", None) == plan_id
+                and is_later_followup(item)
+            ):
+                candidate_action_ids.add(sibling_id)
+    prefixes = {
+        "proactive-consideration:" + later_refresh_consideration_id(cid)
+        for cid in candidate_action_ids
+    }
     for process in getattr(projection, "trigger_processes", ()) or ():
         if (
             getattr(process, "process_kind", None) == "proactive_action_deliberation"
-            and getattr(process, "trigger_ref", None) == prefix
+            and getattr(process, "trigger_ref", None) in prefixes
         ):
             return process
     return None
@@ -393,6 +412,11 @@ def _iter_pending_outbound_actions(projection: object) -> tuple[object, ...]:
             items.append(action)
     items.sort(
         key=lambda item: (
+            -(
+                getattr(item, "logical_time").timestamp()
+                if isinstance(getattr(item, "logical_time", None), datetime)
+                else 0.0
+            ),
             getattr(item, "not_before", None) or getattr(item, "logical_time"),
             getattr(item, "expression_beat_id", "") or "",
             getattr(item, "action_id", ""),

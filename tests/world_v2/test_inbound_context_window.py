@@ -834,6 +834,750 @@ def test_bounded_inbound_context_sanitizes_ai_cliches_and_preserves_relationship
     assert after["dialogue_observation_timing"]["unanswered_companion_turn_count"] == 2
 
 
+def test_bounded_inbound_context_preserves_same_day_hour_old_companion_replies_in_conversation():
+    from companion_daemon.world_v2.model_context_reading import present_context_evidence
+
+    packet = {
+        "inner_life_snapshot": {
+            "contract": "inner-life-snapshot.1",
+            "cursor": {"logical_time": "2026-11-02T13:47:00Z"},
+            "materials": {
+                "conversation": [
+                    "他（3 小时前）：吃把子肉盖饭🤤",
+                    "我（3 小时前）：把子肉啊 好久没吃了",
+                    "我（3 小时前）：好过你在那边惦记着把子肉，我这边可能就青菜豆腐",
+                    "我（12 分钟前）：刚回寝室",
+                    "我（12 分钟前）：今天去外滩逛了旧书夜市",
+                ],
+                "recent_dialogue": {
+                    "stable_turns": [
+                        {
+                            "speaker": "counterpart",
+                            "text": "吃把子肉盖饭🤤",
+                            "dialogue_id": "u-bazirou",
+                            "occurred_at": "2026-11-02T10:36:00Z",
+                        },
+                        {
+                            "speaker": "companion",
+                            "text": "把子肉啊 好久没吃了",
+                            "dialogue_id": "c-bazirou-1",
+                            "occurred_at": "2026-11-02T10:37:00Z",
+                        },
+                        {
+                            "speaker": "companion",
+                            "text": "好过你在那边惦记着把子肉，我这边可能就青菜豆腐",
+                            "dialogue_id": "c-bazirou-2",
+                            "occurred_at": "2026-11-02T10:48:00Z",
+                        },
+                        {
+                            "speaker": "companion",
+                            "text": "刚回寝室",
+                            "dialogue_id": "c-night-1",
+                            "occurred_at": "2026-11-02T13:35:00Z",
+                        },
+                        {
+                            "speaker": "companion",
+                            "text": "今天去外滩逛了旧书夜市",
+                            "dialogue_id": "c-night-2",
+                            "occurred_at": "2026-11-02T13:35:30Z",
+                        },
+                    ],
+                },
+            },
+        }
+    }
+    first_pass = present_context_evidence(packet)
+    bounded = bounded_inbound_context(first_pass)
+    entries = bounded["inner_life_snapshot"]["materials"]["conversation"]["entries"]
+    lines = [e["line"] for e in entries]
+    assert "他（3 小时前）：吃把子肉盖饭🤤" in lines
+    assert "我（3 小时前）：把子肉啊 好久没吃了" in lines
+    assert "我（3 小时前）：好过你在那边惦记着把子肉，我这边可能就青菜豆腐" in lines
+
+
+def test_bounded_inbound_context_retains_high_salience_or_burst_impressions_and_session_perceptions():
+    packet = {
+        "inner_life_snapshot": {
+            "materials": {
+                "recent_dialogue": {
+                    "stable_turns": [
+                        {
+                            "speaker": "counterpart",
+                            "text": "第一句",
+                            "dialogue_id": "d1",
+                            "occurred_at": "2026-10-31T01:00:00Z",
+                            "continuity_reasons": ["recent"],
+                        },
+                        {
+                            "speaker": "counterpart",
+                            "text": "紧接着第二句",
+                            "dialogue_id": "d2",
+                            "occurred_at": "2026-10-31T01:01:30Z",
+                            "continuity_reasons": ["recent"],
+                        },
+                    ],
+                    "volatile_last_turn": {
+                        "speaker": "counterpart",
+                        "text": "第三句",
+                        "dialogue_id": "d3",
+                        "occurred_at": "2026-10-31T01:02:00Z",
+                        "continuity_reasons": ["current_turn"],
+                    },
+                },
+                "private_impressions": [
+                    {
+                        "source_ref": "impression:in-burst",
+                        "subject_ref": "user:geoff",
+                        "expiry_condition": "until_appraisal_contradicted",
+                        "first_seen": "2026-10-31T01:00:10Z",
+                        "last_supported": "2026-10-31T01:00:10Z",
+                        "reflection_summary": "他话还没说完，先听他往下讲",
+                    },
+                    {
+                        "source_ref": "impression:high-salience-feeling",
+                        "subject_ref": "user:geoff",
+                        "expiry_condition": "until_appraisal_contradicted",
+                        "confidence_bp": 8000,
+                        "matters_bp": 7200,
+                        "first_seen": "2026-10-30T22:00:00Z",
+                        "last_supported": "2026-10-30T22:00:00Z",
+                        "reflection_summary": "有点拿不准他到底是不是只把我当普通朋友，心里犯嘀咕",
+                    },
+                ],
+                "perception": [
+                    {
+                        "influence_id": "perception:recent-video",
+                        "accepted_at": "2026-10-31T00:15:00Z",
+                        "title": "45分钟前看的舞蹈视频",
+                    },
+                    {
+                        "influence_id": "perception:stale-yesterday",
+                        "accepted_at": "2026-10-30T15:00:00Z",
+                        "title": "10小时前看的旧视频",
+                    },
+                ],
+            }
+        }
+    }
+    after = bounded_inbound_context(packet)
+    materials = after["inner_life_snapshot"]["materials"]
+    assert [i["source_ref"] for i in materials["private_impressions"]] == [
+        "impression:in-burst",
+        "impression:high-salience-feeling",
+    ]
+    assert [p["influence_id"] for p in materials["perception"]] == [
+        "perception:recent-video",
+    ]
+
+
+def test_bounded_inbound_context_preserves_silence_appraisal_and_pre_return_silence_during_return_burst():
+    packet = {
+        "inner_life_snapshot": {
+            "materials": {
+                "recent_dialogue": {
+                    "stable_turns": [
+                        {
+                            "speaker": "counterpart",
+                            "text": "我去忙会儿",
+                            "dialogue_id": "d0",
+                            "occurred_at": "2026-11-03T13:11:00Z",
+                            "continuity_reasons": ["recent"],
+                        },
+                        {
+                            "speaker": "companion",
+                            "text": "早上好呀",
+                            "dialogue_id": "c1",
+                            "delivery_state": "delivered",
+                            "occurred_at": "2026-11-03T23:02:00Z",
+                        },
+                        {
+                            "speaker": "companion",
+                            "text": "人呢？还在睡吗",
+                            "dialogue_id": "c2",
+                            "delivery_state": "delivered",
+                            "occurred_at": "2026-11-04T03:02:00Z",
+                        },
+                        {
+                            "speaker": "counterpart",
+                            "text": "你这顿饭吃得挺久啊",
+                            "dialogue_id": "d1",
+                            "occurred_at": "2026-11-04T06:04:01Z",
+                            "continuity_reasons": ["recent"],
+                        },
+                        {
+                            "speaker": "companion",
+                            "text": "你还好意思说我",
+                            "dialogue_id": "c3",
+                            "delivery_state": "delivered",
+                            "occurred_at": "2026-11-04T06:04:05Z",
+                        },
+                    ],
+                    "volatile_last_turn": {
+                        "speaker": "counterpart",
+                        "text": "哈哈哈哈，我昨晚通宵了",
+                        "dialogue_id": "d2",
+                        "occurred_at": "2026-11-04T06:04:22Z",
+                        "continuity_reasons": ["current_turn"],
+                    },
+                },
+                "since_he_last_spoke": {
+                    "seconds": 2,
+                    "prior_silence_seconds": 21,
+                },
+                "appraisals": {
+                    "columns": ["ref", "conf", "since", "until", "readings", "excerpts"],
+                    "stable_rows": [],
+                    "volatile_last_row": [
+                        "appraisal:silence-resentment",
+                        7800,
+                        "2026-11-04T05:02:00Z",
+                        "2026-11-05T05:02:00Z",
+                        [["发了好几轮都没人理，心里挺闷也有些窝火", "user", "partly_controllable", "moderate"]],
+                        [],
+                    ],
+                },
+            }
+        }
+    }
+    after = bounded_inbound_context(packet, include_delivery_overlap=True)
+    materials = after["inner_life_snapshot"]["materials"]
+    assert materials["appraisals"]["volatile_last_row"][0] == "appraisal:silence-resentment"
+    assert materials["since_he_last_spoke"]["silence_before_return_human"] == "16小时53分"
+    timing = after["dialogue_observation_timing"]
+    assert timing["silence_before_return_human"] == "16小时53分"
+    assert timing["unanswered_companion_turns_before_return"] == 2
+    assert timing["unanswered_wait_before_return_human"] == "7小时2分"
+
+
+def test_bounded_inbound_context_deduplicates_working_memory_prefetch_and_enriches_bitemporal_facts():
+    packet = {
+        "current_trigger_message": {"text": "你在忙啥呢"},
+        "inner_life_snapshot": {
+            "cursor": {"logical_time": "2026-11-08T12:00:00+08:00"},
+            "materials": {
+                "recent_dialogue": {
+                    "stable_turns": [
+                        {
+                            "speaker": "counterpart",
+                            "text": "我昨晚熬夜改方案",
+                            "dialogue_id": "d-visible",
+                            "occurred_at": "2026-11-08T11:55:00+08:00",
+                        }
+                    ],
+                    "volatile_last_turn": {
+                        "speaker": "counterpart",
+                        "text": "你在忙啥呢",
+                        "dialogue_id": "d-now",
+                        "occurred_at": "2026-11-08T12:00:00+08:00",
+                    },
+                },
+                "relevant_facts": [
+                    {
+                        "source_ref": "fact:transient-situation",
+                        "predicate_code": "situation.recent",
+                        "source_excerpt": "前天晚上在赶社团海报",
+                        "occurred_at": "2026-11-06T21:00:00+08:00",
+                    },
+                    {
+                        "source_ref": "fact:durable-home",
+                        "predicate_code": "location.hometown",
+                        "source_excerpt": "老家在烟台",
+                        "occurred_at": "2026-11-01T10:00:00+08:00",
+                    },
+                ],
+                "appraisals": {
+                    "columns": ["ref", "conf", "since", "until", "readings", "excerpts"],
+                    "stable_rows": [
+                        [
+                            "appraisal:active-1",
+                            7200,
+                            "2026-11-08T12:00:00+08:00",
+                            "2026-11-09T11:55:00+08:00",
+                            [["他随口问我在忙什么", "user", "controllable", "low"]],
+                            [],
+                        ]
+                    ],
+                },
+                "automatic_prefetch": {
+                    "items": [
+                        {
+                            "source_ref": "dialogue-episode:bare-emoji",
+                            "source_slice": "recent_dialogue",
+                            "text": "一段聊天：\n[2026-11-06T12:12+08:00 user:1]: 👀",
+                        },
+                        {
+                            "source_ref": "fact:transient-situation",
+                            "source_slice": "relevant_facts",
+                            "text": "前天晚上在赶社团海报",
+                        },
+                        {
+                            "source_ref": "appraisal:active-1",
+                            "source_slice": "recalled_emotional_associations",
+                            "text": "Remembered private interpretation — 他随口问我在忙什么 / user / controllable / low",
+                        },
+                        {
+                            "source_ref": "appraisal:older-recalled",
+                            "source_slice": "recalled_emotional_associations",
+                            "text": "Remembered private interpretation — 他专门问我昨晚睡得怎么样，是在顺着前面的话关心我的状态。 / unknown / partly_controllable / moderate",
+                        },
+                    ]
+                },
+            },
+        },
+    }
+    after = bounded_inbound_context(packet)
+    materials = after["inner_life_snapshot"]["materials"]
+    facts = {f["source_ref"]: f for f in materials["relevant_facts"]}
+    assert facts["fact:transient-situation"]["occurred_age"] == "2天前"
+    assert facts["fact:transient-situation"]["temporal_scope"] == "point_in_time_situation"
+    assert facts["fact:transient-situation"]["temporal_note"] == "2天前当时的动态/处境，非今日现状"
+    assert facts["fact:durable-home"]["occurred_age"] == "7天前"
+    assert facts["fact:durable-home"]["temporal_scope"] == "durable_trait_or_identity"
+    assert "temporal_note" not in facts["fact:durable-home"]
+
+    auto_items = materials["automatic_prefetch"]["items"]
+    assert [item["source_ref"] for item in auto_items] == ["appraisal:older-recalled"]
+    assert auto_items[0]["text"] == "他专门问我昨晚睡得怎么样，是在顺着前面的话关心我的状态。"
+
+
+def test_stage_posture_understanding_flows_into_lived_moment_and_current_inner_moment():
+    from datetime import datetime, timezone
+    from companion_daemon.world_v2.character_interior.contracts import _rendered_lived_moment
+    from companion_daemon.world_v2.model_context_reading import present_context_evidence
+
+    logical_time = datetime(2026, 11, 8, 4, 0, tzinfo=timezone.utc)
+    raw_materials = {
+        "memory_understandings": [
+            {
+                "source_ref": "understanding:habit-1",
+                "facet": "private_self",
+                "summary": "最近手头紧加上忙社团，习惯傍晚去丽娃河边散步顺便盘算开销。",
+                "status": "active",
+            },
+            {
+                "source_ref": "understanding:stance-1",
+                "facet": "expression_stance",
+                "summary": "对他还留着三分嘴硬，但他真关心我时会忍不住说实话。",
+                "status": "active",
+            },
+        ]
+    }
+    lived = _rendered_lived_moment(raw_materials, logical_time, actor_ref="agent:companion")
+    assert lived is not None
+    assert "近期活法与心气：" in lived
+    packet = {
+        "current_trigger_message": {"text": "今晚有空聊聊吗"},
+        "inner_life_snapshot": {
+            "cursor": {"logical_time": logical_time.isoformat()},
+            "materials": {
+                **raw_materials,
+                "lived_moment": lived,
+            },
+        },
+    }
+    presented = present_context_evidence(packet)
+    bounded = bounded_inbound_context(presented)
+    cur_inner = bounded["current_trigger_message"].get("current_inner_moment", "")
+    assert "近期活法与心气：" in cur_inner
+    assert "丽娃河边散步" in cur_inner
+
+
+def test_unshared_coordinate_and_full_understanding_tail_surface_in_lived_moment_and_shortcuts():
+    from datetime import datetime, timezone
+    from companion_daemon.world_v2.character_interior.contracts import _rendered_lived_moment
+    from companion_daemon.world_v2.model_context_reading import present_context_evidence
+
+    logical_time = datetime(2026, 11, 8, 4, 0, tzinfo=timezone.utc)
+    aspirations_tail = "所以这段时间心里一直绷着根弦，精力被兼职和社团两头扯着，说话也没平时那么轻松。"
+    raw_materials = {
+        "recent_dialogue": {
+            "stable_turns": [
+                {
+                    "speaker": "companion",
+                    "text": "这周家里生活费减半，昨晚半夜还有人敲林晚的门核名单。",
+                    "dialogue_id": "d-comp-1",
+                    "occurred_at": "2026-11-07T14:00:00Z",
+                }
+            ],
+            "volatile_last_turn": {
+                "speaker": "counterpart",
+                "text": "你们社团换届和勤工助学怎么样了？",
+                "dialogue_id": "d-user-2",
+                "occurred_at": "2026-11-08T04:00:00Z",
+            },
+        },
+        "biographical_context": {
+            "settled_biographical_coordinates": [
+                {
+                    "coordinate_ref": "biographical-coordinate:coord:allowance",
+                    "summary": "家里突发变故导致生活费减半",
+                    "privacy_class": "contextual",
+                },
+                {
+                    "coordinate_ref": "biographical-coordinate:coord:club-workstudy",
+                    "summary": "文学社换届盯场与学工办305勤工助学排班冲突",
+                    "privacy_class": "contextual",
+                },
+            ]
+        },
+        "memory_understandings": [
+            {
+                "source_ref": "mu:rel-1",
+                "facet": "subjective_relationship",
+                "summary": "关系理解一：和他聊天能稍微松口气。",
+                "status": "active",
+            },
+            {
+                "source_ref": "mu:rel-2",
+                "facet": "subjective_relationship",
+                "summary": "关系理解二：虽然熟了但还是习惯先观察。",
+                "status": "active",
+            },
+            {
+                "source_ref": "mu:asp-1",
+                "facet": "aspirations_conflicts",
+                "summary": (
+                    "家里生活费突然减半，学工办勤工助学岗位又被排进候补，社团换届活动还压在考前周末 -> "
+                    + aspirations_tail
+                ),
+                "status": "active",
+            },
+        ],
+    }
+    lived = _rendered_lived_moment(raw_materials, logical_time, actor_ref="agent:companion")
+    assert lived is not None
+    assert "文学社换届盯场与学工办305勤工助学排班冲突（私下处境，未在聊天提过）" in lived
+    assert "家里突发变故导致生活费减半（私下处境" not in lived
+    assert aspirations_tail.rstrip("。") in lived
+
+    packet = {
+        "current_trigger_message": {"text": "你们社团换届和勤工助学怎么样了？"},
+        "inner_life_snapshot": {
+            "cursor": {"logical_time": logical_time.isoformat()},
+            "materials": {
+                **raw_materials,
+                "lived_moment": lived,
+            },
+        },
+        "expression_hard_boundaries": {
+            "source_ref_aliases": {
+                "S01": "biographical-coordinate:coord:allowance",
+                "S02": "biographical-coordinate:coord:club-workstudy",
+            },
+            "world_claim_source_refs": {
+                "self_report": ["S01", "S02"],
+            },
+            "biographical_coordinate_authority": [
+                {
+                    "source_ref": "S01",
+                    "value": {"summary": "家里突发变故导致生活费减半"},
+                },
+                {
+                    "source_ref": "S02",
+                    "value": {"summary": "文学社换届盯场与学工办305勤工助学排班冲突"},
+                },
+            ],
+        },
+    }
+    presented = present_context_evidence(packet)
+    bounded = bounded_inbound_context(presented)
+    shortcuts = {
+        item["alias"]: item
+        for item in bounded["context_window"]["citable_memory_shortcuts"]
+    }
+    assert shortcuts["S02"].get("shared_in_chat") is False
+    assert shortcuts["S02"].get("counterpart_prior_knowledge") == "never_mentioned_in_any_prior_chat"
+    assert "shared_in_chat" not in shortcuts["S01"]
+    cur_msg = bounded["current_trigger_message"]
+    assert "信息差提醒：" in cur_msg.get("epistemic_prior_knowledge_mismatch", "")
+    assert "勤工助学" in cur_msg.get("epistemic_prior_knowledge_mismatch", "")
+    assert cur_msg["current_inner_moment"].startswith("信息差提醒：")
+
+
+def test_read_triggered_priority_boost_memory_tree_and_continuous_trajectory():
+    from datetime import datetime
+    from companion_daemon.world_v2.character_interior.contracts import _rendered_lived_moment
+
+    logical_time = datetime.fromisoformat("2026-11-08T21:00:00+08:00")
+    materials_for_moment = {
+        "recently_ended_activities": [
+            {
+                "activity_kind": "study.self_study",
+                "accepted_intention": "去二教自习室刷古代汉语习题",
+                "outcome_summary": "刷完两套卷子手腕酸",
+                "ended_at": "2026-11-08T16:30:00+08:00",
+            },
+            {
+                "activity_kind": "errand.campus",
+                "accepted_intention": "去学工办305交综测补审材料",
+                "outcome_summary": "赶在下班前交上去了",
+                "ended_at": "2026-11-08T18:10:00+08:00",
+            },
+        ],
+    }
+    lived = _rendered_lived_moment(materials_for_moment, logical_time)
+    assert lived is not None
+    assert "近期连续状态轨迹：今天已接连经历 2 段日常（去二教自习室刷古代汉语习题（刷完两套卷子手腕酸） → 去学工办305交综测补审材料（赶在下班前交上去了））" in lived
+
+    packet = {
+        "current_trigger_message": {"text": "你今天都在忙啥呢，还记得嘉兴包饺子那次吗"},
+        "inner_life_snapshot": {
+            "cursor": {"logical_time": logical_time.isoformat()},
+            "materials": {
+                "lived_moment": lived,
+                "recent_dialogue": {
+                    "stable_turns": [],
+                    "volatile_last_turn": {
+                        "speaker": "counterpart",
+                        "text": "你今天都在忙啥呢",
+                        "recorded_at": "2026-11-08T21:00:00+08:00",
+                    },
+                },
+                "selected_recall": {
+                    "items": [
+                        {
+                            "source_ref": "prehistory-story:jiaxing-dumplings",
+                            "text": "小时候在嘉兴过年跟妈妈包饺子，把硬币包进了破皮的那只里",
+                            "occurred_to": "2025-01-28T20:00:00+08:00",
+                        }
+                    ]
+                },
+                "automatic_prefetch": {
+                    "items": [
+                        {
+                            "source_ref": "exp:yesterday-rain",
+                            "source_slice": "recent_self_experiences",
+                            "text": "昨天傍晚从图书馆出来忘带伞，淋湿了半边袖子",
+                            "occurred_to": "2026-11-07T18:30:00+08:00",
+                        },
+                        {
+                            "source_ref": "imp:recalled-low-bp",
+                            "source_slice": "private_impressions",
+                            "text": "他上次顺口提了一句想来成都看银杏",
+                            "importance_bp": 5200,
+                            "recall_count": 2,
+                            "occurred_to": "2026-11-06T12:00:00+08:00",
+                        },
+                    ]
+                },
+                "recent_self_experiences": {
+                    "items": [
+                        {
+                            "source_ref": "exp:today-errand",
+                            "text": "下午去学工办305把综测补审材料交上去了",
+                            "occurred_to": "2026-11-08T18:10:00+08:00",
+                        }
+                    ]
+                },
+            },
+        },
+        "expression_hard_boundaries": {
+            "source_ref_aliases": {
+                "S01": "exp:yesterday-rain",
+                "S02": "imp:recalled-low-bp",
+                "S03": "prehistory-story:jiaxing-dumplings",
+                "S04": "exp:today-errand",
+            },
+            "world_claim_source_refs": {
+                "past_world": ["S01", "S02", "S03", "S04"],
+            },
+        },
+    }
+    bounded = bounded_inbound_context(packet)
+    auto_items = bounded["inner_life_snapshot"]["materials"]["automatic_prefetch"]["items"]
+    # imp:recalled-low-bp has importance_bp=5200 (<6500) and is older than latest_settled_cp,
+    # but recall_count=2 protects it from pruning and boosts it to the front!
+    assert [it["source_ref"] for it in auto_items] == ["imp:recalled-low-bp", "exp:yesterday-rain"]
+
+    shortcuts = bounded["context_window"]["citable_memory_shortcuts"]
+    # Boosted S02 and selected_recall S03 are promoted to the front of citable_memory_shortcuts
+    assert [s["alias"] for s in shortcuts[:2]] == ["S02", "S03"]
+
+    tree = bounded["context_window"]["memory_tree"]
+    assert any(item.startswith("[S03]") for item in tree["layer_1_front"])
+    assert any(item.startswith("[S04] (今天)") for item in tree["layer_1_front"])
+    assert any(item.startswith("[S01] (昨天)") for item in tree["layer_2_recent"])
+    assert "近期连续状态轨迹：" in bounded["current_trigger_message"]["current_inner_moment"]
+
+
+def test_chat_disclosure_ledger_and_spontaneous_prehistory_flash():
+    import json
+    from datetime import datetime
+    from types import SimpleNamespace
+    from companion_daemon.world_v2.character_interior.contracts import (
+        _rendered_lived_moment,
+        chat_disclosure_ledger_scope,
+        compile_chat_disclosure_ledger,
+    )
+
+    logical_time = datetime.fromisoformat("2026-11-08T12:00:00+08:00")
+    proposal_json = json.dumps(
+        {
+            "proposal_id": "prop:1",
+            "proposed_changes": [
+                {
+                    "kind": "expression_plan_transition",
+                    "payload": {
+                        "canonical_json": json.dumps(
+                            {
+                                "world_claims": [
+                                    {
+                                        "claim_text": "林晚和周叙把下周末的读书会筹备直接派给我牵头了。",
+                                        "scope": "past_world",
+                                        "source_refs": [
+                                            "biography-coordinate:event:world-life:settled:world:1:occurrence:club-election"
+                                        ],
+                                    },
+                                    {
+                                        "claim_text": "大一那次跟周祺办闲置交换，当天少了张桌子还临时改了摆放图。",
+                                        "scope": "past_world",
+                                        "source_refs": [
+                                            "prehistory-record:celia-expanded-university-u14:window:0:600"
+                                        ],
+                                    },
+                                ]
+                            }
+                        )
+                    },
+                }
+            ],
+        }
+    )
+    fake_projection = SimpleNamespace(
+        world_id="world:test-disclosure",
+        world_revision=42,
+        deliberation_revision=10,
+        ledger_sequence=100,
+        execution_receipts=(
+            SimpleNamespace(action_id="act:1", observed_state="delivered"),
+        ),
+        stored_message_payloads={
+            "payload:1": "读书会那事林晚他们直接摊派给我了，跟以前办交换活动那次一样乱。"
+        },
+        expression_plan_manifests=(
+            SimpleNamespace(
+                proposal_id="prop:1",
+                beats=(SimpleNamespace(action_id="act:1", payload_ref="payload:1"),),
+            ),
+        ),
+        minimal_reply_manifests=(),
+        proposal_audits=(
+            SimpleNamespace(proposal_id="prop:1", proposal_json=proposal_json),
+        ),
+    )
+    ledger = compile_chat_disclosure_ledger(fake_projection)
+    assert "读书会那事林晚他们直接摊派给我了，跟以前办交换活动那次一样乱。" in ledger.all_companion_texts
+    assert "occurrence:club-election" in ledger.disclosed_claims_by_ref
+    assert "prehistory-record:celia-expanded-university-u14" in ledger.disclosed_claims_by_ref
+
+    # Even when recent_dialogue has rolled past the old turn, chat_disclosure_ledger_scope
+    # recognizes that club-election and u14 were already shared, while work-study and u10 were not.
+    raw_materials = {
+        "recent_dialogue": [
+            {"speaker": "companion", "text": "刚下课，准备去吃午饭。"},
+            {"speaker": "counterpart", "text": "你们社团读书会和勤工助学那边怎么样了？"},
+        ],
+        "biographical_context": {
+            "settled_biographical_coordinates": [
+                {
+                    "coordinate_ref": "occurrence:club-election",
+                    "settlement_event_ref": "event:world-life:settled:world:1:occurrence:club-election",
+                    "category": "campus",
+                    "summary": "文学社换届碰头把下周末读书会筹备直接压给沈知栀。",
+                },
+                {
+                    "coordinate_ref": "occurrence:work-study",
+                    "settlement_event_ref": "event:world-life:settled:world:1:occurrence:work-study",
+                    "category": "campus",
+                    "summary": "学工办305勤工助学岗只剩两个候补名额。",
+                },
+            ]
+        },
+        "automatic_prefetch": {
+            "items": [
+                {
+                    "source_ref": "prehistory-record:celia-expanded-university-u10:window:0:400",
+                    "text": "[事件发生时间 2025-04-01] 第二次交换活动前，知栀答应确认几个人会不会来，当天有两个人没出现，桌子一侧空着。",
+                    "prehistory": {"story": {"record_ref": "prehistory-record:celia-expanded-university-u10"}},
+                },
+                {
+                    "source_ref": "prehistory-record:celia-expanded-university-u14:window:0:600",
+                    "text": "[事件发生时间 2025-12-01] 十二月，第三次交换按此前商量的分工准备，活动当天早上原先说好能借的桌子少了一张。",
+                    "prehistory": {"story": {"record_ref": "prehistory-record:celia-expanded-university-u14"}},
+                },
+            ]
+        },
+    }
+    with chat_disclosure_ledger_scope(fake_projection):
+        lived = _rendered_lived_moment(raw_materials, logical_time, actor_ref="agent:companion")
+        assert lived is not None
+        assert "文学社换届碰头把下周末读书会筹备直接压给沈知栀（此前已在聊天提过）" in lived
+        assert "学工办305勤工助学岗只剩两个候补名额（私下处境，未在聊天提过）" in lived
+        assert "脑海顺带闪过的旧事：第二次交换活动前，知栀答应确认几个人会不会来" in lived
+        assert "过往经历，从未在聊天提过；仅心头自然闪回，是否顺势提起完全由你决定" in lived
+
+        packet = {
+            "current_trigger_message": {
+                "text": "你们社团读书会和勤工助学那边怎么样了？",
+                "current_inner_moment": lived,
+            },
+            "inner_life_snapshot": {
+                "world_id": "world:test-disclosure",
+                "cursor": {
+                    "world_revision": 42,
+                    "deliberation_revision": 10,
+                    "ledger_sequence": 100,
+                    "logical_time": logical_time.isoformat(),
+                },
+                "materials": raw_materials,
+            },
+            "expression_hard_boundaries": {
+                "source_ref_aliases": {
+                    "S01": "biography-coordinate:event:world-life:settled:world:1:occurrence:club-election",
+                    "S02": "biography-coordinate:event:world-life:settled:world:1:occurrence:work-study",
+                    "S03": "prehistory-record:celia-expanded-university-u10:window:0:400",
+                    "S04": "prehistory-record:celia-expanded-university-u14:window:0:600",
+                },
+                "world_claim_source_refs": {
+                    "past_world": ["S01", "S02", "S03", "S04"],
+                },
+                "biographical_coordinate_authority": [
+                    {
+                        "source_ref": "biography-coordinate:event:world-life:settled:world:1:occurrence:club-election",
+                        "value": {
+                            "coordinate_ref": "occurrence:club-election",
+                            "summary": "文学社换届碰头把下周末读书会筹备直接压给沈知栀。",
+                        },
+                    },
+                    {
+                        "source_ref": "biography-coordinate:event:world-life:settled:world:1:occurrence:work-study",
+                        "value": {
+                            "coordinate_ref": "occurrence:work-study",
+                            "summary": "学工办305勤工助学岗只剩两个候补名额。",
+                        },
+                    },
+                ],
+            },
+        }
+        bounded = bounded_inbound_context(packet)
+        shortcuts = {
+            s["alias"]: s
+            for s in bounded["context_window"]["citable_memory_shortcuts"]
+        }
+        assert shortcuts["S01"]["shared_in_chat"] is True
+        assert "林晚和周叙把下周末的读书会筹备直接派给我牵头了" in shortcuts["S01"]["previously_shared_claim"]
+        assert shortcuts["S02"]["shared_in_chat"] is False
+        assert shortcuts["S03"]["shared_in_chat"] is False
+        assert shortcuts["S04"]["shared_in_chat"] is True
+        assert "大一那次跟周祺办闲置交换" in shortcuts["S04"]["previously_shared_claim"]
+        mismatch = bounded["current_trigger_message"]["epistemic_prior_knowledge_mismatch"]
+        assert "勤工助学" in mismatch
+        assert "读书会" not in mismatch
+
+
+
+
+
 
 
 

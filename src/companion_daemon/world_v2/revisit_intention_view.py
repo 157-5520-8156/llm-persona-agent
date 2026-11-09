@@ -19,7 +19,7 @@ from .schema_core import FrozenModel
 
 
 REVISIT_INTENTION_ADVISORY_VERSION = "revisit-intention-view.1"
-REVISIT_INTENTION_GRACE = timedelta(hours=2)
+REVISIT_INTENTION_GRACE = timedelta(hours=1)
 _ANSWERABLE_RECEIPT_STATES = frozenset({"provider_accepted", "delivered"})
 
 
@@ -98,21 +98,44 @@ def _unfinished_revisits(projection, *, due_only: bool) -> list[DueUnfinishedRev
     )
     if len(receipt_refs) != len(getattr(projection, "execution_receipts", ())):
         return []
+    first_visible_by_action: dict[str, object] = {}
     latest_by_action: dict[str, tuple[object, object]] = {}
     for ref, receipt in zip(receipt_refs, projection.execution_receipts, strict=True):
         existing = latest_by_action.get(receipt.action_id)
         if existing is None or ref.world_revision > existing[0].world_revision:
             latest_by_action[receipt.action_id] = (ref, receipt)
+        if receipt.observed_state in _ANSWERABLE_RECEIPT_STATES:
+            first = first_visible_by_action.get(receipt.action_id)
+            if first is None or ref.world_revision < first.world_revision:
+                first_visible_by_action[receipt.action_id] = ref
     delivered_by_action = {
         action_id: ref
         for action_id, (ref, receipt) in latest_by_action.items()
         if receipt.observed_state in _ANSWERABLE_RECEIPT_STATES
     }
+    first_answerable_by_action = {
+        action_id: first_visible_by_action.get(action_id, ref)
+        for action_id, ref in delivered_by_action.items()
+    }
+    accepted_plan_refs = tuple(
+        item
+        for item in projection.committed_world_event_refs
+        if item.event_type in {"ExpressionPlanAccepted", "AcceptanceRecorded"}
+        and "expression-plan" in str(getattr(item, "event_id", ""))
+    )
     completed_refs = {
         getattr(proc, "trigger_ref", None)
         for proc in getattr(projection, "trigger_processes", ()) or ()
         if getattr(proc, "process_kind", None) == "proactive_action_deliberation"
-        and getattr(proc, "state", None) in {"completed", "terminal"}
+        and (
+            getattr(proc, "state", None) == "completed"
+            or (
+                getattr(proc, "state", None) == "terminal"
+                and not str(getattr(proc, "runtime_outcome_ref", "") or "").startswith(
+                    "proactive:deliberation-failed"
+                )
+            )
+        )
     }
     candidates: list[DueUnfinishedRevisit] = []
     for manifest in getattr(projection, "expression_plan_manifests", ()):
@@ -147,19 +170,23 @@ def _unfinished_revisits(projection, *, due_only: bool) -> list[DueUnfinishedRev
         delivered_ref = delivered_by_action.get(beat.action.action_id)
         if delivered_ref is None:
             continue
-        latest_delivered_revision = max(
-            (ref.world_revision for ref in delivered_by_action.values()),
+        declared_ref = first_answerable_by_action.get(beat.action.action_id, delivered_ref)
+        latest_declared_revision = max(
+            (ref.world_revision for ref in first_answerable_by_action.values()),
             default=0,
         )
         superseded_after_due = any(
-            ref.world_revision > delivered_ref.world_revision
+            ref.world_revision > declared_ref.world_revision
             and isinstance(getattr(ref, "logical_time", None), datetime)
-            and ref.logical_time >= not_before
-            for ref in delivered_by_action.values()
+            and (
+                ref.logical_time > declared_ref.logical_time
+                or ref.logical_time >= not_before
+            )
+            for ref in (*first_answerable_by_action.values(), *accepted_plan_refs)
         )
         if superseded_after_due or (
             logical_time > expires_at
-            and delivered_ref.world_revision < latest_delivered_revision
+            and declared_ref.world_revision < latest_declared_revision
         ):
             continue
         candidates.append(

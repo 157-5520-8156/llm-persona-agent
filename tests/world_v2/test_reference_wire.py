@@ -151,3 +151,17 @@ def test_source_ref_aliases_and_token_map_intern_opaque_values_losslessly():
     assert all(val.startswith(bindings["prefix"]) for val in view["token_map"].values())
     assert expand_reference_view(view, bindings) == original
 
+
+def test_reference_schema_canonicalizes_ordinal_enum_across_hash_permutations():
+    before = {"source_refs": [_ref(f"old-{i}") for i in range(20)]}
+    after = {"source_refs": [_ref(f"new-{i}") for i in range(20)]}
+    _, first_bindings = prepare_reference_view(before)
+    _, second_bindings = prepare_reference_view(after)
+    first_sorted_enum = sorted([*before["source_refs"], "s0", "s1"])
+    second_sorted_enum = sorted([*after["source_refs"], "s0", "s1"])
+    assert first_sorted_enum != second_sorted_enum
+    assert reference_schema({"type": "string", "enum": first_sorted_enum}, first_bindings) == reference_schema(
+        {"type": "string", "enum": second_sorted_enum}, second_bindings,
+    )
+
+

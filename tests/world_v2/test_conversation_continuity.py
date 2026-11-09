@@ -938,3 +938,63 @@ def test_long_companion_history_and_multi_message_bursts_keep_acknowledged_user_
     assert "我们专业是鼓励用 ai 写这种东西的，只是老师不希望我们交个 ai 幻觉产物就上去了" in packed_texts
 
 
+def test_already_acknowledged_trigger_ref_does_not_drop_subsequent_proactive_companion_beats() -> None:
+    """When proactive_contact carries the last counterpart observation event ref as trigger_ref,
+    already-acknowledged counterpart messages must not be treated as a new inbound current_turn
+    that drops subsequent companion replies and proactive follow-ups.
+    """
+    him_replied = _dialogue(
+        "him-replied",
+        "我中午也睡过去了哈哈哈",
+        speaker="counterpart",
+        at=NOW - timedelta(hours=3, minutes=20),
+        sequence=10,
+    )
+    her_reply_1 = _dialogue(
+        "her-reply-1",
+        "合着咱俩今天都在补觉是吧",
+        speaker="companion",
+        at=NOW - timedelta(hours=3, minutes=19),
+        sequence=11,
+        acknowledges=("event:dialogue:him-replied",),
+    )
+    her_reply_2 = _dialogue(
+        "her-reply-2",
+        "刚下完现代汉语课，腿都是软的",
+        speaker="companion",
+        at=NOW - timedelta(hours=3, minutes=19),
+        sequence=12,
+        acknowledges=("event:dialogue:him-replied",),
+    )
+    her_proactive_1 = _dialogue(
+        "her-proactive-1",
+        "刚在二食堂排麻辣烫，人多得离谱",
+        speaker="companion",
+        at=NOW - timedelta(hours=2),
+        sequence=20,
+    )
+    her_proactive_2 = _dialogue(
+        "her-proactive-2",
+        "你下午也没动静，又睡着了？",
+        speaker="companion",
+        at=NOW - timedelta(hours=2),
+        sequence=21,
+    )
+
+    compiled = ConversationContinuityCompiler().compile(
+        dialogue=(him_replied, her_reply_1, her_reply_2, her_proactive_1, her_proactive_2),
+        trigger_ref="event:dialogue:him-replied",
+        acknowledged_observation_event_refs=frozenset({"event:dialogue:him-replied"}),
+    )
+
+    assert [item.dialogue_id for item in compiled.dialogue] == [
+        him_replied.dialogue_id,
+        her_reply_1.dialogue_id,
+        her_reply_2.dialogue_id,
+        her_proactive_1.dialogue_id,
+        her_proactive_2.dialogue_id,
+    ]
+    assert all("current_turn" not in item.continuity_reasons for item in compiled.dialogue)
+
+
+

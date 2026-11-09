@@ -415,6 +415,24 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
             truncated = reading.truncated
             if reading.plan_id is not None:
                 related.append(("plan", reading.plan_id))
+            if (
+                content_state == "unavailable"
+                and store is not None
+                and item.status == "settled"
+                and item.occurrence_id.startswith("occurrence:life-aftermath:counterpart-ix-")
+                and item.result_payload_ref
+                and item.result_payload_hash
+            ):
+                stored_occ = store.read_exact(content_ref=item.result_payload_ref)
+                if (
+                    stored_occ is not None
+                    and stored_occ.content_payload_hash == item.result_payload_hash.removeprefix("sha256:")
+                    and stored_occ.text.strip()
+                ):
+                    occ_text = " ".join(stored_occ.text.split())
+                    content_state = "read"
+                    title = occ_text
+                    detail = "环境：" + occ_text
         elif kind == "planning":
             from .world_planning import PlanningPhase
             publication, instance = item
@@ -476,7 +494,25 @@ def compile_dashboard_agenda(*, ledger, projection, cursor, store, actor_ref,
                 if world.authorized_attempt_result:
                     related.append(("plan", world.authorized_attempt_result.execution_binding.plan_id))
             except ValueError:
-                pass
+                if (
+                    store is not None
+                    and item.experience_id.startswith("experience:life-aftermath:counterpart-ix-")
+                    and item.values.summary_ref
+                    and item.values.summary_payload_hash
+                ):
+                    stored_exp = store.read_exact(content_ref=item.values.summary_ref)
+                    if (
+                        stored_exp is not None
+                        and stored_exp.content_payload_hash == item.values.summary_payload_hash.removeprefix("sha256:")
+                        and stored_exp.text.strip()
+                    ):
+                        exp_text = " ".join(stored_exp.text.split())
+                        content_state = "read"
+                        title = exp_text
+                        detail = "当时的环境：" + exp_text
+                        source = experience_world_occurrence(projection, item)
+                        if source:
+                            related.append(("world", source.occurrence_id))
         elif kind == "outlook":
             from .world_outlook import OutlookStage
             title = item.situation if isinstance(item, OutlookStage) else item.external_possibility

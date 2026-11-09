@@ -161,6 +161,41 @@ def onebot_main() -> None:
     _run_cli(default_adapter="onebot")
 
 
+def apply_production_world_v2_env_defaults(settings: Settings) -> None:
+    os.environ.setdefault(
+        "WORLD_V2_PRIVATE_IMPRESSION_DAILY_MODEL_CALL_LIMIT",
+        str(settings.world_v2_private_impression_daily_model_call_limit),
+    )
+    os.environ.setdefault(
+        "WORLD_V2_PRIVATE_IMPRESSION_MIN_INTERVAL_SECONDS",
+        str(settings.world_v2_private_impression_min_interval_seconds),
+    )
+    os.environ.setdefault(
+        "WORLD_V2_OUTLOOK_MIN_REFRESH_INTERVAL_SECONDS",
+        str(settings.world_v2_outlook_min_refresh_interval_seconds),
+    )
+    os.environ.setdefault(
+        "WORLD_V2_LIFE_DEVELOPMENT_MIN_INTERVAL_SECONDS",
+        str(settings.world_v2_life_development_min_interval_seconds),
+    )
+    os.environ.setdefault(
+        "WORLD_V2_MEMORY_CONSOLIDATION_MIN_INTERVAL_SECONDS",
+        str(settings.world_v2_memory_consolidation_min_interval_seconds),
+    )
+    os.environ.setdefault(
+        "WORLD_V2_ACTIVITY_MIN_INTERVAL_SECONDS",
+        str(settings.world_v2_activity_min_interval_seconds),
+    )
+    os.environ.setdefault(
+        "WORLD_V2_ORDINARY_TEXT_OBSERVATION_MODE",
+        settings.world_v2_ordinary_text_observation_mode,
+    )
+    os.environ.setdefault(
+        "WORLD_V2_BILIBILI_VISION_ENABLED",
+        "true" if settings.world_v2_bilibili_vision_enabled else "false",
+    )
+
+
 def _run_cli(*, default_adapter: str) -> None:
     parser = argparse.ArgumentParser(description="Run a OneBot v11 companion adapter.")
     parser.add_argument("--adapter", choices=("napcat", "onebot"), default=default_adapter)
@@ -186,6 +221,7 @@ def _run_cli(*, default_adapter: str) -> None:
 
     logging.basicConfig(level=logging.INFO)
     settings = get_settings()
+    apply_production_world_v2_env_defaults(settings)
     lock_path = qq_outbound_owner_lock_path(settings.database_path)
     try:
         with QQOutboundOwnerLease(lock_path, adapter=args.adapter):

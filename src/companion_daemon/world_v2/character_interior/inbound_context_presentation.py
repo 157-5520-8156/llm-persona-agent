@@ -120,18 +120,60 @@ def cache_ordered_background_material(material: dict[str, object]) -> dict[str, 
     The full situation remains visible. This is byte ordering, not a relevance
     ranking, a remembered response, or permission to reuse an old World view.
     """
+    def tail(value: dict[str, object], keys: tuple[str, ...]) -> dict[str, object]:
+        return {
+            **{key: item for key, item in value.items() if key not in keys},
+            **{key: value[key] for key in keys if key in value},
+        }
+
     snapshot = material.get("inner_life_snapshot")
     if not isinstance(snapshot, dict):
         return material
+    snapshot = dict(snapshot)
     materials = snapshot.get("materials")
-    if not isinstance(materials, dict) or materials.get("contract") == "shared-string-view.1":
-        return material
-    ordered = _ordered(materials, (
-        "stable_self", "routine_background", "moments_i_can_share", "photos_i_shared",
-        "recent_self_experiences", "recently_ended_activities", "week_diary", "day_sheet",
-        "relationship", "appraisals", "private_impressions", "unresolved",
+    if isinstance(materials, dict) and materials.get("contract") != "shared-string-view.1":
+        materials = dict(materials)
+        album = materials.get("moments_i_can_share")
+        if isinstance(album, dict):
+            materials["moments_i_can_share"] = _ordered(
+                album, ("items", "source_refs")
+            )
+        bio = materials.get("biographical_context")
+        if isinstance(bio, list):
+            materials["biographical_context"] = [
+                tail(dict(item), ("logical_at",)) if isinstance(item, dict) else item
+                for item in bio
+            ]
+        sit = materials.get("situation")
+        if isinstance(sit, dict):
+            materials["situation"] = tail(dict(sit), ("logical_time",))
+        rel = materials.get("relationship")
+        if isinstance(rel, dict):
+            materials["relationship"] = tail(dict(rel), ("recent_authored_signals",))
+        ordered = _ordered(materials, (
+            "world_planning", "stable_self", "perception", "routine_background",
+            "protagonist_npc_relationships", "relevant_facts", "unresolved",
+            "private_impressions", "remembered_material", "memory_understandings",
+            "relationship", "recent_self_experiences",
+        ))
+        snapshot["materials"] = tail(ordered, (
+            "week_diary", "moments_i_can_share", "photos_i_shared",
+            "historical_activity_intentions", "recently_ended_activities",
+            "current_activities", "planned_activities", "pending_world_occurrences",
+            "appraisals", "affect", "biographical_context", "automatic_prefetch",
+            "selected_recall", "我最近留下的", "lived_moment", "day_sheet",
+            "situation", "advisories", "since_he_last_spoke", "logical_time",
+            "conversation", "recent_dialogue",
+        ))
+    ordered_snap = _ordered(snapshot, (
+        "contract", "authority", "actor_ref", "world_id", "privacy_scope", "viewer_scope",
+        "availability", "context_compiler", "snapshot_compiler", "materials",
     ))
-    return {**material, "inner_life_snapshot": {**snapshot, "materials": ordered}}
+    ordered_snap = tail(ordered_snap, (
+        "faculties", "background_context_profile", "cursor", "logical_time",
+        "snapshot_id", "snapshot_hash", "source_inventory", "capability_scope", "source_refs",
+    ))
+    return {**material, "inner_life_snapshot": ordered_snap}
 
 
 def cache_ordered_inbound_material(material: dict[str, object]) -> dict[str, object]:
@@ -141,6 +183,12 @@ def cache_ordered_inbound_material(material: dict[str, object]) -> dict[str, obj
     the character should attend to. A life/state change still changes its value
     and naturally invalidates the corresponding provider prefix.
     """
+    def tail(value: dict[str, object], keys: tuple[str, ...]) -> dict[str, object]:
+        return {
+            **{key: item for key, item in value.items() if key not in keys},
+            **{key: value[key] for key in keys if key in value},
+        }
+
     result = dict(material)
     snapshot = material.get("inner_life_snapshot")
     if isinstance(snapshot, dict):
@@ -150,25 +198,62 @@ def cache_ordered_inbound_material(material: dict[str, object]) -> dict[str, obj
             # An existing shared-string packet is opaque here: reordering its
             # dictionary/value independently could destabilize reference names.
             if materials.get("contract") != "shared-string-view.1":
-                snapshot["materials"] = _ordered(materials, (
-                    "stable_self", "routine_background", "moments_i_can_share", "photos_i_shared",
-                    "recent_self_experiences", "recently_ended_activities", "week_diary", "day_sheet",
-                    "relationship", "appraisals", "private_impressions", "unresolved",
+                materials = dict(materials)
+                album = materials.get("moments_i_can_share")
+                if isinstance(album, dict):
+                    materials["moments_i_can_share"] = _ordered(
+                        album, ("items", "source_refs")
+                    )
+                ordered_mats = _ordered(materials, (
+                    "stable_self", "routine_background", "protagonist_npc_relationships",
+                    "week_diary", "relationship", "world_planning", "unresolved",
+                    "moments_i_can_share", "recent_self_experiences",
+                    "recently_ended_activities", "current_activities",
+                    "private_impressions", "perception",
+                    "memory_understandings", "relevant_facts",
                 ))
-        result["inner_life_snapshot"] = _ordered(snapshot, (
+                bio = ordered_mats.get("biographical_context")
+                if isinstance(bio, list):
+                    ordered_mats["biographical_context"] = [
+                        tail(dict(item), ("logical_at",)) if isinstance(item, dict) else item
+                        for item in bio
+                    ]
+                sit = ordered_mats.get("situation")
+                if isinstance(sit, dict):
+                    ordered_mats["situation"] = tail(dict(sit), ("logical_time",))
+                snapshot["materials"] = tail(ordered_mats, (
+                    "recent_self_experiences", "recently_ended_activities",
+                    "current_activities", "private_impressions", "perception",
+                    "memory_understandings", "relevant_facts",
+                    "appraisals", "affect", "photos_i_shared", "day_sheet",
+                    "since_he_last_spoke", "我最近留下的", "biographical_context",
+                    "situation", "logical_time", "capability_evidence",
+                    "automatic_prefetch", "remembered_material", "advisories",
+                    "lived_moment", "conversation", "recent_dialogue",
+                ))
+        ordered_snap = _ordered(snapshot, (
             "contract", "authority", "actor_ref", "world_id", "privacy_scope", "viewer_scope",
-            "availability", "context_compiler", "snapshot_compiler", "faculties", "materials",
+            "availability", "context_compiler", "snapshot_compiler", "materials",
         ))
-    return _ordered(result, (
-        "activity_source_rule", "lived_evidence_scope", "expression_capabilities",
-        "appraisal_affect_hard_boundaries", "inner_life_snapshot",
-        "expression_hard_boundaries", "reference_dictionary", "request",
-        "personal_action_evidence", "current_trigger_message",
+        result["inner_life_snapshot"] = tail(
+            ordered_snap,
+            ("faculties", "capability_scope", "cursor", "logical_time", "snapshot_id", "source_refs"),
+        )
+    ordered_top = _ordered(result, (
+        "lived_evidence_scope", "expression_capabilities",
+        "inner_life_snapshot",
+    ))
+    return tail(ordered_top, (
+        "activity_source_rule", "context_reading",
+        "plan_management", "personal_action_evidence", "context_window",
+        "appraisal_affect_hard_boundaries", "expression_hard_boundaries",
+        "dialogue_observation_timing", "reference_dictionary", "request",
+        "current_trigger_message", "role_result_correction",
     ))
 
 
 def dialogue_tail_inbound_material(material: dict[str, object]) -> dict[str, object]:
-    """Keep the live conversation together at the end of a new author request.
+    """Keep the live conversation and volatile turn envelope at the end of an author request.
 
     Apply after reference encoding: aliases, source permissions, text and array
     order are unchanged. This only orders object members before request hashing;
@@ -193,8 +278,17 @@ def dialogue_tail_inbound_material(material: dict[str, object]) -> dict[str, obj
             snapshot["materials"] = tail(
                 materials, ("advisories", "lived_moment", "conversation", "recent_dialogue")
             )
-        result["inner_life_snapshot"] = tail(snapshot, ("materials",))
-    return tail(result, ("inner_life_snapshot", "current_trigger_message", "role_result_correction"))
+        result["inner_life_snapshot"] = tail(
+            snapshot,
+            ("materials", "faculties", "capability_scope", "cursor", "logical_time", "snapshot_id", "source_refs"),
+        )
+    return tail(result, (
+        "inner_life_snapshot", "activity_source_rule", "context_reading",
+        "plan_management", "personal_action_evidence", "context_window",
+        "appraisal_affect_hard_boundaries", "expression_hard_boundaries",
+        "dialogue_observation_timing", "reference_dictionary",
+        "request", "current_trigger_message", "role_result_correction",
+    ))
 
 
 def compact_inbound_media_rows(material: dict[str, object]) -> dict[str, object]:

@@ -17,9 +17,19 @@ class BackgroundStructuredRoleFaculty(StructuredCharacterRoleFaculty):
     name = 'character_background_compute'
 
     def __init__(self, *, interactive, background_model, character_disposition,
-                 life_source_reviewer, reference_wire):
+                 life_source_reviewer, reference_wire, temperature: float | None = None):
+        if temperature is None:
+            provider = str(getattr(background_model, 'provider', '')).lower()
+            model_name = str(getattr(background_model, 'model', '')).lower()
+            if 'deepseek' in provider or 'deepseek' in model_name:
+                temperature = 1.3
+            elif 'glm' in provider or 'glm' in model_name:
+                temperature = 1.0
+            else:
+                temperature = 0.8
         super().__init__(
             model=background_model, model_id=background_model.model,
+            temperature=temperature,
             character_disposition=character_disposition,
             life_source_reviewer=life_source_reviewer, reference_wire=reference_wire,
         )

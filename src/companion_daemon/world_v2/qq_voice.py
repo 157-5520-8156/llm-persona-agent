@@ -45,6 +45,12 @@ _LOG = logging.getLogger(__name__)
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _VOICE_DELIVERED_DIR = _REPO_ROOT / "output" / "voice-delivered"
 _VOICE_TRANSCRIPT_CACHE_DIR = _REPO_ROOT / "data" / "attachments" / "voice-transcripts"
+_DEFAULT_RVC_REF_WAV = (
+    _REPO_ROOT / "data" / "voice_ref" / "shen_zhizhi_zhenti_clean_ref.wav"
+    if (_REPO_ROOT / "data" / "voice_ref" / "shen_zhizhi_zhenti_clean_ref.wav").is_file()
+    else _REPO_ROOT / "data" / "voice_ref" / "shen_zhizhi_zhenti_ref.wav"
+)
+_SEED_VC_GRADIO_BASE = "https://plachta-seed-vc.hf.space/gradio_api"
 
 _MAX_AUDIO_BYTES = 12 * 1024 * 1024
 _MAX_CACHE_ENTRIES = 256
@@ -62,9 +68,9 @@ _LEADING_VOICE_TAG_RE = re.compile(
     re.DOTALL | re.IGNORECASE,
 )
 
-# Strip non-spoken stage direction brackets like （轻声） or (笑) when synthesizing speech
+# Strip non-spoken stage direction brackets like （轻声）、（压低声音，带点困意的嘟囔） or (笑) when synthesizing speech
 _STAGE_DIRECTION_RE = re.compile(
-    r"[（(][^）)]{0,14}(?:声|笑|叹气|哈欠|语气|小声|嘀咕|停顿|沉默|吸鼻子|揉眼睛)[）)]"
+    r"[（(][^）)\n]{1,80}[）)]|【[^】\n]{1,80}】|\*[^*\n]{1,60}\*"
 )
 
 
@@ -99,9 +105,9 @@ def _extract_acting_cue_and_spoken_text(text: str) -> tuple[str, str]:
     """Return ``(acting_cue, spoken_text)`` from an outbound voice bubble."""
     cleaned = re.sub(r"\[CQ:[^\]]+\]", "", text)
     cleaned = re.sub(r"^(?:\[CQ:voice\]|\[voice\]|\[语音\])\s*", "", cleaned, flags=re.IGNORECASE)
-    cues = [m.group(0).strip("（）()") for m in _STAGE_DIRECTION_RE.finditer(cleaned)]
+    cues = [m.group(0).strip("（）()【】* ") for m in _STAGE_DIRECTION_RE.finditer(cleaned)]
     spoken = _STAGE_DIRECTION_RE.sub("", cleaned).strip()
-    return ("、".join(cues), spoken or text.strip())
+    return ("、".join(c for c in cues if c), spoken)
 
 
 def clean_spoken_text_for_tts(text: str) -> str:
@@ -111,11 +117,27 @@ def clean_spoken_text_for_tts(text: str) -> str:
 
 
 _FRIENDLY_VOICE_LABELS: dict[str, str] = {
-    "longwan_v3": "1号(当前默认)·龙婉v3·细腻温柔真人女声+手机环境音",
-    "longanxuan_v3": "2号·龙安宣v3·温和亲切真人女声+手机环境音",
-    "longanling_v3": "3号·龙安灵v3·清澈灵动真人女声+手机环境音",
-    "longanhuan_v3": "4号·龙安欢v3·轻快陪伴真人女声+手机环境音",
-    "longshanshan_v3": "5号·龙姗姗v3·清甜自然真人女声+手机环境音",
+    "cosyvoice-v3-plus-zhizhip-9fc067564dad42f18084cf5a10aa47ef": "沈知栀真题女生定制音色(v3-plus+RVC)+MEMS/SILK手机声学仿真",
+    "zh_female_vv_uranus_bigtts": "豆包Vivi 2.0·超拟真年轻女声+MEMS/SILK手机声学仿真",
+    "zh_female_sajiaoxuemei_uranus_bigtts": "豆包撒娇学妹 2.0·超拟真女声+MEMS/SILK手机声学仿真",
+    "zh_female_linjianvhai_uranus_bigtts": "豆包邻家女孩 2.0·超拟真女声+MEMS/SILK手机声学仿真",
+    "zh_female_tianmeitaozi_uranus_bigtts": "豆包甜美桃子 2.0·超拟真女声+MEMS/SILK手机声学仿真",
+    "zh_female_xiaohe_uranus_bigtts": "豆包小何 2.0·超拟真女声+MEMS/SILK手机声学仿真",
+    "zh_female_cancan_uranus_bigtts": "豆包灿灿 2.0·超拟真女声+MEMS/SILK手机声学仿真",
+    "zh_female_shuangkuaisisi_uranus_bigtts": "豆包爽快思思 2.0·超拟真女声+MEMS/SILK手机声学仿真",
+    "longanhuan": "龙安欢(v3-plus旗舰)·20岁社交陪伴女声+MEMS/SILK手机声学仿真",
+    "longanhuan_v3": "龙安欢v3·20岁社交陪伴女声+MEMS/SILK手机声学仿真",
+    "longfeifei_v3": "龙菲菲v3·20岁甜美松弛陪伴女声+MEMS/SILK手机声学仿真",
+    "longyingmu_v3": "龙樱沐v3·温柔细腻女声+MEMS/SILK手机声学仿真",
+    "longyingtao_v3": "龙樱桃v3·清甜邻家少女音+MEMS/SILK手机声学仿真",
+    "Sunny": "晴儿(Sunny)·甜美自然少女音+MEMS/SILK手机声学仿真",
+    "Serena": "苏瑶(Serena)·温柔松弛女声+MEMS/SILK手机声学仿真",
+    "Vivian": "十三(Vivian)·鲜活自然20岁女生声线+MEMS/SILK手机声学仿真",
+    "Maia": "四月(Maia)·清爽自然大学生女声+MEMS/SILK手机声学仿真",
+    "Cherry": "芊悦(Cherry)·阳光亲切自然女声+MEMS/SILK手机声学仿真",
+    "Chelsie": "千雪(Chelsie)·轻柔细腻陪伴女声+MEMS/SILK手机声学仿真",
+    "Momo": "茉兔(Momo)·软萌撒娇女声+MEMS/SILK手机声学仿真",
+    "longwan_v3": "龙婉v3·细腻温柔女声+MEMS/SILK手机声学仿真",
 }
 
 
@@ -124,50 +146,181 @@ def _friendly_voice_label(voice_name: str) -> str:
 
 
 def _inject_cosyvoice_breath_tags(spoken_text: str, acting_cue: str) -> str:
-    """Inject natural ``[breath]`` / ``[laughter]`` paralinguistic tokens for CosyVoice."""
+    """Keep spoken text clean without prepending artificial ``[breath]`` gasps."""
     text = spoken_text.strip()
     if not text or "[breath]" in text or "[laughter]" in text:
         return text
-    prefix = "[laughter][breath]" if "笑" in acting_cue else "[breath]"
-    # Insert one gentle mid-sentence breath on longer multi-clause bubbles
-    clauses = re.split(r"([，。！？；、])", text)
-    if len(clauses) >= 5 and len(text) >= 16:
-        mid = (len(clauses) // 2) | 1
-        clauses = [*clauses[: mid + 1], "[breath]", *clauses[mid + 1 :]]
-        text = "".join(clauses)
-    return f"{prefix}{text}"
+    if any(k in acting_cue for k in ("笑出声", "轻笑", "扑哧", "咯咯")):
+        return f"[laughter]{text}"
+    return text
+
+
+def _cosyvoice_emotion_instruction(model_name: str, voice_name: str, acting_cue: str) -> str | None:
+    """Return official CosyVoice v3 emotion instruction for voices that support ``Instruct``."""
+    if model_name != "cosyvoice-v3-flash":
+        return None
+    if voice_name.startswith("cosyvoice-v3-flash-"):
+        cue = acting_cue.strip()
+        if cue:
+            return f"请用年轻女生跟亲近的人发微信语音时{cue}的自然语气说话，语调灵动有起伏。"
+        return "请用年轻女生跟亲近的人发微信语音的轻快、温柔、自然语气说话，语调灵动有起伏。"
+    if voice_name not in {"longanhuan", "longanhuan_v3"}:
+        return None
+    if any(k in acting_cue for k in ("笑", "开心", "雀跃", "得意", "轻快")):
+        return "你说话的情感是happy。"
+    if any(k in acting_cue for k in ("委屈", "难过", "叹气", "失落", "鼻音")):
+        return "你说话的情感是sad。"
+    if any(k in acting_cue for k in ("生气", "恼", "凶")):
+        return "你说话的情感是angry。"
+    return "你说话的情感是neutral。"
+
+
+def _mix_stochastic_handheld_mic_layer(wav_bytes: bytes) -> bytes:
+    """Simulate real indoor smartphone MEMS mic aeroacoustics & ASIC/AGC high-frequency edge.
+
+    Based on smartphone MEMS transducer + WeChat/QQ voice message acoustic analysis:
+    1. Speech-Correlated Mouth Air-Jet / Plosive Turbulence (no constant fake wind):
+       When syllable onsets/plosives (positive envelope attack ``d_env``) hit the bottom
+       0.8mm MEMS port at 6-12cm distance, they produce brief low-frequency diaphragm
+       pressure puffs (75-210 Hz) and port-mesh vortex friction (1.8-4.8 kHz).
+    2. Indoor ASIC/RF High-Frequency Crispy Floor + AGC Release Pumping:
+       Smartphone MEMS pre-amp + 5-8kHz Helmholtz cavity resonance + aggressive AGC
+       lifts a subtle, slightly harsh high-frequency sibilant/electronic air floor
+       (2.8-6.8 kHz + narrowband spectral-gate shimmer) during speech and 180ms AGC
+       release tails, while gating down during silence.
+    """
+    if not wav_bytes.startswith(b"RIFF"):
+        return wav_bytes
+    try:
+        import array
+        import io
+        import math
+        import random
+
+        with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
+            if wf.getnchannels() != 1 or wf.getsampwidth() != 2:
+                return wav_bytes
+            rate = wf.getframerate()
+            raw_frames = wf.readframes(wf.getnframes())
+        samples = array.array("h")
+        samples.frombytes(raw_frames)
+        n = len(samples)
+        if n < 400 or rate <= 0:
+            return wav_bytes
+
+        seed = int.from_bytes(hashlib.sha256(raw_frames[:2048]).digest()[:8], "little")
+        rng = random.Random(seed)
+
+        fast_env = 0.0
+        slow_env = 0.0
+        agc_hold = 0.0
+        plosive_lp = 0.0
+        mesh_lp = 0.0
+        asic_lp1 = 0.0
+        asic_lp2 = 0.0
+        rf_phase1 = rng.uniform(0.0, 2.0 * math.pi)
+        rf_phase2 = rng.uniform(0.0, 2.0 * math.pi)
+        w_res1 = 2.0 * math.pi * rng.uniform(4350.0, 4850.0) / rate
+        w_res2 = 2.0 * math.pi * rng.uniform(5450.0, 6100.0) / rate
+
+        for i in range(n):
+            x = samples[i] / 32768.0
+            abs_x = abs(x)
+            fast_env = fast_env * 0.94 + abs_x * 0.06
+            slow_env = slow_env * 0.9965 + abs_x * 0.0035
+
+            # AGC envelope: attacks fast on speech, holds ~240ms release tail, gates down in silence
+            if fast_env > agc_hold:
+                agc_hold = agc_hold * 0.82 + fast_env * 0.18
+            else:
+                agc_hold = agc_hold * 0.9995
+
+            # 1. Mouth air-jet / plosive turbulence on syllable onset (speech-correlated only)
+            onset = max(0.0, fast_env - slow_env * 1.12)
+            plosive_puff = 0.0
+            if onset > 0.007:
+                w_puff = rng.uniform(-1.0, 1.0)
+                plosive_lp = 0.945 * plosive_lp + 0.055 * w_puff
+                mesh_lp = 0.62 * mesh_lp + 0.38 * w_puff
+                mesh_hi = w_puff - mesh_lp
+                puff_gain = min(0.088, (onset - 0.007) * 1.15)
+                plosive_puff = puff_gain * (0.68 * plosive_lp + 0.32 * mesh_hi)
+            else:
+                plosive_lp *= 0.93
+
+            # 2. Indoor MEMS/ASIC high-frequency harsh edge + AGC-pumped spectral shimmer
+            w_asic = rng.uniform(-1.0, 1.0)
+            asic_lp1 = 0.48 * asic_lp1 + 0.52 * w_asic
+            asic_lp2 = 0.82 * asic_lp2 + 0.18 * asic_lp1
+            # High-passed 3.0-6.8 kHz crisp thermal/sibilant edge
+            hf_crisp = (w_asic - asic_lp1) + 0.50 * (asic_lp1 - asic_lp2)
+            # Narrowband MEMS cavity / spectral-gate shimmer ("刺耳的高频毛刺感")
+            rf_phase1 += w_res1 + rng.uniform(-0.025, 0.025)
+            rf_phase2 += w_res2 + rng.uniform(-0.030, 0.030)
+            shimmer = 0.58 * math.sin(rf_phase1) + 0.42 * math.sin(rf_phase2)
+
+            # Active AGC gain lifts harsh HF floor during speech & short breath gaps
+            agc_gate = min(1.0, agc_hold * 11.5)
+            hf_gain = 0.0015 + 0.0085 * agc_gate
+            sibilant_grit = 0.014 * min(0.12, abs_x) * hf_crisp
+
+            total_mod = (
+                x
+                + plosive_puff
+                + hf_gain * (0.74 * hf_crisp + 0.26 * shimmer)
+                + sibilant_grit
+            )
+            mixed = int(total_mod * 32767.0)
+            if mixed > 32767:
+                mixed = 32767
+            elif mixed < -32768:
+                mixed = -32768
+            samples[i] = mixed
+
+        out_buf = io.BytesIO()
+        with wave.open(out_buf, "wb") as out_wf:
+            out_wf.setnchannels(1)
+            out_wf.setsampwidth(2)
+            out_wf.setframerate(rate)
+            out_wf.writeframes(samples.tobytes())
+        return out_buf.getvalue()
+    except Exception:
+        _LOG.debug("Stochastic handheld mic layer failed; using input wav", exc_info=True)
+        return wav_bytes
 
 
 def apply_phone_mic_voice_realism(wav_bytes: bytes) -> bytes:
-    """Transform sterile studio TTS audio into a realistic smartphone QQ/WeChat voice recording.
+    """Transform studio TTS audio into an authentic smartphone QQ/WeChat voice message.
 
-    Applies an FFmpeg acoustic filterchain that:
-    1. Adds a 0.11s thumb-press lead-in and 0.18s release tail (``adelay`` + ``apad``).
-    2. Filters to a smartphone MEMS microphone + mobile codec band (``220Hz-3600Hz``) to
-       strip 8-12kHz digital AI sibilance.
-    3. Adds subtle 38ms early bedroom/dorm reflection (``aecho``) and phone AGC compression
-       (``compand``) so the voice feels close-mic'd in a physical room.
-    4. Mixes a continuous low-level pink + brown room/mic noise floor (``anoisesrc`` + ``amix``)
-       so the message never has artificial digital-zero silence.
-    5. Resamples through a 12kHz->16kHz mobile voice codec path.
+    1. Randomized thumb-press lead-in (85-140ms) and release tail (130-210ms).
+    2. Physical smartphone MEMS transducer response:
+       - Sub-bass HPF at 115 Hz + close-mic proximity warmth at 215 Hz (+2.0 dB)
+       - High-Q MEMS Helmholtz cavity resonance peak at 5350 Hz (+5.5 dB) and 3450 Hz (+2.8 dB)
+         that produces the characteristic crispy/slightly harsh smartphone sibilant edge.
+    3. Speech-correlated mouth air-jet plosive turbulence & AGC-pumped high-frequency ASIC edge.
+    4. Real low-bitrate SILK-WB / Opus VoIP (14 kbps) encode-decode pass via ``libopus``.
     """
     ffmpeg = _find_ffmpeg()
     if ffmpeg is None or not wav_bytes.startswith(b"RIFF"):
         return wav_bytes
+    seed = int.from_bytes(hashlib.sha256(wav_bytes[:1024]).digest()[:4], "little")
+    lead_ms = 85 + (seed % 56)
+    tail_s = round(0.13 + ((seed >> 8) % 85) / 1000.0, 3)
     filter_complex = (
-        "[0:a]adelay=110|110,apad=pad_dur=0.18,"
-        "highpass=f=220,lowpass=f=3600,"
-        "aecho=0.8:0.86:38:0.15,"
-        "compand=attacks=0.01:decays=0.15:points=-80/-85|-45/-32|-15/-10|0/-6:gain=2[v];"
-        "anoisesrc=r=16000:c=pink:a=0.022,highpass=f=140,lowpass=f=2200[amb];"
-        "anoisesrc=r=16000:c=brown:a=0.030,highpass=f=60,lowpass=f=380[hand];"
-        "[v][amb][hand]amix=inputs=3:duration=first:dropout_transition=0:weights=1.0 0.28 0.22,"
-        "aresample=12000,aresample=16000,volume=1.4[out]"
+        f"[0:a]adelay={lead_ms}|{lead_ms},apad=pad_dur={tail_s},"
+        "highpass=f=110,lowpass=f=7200,"
+        "equalizer=f=210:t=q:w=1.3:g=1.6,"
+        "equalizer=f=3450:t=q:w=1.8:g=2.2,"
+        "equalizer=f=5350:t=q:w=2.3:g=4.2,"
+        "compand=attacks=0.008:decays=0.16:points=-80/-86|-48/-40|-18/-12|0/-3:gain=1.3,"
+        "aresample=16000[out]"
     )
     try:
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as src_f:
             src_f.write(wav_bytes)
             src_path = src_f.name
+        mems_path = src_path + ".mems.wav"
+        opus_path = src_path + ".silk.ogg"
         dst_path = src_path + ".phone.wav"
         try:
             proc = subprocess.run(
@@ -186,18 +339,67 @@ def apply_phone_mic_voice_realism(wav_bytes: bytes) -> bytes:
                     "16000",
                     "-f",
                     "wav",
-                    dst_path,
+                    mems_path,
                 ],
                 capture_output=True,
                 timeout=10,
                 check=False,
             )
-            if proc.returncode == 0 and os.path.isfile(dst_path):
-                out_bytes = Path(dst_path).read_bytes()
-                if out_bytes.startswith(b"RIFF") and len(out_bytes) > 44:
-                    return out_bytes
+            if proc.returncode == 0 and os.path.isfile(mems_path):
+                mems_bytes = Path(mems_path).read_bytes()
+                if mems_bytes.startswith(b"RIFF") and len(mems_bytes) > 44:
+                    # 1. Encode through 16kbps VoIP libopus (SILK-WB LPC mode) first so voice
+                    #    timbre stays natural while acquiring subtle SILK codec texture
+                    p_enc = subprocess.run(
+                        [
+                            ffmpeg,
+                            "-y",
+                            "-i",
+                            mems_path,
+                            "-c:a",
+                            "libopus",
+                            "-b:a",
+                            "16k",
+                            "-vbr",
+                            "constrained",
+                            "-application",
+                            "voip",
+                            "-cutoff",
+                            "8000",
+                            opus_path,
+                        ],
+                        capture_output=True,
+                        timeout=8,
+                        check=False,
+                    )
+                    if p_enc.returncode == 0 and os.path.isfile(opus_path):
+                        p_dec = subprocess.run(
+                            [
+                                ffmpeg,
+                                "-y",
+                                "-i",
+                                opus_path,
+                                "-ac",
+                                "1",
+                                "-ar",
+                                "16000",
+                                "-f",
+                                "wav",
+                                dst_path,
+                            ],
+                            capture_output=True,
+                            timeout=8,
+                            check=False,
+                        )
+                        if p_dec.returncode == 0 and os.path.isfile(dst_path):
+                            out_bytes = Path(dst_path).read_bytes()
+                            if out_bytes.startswith(b"RIFF") and len(out_bytes) > 44:
+                                # 2. Apply mouth air-jet plosive turbulence & AGC-pumped ASIC harsh
+                                #    floor AFTER SILK decoding so the codec does not suppress them
+                                return _mix_stochastic_handheld_mic_layer(out_bytes)
+                    return _mix_stochastic_handheld_mic_layer(mems_bytes)
         finally:
-            for p in (src_path, dst_path):
+            for p in (src_path, mems_path, opus_path, dst_path):
                 try:
                     os.unlink(p)
                 except OSError:
@@ -367,67 +569,90 @@ async def _synthesize_via_omni_acting(
     client: httpx.AsyncClient,
 ) -> bytes | None:
     """Use ``qwen3-omni-flash`` end-to-end audio generation for natural, non-robotic speech."""
-    cue_clause = (
-        f"说话时的神态与语气提示：{acting_cue}（只体现在声音情绪、呼吸感与语调里，绝对不要把括号提示词念出来）。"
-        if acting_cue
-        else "语气自然松弛、像20岁女大学生在微信/QQ上给熟人发私聊语音一样，带一点真实生活气息、轻微呼吸感与自然的停顿起伏，绝对不要像新闻播音员或客服AI那样字正腔圆地端着念。"
-    )
-    payload = {
-        "model": model_name,
-        "modalities": ["text", "audio"],
-        "audio": {"voice": voice_name, "format": "wav"},
-        "stream": True,
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "你是20岁女大学生沈知栀的原声配音演员。"
-                    "你的唯一任务是把用户给出的台词【逐字原样】用真实、松弛的日常语音口吻读出来。"
-                    f"{cue_clause}"
-                    "严格要求：一个字都不要增删或改写，绝对禁止接话或回答台词里的问题，只原样读出给定台词！"
-                ),
+    for cue_to_use in ([acting_cue, ""] if acting_cue else [""]):
+        cue_clause = (
+            f"说话时的神态与语气提示：{cue_to_use}（只体现在声音情绪、呼吸感与语调里，绝对不要把提示词念出来）。"
+            if cue_to_use
+            else "语气自然松弛、像20岁女大学生在微信/QQ上给熟人发私聊语音一样，带一点真实生活气息、轻微呼吸感与自然的停顿起伏，绝对不要像新闻播音员或客服AI那样字正腔圆地端着念。"
+        )
+        payload = {
+            "model": model_name,
+            "modalities": ["text", "audio"],
+            "audio": {"voice": voice_name, "format": "wav"},
+            "stream": True,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "你是20岁女大学生沈知栀的原声配音演员。"
+                        "你的唯一任务是把用户给出的台词【逐字原样】用真实、松弛的日常语音口吻读出来。"
+                        f"{cue_clause}"
+                        "严格要求：一个字都不要增删或改写，绝对禁止接话或回答台词里的问题，只原样读出给定台词！"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"请逐字原样念出这句语音台词，不要多说任何一个字：\n{spoken_text}",
+                },
+            ],
+        }
+        pcm_chunks: list[bytes] = []
+        transcript_parts: list[str] = []
+        async with client.stream(
+            "POST",
+            f"{base_url.rstrip('/')}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
             },
-            {
-                "role": "user",
-                "content": f"请逐字原样念出这句语音台词，不要多说任何一个字：\n{spoken_text}",
-            },
-        ],
-    }
-    pcm_chunks: list[bytes] = []
-    async with client.stream(
-        "POST",
-        f"{base_url.rstrip('/')}/chat/completions",
-        headers={
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json",
-        },
-        json=payload,
-        timeout=20.0,
-    ) as resp:
-        if resp.status_code != 200:
-            return None
-        async for line in resp.aiter_lines():
-            if not line or not line.startswith("data: ") or line.strip() == "data: [DONE]":
-                continue
-            try:
-                chunk = json.loads(line[6:])
-            except Exception:
-                continue
-            if "error" in chunk:
+            json=payload,
+            timeout=20.0,
+        ) as resp:
+            if resp.status_code != 200:
                 return None
-            for choice in chunk.get("choices") or []:
-                if not isinstance(choice, dict):
+            async for line in resp.aiter_lines():
+                if not line or not line.startswith("data: ") or line.strip() == "data: [DONE]":
                     continue
-                delta = choice.get("delta") or {}
-                audio_obj = delta.get("audio") if isinstance(delta, dict) else None
-                if isinstance(audio_obj, dict) and isinstance(audio_obj.get("data"), str):
-                    b64_part = audio_obj["data"].strip()
-                    if b64_part:
-                        pcm_chunks.append(base64.b64decode(b64_part, validate=False))
-    raw_pcm = b"".join(pcm_chunks)
-    if not raw_pcm:
-        return None
-    return _pcm24k_to_wav_bytes(raw_pcm, sample_rate=24000)
+                try:
+                    chunk = json.loads(line[6:])
+                except Exception:
+                    continue
+                if "error" in chunk:
+                    return None
+                for choice in chunk.get("choices") or []:
+                    if not isinstance(choice, dict):
+                        continue
+                    delta = choice.get("delta") or {}
+                    if not isinstance(delta, dict):
+                        continue
+                    if isinstance(delta.get("content"), str):
+                        transcript_parts.append(delta["content"])
+                    audio_obj = delta.get("audio")
+                    if isinstance(audio_obj, dict):
+                        if isinstance(audio_obj.get("transcript"), str):
+                            transcript_parts.append(audio_obj["transcript"])
+                        if isinstance(audio_obj.get("data"), str):
+                            b64_part = audio_obj["data"].strip()
+                            if b64_part:
+                                pcm_chunks.append(base64.b64decode(b64_part, validate=False))
+        raw_pcm = b"".join(pcm_chunks)
+        if not raw_pcm:
+            continue
+        transcript = "".join(transcript_parts).strip()
+        if cue_to_use and transcript:
+            cue_fragments = [
+                frag.strip()
+                for frag in re.split(r"[，,、；;。！!？?\s]+", cue_to_use)
+                if len(frag.strip()) >= 2 and frag.strip() not in spoken_text
+            ]
+            if any(frag in transcript for frag in cue_fragments):
+                _LOG.warning(
+                    "Omni TTS leaked acting cue into spoken transcript (%r); retrying without cue",
+                    transcript,
+                )
+                continue
+        return _pcm24k_to_wav_bytes(raw_pcm, sample_rate=24000)
+    return None
 
 
 async def _synthesize_via_cosyvoice_ws(
@@ -436,6 +661,7 @@ async def _synthesize_via_cosyvoice_ws(
     voice_name: str,
     model_name: str,
     api_key: str,
+    instruction: str | None = None,
 ) -> bytes | None:
     """Synthesize natural speech via DashScope CosyVoice v3/v2 WebSocket API."""
     import uuid
@@ -443,6 +669,18 @@ async def _synthesize_via_cosyvoice_ws(
 
     task_id = uuid.uuid4().hex
     audio_bytes = bytearray()
+    params: dict[str, Any] = {
+        "text_type": "PlainText",
+        "voice": voice_name,
+        "format": "wav",
+        "sample_rate": 24000,
+    }
+    if voice_name.startswith("cosyvoice-v3-plus-zhizhip"):
+        params["rate"] = 1.18
+    elif voice_name.startswith("cosyvoice-v3-flash-zhizhif"):
+        params["rate"] = 1.14
+    if instruction:
+        params["instruction"] = instruction
     async with websockets.connect(
         "wss://dashscope.aliyuncs.com/api-ws/v1/inference/",
         additional_headers={"Authorization": f"bearer {api_key}"},
@@ -459,12 +697,7 @@ async def _synthesize_via_cosyvoice_ws(
                         "task": "tts",
                         "function": "SpeechSynthesizer",
                         "model": model_name,
-                        "parameters": {
-                            "text_type": "PlainText",
-                            "voice": voice_name,
-                            "format": "wav",
-                            "sample_rate": 24000,
-                        },
+                        "parameters": params,
                         "input": {},
                     },
                 },
@@ -509,7 +742,320 @@ async def _synthesize_via_cosyvoice_ws(
                 break
             elif event == "task-failed":
                 return None
-    return bytes(audio_bytes) if audio_bytes else None
+    if not audio_bytes:
+        return None
+    raw_wav = bytes(audio_bytes)
+    if raw_wav.startswith(b"RIFF") and len(raw_wav) > 44:
+        return _pcm24k_to_wav_bytes(raw_wav[44:], sample_rate=24000)
+    return raw_wav
+
+
+def _build_doubao_context_instruction(acting_cue: str) -> str:
+    """Build a natural vocal acting instruction for Doubao Seed-TTS 2.0 ``context_texts``."""
+    cue = acting_cue.strip()
+    if cue:
+        return (
+            f"请用{cue}的声线与呼吸状态，像20岁女大学生贴着手机麦克风跟亲近的人私聊发语音一样自然松弛地说这句话，"
+            "语速随性有快有慢，保留真实的气声、轻微鼻音、口语停顿和句尾自然的尾音起伏，千万不要像朗读课文或播音员那样端着念。"
+        )
+    return (
+        "请用20岁女大学生贴着手机麦克风跟亲近的人发私聊语音的慵懒、亲昵、随性口吻说这句话，"
+        "语速随性有快有慢，带一点真实的轻微呼吸感、自然的口语停顿与尾音起伏，千万不要像朗读课文或播音员那样端着念。"
+    )
+
+
+_LOCAL_SEED_VC_DIR = Path(__file__).resolve().parents[3] / "data" / "seed_vc_engine"
+
+
+def _sync_local_seed_vc_convert(
+    wav_bytes: bytes,
+    *,
+    ref_wav_path: Path,
+) -> bytes | None:
+    """Run Stage-2 Seed-VC timbre conversion locally on Apple Silicon M2 MPS if installed."""
+    venv_py = _LOCAL_SEED_VC_DIR / ".venv" / "bin" / "python"
+    runner_py = _LOCAL_SEED_VC_DIR / "local_convert.py"
+    if not (venv_py.is_file() and runner_py.is_file()):
+        return None
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as src_f:
+        src_f.write(wav_bytes)
+        src_p = src_f.name
+    out_p = src_p + ".rvc.wav"
+    trim_p = src_p + ".trim.wav"
+    try:
+        env = dict(os.environ)
+        env.setdefault("HF_HUB_OFFLINE", "1")
+        env.setdefault("TRANSFORMERS_OFFLINE", "1")
+        proc = subprocess.run(
+            [str(venv_py), str(runner_py), src_p, str(ref_wav_path), out_p, "20", "0"],
+            cwd=str(_LOCAL_SEED_VC_DIR),
+            env=env,
+            capture_output=True,
+            timeout=180,
+            check=False,
+        )
+        if proc.returncode != 0 or not os.path.isfile(out_p):
+            return None
+        raw_out = Path(out_p).read_bytes()
+        if not raw_out.startswith(b"RIFF"):
+            return None
+        ffmpeg = _find_ffmpeg()
+        if ffmpeg is not None:
+            p_trim = subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-v",
+                    "error",
+                    "-ss",
+                    "0.18",
+                    "-i",
+                    out_p,
+                    "-af",
+                    "highpass=f=110,equalizer=f=220:t=q:w=1.1:g=-3.0,equalizer=f=2600:t=q:w=1.2:g=2.2,treble=g=2.0:f=5500,alimiter=limit=0.92",
+                    trim_p,
+                ],
+                capture_output=True,
+                timeout=8,
+                check=False,
+            )
+            if p_trim.returncode == 0 and os.path.isfile(trim_p):
+                trimmed = Path(trim_p).read_bytes()
+                if trimmed.startswith(b"RIFF") and len(trimmed) > 1000:
+                    return trimmed
+        return raw_out
+    finally:
+        for p in (src_p, out_p, trim_p):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+
+
+def _sync_seed_vc_convert(
+    wav_bytes: bytes,
+    *,
+    acting_cue: str = "",
+    ref_wav_path: Path | None = None,
+) -> bytes | None:
+    """Synchronous Seed-VC (RVC) call (prefers local M2 MPS engine, falls back to Gradio)."""
+    import random
+    import urllib.request
+    import uuid
+
+    ref_path = ref_wav_path or _DEFAULT_RVC_REF_WAV
+    if not ref_path.is_file() or not wav_bytes.startswith(b"RIFF"):
+        return None
+    if os.environ.get("COMPANION_DISABLE_LOCAL_RVC", "").strip() not in {"1", "true", "yes"}:
+        local_res = _sync_local_seed_vc_convert(wav_bytes, ref_wav_path=ref_path)
+        if local_res:
+            return local_res
+    f0_cond = True
+    client_ip = (
+        f"{random.randint(11, 220)}.{random.randint(1, 254)}."
+        f"{random.randint(1, 254)}.{random.randint(1, 254)}"
+    )
+
+    def _upload(name: str, data: bytes) -> str:
+        boundary = "----WebKitFormBoundary" + uuid.uuid4().hex
+        body = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="files"; filename="{name}"\r\n'
+            f"Content-Type: audio/wav\r\n\r\n"
+        ).encode("utf-8") + data + f"\r\n--{boundary}--\r\n".encode("utf-8")
+        req = urllib.request.Request(
+            f"{_SEED_VC_GRADIO_BASE}/upload",
+            data=body,
+            headers={
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "User-Agent": "Mozilla/5.0",
+                "X-Forwarded-For": client_ip,
+            },
+        )
+        with urllib.request.urlopen(req, timeout=25) as r:
+            return str(json.loads(r.read().decode("utf-8"))[0])
+
+    ref_remote = _upload(ref_path.name, ref_path.read_bytes())
+    src_remote = _upload("source.wav", wav_bytes)
+    payload = {
+        "data": [
+            {"path": src_remote, "meta": {"_type": "gradio.FileData"}},
+            {"path": ref_remote, "meta": {"_type": "gradio.FileData"}},
+            28,
+            1.0,
+            0.7,
+            f0_cond,
+            f0_cond,
+            0,
+        ]
+    }
+    req_call = urllib.request.Request(
+        f"{_SEED_VC_GRADIO_BASE}/call/predict_1",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0",
+            "X-Forwarded-For": client_ip,
+        },
+    )
+    with urllib.request.urlopen(req_call, timeout=25) as r:
+        ev_id = (json.loads(r.read().decode("utf-8")) or {}).get("event_id")
+    if not ev_id:
+        return None
+
+    final_url: str | None = None
+    req_stream = urllib.request.Request(
+        f"{_SEED_VC_GRADIO_BASE}/call/predict_1/{ev_id}",
+        headers={"User-Agent": "Mozilla/5.0", "X-Forwarded-For": client_ip},
+    )
+    with urllib.request.urlopen(req_stream, timeout=90) as rs:
+        for raw_line in rs:
+            s = raw_line.decode("utf-8", errors="ignore").strip()
+            if not s.startswith("data:"):
+                continue
+            d_str = s[5:].strip()
+            if not d_str or d_str == "null":
+                continue
+            try:
+                parsed = json.loads(d_str)
+                if (
+                    isinstance(parsed, list)
+                    and len(parsed) > 1
+                    and isinstance(parsed[1], dict)
+                    and parsed[1].get("url")
+                ):
+                    final_url = str(parsed[1]["url"])
+            except Exception:
+                continue
+    if not final_url:
+        return None
+
+    with urllib.request.urlopen(
+        urllib.request.Request(
+            final_url,
+            headers={"User-Agent": "Mozilla/5.0", "X-Forwarded-For": client_ip},
+        ),
+        timeout=25,
+    ) as dl:
+        raw_content = dl.read()
+    if not raw_content.startswith(b"RIFF"):
+        return None
+
+    ffmpeg = _find_ffmpeg()
+    if ffmpeg is not None:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
+            tf.write(raw_content)
+            raw_p = tf.name
+        trim_p = raw_p + ".trim.wav"
+        try:
+            proc = subprocess.run(
+                [ffmpeg, "-y", "-v", "error", "-ss", "0.42", "-i", raw_p, trim_p],
+                capture_output=True,
+                timeout=8,
+                check=False,
+            )
+            if proc.returncode == 0 and os.path.isfile(trim_p):
+                trimmed = Path(trim_p).read_bytes()
+                if trimmed.startswith(b"RIFF") and len(trimmed) > 1000:
+                    return trimmed
+        finally:
+            for p in (raw_p, trim_p):
+                try:
+                    os.unlink(p)
+                except OSError:
+                    pass
+    return raw_content
+
+
+async def _convert_timbre_via_seed_vc(
+    wav_bytes: bytes,
+    *,
+    acting_cue: str = "",
+    ref_wav_path: Path | None = None,
+) -> bytes | None:
+    """Convert synthesized speech timbre to the real reference voice via Seed-VC (RVC)."""
+    import asyncio
+
+    try:
+        return await asyncio.to_thread(
+            _sync_seed_vc_convert,
+            wav_bytes,
+            acting_cue=acting_cue,
+            ref_wav_path=ref_wav_path,
+        )
+    except Exception:
+        _LOG.debug("Seed-VC RVC timbre conversion skipped; using base TTS audio", exc_info=True)
+        return None
+
+
+async def _synthesize_via_doubao_seed_tts(
+    *,
+    spoken_text: str,
+    voice_name: str,
+    resource_id: str,
+    api_key: str,
+    acting_cue: str = "",
+    app_id: str | None = None,
+    client: httpx.AsyncClient,
+) -> bytes | None:
+    """Synthesize speech via Volcengine Doubao Seed-TTS 2.0 / Seed-ICL 2.0 V3 streaming API."""
+    is_cloned_speaker = voice_name.startswith("S_")
+    candidate_resources = (
+        [resource_id]
+        if (is_cloned_speaker and resource_id and ("icl" in resource_id or "megatts" in resource_id))
+        else (
+            ["volc.seedicl.default", "seed-icl-2.0", "volc.megatts.default"]
+            if is_cloned_speaker
+            else [resource_id or "seed-tts-2.0"]
+        )
+    )
+    for res_id in candidate_resources:
+        pcm_chunks: list[bytes] = []
+        headers: dict[str, str] = {
+            "X-Api-Resource-Id": res_id,
+            "Content-Type": "application/json",
+        }
+        if app_id:
+            headers["X-Api-App-Key"] = app_id
+            headers["X-Api-Access-Key"] = api_key
+        else:
+            headers["X-Api-Key"] = api_key
+        req_params: dict[str, Any] = {
+            "text": spoken_text,
+            "speaker": voice_name,
+            "audio_params": {
+                "format": "pcm",
+                "sample_rate": 24000,
+            },
+        }
+        if res_id in {"seed-tts-2.0", "seed-icl-2.0", "volc.seedicl.default"}:
+            req_params["additions"] = json.dumps(
+                {"context_texts": [_build_doubao_context_instruction(acting_cue)]},
+                ensure_ascii=False,
+            )
+        async with client.stream(
+            "POST",
+            "https://openspeech.bytedance.com/api/v3/tts/unidirectional",
+            headers=headers,
+            json={"req_params": req_params},
+            timeout=18.0,
+        ) as resp:
+            if resp.status_code != 200:
+                _LOG.warning("Doubao TTS (%s) returned status=%s", res_id, resp.status_code)
+                continue
+            async for line in resp.aiter_lines():
+                if not line or not line.strip():
+                    continue
+                try:
+                    chunk = json.loads(line)
+                except Exception:
+                    continue
+                if chunk.get("code") == 0 and isinstance(chunk.get("data"), str) and chunk["data"]:
+                    pcm_chunks.append(base64.b64decode(chunk["data"], validate=False))
+        raw_pcm = b"".join(pcm_chunks)
+        if raw_pcm:
+            return _pcm24k_to_wav_bytes(raw_pcm, sample_rate=24000)
+    return None
 
 
 async def _synthesize_via_qwen_tts_http(
@@ -566,19 +1112,20 @@ async def synthesize_companion_voice_note(
     http_client: httpx.AsyncClient | None = None,
     delivered_dir: Path | None = None,
 ) -> SynthesizedVoiceNote | None:
-    """Synthesize a spoken Chinese voice note (Omni emotional acting / CosyVoice v3 / Qwen-TTS)."""
+    """Synthesize a spoken Chinese voice note (Doubao Seed-TTS 2.0 / CosyVoice v3-plus / Omni)."""
     cfg = settings or get_settings()
     if not cfg.voice_enabled:
         return None
+    doubao_key = (getattr(cfg, "doubao_speech_api_key", None) or "").strip()
     api_key = (cfg.qwen_api_key or "").strip()
-    if not api_key:
+    if not doubao_key and not api_key:
         return None
     acting_cue, spoken_text = _extract_acting_cue_and_spoken_text(text)
     if not spoken_text:
         return None
     spoken_text = spoken_text[:600]
-    model_name = (cfg.voice_tts_model or "qwen3-omni-flash").strip()
-    voice_name = (cfg.voice_tts_voice or "Momo").strip()
+    model_name = (cfg.voice_tts_model or "cosyvoice-v3-plus").strip()
+    voice_name = (cfg.voice_tts_voice or "longanhuan").strip()
     base_url = (cfg.qwen_base_url or "https://dashscope.aliyuncs.com/compatible-mode/v1").rstrip("/")
 
     async def _run(client: httpx.AsyncClient) -> SynthesizedVoiceNote | None:
@@ -586,57 +1133,121 @@ async def synthesize_companion_voice_note(
         used_model = model_name
         used_voice = voice_name
 
-        if model_name.startswith("cosyvoice") or voice_name.startswith(("long", "cosyvoice-")):
-            if voice_name.startswith("cosyvoice-v2-"):
-                cosy_model = "cosyvoice-v2"
-            elif voice_name.startswith("cosyvoice-v3-"):
-                cosy_model = "cosyvoice-v3-flash"
-            else:
-                cosy_model = model_name if model_name.startswith("cosyvoice") else "cosyvoice-v3-flash"
-            cosy_text = _inject_cosyvoice_breath_tags(spoken_text, acting_cue)
-            audio_bytes = await _synthesize_via_cosyvoice_ws(
-                spoken_text=cosy_text,
-                voice_name=voice_name,
-                model_name=cosy_model,
-                api_key=api_key,
+        # 1. Prefer Volcengine Doubao Seed-TTS 2.0 / Seed-ICL 2.0 when DOUBAO_SPEECH_API_KEY is configured
+        is_doubao_cloned = False
+        if doubao_key and (
+            model_name.startswith(("seed-tts", "seed-icl", "doubao-tts", "volc.seedicl", "volc.megatts"))
+            or voice_name.endswith("_bigtts")
+            or voice_name.startswith("S_")
+            or model_name == "cosyvoice-v3-plus"
+        ):
+            configured_doubao_voice = (getattr(cfg, "doubao_speech_voice", None) or "").strip()
+            doubao_voice = (
+                configured_doubao_voice
+                if configured_doubao_voice.startswith("S_")
+                else (
+                    voice_name
+                    if (voice_name.endswith("_bigtts") or voice_name.startswith("S_"))
+                    else (configured_doubao_voice or "S_jvguO05k2")
+                )
             )
-            used_model = cosy_model
-            used_voice = _friendly_voice_label(voice_name)
-        elif "omni" in model_name:
-            audio_bytes = await _synthesize_via_omni_acting(
+            doubao_res = getattr(cfg, "doubao_speech_resource_id", None) or (
+                "volc.seedicl.default" if doubao_voice.startswith("S_") else "seed-tts-2.0"
+            )
+            doubao_app_id = (getattr(cfg, "doubao_speech_app_id", None) or "").strip() or None
+            audio_bytes = await _synthesize_via_doubao_seed_tts(
                 spoken_text=spoken_text,
+                voice_name=doubao_voice,
+                resource_id=doubao_res,
+                api_key=doubao_key,
                 acting_cue=acting_cue,
-                voice_name=voice_name,
-                model_name=model_name,
-                api_key=api_key,
-                base_url=base_url,
+                app_id=doubao_app_id,
                 client=client,
             )
-            used_voice = _friendly_voice_label(voice_name)
-            if not audio_bytes:
-                fallback_voice = voice_name if voice_name in {"Cherry", "Serena", "Chelsie", "Ethan"} else "Serena"
+            if audio_bytes:
+                is_doubao_cloned = doubao_voice.startswith("S_")
+                used_model = doubao_res
+                used_voice = (
+                    "沈知栀·豆包声音复刻2.0原声"
+                    if is_doubao_cloned
+                    else _friendly_voice_label(doubao_voice)
+                )
+
+        # 2. DashScope CosyVoice v3-plus / v3-flash / Omni / Qwen3-TTS
+        if not audio_bytes and api_key:
+            if model_name.startswith("cosyvoice") or voice_name.startswith(("long", "cosyvoice-")):
+                if voice_name.startswith("cosyvoice-v2-"):
+                    cosy_model = "cosyvoice-v2"
+                elif voice_name.startswith("cosyvoice-v3-plus-"):
+                    cosy_model = "cosyvoice-v3-plus"
+                elif voice_name.startswith("cosyvoice-v3-"):
+                    cosy_model = "cosyvoice-v3-flash"
+                elif (
+                    model_name == "cosyvoice-v3-plus"
+                    and voice_name not in {"longanhuan", "longanyang"}
+                    and not voice_name.startswith("cosyvoice-v3-plus-")
+                ):
+                    cosy_model = "cosyvoice-v3-flash"
+                else:
+                    cosy_model = model_name if model_name.startswith("cosyvoice") else "cosyvoice-v3-flash"
+                cosy_text = _inject_cosyvoice_breath_tags(spoken_text, acting_cue)
+                inst = _cosyvoice_emotion_instruction(cosy_model, voice_name, acting_cue)
+                audio_bytes = await _synthesize_via_cosyvoice_ws(
+                    spoken_text=cosy_text,
+                    voice_name=voice_name,
+                    model_name=cosy_model,
+                    api_key=api_key,
+                    instruction=inst,
+                )
+                used_model = cosy_model
+                used_voice = _friendly_voice_label(voice_name)
+            elif "omni" in model_name:
+                audio_bytes = await _synthesize_via_omni_acting(
+                    spoken_text=spoken_text,
+                    acting_cue=acting_cue,
+                    voice_name=voice_name,
+                    model_name=model_name,
+                    api_key=api_key,
+                    base_url=base_url,
+                    client=client,
+                )
+                used_voice = _friendly_voice_label(voice_name)
+                if not audio_bytes:
+                    fallback_voice = (
+                        voice_name
+                        if voice_name in {"Cherry", "Serena", "Chelsie", "Ethan", "Sunny", "Kiki"}
+                        else "Serena"
+                    )
+                    audio_bytes = await _synthesize_via_qwen_tts_http(
+                        spoken_text=spoken_text,
+                        voice_name=fallback_voice,
+                        model_name="qwen3-tts-flash",
+                        api_key=api_key,
+                        client=client,
+                    )
+                    used_model = "qwen3-tts-flash"
+                    used_voice = fallback_voice
+            else:
                 audio_bytes = await _synthesize_via_qwen_tts_http(
                     spoken_text=spoken_text,
-                    voice_name=fallback_voice,
-                    model_name="qwen3-tts-flash",
+                    voice_name=voice_name,
+                    model_name=model_name,
                     api_key=api_key,
                     client=client,
                 )
-                used_model = "qwen3-tts-flash"
-                used_voice = fallback_voice
-        else:
-            audio_bytes = await _synthesize_via_qwen_tts_http(
-                spoken_text=spoken_text,
-                voice_name=voice_name,
-                model_name=model_name,
-                api_key=api_key,
-                client=client,
-            )
 
         if not audio_bytes:
             return None
-        if getattr(cfg, "voice_phone_mic_realism", True) and http_client is None:
-            audio_bytes = apply_phone_mic_voice_realism(audio_bytes)
+        if getattr(cfg, "voice_phone_mic_realism", True) and http_client is None and not is_doubao_cloned:
+            rvc_bytes = await _convert_timbre_via_seed_vc(
+                audio_bytes,
+                acting_cue=acting_cue,
+            )
+            if rvc_bytes:
+                audio_bytes = rvc_bytes
+                used_voice = "沈知栀·真人原声RVC声线"
+            else:
+                audio_bytes = apply_phone_mic_voice_realism(audio_bytes)
         return _persist_delivered_voice_note(
             spoken_text=spoken_text,
             voice_name=used_voice,

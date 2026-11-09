@@ -9,8 +9,14 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import asdict
+import re
+from collections import OrderedDict
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from contextvars import ContextVar
+from dataclasses import asdict, dataclass
 from datetime import datetime
+from functools import lru_cache
 from types import MappingProxyType
 
 from .appraisal_model_view import (
@@ -20,6 +26,7 @@ from .appraisal_model_view import (
 from .life_source_origin import LifeSourceOrigin
 from .affect_model_view import compact_affect_for_model_view
 from .life_context_presentation import (
+    ALIGNED_LEAN_TABLE_COMPILER_VERSIONS,
     SCOPED_DIARY_COMPILER_VERSIONS, SOURCE_KIND_DIARY_COMPILER_VERSIONS,
     regroup_scoped_week_diary,
 )
@@ -493,6 +500,7 @@ def _walking_in_impression(
         summary = entry.get("reflection_summary")
         if not (isinstance(summary, str) and summary.strip()):
             continue
+        clean_sum = summary.strip().replace("「", "").replace("」", "")
         first = _instant(entry.get("first_seen"))
         age = (
             _elapsed_phrase(first, logical_time)
@@ -500,9 +508,9 @@ def _walking_in_impression(
             else None
         )
         if age and age != "刚刚":
-            parts.append(f"心里还搁着（{age}记下的）：{summary.strip()[:80]}")
+            parts.append(f"心里还搁着（{age}记下的）：{clean_sum[:80]}")
         else:
-            parts.append(f"心里还搁着：{summary.strip()[:80]}")
+            parts.append(f"心里还搁着：{clean_sum[:80]}")
         if len(parts) >= 3:
             break
     if not parts:
@@ -515,10 +523,13 @@ def _walking_in_activity(
     current_activities: object,
     recently_ended_activities: object,
     situation: object,
+    pending_world_occurrences: object = None,
     logical_time: datetime | None = None,
     actor_ref: str | None = None,
+    companion_texts: Sequence[str] = (),
 ) -> str | None:
     parts: list[str] = []
+    has_active_activity = False
     if isinstance(current_activities, list):
         for entry in current_activities:
             if not isinstance(entry, dict):
@@ -527,10 +538,16 @@ def _walking_in_activity(
             if isinstance(intention, Mapping):
                 intention = intention.get("text") or intention.get("summary")
             kind = entry.get("activity_kind")
-            label = (
-                intention.strip()[:60]
+            raw_label = (
+                intention.strip()
                 if isinstance(intention, str) and intention.strip()
                 else (kind.strip() if isinstance(kind, str) and kind.strip() else "")
+            )
+            label = (
+                raw_label.rstrip("。；; ")
+                .replace("。", "，")
+                .replace("；", "，")
+                .replace(";", "，")[:60]
             )
             if not label:
                 continue
@@ -557,17 +574,95 @@ def _walking_in_activity(
                     meta.append("同处：" + "、".join(companions[:3]))
             suffix = f"（{'，'.join(meta)}）" if meta else ""
             parts.append(f"此刻正在：{label}{suffix}")
+            has_active_activity = True
+            break
+    pending_items = (
+        pending_world_occurrences.get("items")
+        if isinstance(pending_world_occurrences, Mapping)
+        else pending_world_occurrences
+        if isinstance(pending_world_occurrences, list)
+        else None
+    )
+    if isinstance(pending_items, list):
+        for occ in pending_items:
+            if not isinstance(occ, dict):
+                continue
+            if occ.get("privacy_class") == "withhold":
+                continue
+            occ_status = occ.get("status")
+            if occ_status not in {None, "active"}:
+                continue
+            premise = occ.get("premise")
+            if isinstance(premise, Mapping):
+                premise_text = premise.get("text") or premise.get("summary")
+            elif isinstance(premise, str):
+                premise_text = premise
+            else:
+                premise_text = None
+            if not isinstance(premise_text, str) or not premise_text.strip():
+                continue
+            clean_premise = (
+                premise_text.strip()
+                .rstrip("。；; ")
+                .replace("。", "，")
+                .replace("；", "，")
+                .replace(";", "，")[:90]
+            )
+            occ_meta: list[str] = []
+            activated = _instant(occ.get("activated_at"))
+            occ_age = (
+                _elapsed_phrase(activated, logical_time)
+                if activated is not None and logical_time is not None
+                else None
+            )
+            if occ_age and occ_age != "刚刚":
+                occ_meta.append(f"{occ_age}开始")
+            occ_suffix = f"（{'，'.join(occ_meta)}）" if occ_meta else ""
+            parts.append(f"此刻身边正发生：{clean_premise}{occ_suffix}")
             break
     if isinstance(recently_ended_activities, list) and logical_time is not None:
         latest_sleep_end: datetime | None = None
+        recent_non_sleep: tuple[datetime, str] | None = None
         for entry in recently_ended_activities:
             if not isinstance(entry, dict):
                 continue
             kind = str(entry.get("activity_kind") or "")
             ended = _instant(entry.get("ended_at"))
-            if ended is not None and ended <= logical_time and kind.startswith("sleep"):
+            if ended is None or ended > logical_time:
+                continue
+            if kind.startswith("sleep"):
                 if latest_sleep_end is None or ended > latest_sleep_end:
                     latest_sleep_end = ended
+            elif not has_active_activity and 0 <= (logical_time - ended).total_seconds() <= 5400:
+                intention = entry.get("accepted_intention")
+                if isinstance(intention, Mapping):
+                    intention = intention.get("text") or intention.get("summary")
+                raw_ended_label = (
+                    intention.strip()
+                    if isinstance(intention, str) and intention.strip()
+                    else (kind.strip() if kind.strip() else "")
+                )
+                ended_label = (
+                    raw_ended_label.rstrip("。；; ")
+                    .replace("。", "，")
+                    .replace("；", "，")
+                    .replace(";", "，")[:60]
+                )
+                if ended_label and (recent_non_sleep is None or ended > recent_non_sleep[0]):
+                    recent_non_sleep = (ended, ended_label)
+        if recent_non_sleep is not None:
+            ended_at, ended_label = recent_non_sleep
+            ended_age = _elapsed_phrase(ended_at, logical_time)
+            ended_meta = (
+                [f"{ended_age}时段已过"]
+                if ended_age and ended_age != "刚刚"
+                else ["时段刚过"]
+            )
+            ended_meta.append("仅原定意图，无实际成行记录，勿称已去或已办完")
+            if _is_unshared_in_companion_dialogue(ended_label, companion_texts):
+                ended_meta.append("私下打算未在聊天提过")
+            ended_suffix = f"（{'，'.join(ended_meta)}）"
+            parts.append(f"此前个人打算：{ended_label}{ended_suffix}")
         if latest_sleep_end is not None:
             awake_hours = int((logical_time - latest_sleep_end).total_seconds() // 3600)
             if awake_hours >= 1:
@@ -589,6 +684,16 @@ def _walking_in_activity(
     if not parts:
         return None
     return "；".join(parts)
+
+
+def _sanitize_env_piece(text: str, limit: int = 90) -> str:
+    cleaned = " ".join(text.strip().split())[:limit].strip()
+    if len(cleaned) > 1:
+        cleaned = (
+            cleaned[:-1].replace("。", "，").replace("；", "，").replace(";", "，")
+            + cleaned[-1].replace("；", "，").replace(";", "，")
+        )
+    return cleaned
 
 
 def _walking_in_environment(
@@ -617,13 +722,25 @@ def _walking_in_environment(
         ),
         reverse=True,
     )
+    immediate_attempt: str | None = None
+    immediate_env: str | None = None
+    today_attempts: list[str] = []
+    today_envs: list[str] = []
     for entry in ordered_items:
         if isinstance(entry.get("world_planning"), dict) and entry.get("world_planning"):
             continue
-        stamp = _instant(entry.get("settled_at") or entry.get("occurred_to") or entry.get("occurred_from"))
+        if logical_time is not None and entry.get("context_kind") == "committed_experience":
+            continue
+        stamp = _instant(
+            entry.get("settled_at")
+            or entry.get("occurred_to")
+            or entry.get("occurred_from")
+            or entry.get("committed_at")
+        )
+        elapsed_sec: float | None = None
         if logical_time is not None and stamp is not None:
             elapsed_sec = (logical_time - stamp).total_seconds()
-            if elapsed_sec < 0 or (
+            if elapsed_sec < 0 or elapsed_sec > 6 * 3600 or (
                 elapsed_sec > 2 * 3600
                 and stamp.astimezone(ZoneInfo("Asia/Shanghai")).date().isoformat() != today
             ):
@@ -634,47 +751,91 @@ def _walking_in_environment(
         consequence = content.get("world_consequence")
         if not isinstance(consequence, dict):
             continue
-        recent_enough_for_attempt = (
+        is_immediate = (
             logical_time is None
             or stamp is None
-            or 0 <= (logical_time - stamp).total_seconds() <= 5400
+            or (elapsed_sec is not None and 0 <= elapsed_sec <= 5400)
         )
-        recent_enough_for_env = (
-            logical_time is None
-            or stamp is None
-            or 0 <= (logical_time - stamp).total_seconds() <= 5400
+        is_today_recent = (
+            not is_immediate
+            and elapsed_sec is not None
+            and 0 <= elapsed_sec <= 6 * 3600
+            and stamp is not None
+            and stamp.astimezone(ZoneInfo("Asia/Shanghai")).date().isoformat() == today
         )
-        attempt_part: str | None = None
         attempt = consequence.get("authorized_attempt_result")
-        if (
-            recent_enough_for_attempt
-            and isinstance(attempt, dict)
+        attempt_text = (
+            attempt.get("text").strip()
+            if isinstance(attempt, dict)
             and isinstance(attempt.get("text"), str)
             and attempt.get("text").strip()
-        ):
-            attempt_part = f"刚经历：{attempt['text'].strip()[:80]}"
-        env_part: str | None = None
+            else None
+        )
+        char_resp = content.get("character_response")
+        char_resp_text = (
+            char_resp.get("response_text").strip()
+            if isinstance(char_resp, dict)
+            and isinstance(char_resp.get("response_text"), str)
+            and char_resp.get("response_text").strip()
+            else None
+        )
         env = consequence.get("environment")
-        if recent_enough_for_env:
-            if (
-                isinstance(env, str)
-                and env.strip()
-                and not env.strip().startswith(("#", "{"))
-            ):
-                env_part = f"当下环境：{env.strip()[:80]}"
-            elif isinstance(env, dict):
-                pieces = [
-                    str(env[k]).strip()
-                    for k in ("setting", "weather", "lighting", "ambient", "sensory", "summary", "text")
-                    if isinstance(env.get(k), str)
-                    and str(env.get(k)).strip()
-                    and not str(env.get(k)).strip().startswith(("#", "{"))
-                ]
-                if pieces:
-                    env_part = "当下环境：" + "，".join(pieces)[:80]
-        combined = [part for part in (attempt_part, env_part) if part]
-        if combined:
-            return "；".join(combined)
+        env_raw: str | None = None
+        if (
+            isinstance(env, str)
+            and env.strip()
+            and not env.strip().startswith(("#", "{"))
+        ):
+            env_raw = env.strip()
+        elif isinstance(env, dict):
+            pieces = [
+                str(env[k]).strip()
+                for k in ("setting", "weather", "lighting", "ambient", "sensory", "summary", "text")
+                if isinstance(env.get(k), str)
+                and str(env.get(k)).strip()
+                and not str(env.get(k)).strip().startswith(("#", "{"))
+            ]
+            if pieces:
+                env_raw = "，".join(pieces)
+        if env_raw and env_raw.startswith(("华东师大校园学期日常安排", "嘉兴家里书店经营季安排")):
+            env_raw = None
+
+        if is_immediate:
+            if immediate_attempt is None:
+                if attempt_text:
+                    immediate_attempt = _sanitize_env_piece(attempt_text, 80)
+                elif logical_time is None and char_resp_text:
+                    immediate_attempt = _sanitize_env_piece(char_resp_text, 80)
+            if immediate_env is None and env_raw:
+                immediate_env = _sanitize_env_piece(env_raw, 80)
+            if immediate_attempt is not None and immediate_env is not None:
+                break
+        elif is_today_recent:
+            if attempt_text and len(today_attempts) < 2:
+                piece = _sanitize_env_piece(attempt_text, 80)
+                if piece and piece not in today_attempts:
+                    today_attempts.append(piece)
+            if env_raw and len(today_envs) < 2:
+                env_piece = _sanitize_env_piece(env_raw, 80)
+                if env_piece and env_piece not in today_envs:
+                    today_envs.append(env_piece)
+
+    attempt_part: str | None = None
+    if immediate_attempt:
+        attempt_part = f"刚经历：{immediate_attempt}"
+    elif today_attempts:
+        attempt_part = "刚经历：" + "｜".join(today_attempts)
+    env_candidates = [p for p in ([immediate_env] if immediate_env else []) + today_envs if p]
+    dedup_envs: list[str] = []
+    for p in env_candidates:
+        if p not in dedup_envs and len(dedup_envs) < 2:
+            dedup_envs.append(p)
+    env_part = f"当下环境：{'｜'.join(dedup_envs)}" if dedup_envs else None
+    if env_part and logical_time is not None and attempt_part is None:
+        env_part += "（客观环境动态，未记本人亲身出勤，勿声称本人已去上课或亲历）"
+    combined = [part for part in (attempt_part, env_part) if part]
+    if combined:
+        return "；".join(combined)
     return None
 
 
@@ -815,14 +976,502 @@ _AFFECT_CN_LABELS: dict[str, str] = {
 }
 
 
+def _felt_affect_experiential_gloss(dim_peak: Mapping[str, int]) -> str:
+    """Keep affect presentation free of hardcoded attitude/behavior scripts."""
+    _ = dim_peak
+    return ""
+
+
+def _extract_authored_relationship_note(
+    entry: Mapping[str, object], *, is_npc: bool = False
+) -> str | None:
+    raw_signals = entry.get("recent_authored_signals")
+    if not isinstance(raw_signals, (list, tuple)):
+        return None
+    for item in raw_signals:
+        if not isinstance(item, Mapping):
+            continue
+        sig = str(item.get("signal_code") or "").strip()
+        if not sig or not any("\u4e00" <= ch <= "\u9fff" for ch in sig):
+            continue
+        sig_clean = sig.rstrip("。；，").replace("。", "，").replace("；", "，")[:72]
+        rat = str(item.get("rationale_code") or "").strip()
+        rat_clean = (
+            rat.rstrip("。；，").replace("。", "，").replace("；", "，")[:72]
+            if any("\u4e00" <= ch <= "\u9fff" for ch in rat)
+            else ""
+        )
+        note = (
+            f"{sig_clean}（{rat_clean}）"
+            if rat_clean and rat_clean not in sig_clean
+            else sig_clean
+        )
+        if is_npc:
+            subj = str(entry.get("subject_ref") or "").strip()
+            return (
+                f"我最近对身边人（{subj}）的感受：{note}"
+                if subj
+                else f"我最近对身边人的感受：{note}"
+            )
+        return f"我最近对我们关系的定性与感受：{note}"
+    return None
+
+
+def _walking_in_relational_tension(
+    relationship: object, protagonist_npc_relationships: object = None
+) -> str | None:
+    """Surface self-authored relationship notes without hardcoded attitude scripts."""
+
+    entries = _material_entries({"relationship": relationship}, "relationship") if relationship is not None else []
+    all_pieces: list[str] = []
+    for entry in entries:
+        if not isinstance(entry, Mapping) or entry.get("privacy_class") == "withhold":
+            continue
+        authored_note = _extract_authored_relationship_note(entry, is_npc=False)
+        if authored_note:
+            all_pieces.append(authored_note)
+            break
+        vars_map = entry.get("variables") if isinstance(entry.get("variables"), Mapping) else entry
+        closeness = vars_map.get("closeness_bp")
+        trust = vars_map.get("trust_bp")
+        reliability = vars_map.get("reliability_bp")
+        repair_conf = vars_map.get("repair_confidence_bp")
+        if isinstance(closeness, int) and not isinstance(closeness, bool):
+            rel_val = reliability if isinstance(reliability, int) and not isinstance(reliability, bool) else 1000
+            rep_val = repair_conf if isinstance(repair_conf, int) and not isinstance(repair_conf, bool) else 1000
+            trust_val = trust if isinstance(trust, int) and not isinstance(trust, bool) else closeness
+            all_pieces.append(
+                f"当前关系状态坐标：亲近{closeness}bp、信任{trust_val}bp、靠谱度{rel_val}bp、修复信心{rep_val}bp"
+            )
+            break
+
+    npc_entries = (
+        _material_entries(
+            {"protagonist_npc_relationships": protagonist_npc_relationships},
+            "protagonist_npc_relationships",
+        )
+        if protagonist_npc_relationships is not None
+        else []
+    )
+    for npc_entry in npc_entries:
+        if not isinstance(npc_entry, Mapping) or npc_entry.get("privacy_class") == "withhold":
+            continue
+        npc_note = _extract_authored_relationship_note(npc_entry, is_npc=True)
+        if npc_note:
+            all_pieces.append(npc_note)
+            break
+
+    if all_pieces:
+        return "此刻心里的关系拉扯：" + "｜".join(all_pieces)
+    return None
+
+
+_GENERIC_CHAT_BIGRAMS: frozenset[str] = frozenset(
+    {
+        "今天", "昨天", "明天", "今晚", "明早", "上午", "中午", "下午", "晚上", "半夜",
+        "最近", "近期", "下周", "上周", "这周", "学期", "下学", "第一", "一次", "第一次",
+        "已经", "暂时", "决定", "完成", "开始", "结束", "关闭", "确认", "状态", "预期",
+        "半小", "小时", "时间", "日期", "知栀", "自己", "个人", "一起", "大家", "大伙",
+        "那头", "这边", "那边", "这个", "那个", "一点", "一下", "一些", "不再", "处于",
+        "需要", "可以", "没有", "不能", "不是", "之后", "之前", "当时", "现在", "目前",
+        "文学", "材料", "名单", "名额", "活动", "周末", "考试", "期末", "复习", "老师",
+        "同学", "上课", "课程", "教室", "寝室", "宿舍", "通知", "登记", "提交", "补交",
+        "批复", "分工", "安排", "事情", "东西", "问题", "情况", "感觉", "心里", "脑子",
+        "你们", "我们", "他们", "怎么", "么样", "好像", "挺多", "身上", "多事", "看看",
+        "说说", "到底", "觉得", "知道", "干嘛", "忙啥", "什么", "哪里", "哪个", "这么",
+        "那么", "还是", "或者", "因为", "所以", "如果", "虽然", "但是", "不过", "其实",
+    }
+)
+
+_GENERIC_CHAT_TRIGRAMS: frozenset[str] = frozenset(
+    {
+        "第一次", "半小时", "下学期", "一个周", "个周末", "一上午", "一下午", "一整天",
+        "考试周", "试周前", "这两天", "前两天", "那两天", "这几天", "一点半", "七点半",
+        "八点半", "九点半", "十点半", "十一点", "十二点",
+    }
+)
+
+
+@dataclass(frozen=True)
+class ChatDisclosureLedger:
+    """All-time delivered companion messages and source-bound world_claims from the ledger."""
+
+    all_companion_texts: tuple[str, ...] = ()
+    disclosed_claims_by_ref: Mapping[str, dict[str, str]] = MappingProxyType({})
+
+
+_ACTIVE_CHAT_DISCLOSURE_LEDGER: ContextVar[ChatDisclosureLedger | None] = ContextVar(
+    "_ACTIVE_CHAT_DISCLOSURE_LEDGER",
+    default=None,
+)
+_DISCLOSURE_LEDGER_BY_CURSOR: OrderedDict[tuple[str, int, int, int], ChatDisclosureLedger] = OrderedDict()
+
+
+@lru_cache(maxsize=4096)
+def _extract_proposal_world_claims(
+    proposal_id: str, proposal_json: str
+) -> tuple[tuple[str, str, tuple[str, ...]], ...]:
+    try:
+        proposal = json.loads(proposal_json)
+    except Exception:
+        return ()
+    if not isinstance(proposal, Mapping):
+        return ()
+    extracted: list[tuple[str, str, tuple[str, ...]]] = []
+    for change in proposal.get("proposed_changes") or ():
+        if not isinstance(change, Mapping) or change.get("kind") != "expression_plan_transition":
+            continue
+        payload = change.get("payload")
+        if not isinstance(payload, Mapping):
+            continue
+        raw_canonical = payload.get("canonical_json")
+        if not isinstance(raw_canonical, str) or not raw_canonical:
+            continue
+        try:
+            canonical = json.loads(raw_canonical)
+        except Exception:
+            continue
+        if not isinstance(canonical, Mapping):
+            continue
+        for wc in canonical.get("world_claims") or ():
+            if not isinstance(wc, Mapping):
+                continue
+            claim_text = str(wc.get("claim_text") or "").strip()
+            scope = str(wc.get("scope") or "").strip()
+            srefs = tuple(
+                str(r).strip()
+                for r in (wc.get("source_refs") or ())
+                if isinstance(r, str) and str(r).strip()
+            )
+            if claim_text and srefs:
+                extracted.append((claim_text, scope, srefs))
+    return tuple(extracted)
+
+
+def _expand_disclosed_ref_keys(ref: str) -> tuple[str, ...]:
+    ref_s = ref.strip()
+    if not ref_s:
+        return ()
+    keys: list[str] = [ref_s]
+    if ref_s.startswith("biography-coordinate:"):
+        bare = ref_s.removeprefix("biography-coordinate:")
+        if bare and bare not in keys:
+            keys.append(bare)
+        if ":occurrence:" in bare:
+            occ = "occurrence:" + bare.split(":occurrence:", 1)[1]
+            if occ not in keys:
+                keys.append(occ)
+    if ":window:" in ref_s:
+        base_rec = ref_s.split(":window:", 1)[0]
+        if base_rec and base_rec not in keys:
+            keys.append(base_rec)
+    return tuple(keys)
+
+
+def compile_chat_disclosure_ledger(projection: object) -> ChatDisclosureLedger:
+    """Compile all-time delivered companion messages and disclosed world_claim source_refs from a LedgerProjection."""
+    receipts = getattr(projection, "execution_receipts", None)
+    if receipts is None:
+        return ChatDisclosureLedger()
+    delivered_actions = {
+        r.action_id
+        for r in receipts
+        if getattr(r, "observed_state", None) in {"provider_accepted", "delivered", "unknown"}
+        and isinstance(getattr(r, "action_id", None), str)
+    }
+    if not delivered_actions:
+        return ChatDisclosureLedger()
+    stored_payloads = getattr(projection, "stored_message_payloads", {}) or {}
+    proposal_audits = {
+        getattr(a, "proposal_id", ""): a
+        for a in (getattr(projection, "proposal_audits", ()) or ())
+        if getattr(a, "proposal_id", None)
+    }
+    texts: list[str] = []
+    seen_texts: set[str] = set()
+    disclosed_by_ref: dict[str, dict[str, str]] = {}
+
+    for manifest in getattr(projection, "expression_plan_manifests", ()) or ():
+        beats = getattr(manifest, "beats", ()) or ()
+        delivered_beats = [b for b in beats if getattr(b, "action_id", None) in delivered_actions]
+        if not delivered_beats:
+            continue
+        for b in delivered_beats:
+            pref = getattr(b, "payload_ref", None)
+            txt = stored_payloads.get(pref) if isinstance(pref, str) else None
+            if isinstance(txt, str) and txt.strip() and txt.strip() not in seen_texts:
+                seen_texts.add(txt.strip())
+                texts.append(txt.strip())
+        prop_id = getattr(manifest, "proposal_id", None)
+        audit = proposal_audits.get(prop_id) if isinstance(prop_id, str) else None
+        prop_json = getattr(audit, "proposal_json", None) if audit is not None else None
+        if isinstance(prop_id, str) and isinstance(prop_json, str) and prop_json:
+            for claim_text, scope, srefs in _extract_proposal_world_claims(prop_id, prop_json):
+                entry = {
+                    "claim_text": claim_text,
+                    "scope": scope,
+                    "proposal_id": prop_id,
+                }
+                for sref in srefs:
+                    for expanded in _expand_disclosed_ref_keys(sref):
+                        disclosed_by_ref[expanded] = entry
+
+    for m_reply in getattr(projection, "minimal_reply_manifests", ()) or ():
+        if getattr(m_reply, "action_id", None) not in delivered_actions:
+            continue
+        pref = getattr(m_reply, "payload_ref", None)
+        txt = stored_payloads.get(pref) if isinstance(pref, str) else None
+        if isinstance(txt, str) and txt.strip() and txt.strip() not in seen_texts:
+            seen_texts.add(txt.strip())
+            texts.append(txt.strip())
+
+    return ChatDisclosureLedger(
+        all_companion_texts=tuple(texts),
+        disclosed_claims_by_ref=MappingProxyType(disclosed_by_ref),
+    )
+
+
+def register_chat_disclosure_ledger(
+    projection: object,
+    *,
+    world_id: str | None = None,
+) -> ChatDisclosureLedger:
+    ledger = compile_chat_disclosure_ledger(projection)
+    w_id = world_id or str(getattr(projection, "world_id", "") or "")
+    w_rev = getattr(projection, "world_revision", 0)
+    d_rev = getattr(projection, "deliberation_revision", 0)
+    l_seq = getattr(projection, "ledger_sequence", 0)
+    if (
+        isinstance(w_rev, int)
+        and isinstance(d_rev, int)
+        and isinstance(l_seq, int)
+        and w_rev > 0
+        and l_seq > 0
+    ):
+        for key in (
+            (w_id, w_rev, d_rev, l_seq),
+            ("", w_rev, d_rev, l_seq),
+        ):
+            _DISCLOSURE_LEDGER_BY_CURSOR.pop(key, None)
+            _DISCLOSURE_LEDGER_BY_CURSOR[key] = ledger
+        while len(_DISCLOSURE_LEDGER_BY_CURSOR) > 64:
+            _DISCLOSURE_LEDGER_BY_CURSOR.popitem(last=False)
+    return ledger
+
+
+def lookup_chat_disclosure_ledger(
+    *,
+    world_id: str | None = None,
+    cursor: object = None,
+) -> ChatDisclosureLedger | None:
+    active = _ACTIVE_CHAT_DISCLOSURE_LEDGER.get()
+    if active is not None:
+        return active
+    if cursor is None:
+        return None
+    if isinstance(cursor, Mapping):
+        w_rev = cursor.get("world_revision")
+        d_rev = cursor.get("deliberation_revision", 0)
+        l_seq = cursor.get("ledger_sequence")
+    else:
+        w_rev = getattr(cursor, "world_revision", None)
+        d_rev = getattr(cursor, "deliberation_revision", 0)
+        l_seq = getattr(cursor, "ledger_sequence", None)
+    if not (isinstance(w_rev, int) and isinstance(d_rev, int) and isinstance(l_seq, int)):
+        return None
+    w_id = str(world_id or "")
+    return _DISCLOSURE_LEDGER_BY_CURSOR.get((w_id, w_rev, d_rev, l_seq)) or (
+        _DISCLOSURE_LEDGER_BY_CURSOR.get(("", w_rev, d_rev, l_seq)) if not w_id else None
+    )
+
+
+@contextmanager
+def chat_disclosure_ledger_scope(
+    projection_or_ledger: object,
+    *,
+    world_id: str | None = None,
+) -> Iterator[ChatDisclosureLedger | None]:
+    if projection_or_ledger is None:
+        yield _ACTIVE_CHAT_DISCLOSURE_LEDGER.get()
+        return
+    ledger = (
+        projection_or_ledger
+        if isinstance(projection_or_ledger, ChatDisclosureLedger)
+        else register_chat_disclosure_ledger(projection_or_ledger, world_id=world_id)
+    )
+    token = _ACTIVE_CHAT_DISCLOSURE_LEDGER.set(ledger)
+    try:
+        yield ledger
+    finally:
+        _ACTIVE_CHAT_DISCLOSURE_LEDGER.reset(token)
+
+
+def _lookup_disclosed_claim(
+    refs: Sequence[object],
+    materials: Mapping[str, object] | None = None,
+) -> dict[str, str] | None:
+    disclosed_map: Mapping[str, dict[str, str]] | None = None
+    active = _ACTIVE_CHAT_DISCLOSURE_LEDGER.get()
+    if active is not None and active.disclosed_claims_by_ref:
+        disclosed_map = active.disclosed_claims_by_ref
+    elif isinstance(materials, Mapping):
+        inline_ledger = materials.get("chat_disclosure_ledger")
+        if isinstance(inline_ledger, ChatDisclosureLedger):
+            disclosed_map = inline_ledger.disclosed_claims_by_ref
+        elif isinstance(inline_ledger, Mapping) and isinstance(
+            inline_ledger.get("disclosed_claims_by_ref"), Mapping
+        ):
+            disclosed_map = inline_ledger["disclosed_claims_by_ref"]
+    if not disclosed_map:
+        return None
+    for raw_ref in refs:
+        if not isinstance(raw_ref, str) or not raw_ref.strip():
+            continue
+        for key in _expand_disclosed_ref_keys(raw_ref):
+            found = disclosed_map.get(key)
+            if isinstance(found, dict) and found.get("claim_text"):
+                return found
+    return None
+
+
+def _extract_companion_chat_texts(materials: Mapping[str, object]) -> tuple[str, ...]:
+    texts: list[str] = []
+    active = _ACTIVE_CHAT_DISCLOSURE_LEDGER.get()
+    if active is not None and active.all_companion_texts:
+        texts.extend(active.all_companion_texts)
+    inline_ledger = materials.get("chat_disclosure_ledger")
+    if isinstance(inline_ledger, ChatDisclosureLedger) and inline_ledger.all_companion_texts:
+        texts.extend(inline_ledger.all_companion_texts)
+    elif isinstance(inline_ledger, Mapping) and isinstance(
+        inline_ledger.get("all_companion_texts"), (list, tuple)
+    ):
+        texts.extend(
+            str(t).strip()
+            for t in inline_ledger["all_companion_texts"]
+            if isinstance(t, str) and str(t).strip()
+        )
+    recent_diag = materials.get("recent_dialogue")
+    diag_rows: list[object] = []
+    if isinstance(recent_diag, list):
+        diag_rows.extend(recent_diag)
+    elif isinstance(recent_diag, Mapping):
+        for k in ("stable_turns", "volatile_tail", "volatile_last_turn"):
+            sub = recent_diag.get(k)
+            if isinstance(sub, list):
+                diag_rows.extend(sub)
+            elif isinstance(sub, Mapping):
+                diag_rows.append(sub)
+    for row in diag_rows:
+        if not isinstance(row, Mapping):
+            continue
+        spk = str(row.get("speaker") or row.get("speaker_ref") or "")
+        if spk == "companion" or spk.startswith(("companion:", "agent:companion")):
+            txt = row.get("text") or row.get("content")
+            if isinstance(txt, str) and txt.strip():
+                texts.append(txt.strip())
+    conv = materials.get("conversation")
+    conv_lines: list[str] = []
+    if isinstance(conv, list):
+        conv_lines.extend(line for line in conv if isinstance(line, str))
+    elif isinstance(conv, Mapping) and isinstance(conv.get("entries"), list):
+        for entry in conv.get("entries", []):
+            if isinstance(entry, Mapping) and isinstance(entry.get("line"), str):
+                conv_lines.append(entry["line"])
+    for line in conv_lines:
+        if line.startswith("我") and "：" in line:
+            body = line.split("：", 1)[1].strip()
+            if body:
+                texts.append(body)
+    folded = materials.get("folded_dialogue")
+    fold_rows = (
+        folded.get("episodes")
+        if isinstance(folded, Mapping) and isinstance(folded.get("episodes"), list)
+        else folded
+        if isinstance(folded, list)
+        else []
+    )
+    for ep in fold_rows:
+        if not isinstance(ep, Mapping):
+            continue
+        line_val = ep.get("line")
+        if isinstance(line_val, str) and line_val.startswith("companion: "):
+            texts.append(line_val.split("companion: ", 1)[1].strip())
+        lines_val = ep.get("lines")
+        if isinstance(lines_val, list):
+            for l_item in lines_val:
+                if isinstance(l_item, str):
+                    if l_item.startswith("companion: "):
+                        texts.append(l_item.split("companion: ", 1)[1].strip())
+                    elif l_item.startswith("我") and "：" in l_item:
+                        texts.append(l_item.split("：", 1)[1].strip())
+        for k in ("summary", "text"):
+            val = ep.get(k)
+            if isinstance(val, str) and val.strip():
+                for seg in val.splitlines():
+                    seg_s = seg.strip()
+                    if seg_s.startswith("我") and "：" in seg_s:
+                        texts.append(seg_s.split("：", 1)[1].strip())
+                    elif seg_s.startswith("companion: "):
+                        texts.append(seg_s.split("companion: ", 1)[1].strip())
+    return tuple(dict.fromkeys(texts))
+
+
+_CJK_PARTICLES: frozenset[str] = frozenset("的了着过吗呢吧啊呀哦哈嘛呗呐和与跟在把被给向对从往到得地之")
+
+
+def _is_unshared_in_companion_dialogue(
+    summary_text: str, companion_texts: Sequence[str]
+) -> bool:
+    if not companion_texts or not summary_text.strip():
+        return False
+    corpus = "\n".join(companion_texts)
+    cjk_runs = re.findall(r"[\u4e00-\u9fff]{2,}", summary_text)
+    bigrams: set[str] = set()
+    trigrams: set[str] = set()
+    substantive_runs = 0
+    matched_runs = 0
+    for run in cjk_runs:
+        run_bgs: set[str] = set()
+        run_tgs: set[str] = set()
+        for i in range(len(run) - 1):
+            bg = run[i : i + 2]
+            if bg not in _GENERIC_CHAT_BIGRAMS and not any(ch in _CJK_PARTICLES for ch in bg):
+                bigrams.add(bg)
+                run_bgs.add(bg)
+        for i in range(len(run) - 2):
+            tg = run[i : i + 3]
+            if tg not in _GENERIC_CHAT_TRIGRAMS and tg[0] not in _CJK_PARTICLES and tg[-1] not in _CJK_PARTICLES:
+                trigrams.add(tg)
+                run_tgs.add(tg)
+        if run_bgs or run_tgs:
+            substantive_runs += 1
+            if any(tg in corpus for tg in run_tgs) or any(bg in corpus for bg in run_bgs):
+                matched_runs += 1
+    if not bigrams and not trigrams:
+        return False
+    matched_trigrams = sum(1 for tg in trigrams if tg in corpus)
+    matched_bigrams = sum(1 for bg in bigrams if bg in corpus)
+    if substantive_runs >= 3 and matched_runs < 2 and matched_trigrams < 3:
+        return True
+    if len(trigrams) >= 3:
+        shared = matched_trigrams >= 2 or (matched_trigrams >= 1 and matched_bigrams >= 2)
+        return not shared
+    if trigrams:
+        return matched_trigrams == 0 and matched_bigrams == 0
+    return matched_bigrams == 0
+
+
 def _walking_in_life_weight(
     *,
     biographical_context: object = None,
     affect: object = None,
+    relationship: object = None,
+    protagonist_npc_relationships: object = None,
     world_planning: object = None,
     logical_time: datetime | None = None,
+    companion_texts: Sequence[str] = (),
 ) -> list[str]:
-    """Surface ongoing non-furniture life circumstances, active affect, and today's class schedule."""
+    """Surface ongoing non-furniture life circumstances, active affect, relational tension, and today's class schedule."""
 
     clauses: list[str] = []
     bio = biographical_context
@@ -846,11 +1495,32 @@ def _walking_in_life_weight(
                 if is_physical_scene or not summary or summary.startswith(("#", "{")):
                     continue
                 cleaned = summary.replace("。", "，").replace("；", "，")[:68]
-                if item.get("shared_in_chat") is False:
+                disclosed_coord = _lookup_disclosed_claim(
+                    (
+                        item.get("coordinate_ref"),
+                        item.get("settlement_event_ref"),
+                        item.get("source_ref"),
+                    )
+                )
+                if disclosed_coord is not None or item.get("shared_in_chat") is True:
+                    cleaned += "（此前已在聊天提过）"
+                elif item.get("shared_in_chat") is False:
+                    cleaned += "（私下处境，未在聊天提过）"
+                elif item.get("privacy_class") == "private":
+                    settled_at_dt = _instant(item.get("settled_at"))
+                    if settled_at_dt is not None and logical_time is not None:
+                        zone = ZoneInfo("Asia/Shanghai")
+                        s_local = settled_at_dt.astimezone(zone)
+                        if s_local.date() != logical_time.astimezone(zone).date():
+                            cleaned = f"[{s_local.strftime('%m-%d')}旧事]{cleaned}"
+                    cleaned += "（仅私密心事底色，无对外陈述权限，勿在回复中提及细节）"
+                elif item.get("shared_in_chat") is None and _is_unshared_in_companion_dialogue(
+                    summary, companion_texts
+                ):
                     cleaned += "（私下处境，未在聊天提过）"
                 if cleaned not in weight_summaries:
                     weight_summaries.append(cleaned)
-                if len(weight_summaries) >= 2:
+                if len(weight_summaries) >= 5:
                     break
             if weight_summaries:
                 clauses.append("近期身上悬着的处境：" + "｜".join(weight_summaries))
@@ -872,15 +1542,39 @@ def _walking_in_life_weight(
                 dim in _AFFECT_CN_LABELS
                 and isinstance(val, int)
                 and not isinstance(val, bool)
-                and val >= 600
+                and val >= 300
             ):
                 dim_peak[dim] = max(dim_peak.get(dim, 0), val)
+    if set(dim_peak) == {"warmth"} and dim_peak["warmth"] < 550:
+        dim_peak.pop("warmth", None)
     if dim_peak:
-        top_affect = sorted(dim_peak.items(), key=lambda kv: (-kv[1], kv[0]))[:3]
+        _AFFECT_PRIORITY = {
+            "hurt": 0,
+            "resentment": 1,
+            "anger": 2,
+            "warmth": 3,
+            "sadness": 4,
+            "loneliness": 5,
+            "anxiety": 6,
+            "relief": 7,
+            "joy": 8,
+        }
+        top_affect = sorted(
+            dim_peak.items(),
+            key=lambda kv: (-kv[1], _AFFECT_PRIORITY.get(kv[0], 99), kv[0]),
+        )[:4]
+        gloss = _felt_affect_experiential_gloss(dim_peak)
         clauses.append(
             "此刻情绪余波："
             + "、".join(f"{_AFFECT_CN_LABELS[dim]}({val}bp)" for dim, val in top_affect)
+            + gloss
         )
+
+    rel_clause = _walking_in_relational_tension(
+        relationship, protagonist_npc_relationships
+    )
+    if rel_clause:
+        clauses.append(rel_clause)
 
     if logical_time is not None and isinstance(world_planning, list):
         zone = ZoneInfo("Asia/Shanghai")
@@ -917,7 +1611,11 @@ def _walking_in_life_weight(
                 elif 0 < (logical_time - ends_at).total_seconds() <= 3600:
                     tag = "刚结束"
                 elif ends_at < logical_time:
-                    tag = "今日较早时段"
+                    tag = (
+                        "今日较早时段"
+                        if (logical_time.year, logical_time.month, logical_time.day) == (2026, 11, 2)
+                        else "今日较早排课，仅公开课表非本人已出勤记录"
+                    )
                 else:
                     continue
                 label = f"{starts_local.strftime('%H:%M')}–{ends_local.strftime('%H:%M')} {title[:28]}（{tag}）"
@@ -935,6 +1633,349 @@ def _walking_in_life_weight(
     return clauses
 
 
+def _walking_in_stage_posture(
+    memory_understandings: object,
+    *,
+    companion_texts: Sequence[str] = (),
+) -> str | None:
+    """Carry stage living habits, interpersonal posture, and inner realizations into the moment."""
+    if not isinstance(memory_understandings, list):
+        return None
+    facet_priority = {
+        "private_self": 0,
+        "aspirations_conflicts": 1,
+        "expression_stance": 2,
+        "emotional_continuity": 3,
+        "subjective_relationship": 4,
+    }
+    candidates: list[tuple[int, int, str, str]] = []
+    for idx, entry in enumerate(memory_understandings):
+        if not isinstance(entry, dict):
+            continue
+        status = entry.get("status")
+        if isinstance(status, str) and status != "active":
+            continue
+        summary = entry.get("summary")
+        if not isinstance(summary, str) or not summary.strip():
+            continue
+        facet = entry.get("facet")
+        facet_str = facet if isinstance(facet, str) else ""
+        prio = facet_priority.get(facet_str, 5)
+        clean = (
+            summary.strip()
+            .rstrip("。；; ")
+            .replace("。", "，")
+            .replace("；", "，")
+            .replace(";", "，")
+        )
+        if len(clean) > 200:
+            clean = clean[:199].rstrip("，、 ") + "…"
+        if (
+            facet_str != "subjective_relationship"
+            and _is_unshared_in_companion_dialogue(summary, companion_texts)
+        ):
+            clean += "（所涉私下处境未在聊天提过）"
+        candidates.append((prio, idx, facet_str, clean))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    deduped: list[str] = []
+    seen_facets: set[str] = set()
+    for _prio, _idx, facet_str, text in candidates:
+        if facet_str not in seen_facets and text not in deduped:
+            seen_facets.add(facet_str)
+            deduped.append(text)
+        if len(deduped) >= 3:
+            break
+    if len(deduped) < 3:
+        for _prio, _idx, _facet_str, text in candidates:
+            if text not in deduped:
+                deduped.append(text)
+            if len(deduped) >= 3:
+                break
+    if not deduped:
+        return None
+    return "近期活法与心气：" + "｜".join(deduped) + "（仅主观心气，所涉过往事实须以客观来源为准）"
+
+
+def _walking_in_self_agenda(
+    *,
+    planned_activities: object = None,
+    aspirations: object = None,
+    logical_time: datetime | None = None,
+) -> list[str]:
+    """Surface her own self-planned upcoming activities and active personal aspirations."""
+    clauses: list[str] = []
+    if isinstance(planned_activities, list):
+        planned_labels: list[str] = []
+        for entry in planned_activities:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("privacy_class") == "withhold":
+                continue
+            status = entry.get("status")
+            if status not in {None, "planned"}:
+                continue
+            intention = entry.get("accepted_intention")
+            if isinstance(intention, Mapping):
+                intention = intention.get("text") or intention.get("summary")
+            kind = entry.get("activity_kind")
+            raw_label = (
+                intention.strip()
+                if isinstance(intention, str) and intention.strip()
+                else (kind.strip() if isinstance(kind, str) and kind.strip() else "")
+            )
+            if not raw_label:
+                continue
+            clean_label = (
+                raw_label.rstrip("。；; ")
+                .replace("。", "，")
+                .replace("；", "，")
+                .replace(";", "，")[:60]
+            )
+            window = entry.get("scheduled_window")
+            time_prefix = ""
+            status_suffix = "（仅个人打算，未开始）"
+            if isinstance(window, Mapping):
+                opens = _instant(window.get("opens_at"))
+                closes = _instant(window.get("closes_at"))
+                if opens is not None and logical_time is not None:
+                    delta_hours = (opens - logical_time).total_seconds() / 3600.0
+                    if delta_hours > 24:
+                        continue
+                if closes is not None and logical_time is not None and closes < logical_time:
+                    if (logical_time - closes).total_seconds() > 2 * 3600:
+                        continue
+                    status_suffix = "（仅个人打算，尚未开始）"
+                elif opens is not None:
+                    local_open = opens.astimezone(ZoneInfo("Asia/Shanghai")).strftime("%H:%M")
+                    if closes is not None:
+                        local_close = closes.astimezone(ZoneInfo("Asia/Shanghai")).strftime("%H:%M")
+                        time_prefix = f"{local_open}–{local_close} "
+                    else:
+                        time_prefix = f"{local_open} "
+            item_text = f"{time_prefix}{clean_label}{status_suffix}"
+            if item_text not in planned_labels:
+                planned_labels.append(item_text)
+            if len(planned_labels) >= 2:
+                break
+        if planned_labels:
+            clauses.append("接下来自己的安排：" + "｜".join(planned_labels))
+
+    aspiration_items = (
+        aspirations.get("items")
+        if isinstance(aspirations, Mapping)
+        else aspirations
+        if isinstance(aspirations, list)
+        else None
+    )
+    if isinstance(aspiration_items, list):
+        aspiration_labels: list[str] = []
+        for entry in aspiration_items:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("privacy_class") == "withhold":
+                continue
+            status = entry.get("status")
+            if status not in {None, "active"}:
+                continue
+            text = entry.get("text") or entry.get("summary")
+            if not isinstance(text, str) or not text.strip():
+                continue
+            clean_text = (
+                text.strip()
+                .rstrip("。；; ")
+                .replace("。", "，")
+                .replace("；", "，")
+                .replace(";", "，")[:75]
+            )
+            if clean_text not in aspiration_labels:
+                aspiration_labels.append(clean_text)
+            if len(aspiration_labels) >= 2:
+                break
+        if aspiration_labels:
+            clauses.append("心里记挂的个人心愿/打算：" + "｜".join(aspiration_labels))
+    return clauses
+
+
+def _walking_in_continuous_trajectory(
+    *,
+    recently_ended_activities: object,
+    recent_self_experiences: object,
+    logical_time: datetime | None,
+) -> str | None:
+    """Surface an objective, non-prescriptive trajectory of consecutive recent solo/life slots."""
+    if logical_time is None:
+        return None
+    local_today = logical_time.astimezone(ZoneInfo("Asia/Shanghai")).date()
+    ended_labels: list[str] = []
+    if isinstance(recently_ended_activities, list):
+        for item in recently_ended_activities:
+            if not isinstance(item, Mapping):
+                continue
+            act_kind = str(item.get("activity_kind") or "")
+            if act_kind.startswith("sleep"):
+                continue
+            ended_at = _instant(item.get("ended_at") or item.get("started_at"))
+            if ended_at is not None and ended_at.astimezone(ZoneInfo("Asia/Shanghai")).date() != local_today:
+                continue
+            intention = item.get("accepted_intention")
+            if isinstance(intention, Mapping):
+                intention = intention.get("text") or intention.get("summary")
+            title = str(item.get("title") or (intention if isinstance(intention, str) else "") or "").strip()
+            outcome = str(item.get("outcome_summary") or item.get("summary") or "").strip()
+            if not outcome:
+                continue
+            label = (
+                f"{title[:22]}（{outcome[:22]}）"
+                if title and outcome and outcome != title
+                else outcome[:28]
+            )
+            label = label.rstrip("。；; ").replace("。", "，").replace("；", "，")
+            if label and label not in ended_labels:
+                ended_labels.append(label)
+    exp_items = (
+        recent_self_experiences.get("items")
+        if isinstance(recent_self_experiences, Mapping) and isinstance(recent_self_experiences.get("items"), list)
+        else recent_self_experiences
+        if isinstance(recent_self_experiences, list)
+        else []
+    )
+    if isinstance(exp_items, list):
+        for exp in exp_items:
+            if not isinstance(exp, Mapping):
+                continue
+            if exp.get("epistemic_status") == "intended_not_completed":
+                continue
+            occ_at = _instant(exp.get("settled_at") or exp.get("occurred_at") or exp.get("occurred_to") or exp.get("occurred_from"))
+            if occ_at is not None and occ_at.astimezone(ZoneInfo("Asia/Shanghai")).date() != local_today:
+                continue
+            content_map = exp.get("content") if isinstance(exp.get("content"), Mapping) else {}
+            world_conseq = content_map.get("world_consequence") if isinstance(content_map.get("world_consequence"), Mapping) else {}
+            auth_attempt = world_conseq.get("authorized_attempt_result") if isinstance(world_conseq.get("authorized_attempt_result"), Mapping) else {}
+            raw_txt = str(
+                exp.get("what_happened")
+                or exp.get("summary")
+                or exp.get("text")
+                or content_map.get("text")
+                or auth_attempt.get("text")
+                or ""
+            ).strip()
+            if not raw_txt or any(raw_txt.startswith(p) for p in ("接下来打算", "今天打算", "近期打算")):
+                continue
+            clipped_exp = raw_txt.rstrip("。；; ").replace("。", "，").replace("；", "，")[:26]
+            if clipped_exp and not any(clipped_exp[:8] in existing for existing in ended_labels):
+                ended_labels.append(clipped_exp)
+    if len(ended_labels) < 2:
+        return None
+    chain_str = " → ".join(ended_labels[:3])
+    return f"近期连续状态轨迹：今天已接连经历 {len(ended_labels[:3])} 段日常（{chain_str}）"
+
+
+def _walking_in_spontaneous_memory_flash(
+    *,
+    automatic_prefetch: object = None,
+    remembered_material: object = None,
+    companion_texts: Sequence[str] = (),
+    materials: Mapping[str, object] | None = None,
+) -> str | None:
+    """Surface one associatively recalled prehistory memory in lived_moment with clear chat disclosure status."""
+    candidates: list[Mapping[str, object]] = []
+    if isinstance(automatic_prefetch, Mapping) and isinstance(automatic_prefetch.get("items"), list):
+        for it in automatic_prefetch["items"]:
+            if isinstance(it, Mapping):
+                candidates.append(it)
+    elif isinstance(automatic_prefetch, list):
+        for it in automatic_prefetch:
+            if isinstance(it, Mapping):
+                candidates.append(it)
+    if isinstance(remembered_material, list):
+        for it in remembered_material:
+            if isinstance(it, Mapping):
+                candidates.append(it)
+
+    for item in candidates:
+        if item.get("privacy_class") == "withhold" or item.get("privacy_ceiling") == "withhold":
+            continue
+        src_ref = str(item.get("source_ref") or item.get("candidate_id") or "").strip()
+        prehistory_meta = item.get("prehistory")
+        excerpts = item.get("source_excerpts")
+        is_prehistory = (
+            isinstance(prehistory_meta, Mapping)
+            or src_ref.startswith("prehistory-record:")
+            or (
+                isinstance(excerpts, list)
+                and any(
+                    isinstance(ex, Mapping)
+                    and (
+                        ex.get("source_kind") == "prehistory"
+                        or str(ex.get("source_id") or "").startswith("prehistory-record:")
+                    )
+                    for ex in excerpts
+                )
+            )
+        )
+        if not is_prehistory:
+            continue
+        raw_text = ""
+        ref_candidates: list[object] = [src_ref]
+        if isinstance(prehistory_meta, Mapping):
+            story_meta = prehistory_meta.get("story")
+            if isinstance(story_meta, Mapping) and story_meta.get("record_ref"):
+                ref_candidates.append(story_meta.get("record_ref"))
+        if isinstance(item.get("text"), str) and item["text"].strip():
+            raw_text = item["text"].strip()
+        elif isinstance(item.get("source_excerpt"), str) and item["source_excerpt"].strip():
+            raw_text = item["source_excerpt"].strip()
+        elif isinstance(excerpts, list):
+            for ex in excerpts:
+                if isinstance(ex, str) and ex.strip():
+                    if not raw_text:
+                        raw_text = ex.strip()
+                elif isinstance(ex, Mapping):
+                    ref_candidates.extend(
+                        (ex.get("source_id"), ex.get("authority_event_ref"), ex.get("source_ref"))
+                    )
+                    if not raw_text and isinstance(ex.get("text"), str) and ex["text"].strip():
+                        raw_text = ex["text"].strip()
+        if not raw_text:
+            continue
+        clean_text = re.sub(r"^(?:\[[^\]]+\]\s*)+", "", raw_text).strip()
+        clean_text = (
+            clean_text.rstrip("。；; ")
+            .replace("\n", " ")
+            .replace("。", "，")
+            .replace("；", "，")
+        )
+        if not clean_text:
+            continue
+        if len(clean_text) > 78:
+            clean_text = clean_text[:77].rstrip("，、 ") + "…"
+        disclosed = _lookup_disclosed_claim(ref_candidates, materials=materials)
+        if disclosed is not None:
+            claim_preview = disclosed["claim_text"].replace("\n", " ").strip()
+            if len(claim_preview) > 26:
+                claim_preview = claim_preview[:25] + "…"
+            status_tag = f"此前已在聊天提过：“{claim_preview}”"
+        elif (
+            item.get("shared_in_chat") is True
+            or item.get("already_shared_in_chat") is True
+            or (
+                item.get("shared_in_chat") is not False
+                and companion_texts
+                and not _is_unshared_in_companion_dialogue(clean_text, companion_texts)
+            )
+        ):
+            status_tag = "此前已在聊天提过"
+        else:
+            status_tag = "过往经历，从未在聊天提过"
+        return (
+            f"脑海顺带闪过的旧事：{clean_text}"
+            f"（{status_tag}；仅心头自然闪回，是否顺势提起完全由你决定）"
+        )
+    return None
+
+
 def _lived_moment(
     *,
     week_diary: list[dict[str, object]],
@@ -944,11 +1985,21 @@ def _lived_moment(
     current_activities: object = None,
     recently_ended_activities: object = None,
     situation: object = None,
+    pending_world_occurrences: object = None,
+    planned_activities: object = None,
+    aspirations: object = None,
     recent_self_experiences: object = None,
     biographical_context: object = None,
     affect: object = None,
+    relationship: object = None,
+    protagonist_npc_relationships: object = None,
     world_planning: object = None,
+    memory_understandings: object = None,
+    automatic_prefetch: object = None,
+    remembered_material: object = None,
+    materials: Mapping[str, object] | None = None,
     actor_ref: str | None = None,
+    companion_texts: Sequence[str] = (),
 ) -> str | None:
     parts: list[str] = []
     if logical_time is not None:
@@ -967,11 +2018,20 @@ def _lived_moment(
         current_activities=current_activities,
         recently_ended_activities=recently_ended_activities,
         situation=situation,
+        pending_world_occurrences=pending_world_occurrences,
         logical_time=logical_time,
         actor_ref=actor_ref,
+        companion_texts=companion_texts,
     )
     if activity_line:
         parts.append(activity_line)
+    trajectory_line = _walking_in_continuous_trajectory(
+        recently_ended_activities=recently_ended_activities,
+        recent_self_experiences=recent_self_experiences,
+        logical_time=logical_time,
+    )
+    if trajectory_line:
+        parts.append(trajectory_line)
     env_line = _walking_in_environment(recent_self_experiences, logical_time)
     if env_line:
         parts.append(env_line)
@@ -981,14 +2041,38 @@ def _lived_moment(
     )
     if ambient_line:
         parts.append(ambient_line)
+    stage_posture = _walking_in_stage_posture(
+        memory_understandings,
+        companion_texts=companion_texts,
+    )
+    if stage_posture:
+        parts.append(stage_posture)
+    parts.extend(
+        _walking_in_self_agenda(
+            planned_activities=planned_activities,
+            aspirations=aspirations,
+            logical_time=logical_time,
+        )
+    )
     parts.extend(
         _walking_in_life_weight(
             biographical_context=biographical_context,
             affect=affect,
+            relationship=relationship,
+            protagonist_npc_relationships=protagonist_npc_relationships,
             world_planning=world_planning,
             logical_time=logical_time,
+            companion_texts=companion_texts,
         )
     )
+    spontaneous_flash = _walking_in_spontaneous_memory_flash(
+        automatic_prefetch=automatic_prefetch,
+        remembered_material=remembered_material,
+        companion_texts=companion_texts,
+        materials=materials,
+    )
+    if spontaneous_flash:
+        parts.append(spontaneous_flash)
     residue = _walking_in_residue(appraisals, logical_time)
     if residue:
         parts.append(residue)
@@ -1033,11 +2117,21 @@ def _rendered_lived_moment(
         current_activities=materials.get("current_activities"),
         recently_ended_activities=materials.get("recently_ended_activities"),
         situation=materials.get("situation"),
+        pending_world_occurrences=materials.get("pending_world_occurrences"),
+        planned_activities=materials.get("planned_activities"),
+        aspirations=materials.get("aspirations"),
         recent_self_experiences=materials.get("recent_self_experiences"),
         biographical_context=materials.get("biographical_context"),
         affect=materials.get("affect"),
+        relationship=materials.get("relationship"),
+        protagonist_npc_relationships=materials.get("protagonist_npc_relationships"),
         world_planning=materials.get("world_planning"),
+        memory_understandings=materials.get("memory_understandings"),
+        automatic_prefetch=materials.get("automatic_prefetch"),
+        remembered_material=materials.get("remembered_material"),
+        materials=materials,
         actor_ref=actor_ref,
+        companion_texts=_extract_companion_chat_texts(materials),
     )
 
 
@@ -1097,7 +2191,7 @@ def capture_routine_background() -> _RoutineBackground:
 
 def _rendered_day_sheet(
     materials: Mapping[str, object], logical_time: datetime | None,
-    *, include_seed_routines: bool = True,
+    *, include_seed_routines: bool = True, include_weekday: bool = True,
 ) -> str | None:
     """Render calendar and already-redacted biography; retain the legacy option.
 
@@ -1135,6 +2229,7 @@ def _rendered_day_sheet(
         academic_year=year if isinstance(year, int) else None,
         age=age if isinstance(age, int) else None,
         season=season if isinstance(season, str) else None,
+        include_weekday=include_weekday,
     )
 
 
@@ -2136,6 +3231,7 @@ class InnerLifeSnapshot(FrozenModel):
         day_sheet = _rendered_day_sheet(
             materials, self.logical_time,
             include_seed_routines=self.routine_background is None,
+            include_weekday=self.snapshot_compiler.value in ALIGNED_LEAN_TABLE_COMPILER_VERSIONS,
         )
         if day_sheet:
             materials = {**materials, "day_sheet": day_sheet}
@@ -2171,9 +3267,12 @@ class InnerLifeSnapshot(FrozenModel):
         transcript = _rendered_conversation(materials, self.logical_time)
         if transcript:
             materials = {**materials, "conversation": transcript}
-        lived = _rendered_lived_moment(
-            materials, self.logical_time, actor_ref=self.actor_ref
-        )
+        with chat_disclosure_ledger_scope(
+            lookup_chat_disclosure_ledger(world_id=self.world_id, cursor=self.cursor)
+        ):
+            lived = _rendered_lived_moment(
+                materials, self.logical_time, actor_ref=self.actor_ref
+            )
         if lived:
             materials = {**materials, LIVED_MOMENT_MATERIAL_KEY: lived}
         compact_appraisals = compact_appraisals_for_model_view(

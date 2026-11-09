@@ -30,8 +30,8 @@ _DIALOGUE_SEQUENCE_SCALE = 100
 # Companion beats carry several claims each, so without a live-head boost the
 # lexicographic item_ref tie-break fills that budget with her lines and drops
 # his later ones. These caps mark the still-live tail so rank keeps it.
-_LIVE_COUNTERPART_ATTENTION = 8
-_LIVE_COMPANION_ATTENTION = 8
+_LIVE_COUNTERPART_ATTENTION = 24
+_LIVE_COMPANION_ATTENTION = 24
 
 
 def surface_dialogue_text(surfaces: tuple[ object, ...] | list[object]) -> str | None:

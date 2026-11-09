@@ -467,3 +467,41 @@ async def test_schedule_index_write_failure_invalidates_partial_fold(tmp_path):
             assert reader.schedule(ledger.project()).acknowledged == reader.read(ledger.project()).acknowledged
         finally:
             store.close()
+
+
+@pytest.mark.asyncio
+async def test_understanding_read_caches_inside_context_read_scope_and_reuses_batch_across_turns(
+    tmp_path,
+):
+    from companion_daemon.world_v2.context_read_scope import context_read_scope
+
+    async with _sources(tmp_path, extra=True) as case:
+        ledger = case.ledger
+        seed_memories(ledger)
+        store = SQLiteImmutableLifeContentStore(
+            path=tmp_path / "content.sqlite", world_id=ledger.world_id
+        )
+        reader = MemoryUnderstandingReader(
+            ledger=ledger, content_store=store, actor_ref="agent:companion"
+        )
+        try:
+            assert (await worker(ledger, store, Learner()).drain_one()).work_status == "reviewed"
+            projection = ledger.project()
+            with context_read_scope(store, projection):
+                first = reader.read(projection)
+                assert len(first.active) == 2
+                assert len(reader._read_cache) == 1
+                assert len(reader._batch_cache) == 1
+                second = reader.read(projection)
+                assert second is first
+
+            # Advancing the ledger cursor by a new clock event misses _read_cache
+            # for the new cursor but reuses the verified historical batch in _batch_cache.
+            clock(ledger, "next-turn", 1)
+            next_projection = ledger.project()
+            with context_read_scope(store, next_projection):
+                third = reader.read(next_projection)
+                assert third.active == first.active
+                assert len(reader._read_cache) == 2
+        finally:
+            store.close()

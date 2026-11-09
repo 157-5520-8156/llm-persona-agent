@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import closing
 from copy import deepcopy
 from pathlib import Path
 import sqlite3
@@ -138,11 +139,12 @@ class SQLiteWorldOutlookStore:
         return self.world_id, self.actor_ref
 
     def head(self, *, as_of=None):
-        with self._lock:
-            rows = self._db.execute(
+        with self._lock, closing(
+            self._db.execute(
                 "SELECT revision,payload,evidence FROM world_outlook_revisions WHERE world_id=? AND actor_ref=? ORDER BY sequence DESC",
                 self._scope(),
             )
+        ) as rows:
             for row in rows:
                 row_key = (row[0], row[1], row[2])
                 cached = self._validated_revisions.get(row_key)

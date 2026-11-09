@@ -1199,8 +1199,29 @@ def exact_json_object_text(text: object) -> str:
         return number
 
     try:
-        value = json.loads(text, object_pairs_hook=members, parse_constant=constant,
-                           parse_float=finite_float)
+        try:
+            value = json.loads(text, object_pairs_hook=members, parse_constant=constant,
+                               parse_float=finite_float)
+        except json.JSONDecodeError:
+            from companion_daemon.world_v2.json_wire_repair import (
+                close_unclosed_json_containers,
+                escape_unescaped_quotes_in_json_strings,
+            )
+
+            repaired = escape_unescaped_quotes_in_json_strings(text)
+            closed = close_unclosed_json_containers(repaired)
+            if closed == text and repaired == text:
+                raise
+            try:
+                value = json.loads(closed, object_pairs_hook=members, parse_constant=constant,
+                                   parse_float=finite_float)
+                text = closed
+            except json.JSONDecodeError:
+                if repaired == text:
+                    raise
+                value = json.loads(repaired, object_pairs_hook=members, parse_constant=constant,
+                                   parse_float=finite_float)
+                text = repaired
         if not isinstance(value, dict):
             raise ValueError("JSON text carrier requires one complete object")
     except (ValueError, RecursionError) as exc:
@@ -2604,12 +2625,21 @@ def _model_usage_token_counts(usage: dict[str, object]) -> dict[str, int | None]
 
     details = usage.get("completion_tokens_details")
     details = details if isinstance(details, dict) else {}
+    prompt_details = usage.get("prompt_tokens_details")
+    prompt_details = prompt_details if isinstance(prompt_details, dict) else {}
+    prompt_tokens = _usage_int(usage, "prompt_tokens")
+    cache_hit_tokens = _usage_int(usage, "prompt_cache_hit_tokens")
+    if cache_hit_tokens == 0:
+        cache_hit_tokens = _usage_int(prompt_details, "cached_tokens")
+    cache_miss_tokens = _usage_int(usage, "prompt_cache_miss_tokens")
+    if cache_miss_tokens == 0 and cache_hit_tokens > 0 and prompt_tokens >= cache_hit_tokens:
+        cache_miss_tokens = prompt_tokens - cache_hit_tokens
     return {
-        "prompt_tokens": _usage_int(usage, "prompt_tokens"),
+        "prompt_tokens": prompt_tokens,
         "completion_tokens": _usage_int(usage, "completion_tokens"),
         "reasoning_tokens": _usage_int(details, "reasoning_tokens"),
-        "cache_hit_tokens": _usage_int(usage, "prompt_cache_hit_tokens"),
-        "cache_miss_tokens": _usage_int(usage, "prompt_cache_miss_tokens"),
+        "cache_hit_tokens": cache_hit_tokens,
+        "cache_miss_tokens": cache_miss_tokens,
         "total_tokens": _usage_int(usage, "total_tokens"),
         "uncached_input_tokens": (
             usage["uncached_input_tokens"] if type(usage.get("uncached_input_tokens")) is int else None

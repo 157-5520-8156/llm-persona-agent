@@ -27,7 +27,7 @@ PRESENT_DIALOGUE_SEQUENCE_SCALE = 100
 PRESENT_WEEK_DIARY_DAYS = 7
 PRESENT_WEEK_DIARY_LINES_PER_DAY = 3
 PRESENT_SHARED_MEDIA_ITEM_LIMIT = 8
-PRESENT_PENDING_OUTBOUND_ITEM_LIMIT = 4
+PRESENT_PENDING_OUTBOUND_ITEM_LIMIT = 8
 
 _PRESENT_USER_KEY_ORDER = (
     # Stable prefix first so DeepSeek context cache survives turn-to-turn drift.
@@ -2062,6 +2062,18 @@ def _raise_if_invalid_affect_choice(value: Mapping[str, object]) -> None:
         return
     if operation not in _SLIM_AFFECT_OPERATIONS:
         raise ValueError(SLIM_AFFECT_TARGET_REQUIRED + "。affect operation 读不出来。")
+    if operation == "open" and _slim_field_attempted(value, "episode_id"):
+        raise ValueError(
+            SLIM_AFFECT_TARGET_REQUIRED
+            + "。affect=open 是新起一段持续情绪，不能写 episode_id；若要更新已有持续情绪请用 affect=update 并写顶层 episode_id。"
+        )
+    if operation == "resolve" and not _slim_field_attempted(
+        value, "resolution_summary"
+    ):
+        raise ValueError(
+            SLIM_AFFECT_TARGET_REQUIRED
+            + "。affect=resolve 必须同时填写非空 resolution_summary。"
+        )
     if operation in {"open", "update", "supersede"}:
         components = value.get("components")
         if not isinstance(components, list) or not components:
@@ -2316,6 +2328,21 @@ def _raise_if_invalid_how_it_landed(value: Mapping[str, object]) -> None:
         )
 
 
+def _short_clause_label(text: str, limit: int = 64) -> str:
+    """Keep short text as-is; clip longer text at a natural clause boundary."""
+    if len(text) <= limit:
+        return text
+    window = text[:limit]
+    for sep in ("。", "；", "！", "？", "——"):
+        idx = window.find(sep)
+        if 4 <= idx:
+            return window[:idx]
+    comma_idx = window.rfind("，")
+    if comma_idx >= 8:
+        return window[:comma_idx]
+    return window
+
+
 def compile_slim_consider_payload(
     value: Mapping[str, object],
     *,
@@ -2325,6 +2352,35 @@ def compile_slim_consider_payload(
 
     if not is_slim_consider_payload(value):
         return None
+    raw_messages = value.get("messages")
+    if isinstance(raw_messages, list):
+        top_keys = SLIM_CONSIDER_KEYS - {"messages", "my_state"}
+        beat_keys = {"sticker_id", "reaction_id", "typing", "voice"}
+        cleaned_messages: list[object] = []
+        hoisted_fields: dict[str, object] = {}
+        changed_messages = False
+        for item in raw_messages:
+            if isinstance(item, Mapping) and len(item) >= 1:
+                item_keys = set(item)
+                if item_keys <= top_keys:
+                    changed_messages = True
+                    for k, v in item.items():
+                        if k not in value and k not in hoisted_fields:
+                            hoisted_fields[k] = v
+                    continue
+                matched_beat = item_keys & beat_keys
+                extra_keys = item_keys - beat_keys
+                if len(matched_beat) == 1 and extra_keys and extra_keys <= top_keys:
+                    changed_messages = True
+                    b_key = next(iter(matched_beat))
+                    cleaned_messages.append({b_key: item[b_key]})
+                    for k in extra_keys:
+                        if k not in value and k not in hoisted_fields:
+                            hoisted_fields[k] = item[k]
+                    continue
+            cleaned_messages.append(item)
+        if changed_messages:
+            value = {**value, **hoisted_fields, "messages": cleaned_messages}
     wait = value.get("wait")
     if isinstance(wait, Mapping):
         # The role supplied the complete choice in one object. This is only
@@ -2356,6 +2412,21 @@ def compile_slim_consider_payload(
         if type(seconds) is not int or not 5 <= seconds <= _SLIM_REVISIT_MAX_SECONDS:
             raise ValueError("come_back.after_seconds必须是5到604800整数秒")
         value = {**value, "come_back": thought, "come_back_in": seconds}
+    raw_affect = value.get("affect")
+    if isinstance(raw_affect, Mapping):
+        nested_op = raw_affect.get("affect") or raw_affect.get("operation")
+        if not isinstance(nested_op, str):
+            bool_ops = [
+                op for op in _SLIM_AFFECT_OPERATIONS if raw_affect.get(op) is True
+            ]
+            if len(bool_ops) == 1:
+                nested_op = bool_ops[0]
+        if isinstance(nested_op, str):
+            unpacked_affect: dict[str, object] = {**value, "affect": nested_op}
+            for k in ("episode_id", "components", "resolution_summary"):
+                if k in raw_affect and k not in value:
+                    unpacked_affect[k] = raw_affect[k]
+            value = unpacked_affect
     validate_authored_impression_retention(value)
     messages = _slim_beats(value.get("messages"), allow_nontext=allow_nontext)
     if messages is None:
@@ -2368,7 +2439,9 @@ def compile_slim_consider_payload(
             + "。my_state 只写你自己此刻的感觉、欲望、抵触、注意或平静；"
             "meaning_of_this 只在你有对对方或处境的特定理解时填写。宿主不会用 messages、stuck_with_me 或同一段 felt 替你补。"
         )
-    label = my_state[:64]
+    if meaning_of_this.strip() == my_state.strip():
+        meaning_of_this = ""
+    label = _short_clause_label(my_state, 64)
     rationale = (meaning_of_this or my_state)[:240]
     wants = _clip_text(value.get("wants"), 240)
     photo = value.get("photo")
@@ -2503,6 +2576,10 @@ def compile_slim_consider_payload(
     assessment = _slim_response_expectation_assessment(value, reason=my_state)
     if assessment is not None:
         expression["response_expectation_assessment"] = assessment
+    has_relationship_residue = bool(
+        (about_us and why_us)
+        or (we_are in _SLIM_ORDINARY_STAGES and calling_it and said_as)
+    )
     compiled = {
         "appraisal_draft": _slim_appraisal_draft(
             meaning_of_this=meaning_of_this,
@@ -2514,8 +2591,11 @@ def compile_slim_consider_payload(
             resolution_summary=value.get("resolution_summary"),
             matters_bp=value.get("matters_bp"),
             keep_impression=keep_impression is True,
+            stuck_with_me=stuck_with_me,
+            has_relationship_residue=has_relationship_residue,
         ),
         "expression_draft": expression,
+
     }
     for field in ("life_intent", "plan_response"):
         if value.get(field) is not None:
@@ -2584,6 +2664,8 @@ def _slim_appraisal_draft(
     resolution_summary: object = None,
     matters_bp: object = None,
     keep_impression: bool = False,
+    stuck_with_me: str = "",
+    has_relationship_residue: bool = False,
 ) -> dict[str, object]:
     """Keep counterpart appraisal and present self-state as distinct role texts."""
 
@@ -2608,17 +2690,38 @@ def _slim_appraisal_draft(
         if isinstance(resolution_summary, str) and resolution_summary.strip():
             common["resolution_summary"] = resolution_summary.strip()[:240]
         if isinstance(components, list) and components:
-            common["components"] = components
+            common["components"] = [
+                {
+                    k: v
+                    for k, v in c.items()
+                    if k in {"component_id", "dimension", "target_intensity_bp"}
+                    and (k != "component_id" or (isinstance(v, str) and v.strip()))
+                }
+                if isinstance(c, dict)
+                else c
+                for c in components
+            ]
     meaning = _clip_text(meaning_of_this, 128).rstrip()
+    if not meaning and keep_impression and stuck_with_me.strip():
+        meaning = _clip_text(stuck_with_me, 128).rstrip()
     if not meaning and common["affect"] != "no_change":
-        meaning = _clip_text(my_state, 128).rstrip() or "affect"
-    if not meaning and keep_impression:
-        # Asking to keep this as a private impression is itself a statement that
-        # the reading mattered.  Without an appraisal to hang it on, the paid
-        # impression lane finds no anchor and her keep decision is dropped.
+        if isinstance(resolution_summary, str) and resolution_summary.strip():
+            meaning = _clip_text(resolution_summary, 128).rstrip()
+        else:
+            meaning = _clip_text(my_state, 128).rstrip() or "affect"
+    if not meaning and (
+        keep_impression
+        or weight > _SLIM_APPRAISAL_DEFAULT_CONFIDENCE_BP
+        or has_relationship_residue
+    ):
+        # When she weighed this turn above the unweighted default (matters_bp > 5000),
+        # asked to keep a private impression, or authored a relationship shift,
+        # her full inner state anchors the appraisal so short-term residue,
+        # background life_reflection, and private_impression_reflection receive it.
         meaning = _clip_text(my_state, 128).rstrip()
     if not meaning:
         return {"appraise": False, **common}
+
     return {
         "appraise": True,
         **common,

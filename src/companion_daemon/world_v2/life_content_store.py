@@ -133,8 +133,9 @@ class ImmutableLifeContentStore(Protocol):
 
 class _LifeContentSnapshot:
     """Read-only lease; the provider reads from an actual fixed snapshot."""
-    def __init__(self, read):
+    def __init__(self, read, *, generations: tuple[int, int] | None = None):
         self._read = read
+        self.generations = generations
         self._owner = get_ident()
         self._closed = False
         self._values = OrderedDict()
@@ -329,6 +330,14 @@ class SQLiteImmutableLifeContentStore:
             # BEGIN alone is deferred; this SELECT fixes the database image.
             connection.execute("SELECT 1 FROM world_v2_life_content WHERE world_id=? LIMIT 1",
                                (self._world_id,)).fetchone()
+            gen_row = connection.execute(
+                "SELECT appended,rewritten FROM world_v2_life_content_epochs WHERE singleton=1"
+            ).fetchone()
+            generations = (
+                (int(gen_row[0]), int(gen_row[1]))
+                if gen_row is not None and len(gen_row) == 2
+                else None
+            )
             def read(ref):
                 row = connection.execute(
                     "SELECT content_kind, content_payload_hash, text FROM world_v2_life_content "
@@ -337,7 +346,7 @@ class SQLiteImmutableLifeContentStore:
                 return None if row is None else StoredLifeContent(
                     content_ref=ref, content_kind=row[0], content_payload_hash=row[1], text=row[2],
                 )
-            snapshot = _LifeContentSnapshot(read)
+            snapshot = _LifeContentSnapshot(read, generations=generations)
             yield snapshot
         finally:
             if snapshot is not None:

@@ -451,3 +451,134 @@ def test_partially_dispatched_multi_beat_plan_exposes_unsent_siblings_in_queued_
     ]
     assert all(item.he_spoke_after is True for item in facts)
 
+
+def test_multi_beat_later_plan_refreshes_once_per_plan_not_per_beat() -> None:
+    from companion_daemon.world_v2.later_expression_freshness import (
+        later_refresh_is_terminal,
+        later_refresh_process,
+    )
+
+    later1 = _later(
+        action_id="action:later:plan1:b1",
+        plan_id="plan:later:multi",
+        beat_id="beat:later:plan1:1",
+    )
+    later2 = _later(
+        action_id="action:later:plan1:b2",
+        plan_id="plan:later:multi",
+        beat_id="beat:later:plan1:2",
+    )
+    beat1 = SimpleNamespace(
+        beat_id=later1.expression_beat_id,
+        action_id=later1.action_id,
+        payload_ref="payload:later:1",
+        event_ref="event:beat:later:1",
+    )
+    beat2 = SimpleNamespace(
+        beat_id=later2.expression_beat_id,
+        action_id=later2.action_id,
+        payload_ref="payload:later:2",
+        event_ref="event:beat:later:2",
+    )
+    refs = (
+        SimpleNamespace(
+            event_id="event:beat:later:1",
+            event_type="ExpressionBeatAuthorized",
+            logical_time=NOW,
+            world_revision=3,
+            payload_hash=HASH,
+        ),
+        SimpleNamespace(
+            event_id="event:beat:later:2",
+            event_type="ExpressionBeatAuthorized",
+            logical_time=NOW,
+            world_revision=4,
+            payload_hash=HASH,
+        ),
+    )
+    payloads = (
+        SimpleNamespace(payload_ref="payload:later:1", text="醒了没，我出门前跟你报个到"),
+        SimpleNamespace(payload_ref="payload:later:2", text="昨晚半夜走廊里有人摸黑来敲门"),
+    )
+    spoken = _spoken(at=NOW + timedelta(minutes=16))
+    process_for_beat2 = SimpleNamespace(
+        process_kind="proactive_action_deliberation",
+        trigger_ref="proactive-consideration:"
+        + later_refresh_consideration_id(later2.action_id),
+        state="terminal",
+    )
+    projection = _projection(
+        actions=(later1, later2, spoken),
+        beats=(beat1, beat2),
+        refs=refs,
+        payloads=payloads,
+        processes=(process_for_beat2,),
+        logical_time=later1.not_before,
+    )
+
+    assert later_refresh_process(projection, action_id=later1.action_id) is process_for_beat2
+    assert later_refresh_is_terminal(projection, later1.action_id) is True
+    assert later_refresh_is_terminal(projection, later2.action_id) is True
+    assert queued_later_facts(projection, logical_time=projection.logical_time) == ()
+
+
+def test_snapshot_waiting_messages_marks_already_in_chat_truthfully() -> None:
+    item = compile_pending_outbound_expression_item(
+        action_id="action:later:dup",
+        plan_id="plan:later:1",
+        beat_id="beat:later:2",
+        text=TEXT,
+        written_at=NOW,
+        send_at=NOW + timedelta(seconds=2),
+        he_spoke_after=True,
+        i_spoke_after=True,
+        authority_event_ref="event:beat:later",
+        authority_world_revision=3,
+        authority_payload_hash=HASH,
+    )
+    typed = compile_inner_life_snapshot(
+        {
+            "world_id": "world:later",
+            "actor_ref": "agent:companion",
+            "world_revision": 12,
+            "deliberation_revision": 2,
+            "ledger_sequence": 12,
+            "logical_time": "2026-08-19T09:09:00+08:00",
+            "slices": {
+                "recent_dialogue": {
+                    "availability": "available",
+                    "items": [
+                        {
+                            "item_ref": "event:dialogue:delivered:1",
+                            "source_ref": "event:dialogue:delivered:1",
+                            "privacy_class": "counterpart_shared",
+                            "value": {
+                                "speaker": "agent:companion",
+                                "text": TEXT,
+                                "occurred_at": (NOW + timedelta(seconds=10)).isoformat(),
+                            },
+                        }
+                    ],
+                },
+                "pending_outbound": {
+                    "availability": "available",
+                    "items": [
+                        {
+                            "item_ref": item.action_id,
+                            "source_ref": item.action_id,
+                            "privacy_class": item.privacy_class,
+                            "value": item.model_dump(mode="json"),
+                        }
+                    ],
+                },
+            },
+        }
+    )
+    materials = __import__("json").loads(typed.materials_json)
+    waiting = materials["messages_waiting_to_send"]
+    assert waiting[0]["text"] == TEXT
+    assert waiting[0]["already_in_chat"] is True
+    assert "已经在对话里发过了" in waiting[0]["line"]
+
+
+

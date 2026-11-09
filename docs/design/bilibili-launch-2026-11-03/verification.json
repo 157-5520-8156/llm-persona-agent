@@ -1,0 +1,126 @@
+{
+  "date": "2026-11-03",
+  "user_timezone": "America/New_York",
+  "scope": "Project understanding and Bilibili launch preproduction; not a full audit or completed video",
+  "repository": "/Users/geoff/Projects/Girl-Agent",
+  "branch": "worktree-fix-cost-optimization",
+  "head": "143b673919e1607dc4d551f31c650e452a0939da",
+  "working_tree_was_dirty": true,
+  "source_inventory": {
+    "src_python_files": 711,
+    "src_python_lines": 399621,
+    "test_python_files": 811,
+    "test_python_lines": 364739,
+    "script_python_files": 70,
+    "script_python_lines": 29170
+  },
+  "tests": [
+    {
+      "command": ".venv/bin/python -m pytest -q tests/world_v2/test_her_own_feelings_contract.py tests/world_v2/test_social_initiative.py tests/world_v2/test_recall_attention.py tests/world_v2/test_story_outlook_replanning.py tests/world_v2/test_life_structural_review.py tests/world_v2/test_dashboard_agenda.py tests/world_v2/test_memory_read_lifecycle.py tests/world_v2/test_qq_voice.py tests/world_v2/test_counterpart_world_interaction.py tests/world_v2/test_inbound_context_window.py tests/world_v2/test_world_v2_dashboard_ui.py tests/world_v2/test_qq_dashboard_operator_endpoint.py",
+      "passed": 191,
+      "elapsed_seconds": 12.34,
+      "warnings": 1,
+      "warning_kind": "Starlette TestClient httpx deprecation"
+    },
+    {
+      "command": ".venv/bin/python -m pytest -q tests/world_v2/test_dashboard_home_browser_runtime.py tests/world_v2/test_character_interior_architecture_guard.py tests/world_v2/test_character_interior_single_author_composition.py tests/world_v2/test_external_world_perception_bilibili.py tests/world_v2/test_npc_ecology.py tests/world_v2/test_outcome_e2e_recovery_replay.py",
+      "passed": 217,
+      "elapsed_seconds": 44.47,
+      "includes_node_contract_tests_via_pytest_wrapper": true
+    }
+  ],
+  "read_only_primary_world_snapshot": {
+    "world_revision": 43118,
+    "deliberation_revision": 47268,
+    "ledger_sequence": 90386,
+    "logical_time": "2026-11-03T13:40:07Z",
+    "counts_exclude_empty_collection_sentinels": true,
+    "experiences": 578,
+    "plans": 206,
+    "facts": 57,
+    "memory_candidates": 683,
+    "npcs": 34,
+    "external_perceptions": 142,
+    "media_deliveries": 6,
+    "private_impressions": 126,
+    "affect_episodes": 85
+  },
+  "health_check": {
+    "url": "http://127.0.0.1:8787/health",
+    "attempts": 1,
+    "timeout_seconds": 5,
+    "result": "TimeoutError",
+    "launchagent_state": "running",
+    "does_not_establish_total_service_outage": true
+  },
+  "deployment_policy_file_values_not_live_process_attestation": {
+    "WORLD_V2_VISIBLE_EXPRESSION_PROFILE": "grounded_review_v25",
+    "WORLD_V2_EXPRESSION_EPISODE_MODE": "off",
+    "WORLD_V2_ORDINARY_TEXT_REVIEW_MODE": "sampled",
+    "WORLD_V2_INBOUND_CONTEXT_WINDOW_ENABLED": true,
+    "WORLD_V2_LIFE_CANDIDATE_REVIEW_ENABLED": false,
+    "WORLD_V2_LIFE_REVIEW_MODE": "structural",
+    "DEEPSEEK_MODEL": "deepseek-flash"
+  },
+  "browser_layout_check": {
+    "source": "current DASHBOARD_HTML and DASHBOARD_APP_JS with synthetic test fixtures",
+    "fixture_source": "tests/js/dashboard_stage.test.js",
+    "temporary_directory": "/tmp/girl-agent-launch-inspection-20261103",
+    "explicit_synthetic_banner": true,
+    "live_dashboard_acceptance": false,
+    "temporary_preview_server_closed": true
+  },
+  "external_references": [
+    {
+      "url": "https://github.com/SAKURAfan1023/dafeiyu-bot/blob/main/README.md",
+      "blob_sha": "8e423357c39901410dd5d6434f8df63b82ed6bde",
+      "read_scope": "author README, no independent product test"
+    },
+    {
+      "url": "https://www.bilibili.com/video/BV1Y54K63EXt/",
+      "read_scope": "title and creator description; video playback unavailable"
+    },
+    {
+      "url": "https://www.bilibili.com/video/BV1Qhso6yEet/",
+      "read_scope": "title and creator description; no independent product test"
+    }
+  ],
+  "new_paid_model_experiments": 0,
+  "qq_messages_sent_by_this_task": 0,
+  "production_restarts_by_this_task": 0,
+  "production_configuration_changes_by_this_task": 0,
+  "publications_by_this_task": 0,
+  "inspected_source_hashes_at_artifact_validation": {
+    "src/companion_daemon/napcat_cli.py": "823b1a8da01981f85d99c2bdc368073e66474b83ab19987af2645b2a2dcecfd7",
+    "src/companion_daemon/world_v2/qq_c2c_host.py": "ea6de18cb809be603c4d53c9aa1de5400565806307cc748cdc8749ef251171b6",
+    "src/companion_daemon/world_v2/character_interior/core.py": "a94a4351e00a831741808afa18fcabc379ad14d3ad267ffa4d3348ef9b61b02f",
+    "src/companion_daemon/world_v2/character_interior/inbound_prompt.py": "4a90c948c7e749c6f63163acaeb77694961b8cda7e00b9f1a3e2aa39d49dd529",
+    "src/companion_daemon/world_v2/social_initiative.py": "f21e047bb079847bb4690289cf287f636e990e9abc70780a3d12ae8014a52421",
+    "src/companion_daemon/world_v2/counterpart_world_interaction.py": "f14eca48cb0c6420da4ba5281573aa1f11e326a7b3ee4e503f5a69d74b7ad6a8",
+    "src/companion_daemon/world_v2/recall_index.py": "b46bd26b387676c9a57dc6f4028d55baab2c8cb8fb6d9638aa2b6c20ccd8e92b",
+    "src/companion_daemon/world_v2/world_outlook.py": "18d3d5d11c962e191fe9d8716bf6c23ba5f757ad530896e79eec92bd650aeaad",
+    "src/companion_daemon/world_v2/ordinary_text_observation.py": "b6051f6747bb7db2b29fc6a9d16d1de71b1cbe0077ea397bb5cda6e6ff1d25b0",
+    "src/companion_daemon/world_v2/life_structural_review.py": "8ce45934e3d6f25d76f33b5a042e624b661ceb9751dd92dc7c0abffc2f327113",
+    "src/companion_daemon/world_v2/qq_voice.py": "d7c94a5c0228c32ebb15b59d0ba0eb9a0a9b52073a2a29888f972fdfe52141ef",
+    "src/companion_daemon/world_v2/world_v2_dashboard_ui.py": "f45d6ac9b7a367e68c2ce22280e127641213dbfade8adf742b0df00ddcba6b9e",
+    "src/companion_daemon/world_v2/dashboard_stage_html.py": "686573f1b50dcd3777e9420cf93358e9fabfc20ab759f3178c9e339ab8585e8f",
+    "src/companion_daemon/world_v2/dashboard_stage_model.py": "d874f5d8db0f5263b84232563660727ec78bfa5c23cfcb968c01f6b83f2de21f"
+  },
+  "script_timing_estimate": {
+    "narration_han_characters": 1788,
+    "minutes_at_250_han_per_minute": 7.15,
+    "additional_raw_demo_and_reading_seconds": [
+      100,
+      150
+    ],
+    "estimate_not_read_aloud_measurement": true
+  },
+  "existing_working_tree_diff_check": {
+    "result": "two existing blank-line-at-EOF warnings in unrelated modified test files",
+    "files": [
+      "tests/world_v2/test_declared_attention_due.py:451",
+      "tests/world_v2/test_later_expression_freshness.py:523"
+    ],
+    "changed_by_this_task": false
+  }
+}

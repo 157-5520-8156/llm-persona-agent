@@ -802,7 +802,9 @@ class LifeAftermathRuntime:
             [occurrence.occurrence_id]
         )
         proposal_event_id = "event:life-aftermath:outcome-proposal:" + suffix
+        settlement_event_id = "event:life-aftermath:settlement:" + suffix
         existing_proposal = self._ledger.lookup_event_commit(proposal_event_id)
+        existing_settlement = self._ledger.lookup_event_commit(settlement_event_id)
         decision_identity: dict[str, object] = {}
         resolution_evidence = (wake_evidence,)
         if existing_proposal is not None:
@@ -818,6 +820,16 @@ class LifeAftermathRuntime:
                     "incomplete Context v2 character outcome cannot cross a "
                     "later World prefix"
                 )
+            if (
+                existing_settlement is None
+                and matrix_authority != "character_choice"
+                and (
+                    persisted.evaluated_world_revision != projection.world_revision
+                    or logical_time >= persisted.expires_at
+                )
+            ):
+                existing_proposal = None
+        if existing_proposal is not None:
             proposal_id = persisted.outcome_proposal_id
             chosen = next(
                 item
@@ -981,157 +993,209 @@ class LifeAftermathRuntime:
                     immutable_hash=located[0].payload_hash,
                 ),
             )
-        if existing_proposal is not None:
-            proposal_payload = persisted
-            proposal_event = existing_proposal[0]
-            change_id = persisted.change_id
-            change_hash = persisted.proposed_change_hash
-        else:
-            adopted = decision_identity.get("adopt_proposed_life_direction")
-            from .event_detail_contract import execution_authorities
-            authorities = execution_authorities(occurrence, self._content_store, candidate_ref=chosen.candidate_result_ref)
-            execution_source_ref = authorities[0][0].source_event_ref if authorities else None
-            execution_content_proof = authorities[0][1] if authorities else None
-            change_id = "change:life-aftermath:settle:" + suffix
-            change_hash = outcome_mutation_hash(
-                change_id=change_id,
-                occurrence_id=occurrence.occurrence_id,
-                evaluated_entity_revision=occurrence.entity_revision,
-                evaluated_world_revision=projection.world_revision,
+        def _build_settlement_batch(
+            *,
+            active_occurrence,
+            active_proposal_id: str,
+            active_proposal_payload: OutcomeProposalRecordedPayload,
+            active_proposal_event: WorldEvent,
+            active_change_id: str,
+            active_change_hash: str,
+        ) -> tuple[WorldEvent, ...]:
+            acceptance_id = "acceptance:life-aftermath:" + suffix
+            acceptance_payload = {
+                "status": "accepted",
+                "acceptance_id": acceptance_id,
+                "proposal_id": active_proposal_id,
+                "evaluated_world_revision": active_proposal_payload.evaluated_world_revision,
+                "accepted_change_id": active_change_id,
+                "accepted_change_hash": active_change_hash,
+            }
+            acceptance_event = self._event(
+                event_id="event:life-aftermath:acceptance:" + suffix,
+                event_type="AcceptanceRecorded",
+                payload=acceptance_payload,
+                logical_time=logical_time,
+                trace_id=trace_id,
+                causation_id=active_proposal_event.event_id,
+                correlation_id=correlation_id,
+            )
+            trigger_id = (
+                appraisal_trigger_identity(active_occurrence.occurrence_id, chosen.result_id)
+                if (
+                    self._owner_actor_ref in active_occurrence.participant_refs
+                    and not self._is_external_arrangement_instance(active_occurrence)
+                )
+                else None
+            )
+            settlement_payload = WorldOccurrenceSettledPayload(
+                execution_source_ref=active_proposal_payload.execution_source_ref,
+                execution_content_proof=active_proposal_payload.execution_content_proof,
+                change_id=active_change_id,
+                transition_id="transition:life-aftermath:settle:" + suffix,
+                expected_entity_revision=active_occurrence.entity_revision,
+                evidence_refs=(wake_evidence,),
+                policy_refs=("policy:outcome-v1",),
+                acceptance_id=acceptance_id,
+                evaluated_world_revision=active_proposal_payload.evaluated_world_revision,
+                accepted_change_hash=active_change_hash,
+                occurrence_id=active_occurrence.occurrence_id,
+                outcome_proposal_id=active_proposal_id,
                 candidate_result_ref=chosen.candidate_result_ref,
                 result_id=chosen.result_id,
+                observation_refs=(observation_id,),
                 result_payload_ref=chosen.result_payload_ref,
                 result_payload_hash=chosen.result_payload_hash,
-                observation_refs=(observation_id,),
-                execution_source_ref=execution_source_ref,
-                execution_content_proof=execution_content_proof,
+                settled_at=logical_time,
+                appraisal_trigger_ref=trigger_id,
                 adopt_proposed_life_direction=(
-                    adopted if isinstance(adopted, bool) else None
+                    active_proposal_payload.adopt_proposed_life_direction
                 ),
+                character_life_direction=active_proposal_payload.character_life_direction,
             )
-            proposal_payload = OutcomeProposalRecordedPayload(
-                execution_source_ref=execution_source_ref,
-                execution_content_proof=execution_content_proof,
-                outcome_proposal_id=proposal_id,
-                decision_proposal_id=proposal_id,
-                change_id=change_id,
-                occurrence_id=occurrence.occurrence_id,
-                evaluated_entity_revision=occurrence.entity_revision,
-                evaluated_world_revision=projection.world_revision,
-                trigger_ref=occurrence.trigger_ref,
-                candidate_result_ref=chosen.candidate_result_ref,
-                proposed_result_id=chosen.result_id,
-                proposed_result_payload_ref=chosen.result_payload_ref,
-                proposed_result_payload_hash=chosen.result_payload_hash,
-                proposed_change_hash=change_hash,
-                observation_refs=(observation_id,),
-                precondition_refs=occurrence.satisfied_precondition_refs,
-                evidence_refs=resolution_evidence,
-                confidence_bp=10_000,
-                expires_at=logical_time + timedelta(minutes=5),
-                **decision_identity,
-            )
-            proposal_event = self._event(
-                event_id=proposal_event_id,
-                event_type="OutcomeProposalRecorded",
-                payload=proposal_payload.model_dump(mode="json"),
+            settlement_event = self._event(
+                event_id=settlement_event_id,
+                event_type="WorldOccurrenceSettled",
+                payload=settlement_payload.model_dump(mode="json"),
                 logical_time=logical_time,
                 trace_id=trace_id,
-                causation_id=observation_event.event_id,
+                causation_id=acceptance_event.event_id,
                 correlation_id=correlation_id,
             )
-            self._commit(
-                (proposal_event,),
-                commit_id="commit:life-aftermath:proposal:" + suffix,
+            trigger_event = None
+            if trigger_id is not None:
+                trigger = TriggerProcess(
+                    trigger_id=trigger_id,
+                    trigger_ref=trigger_id,
+                    process_kind="npc_world_appraisal",
+                    source_evidence_ref=settlement_event.event_id,
+                    state="open",
+                )
+                trigger_event = self._event(
+                    event_id="event:life-aftermath:appraisal-trigger:" + suffix,
+                    event_type="TriggerProcessOpened",
+                    payload={"process": trigger.model_dump(mode="json")},
+                    logical_time=logical_time,
+                    trace_id=trace_id,
+                    causation_id=settlement_event.event_id,
+                    correlation_id=correlation_id,
+                )
+            return (
+                acceptance_event,
+                settlement_event,
+                *((trigger_event,) if trigger_event is not None else ()),
             )
 
-        acceptance_id = "acceptance:life-aftermath:" + suffix
-        acceptance_payload = {
-            "status": "accepted",
-            "acceptance_id": acceptance_id,
-            "proposal_id": proposal_id,
-            "evaluated_world_revision": proposal_payload.evaluated_world_revision,
-            "accepted_change_id": change_id,
-            "accepted_change_hash": change_hash,
-        }
-        acceptance_event = self._event(
-            event_id="event:life-aftermath:acceptance:" + suffix,
-            event_type="AcceptanceRecorded",
-            payload=acceptance_payload,
-            logical_time=logical_time,
-            trace_id=trace_id,
-            causation_id=proposal_event.event_id,
-            correlation_id=correlation_id,
-        )
-        trigger_id = (
-            appraisal_trigger_identity(occurrence.occurrence_id, chosen.result_id)
-            if (self._owner_actor_ref in occurrence.participant_refs
-                and not self._is_external_arrangement_instance(occurrence))
-            else None
-        )
-        settlement_payload = WorldOccurrenceSettledPayload(
-            execution_source_ref=proposal_payload.execution_source_ref,
-            execution_content_proof=proposal_payload.execution_content_proof,
-            change_id=change_id,
-            transition_id="transition:life-aftermath:settle:" + suffix,
-            expected_entity_revision=occurrence.entity_revision,
-            evidence_refs=(wake_evidence,),
-            policy_refs=("policy:outcome-v1",),
-            acceptance_id=acceptance_id,
-            evaluated_world_revision=proposal_payload.evaluated_world_revision,
-            accepted_change_hash=change_hash,
-            occurrence_id=occurrence.occurrence_id,
-            outcome_proposal_id=proposal_id,
-            candidate_result_ref=chosen.candidate_result_ref,
-            result_id=chosen.result_id,
-            observation_refs=(observation_id,),
-            result_payload_ref=chosen.result_payload_ref,
-            result_payload_hash=chosen.result_payload_hash,
-            settled_at=logical_time,
-            appraisal_trigger_ref=trigger_id,
-            adopt_proposed_life_direction=(
-                proposal_payload.adopt_proposed_life_direction
-            ),
-            character_life_direction=proposal_payload.character_life_direction,
-        )
-        settlement_event = self._event(
-            event_id="event:life-aftermath:settlement:" + suffix,
-            event_type="WorldOccurrenceSettled",
-            payload=settlement_payload.model_dump(mode="json"),
-            logical_time=logical_time,
-            trace_id=trace_id,
-            causation_id=acceptance_event.event_id,
-            correlation_id=correlation_id,
-        )
-        trigger_event = None
-        if trigger_id is not None:
-            trigger = TriggerProcess(
-                trigger_id=trigger_id,
-                trigger_ref=trigger_id,
-                process_kind="npc_world_appraisal",
-                source_evidence_ref=settlement_event.event_id,
-                state="open",
-            )
-            trigger_event = self._event(
-                event_id="event:life-aftermath:appraisal-trigger:" + suffix,
-                event_type="TriggerProcessOpened",
-                payload={"process": trigger.model_dump(mode="json")},
-                logical_time=logical_time,
-                trace_id=trace_id,
-                causation_id=settlement_event.event_id,
-                correlation_id=correlation_id,
-            )
-        if self._ledger.lookup_event_commit(settlement_event.event_id) is None:
+        if self._ledger.lookup_event_commit(settlement_event_id) is None:
             with self._ledger.serialized_commit_sequence():
-                if cancel_interrupted_execution(ledger=self._ledger, occurrence_id=occurrence.occurrence_id,
-                                                wake_event_ref=wake.event_id, content_store=self._content_store):
+                if existing_proposal is not None:
+                    proposal_payload = persisted
+                    proposal_event = existing_proposal[0]
+                    change_id = persisted.change_id
+                    change_hash = persisted.proposed_change_hash
+                else:
+                    projection = self._ledger.project()
+                    occurrence = next(
+                        item
+                        for item in projection.world_occurrences
+                        if item.occurrence_id == occurrence.occurrence_id
+                    )
+                    if self._ledger.lookup_event_commit(proposal_event_id) is not None:
+                        rev_tag = f":r{projection.world_revision}"
+                        proposal_id = "proposal:life-aftermath:outcome:" + _digest(
+                            [occurrence.occurrence_id, projection.world_revision]
+                        )
+                        proposal_event_id = (
+                            "event:life-aftermath:outcome-proposal:" + suffix + rev_tag
+                        )
+                        change_id = "change:life-aftermath:settle:" + suffix + rev_tag
+                        proposal_commit_id = (
+                            "commit:life-aftermath:proposal:" + suffix + rev_tag
+                        )
+                    else:
+                        change_id = "change:life-aftermath:settle:" + suffix
+                        proposal_commit_id = "commit:life-aftermath:proposal:" + suffix
+                    adopted = decision_identity.get("adopt_proposed_life_direction")
+                    from .event_detail_contract import execution_authorities
+
+                    authorities = execution_authorities(
+                        occurrence,
+                        self._content_store,
+                        candidate_ref=chosen.candidate_result_ref,
+                    )
+                    execution_source_ref = (
+                        authorities[0][0].source_event_ref if authorities else None
+                    )
+                    execution_content_proof = authorities[0][1] if authorities else None
+                    change_hash = outcome_mutation_hash(
+                        change_id=change_id,
+                        occurrence_id=occurrence.occurrence_id,
+                        evaluated_entity_revision=occurrence.entity_revision,
+                        evaluated_world_revision=projection.world_revision,
+                        candidate_result_ref=chosen.candidate_result_ref,
+                        result_id=chosen.result_id,
+                        result_payload_ref=chosen.result_payload_ref,
+                        result_payload_hash=chosen.result_payload_hash,
+                        observation_refs=(observation_id,),
+                        execution_source_ref=execution_source_ref,
+                        execution_content_proof=execution_content_proof,
+                        adopt_proposed_life_direction=(
+                            adopted if isinstance(adopted, bool) else None
+                        ),
+                    )
+                    proposal_payload = OutcomeProposalRecordedPayload(
+                        execution_source_ref=execution_source_ref,
+                        execution_content_proof=execution_content_proof,
+                        outcome_proposal_id=proposal_id,
+                        decision_proposal_id=proposal_id,
+                        change_id=change_id,
+                        occurrence_id=occurrence.occurrence_id,
+                        evaluated_entity_revision=occurrence.entity_revision,
+                        evaluated_world_revision=projection.world_revision,
+                        trigger_ref=occurrence.trigger_ref,
+                        candidate_result_ref=chosen.candidate_result_ref,
+                        proposed_result_id=chosen.result_id,
+                        proposed_result_payload_ref=chosen.result_payload_ref,
+                        proposed_result_payload_hash=chosen.result_payload_hash,
+                        proposed_change_hash=change_hash,
+                        observation_refs=(observation_id,),
+                        precondition_refs=occurrence.satisfied_precondition_refs,
+                        evidence_refs=resolution_evidence,
+                        confidence_bp=10_000,
+                        expires_at=logical_time + timedelta(minutes=5),
+                        **decision_identity,
+                    )
+                    proposal_event = self._event(
+                        event_id=proposal_event_id,
+                        event_type="OutcomeProposalRecorded",
+                        payload=proposal_payload.model_dump(mode="json"),
+                        logical_time=logical_time,
+                        trace_id=trace_id,
+                        causation_id=observation_event.event_id,
+                        correlation_id=correlation_id,
+                    )
+                    if self._ledger.lookup_event_commit(proposal_event_id) is None:
+                        self._commit(
+                            (proposal_event,),
+                            commit_id=proposal_commit_id,
+                        )
+                if cancel_interrupted_execution(
+                    ledger=self._ledger,
+                    occurrence_id=occurrence.occurrence_id,
+                    wake_event_ref=wake.event_id,
+                    content_store=self._content_store,
+                ):
                     return None
+                settlement_batch = _build_settlement_batch(
+                    active_occurrence=occurrence,
+                    active_proposal_id=proposal_id,
+                    active_proposal_payload=proposal_payload,
+                    active_proposal_event=proposal_event,
+                    active_change_id=change_id,
+                    active_change_hash=change_hash,
+                )
                 self._commit(
-                    (
-                        acceptance_event,
-                        settlement_event,
-                        *((trigger_event,) if trigger_event is not None else ()),
-                    ),
+                    settlement_batch,
                     commit_id="commit:life-aftermath:settlement:" + suffix,
                 )
 
@@ -1156,7 +1220,7 @@ class LifeAftermathRuntime:
         settlement_ref = next(
             item
             for item in settled_projection.committed_world_event_refs
-            if item.event_id == settlement_event.event_id
+            if item.event_id == settlement_event_id
         )
         descriptor = LifeContentRecordedPayload(
             content_id="life-content:occurrence:" + suffix,
@@ -1177,7 +1241,7 @@ class LifeAftermathRuntime:
             payload=descriptor.model_dump(mode="json"),
             logical_time=logical_time,
             trace_id=trace_id,
-            causation_id=settlement_event.event_id,
+            causation_id=settlement_event_id,
             correlation_id=correlation_id,
         )
         if self._ledger.lookup_event_commit(descriptor_event.event_id) is None:

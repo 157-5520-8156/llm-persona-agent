@@ -3141,3 +3141,59 @@ def test_repeated_settlement_pending_questions_are_answered_once():
         runtime, ("relationship", "world", 1, 2, 3, 4, 5, 7, "proposal", "event"), question
     ) is True
     assert len(asked) == 2
+
+
+def test_private_impression_interval_env_only_expires_silence_sources(
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    from companion_daemon.world_v2.character_interior.run_result import (
+        CausalOpportunityPolicy,
+        CausalOpportunityRuntime,
+    )
+    from companion_daemon.world_v2.character_interior.world_stimulus import (
+        CharacterInteriorWorldStimulusRuntime,
+    )
+
+    monkeypatch.setenv("WORLD_V2_PRIVATE_IMPRESSION_MIN_INTERVAL_SECONDS", "1800")
+    runtime = object.__new__(CharacterInteriorWorldStimulusRuntime)
+    runtime._opportunity_runtime = CausalOpportunityRuntime(
+        world_id=WORLD_ID,
+        actor_ref="actor:companion",
+        purpose="world_stimulus_appraisal",
+    )
+    policy = CausalOpportunityPolicy(
+        merge_window_seconds=300,
+        expiry_seconds=86_400,
+    )
+    source_at = datetime(2026, 11, 6, 8, 0, tzinfo=UTC)
+    two_hours_later = source_at + timedelta(hours=2)
+
+    occurrence_event = SimpleNamespace(
+        event_id="event:world-occurrence-settled:test",
+        event_type="WorldOccurrenceSettled",
+        correlation_id="corr:occ",
+        logical_time=source_at,
+    )
+    silence_event = SimpleNamespace(
+        event_id="event:trigger-settlement-recorded:test",
+        event_type="TriggerSettlementRecorded",
+        correlation_id="corr:silence",
+        logical_time=source_at,
+    )
+
+    assert (
+        runtime._opportunity_is_expired(
+            source_events=(occurrence_event,),  # type: ignore[arg-type]
+            at=two_hours_later,
+            policy=policy,
+        )
+        is False
+    )
+    assert (
+        runtime._opportunity_is_expired(
+            source_events=(silence_event,),  # type: ignore[arg-type]
+            at=two_hours_later,
+            policy=policy,
+        )
+        is True
+    )

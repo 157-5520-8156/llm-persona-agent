@@ -92,6 +92,22 @@ class CharacterInteriorExpressionReconsiderationReviewer:
         )
         if beat is None:
             raise RuntimeError("expression reconsideration beat is unavailable")
+        replacement_plan_ref = self._accepted_replacement(
+            projection=projection,
+            observation_event=observation_event,
+            beat=beat,
+        )
+        if replacement_plan_ref is not None:
+            return ExpressionReconsiderationDecision(
+                disposition="supersede",
+                rationale_ref=f"accepted-replacement:{replacement_plan_ref}",
+                replacement_plan_ref=replacement_plan_ref,
+            )
+        if self._already_delivered_in_chat(beat=beat, projection=projection):
+            return ExpressionReconsiderationDecision(
+                disposition="cancel",
+                rationale_ref=f"already-delivered:{getattr(beat, 'beat_id', '')}",
+            )
         old_private_turn_state = self._old_private_turn_state_context(
             beat=beat,
             projection=projection,
@@ -348,23 +364,79 @@ class CharacterInteriorExpressionReconsiderationReviewer:
             raise ValueError("expression reconsideration disposition is invalid")
         return disposition
 
+    @classmethod
+    def _already_delivered_in_chat(
+        cls,
+        *,
+        beat: object,
+        projection: object,
+    ) -> bool:
+        pending_text = cls._pending_text(beat=beat, projection=projection)
+        if not isinstance(pending_text, str) or not pending_text.strip():
+            return False
+        target = pending_text.strip()
+        beat_action_id = getattr(beat, "action_id", None)
+        payloads_by_ref = {
+            item.payload_ref: item.text.strip()
+            for item in getattr(projection, "stored_message_payloads", ())
+            if isinstance(getattr(item, "payload_ref", None), str)
+            and isinstance(getattr(item, "text", None), str)
+            and item.text.strip()
+        }
+        for action in getattr(projection, "actions", ()):
+            if getattr(action, "action_id", None) == beat_action_id:
+                continue
+            if getattr(action, "state", None) not in {
+                "dispatch_started",
+                "provider_accepted",
+                "delivered",
+            }:
+                continue
+            p_ref = getattr(action, "payload_ref", None)
+            if isinstance(p_ref, str) and payloads_by_ref.get(p_ref) == target:
+                return True
+        return False
+
     @staticmethod
     def _accepted_replacement(
         *,
         projection: object,
         observation_event: WorldEvent,
+        beat: object | None = None,
     ) -> str | None:
         accepted = {
             item.proposal_id for item in getattr(projection, "expression_plan_manifests", ())
         }
-        return next(
+        if not accepted:
+            return None
+        audits = tuple(getattr(projection, "proposal_audits", ()))
+        direct = next(
             (
                 audit.event_ref
-                for audit in reversed(tuple(getattr(projection, "proposal_audits", ())))
-                if audit.trigger_ref == observation_event.event_id and audit.proposal_id in accepted
+                for audit in reversed(audits)
+                if getattr(audit, "trigger_ref", None) == observation_event.event_id
+                and getattr(audit, "proposal_id", None) in accepted
             ),
             None,
         )
+        if direct is not None:
+            return direct
+        beat_proposal_id = getattr(beat, "proposal_id", None) if beat is not None else None
+        if isinstance(beat_proposal_id, str) and beat_proposal_id:
+            seen_old = False
+            latest_after: str | None = None
+            for audit in audits:
+                prop_id = getattr(audit, "proposal_id", None)
+                if prop_id == beat_proposal_id:
+                    seen_old = True
+                    continue
+                if seen_old and prop_id in accepted:
+                    ev_ref = getattr(audit, "event_ref", None)
+                    if isinstance(ev_ref, str) and ev_ref:
+                        latest_after = ev_ref
+            if latest_after is not None:
+                return latest_after
+        return None
 
 
 __all__: list[str] = []

@@ -21,3 +21,14 @@
 - 遇到不熟悉或反复出现的设计、可靠性、性能问题，先查官方文档、原始论文或成熟实现，结合本项目证据选方案；已核实且仍适用的资料可以复用。
 - 先区分数据缺失、检索遗漏、状态／权限错误、模型生成错误和校验误判，用能区分假设的最小对照定位，再改对应模块。常规局部修正不必增加研究流程。
 - 连续尝试没有产生新证据时，重新检查假设与业内方案，不重复相同付费试验或继续堆叠规则。记录来源、适用边界和验证结果，不把论文指标当成本项目效果。
+
+## 唯一权威版本与环境基线（防多 Agent 误用）
+
+- **唯一权威仓库与分支**：主工作区为 `/Users/geoff/Projects/Girl-Agent`，唯一权威主干分支为 `main`。任何 Agent（包括 Codex、Claude、Antigravity 子 Agent）开始任务前必须确认当前位于 `/Users/geoff/Projects/Girl-Agent` 的 `main` 最新提交（或从最新 `main` 派生），严禁误入 `/Users/geoff/Projects/Girl-Agent-*` 或 `~/.codex/worktrees/*` 等历史旧 worktree，也严禁从过时的 `codex/*`、`worktree-*` 分支检出旧代码覆盖主干。
+- **唯一线上运行环境与配置**：
+  - 线上配置唯一真源为仓库根目录 `.env` 与 `configs/character.yaml`（虚拟环境固定为 `/Users/geoff/Projects/Girl-Agent/.venv`）。
+  - 线上常驻服务唯一入口为 macOS LaunchAgent `com.girl-agent.napcat`（`~/Library/LaunchAgents/com.girl-agent.napcat.plist`），生产数据库位于 `output/2026-11-01-qq-c2c/world_v2.sqlite3`。
+- **角色模型采样温度基线**：
+  - 主角色模型（DeepSeek `deepseek-chat`）温度基线为 `WORLD_V2_CHARACTER_TEMPERATURE=1.3`（定义于 `.env` 与 `src/companion_daemon/world_v2/character_interior/production.py`）。
+  - 智谱 GLM 系列模型（`glm-4.7-flash` / `GLM-5.3-Flash`，温度有效区间 `[0.0, 1.0]`）在角色相关调用中固定封顶为 `temperature=1.0` 且关闭 `thinking`。
+  - 严禁任何 Agent 在修复、重构或评测时擅自将角色生成温度降回 `0.2~0.7` 区间，也严禁通过堆砌违背协作宗旨的“禁词表/句式禁令”代替高温度采样与第一人称生活入戏认知。

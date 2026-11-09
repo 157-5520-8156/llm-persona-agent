@@ -55,7 +55,8 @@ def decode(value, *, recall_allowed):
         raise ValueError("native slim decision requires all four authored core fields")
     if (not isinstance(result["messages"], list) or any(not isinstance(v, str) for v in result["messages"])
         or not isinstance(result["world_claims"], list)
-        or any(not isinstance(result[k], str) or not result[k].strip() for k in ("meaning_of_this", "my_state"))):
+        or not isinstance(result["meaning_of_this"], str)
+        or not isinstance(result["my_state"], str) or not result["my_state"].strip()):
         raise ValueError("native slim authored semantic core is invalid")
     # No optional fields were selected in a complete bare core. This is the
     # same legal omission as the original slim dialect, not a role fallback.
@@ -67,7 +68,13 @@ def decode(value, *, recall_allowed):
     extras = _loads_compact_gate_payload_object(extras_json)
     if not isinstance(extras, dict) or (CORE_KEYS | {"result", "result_kind", "payload_json", "extras_json"}) & set(extras):
         raise ValueError("native slim extras cannot replace core fields or transport authority")
-    payload = {**{key: result[key] for key in CORE_FIELDS}, **extras}
+    core_payload = {
+        key: result[key]
+        for key in CORE_FIELDS
+        if key != "meaning_of_this"
+        or (result["meaning_of_this"].strip() and result["meaning_of_this"].strip() != result["my_state"].strip())
+    }
+    payload = {**core_payload, **extras}
     return {"result_kind": "decision", "payload_json": json.dumps(payload, ensure_ascii=False, separators=(",", ":"))}
 
 
@@ -83,8 +90,9 @@ def prompt(original):
     updated = updated.replace("SLIM PAYLOAD_JSON 形状", "完整内部决定的字段示意")
     return updated + (
         "\n本轮使用 native slim core：函数参数只有 result 对象。decision分支直接写 "
-        "result_kind、meaning_of_this、my_state、world_claims、messages；这四项必须由你自己填写，"
-        "不能放入字符串或用null代替。其余你选择的可选能力只放extras_json这个JSON对象字符串，"
+        "result_kind、meaning_of_this、my_state、world_claims、messages；这四项直接写在 result 里，"
+        "不能放入 extras_json 或用 null 代替（日常接话无需单独记录对对方这轮话的解读时，meaning_of_this 写空字符串 \"\"，切勿把 my_state 复制进 meaning_of_this）。"
+        "其余你选择的可选能力只放 extras_json 这个 JSON 对象字符串，"
         "未选可选能力时写\"{}\"，不重复四项核心字段。recall分支的result只含result_kind和"
         "payload_json，后者沿用上方独立Recall结构。两分支不可混写。"
         "消息数量、内容、感受和是否Recall仍由你选择；messages=[]仍是你的沉默。"

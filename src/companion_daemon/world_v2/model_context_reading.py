@@ -52,7 +52,21 @@ def present_context_evidence(packet: dict[str, object]) -> dict[str, object]:
         if not sources and isinstance(materials.get('lived_moment'), str):
             sources = [
                 key
-                for key in ('biographical_context', 'affect', 'world_planning')
+                for key in (
+                    'biographical_context',
+                    'affect',
+                    'relationship',
+                    'protagonist_npc_relationships',
+                    'world_planning',
+                    'memory_understandings',
+                    'current_activities',
+                    'pending_world_occurrences',
+                    'planned_activities',
+                    'recently_ended_activities',
+                    'aspirations',
+                    'situation',
+                    'recent_self_experiences',
+                )
                 if materials.get(key)
             ]
         if isinstance(materials.get('lived_moment'), str) and sources:
@@ -65,11 +79,17 @@ def present_context_evidence(packet: dict[str, object]) -> dict[str, object]:
                     (
                         '此刻正在：',
                         '手头正忙：',
+                        '此刻身边正发生：',
+                        '此前个人打算：',
                         '刚经历：',
                         '当下环境：',
                         '眼前环境余光：',
+                        '近期活法与心气：',
+                        '接下来自己的安排：',
+                        '心里记挂的个人心愿/打算：',
                         '近期身上悬着的处境：',
                         '此刻情绪余波：',
+                        '此刻心里的关系拉扯：',
                         '今日近期课表/日程：',
                         '当前状态负荷：',
                         '已连续清醒',

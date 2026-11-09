@@ -24,6 +24,7 @@ def test_dashboard_home_browser_javascript_contract(tmp_path: Path) -> None:
             "node",
             "--test",
             "tests/js/dashboard_home_client.test.js",
+            "tests/js/dashboard_stage.test.js",
             "tests/js/pixel_home_bridge.test.js",
         ],
         cwd=REPOSITORY_ROOT,

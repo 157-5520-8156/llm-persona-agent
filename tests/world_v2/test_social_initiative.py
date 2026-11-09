@@ -2709,4 +2709,72 @@ def test_unanswered_proactive_outreach_stretches_cooldown_and_resets_on_user_rep
     assert effective_contact_cooldown_seconds(projection, policy=policy) == 900
 
 
+@pytest.mark.asyncio
+async def test_unanswered_proactive_outreach_stops_spontaneous_and_private_impression_chaining() -> None:
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    event = _attach_living_impression(compiler, projection, status="active")
+    projection.actions = (
+        SimpleNamespace(
+            action_id="action:proactive-1",
+            kind="proactive_message",
+            state="delivered",
+            logical_time=NOW + timedelta(hours=1),
+            last_updated_revision=2,
+        ),
+    )
+    projection.logical_time = NOW + timedelta(hours=3, minutes=30)
+
+    # With an unanswered proactive outreach already pending a user reply, neither
+    # spontaneous_contact nor _adopt_private_impression may chain a new 2h ping.
+    assert await compiler.next_opportunity(projection) is None
+
+    # Private impression considerations also count toward the shared daily budget.
+    imp_cid = private_impression_consideration_id("impression:living")
+    projection.trigger_processes = (
+        SimpleNamespace(
+            process_kind="proactive_action_deliberation",
+            trigger_ref="proactive-consideration:" + imp_cid,
+            source_evidence_ref=event.event_id,
+            state="terminal",
+            runtime_outcome_ref="proactive:authorized:action:proactive-1",
+        ),
+    )
+    shared = list(compiler._shared_outreach_processes(projection))  # noqa: SLF001
+    assert len(shared) == 1
+    assert shared[0][1] == imp_cid
+
+
+@pytest.mark.asyncio
+async def test_self_or_npc_private_impression_stays_in_inner_life_without_hijacking_user_outreach() -> None:
+    compiler, projection, _committed = _compiler_fixture(receptive=True)
+    event = _attach_living_impression(compiler, projection, status="active")
+    projection.private_impressions = (
+        SimpleNamespace(
+            impression_id="impression:self-arc",
+            subject_ref="agent:companion",
+            status="active",
+            last_supported=NOW + timedelta(minutes=6),
+            first_seen=NOW + timedelta(minutes=6),
+            reflection_summary="月底前得把现当代文学那篇读书札记收尾",
+            origin=SimpleNamespace(accepted_event_ref=event.event_id),
+        ),
+        SimpleNamespace(
+            impression_id="impression:npc-roommate",
+            subject_ref="npc:roommate-lin",
+            status="active",
+            last_supported=NOW + timedelta(minutes=7),
+            first_seen=NOW + timedelta(minutes=7),
+            reflection_summary="林晚这几天因为社团物资的事脸色一直不太好",
+            origin=SimpleNamespace(accepted_event_ref=event.event_id),
+        ),
+    )
+
+    opportunity = await compiler.next_opportunity(projection)
+
+    assert opportunity is not None
+    assert opportunity.source_kind == "spontaneous_contact"
+
+
+
+
 

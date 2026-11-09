@@ -379,6 +379,217 @@ def _parse_object(raw: str) -> dict[str, object]:
     return parsed
 
 
+def _offered_affect_components_from_raw(
+    components: object,
+    *,
+    request: ModelInput,
+    allow_compacted_cluster_fallback: bool = False,
+    episode_id: str = "",
+) -> list[dict[str, object]] | None:
+    if not isinstance(components, list) or not components:
+        return None
+    offered_components: list[dict[str, object]] = []
+    for component in components:
+        if not isinstance(component, dict):
+            return None
+        component_id = component.get("component_id")
+        dimension = component.get("dimension")
+        intensity = component.get("intensity_bp")
+        source_cluster_ref = component.get("source_cluster_ref")
+        if (
+            allow_compacted_cluster_fallback
+            and not isinstance(source_cluster_ref, str)
+            and isinstance(component_id, str)
+            and episode_id
+        ):
+            source_cluster_ref = f"cluster:affect:{episode_id}:{component_id}"
+        decay_profile = component.get("decay_profile")
+        residue = component.get("residue_bp")
+        floor = (
+            decay_profile.get("floor_bp")
+            if isinstance(decay_profile, dict)
+            else None
+        )
+        if (
+            not isinstance(component_id, str)
+            or not isinstance(dimension, str)
+            or dimension not in _AFFECT_DIMENSIONS
+            or isinstance(intensity, bool)
+            or not isinstance(intensity, int)
+            or not 0 <= intensity <= 10_000
+            or not isinstance(source_cluster_ref, str)
+            or isinstance(floor, bool)
+            or not isinstance(floor, int)
+            or isinstance(residue, bool)
+            or not isinstance(residue, int)
+        ):
+            return None
+        minimum = max(floor, residue)
+        if request.affect_target_bounds is not None:
+            minimum = max(
+                minimum,
+                request.affect_target_bounds.minimum_for(dimension),
+            )
+        offered_components.append(
+            {
+                "component_id": component_id,
+                "dimension": dimension,
+                "current_intensity_bp": intensity,
+                "minimum_target_intensity_bp": minimum,
+                "source_cluster_ref": source_cluster_ref,
+            }
+        )
+    if len({item["component_id"] for item in offered_components}) != len(
+        offered_components
+    ):
+        return None
+    return offered_components
+
+
+def _active_affect_heads_from_slice(
+    affect_slice: object,
+    *,
+    request: ModelInput,
+) -> list[dict[str, object]] | None:
+    if (
+        not isinstance(affect_slice, dict)
+        or affect_slice.get("availability") != "available"
+        or not isinstance(affect_slice.get("items"), list)
+    ):
+        return []
+    heads: list[dict[str, object]] = []
+    for item in affect_slice["items"]:
+        if not isinstance(item, dict):
+            continue
+        episode_source_ref = item.get("source_ref") or item.get("item_ref")
+        value = item.get("value")
+        if not isinstance(episode_source_ref, str) or not isinstance(value, dict):
+            continue
+        episode_id = value.get("episode_id")
+        entity_revision = value.get("entity_revision")
+        origin = value.get("origin")
+        if (
+            value.get("status") != "active"
+            or not isinstance(episode_id, str)
+            or episode_id != episode_source_ref
+            or isinstance(entity_revision, bool)
+            or not isinstance(entity_revision, int)
+            or entity_revision < 1
+            or not isinstance(origin, dict)
+            or not isinstance(origin.get("accepted_event_ref"), str)
+        ):
+            continue
+        offered_components = _offered_affect_components_from_raw(
+            value.get("components"),
+            request=request,
+        )
+        if offered_components is None:
+            continue
+        heads.append(
+            {
+                "episode_id": episode_id,
+                "episode_source_ref": episode_source_ref,
+                "entity_revision": entity_revision,
+                "origin_event_ref": origin["accepted_event_ref"],
+                "opened_at": value.get("opened_at"),
+                "updated_at": value.get("updated_at"),
+                "components": offered_components,
+            }
+        )
+    if len({item["episode_id"] for item in heads}) != len(heads):
+        return None
+    return heads
+
+
+def _active_affect_heads_from_snapshot(
+    snapshot: object,
+    *,
+    request: ModelInput,
+) -> list[dict[str, object]] | None:
+    if not isinstance(snapshot, dict):
+        return []
+    materials = snapshot.get("materials")
+    source_inventory = snapshot.get("source_inventory")
+    if not isinstance(materials, dict) or not isinstance(source_inventory, list):
+        return []
+    raw_affect = materials.get("affect")
+    if isinstance(raw_affect, dict) and isinstance(raw_affect.get("stable_entries"), list):
+        raw_affect = [
+            *raw_affect["stable_entries"],
+            *(
+                [raw_affect["volatile_last_entry"]]
+                if isinstance(raw_affect.get("volatile_last_entry"), dict)
+                else []
+            ),
+        ]
+    if not isinstance(raw_affect, list):
+        return []
+    inventory_by_ref: dict[str, dict[str, object]] = {}
+    for item in source_inventory:
+        if not isinstance(item, dict) or item.get("scope") != "affect":
+            continue
+        source_ref = item.get("source_ref")
+        if not isinstance(source_ref, str) or not source_ref:
+            continue
+        if source_ref in inventory_by_ref:
+            return None
+        inventory_by_ref[source_ref] = item
+    heads: list[dict[str, object]] = []
+    for entry in raw_affect:
+        if not isinstance(entry, dict) or entry.get("status") != "active":
+            continue
+        episode_id = entry.get("episode_id")
+        episode_source_ref = entry.get("source_ref", episode_id)
+        if (
+            not isinstance(episode_id, str)
+            or not episode_id
+            or episode_source_ref != episode_id
+        ):
+            continue
+        inv = inventory_by_ref.get(episode_id)
+        if inv is None:
+            continue
+        entity_revision = inv.get("entity_revision", entry.get("entity_revision"))
+        direct_refs = inv.get("direct_source_refs")
+        origin_event_ref = (
+            direct_refs[0]
+            if isinstance(direct_refs, list)
+            and direct_refs
+            and isinstance(direct_refs[0], str)
+            else None
+        )
+        if (
+            isinstance(entity_revision, bool)
+            or not isinstance(entity_revision, int)
+            or entity_revision < 1
+            or not isinstance(origin_event_ref, str)
+            or not origin_event_ref
+        ):
+            continue
+        offered_components = _offered_affect_components_from_raw(
+            entry.get("components"),
+            request=request,
+            allow_compacted_cluster_fallback=True,
+            episode_id=episode_id,
+        )
+        if offered_components is None:
+            continue
+        heads.append(
+            {
+                "episode_id": episode_id,
+                "episode_source_ref": episode_source_ref,
+                "entity_revision": entity_revision,
+                "origin_event_ref": origin_event_ref,
+                "opened_at": entry.get("opened_at"),
+                "updated_at": entry.get("updated_at"),
+                "components": offered_components,
+            }
+        )
+    if len({item["episode_id"] for item in heads}) != len(heads):
+        return None
+    return heads
+
+
 def _active_affect_heads(request: ModelInput) -> list[dict[str, object]]:
     """Derive the exact role-visible mutable Affect heads from pinned Context.
 
@@ -396,105 +607,54 @@ def _active_affect_heads(request: ModelInput) -> list[dict[str, object]]:
     if not isinstance(context, dict):
         return []
     slices = context.get("slices")
-    if not isinstance(slices, dict):
-        return []
-    affect_slice = slices.get("affect_episodes")
-    if (
-        not isinstance(affect_slice, dict)
-        or affect_slice.get("availability") != "available"
-        or not isinstance(affect_slice.get("items"), list)
-    ):
-        return []
-    heads: list[dict[str, object]] = []
-    for item in affect_slice["items"]:
-        if not isinstance(item, dict):
-            continue
-        episode_source_ref = item.get("source_ref", item.get("item_ref"))
-        value = item.get("value")
-        if not isinstance(episode_source_ref, str) or not isinstance(value, dict):
-            continue
-        episode_id = value.get("episode_id")
-        entity_revision = value.get("entity_revision")
-        origin = value.get("origin")
-        components = value.get("components")
-        if (
-            value.get("status") != "active"
-            or not isinstance(episode_id, str)
-            or episode_id != episode_source_ref
-            or isinstance(entity_revision, bool)
-            or not isinstance(entity_revision, int)
-            or entity_revision < 1
-            or not isinstance(origin, dict)
-            or not isinstance(origin.get("accepted_event_ref"), str)
-            or not isinstance(components, list)
-            or not components
-        ):
-            continue
-        offered_components: list[dict[str, object]] = []
-        malformed = False
-        for component in components:
-            if not isinstance(component, dict):
-                malformed = True
-                break
-            component_id = component.get("component_id")
-            dimension = component.get("dimension")
-            intensity = component.get("intensity_bp")
-            source_cluster_ref = component.get("source_cluster_ref")
-            decay_profile = component.get("decay_profile")
-            residue = component.get("residue_bp")
-            floor = (
-                decay_profile.get("floor_bp")
-                if isinstance(decay_profile, dict)
-                else None
-            )
-            if (
-                not isinstance(component_id, str)
-                or not isinstance(dimension, str)
-                or dimension not in _AFFECT_DIMENSIONS
-                or isinstance(intensity, bool)
-                or not isinstance(intensity, int)
-                or not 0 <= intensity <= 10_000
-                or not isinstance(source_cluster_ref, str)
-                or isinstance(floor, bool)
-                or not isinstance(floor, int)
-                or isinstance(residue, bool)
-                or not isinstance(residue, int)
-            ):
-                malformed = True
-                break
-            minimum = max(floor, residue)
-            if request.affect_target_bounds is not None:
-                minimum = max(
-                    minimum,
-                    request.affect_target_bounds.minimum_for(dimension),
-                )
-            offered_components.append(
-                {
-                    "component_id": component_id,
-                    "dimension": dimension,
-                    "current_intensity_bp": intensity,
-                    "minimum_target_intensity_bp": minimum,
-                    "source_cluster_ref": source_cluster_ref,
-                }
-            )
-        if malformed or len({item["component_id"] for item in offered_components}) != len(
-            offered_components
-        ):
-            continue
-        heads.append(
-            {
-                "episode_id": episode_id,
-                "episode_source_ref": episode_source_ref,
-                "entity_revision": entity_revision,
-                "origin_event_ref": origin["accepted_event_ref"],
-                "opened_at": value.get("opened_at"),
-                "updated_at": value.get("updated_at"),
-                "components": offered_components,
-            }
+    slice_sources: list[list[dict[str, object]] | None] = []
+    if isinstance(slices, dict):
+        slice_sources.append(
+            _active_affect_heads_from_slice(slices.get("affect_episodes"), request=request)
         )
-    if len({item["episode_id"] for item in heads}) != len(heads):
-        return []
-    return heads[:16]
+        slice_sources.append(
+            _active_affect_heads_from_slice(slices.get("living_affect"), request=request)
+        )
+    slice_sources.append(
+        _active_affect_heads_from_snapshot(
+            context.get("inner_life_snapshot"),
+            request=request,
+        )
+    )
+    by_episode_id: dict[str, dict[str, object]] = {}
+    for candidate_list in slice_sources:
+        if candidate_list is None:
+            return []
+        for head in candidate_list:
+            episode_id = str(head["episode_id"])
+            existing = by_episode_id.get(episode_id)
+            if existing is None:
+                by_episode_id[episode_id] = head
+                continue
+            if (
+                existing["entity_revision"] != head["entity_revision"]
+                or existing["origin_event_ref"] != head["origin_event_ref"]
+                or [
+                    (
+                        item["component_id"],
+                        item["dimension"],
+                        item["current_intensity_bp"],
+                        item["minimum_target_intensity_bp"],
+                    )
+                    for item in existing["components"]
+                ]
+                != [
+                    (
+                        item["component_id"],
+                        item["dimension"],
+                        item["current_intensity_bp"],
+                        item["minimum_target_intensity_bp"],
+                    )
+                    for item in head["components"]
+                ]
+            ):
+                return []
+    return list(by_episode_id.values())[:16]
 
 
 def _selected_affect_head(
@@ -1068,6 +1228,13 @@ def _existing_affect_components(
         for item in head["components"]
         if isinstance(item, dict) and isinstance(item.get("component_id"), str)
     }
+    offered_by_dimension = {
+        item["dimension"]: item
+        for item in head["components"]
+        if isinstance(item, dict)
+        and isinstance(item.get("dimension"), str)
+        and isinstance(item.get("component_id"), str)
+    }
     if not isinstance(value, list) or not 1 <= len(value) <= 8:
         raise ValueError("AppraisalDraft Affect update components are invalid")
     result: list[dict[str, object]] = []
@@ -1077,7 +1244,49 @@ def _existing_affect_components(
         component_id = item.get("component_id")
         dimension = item.get("dimension")
         intensity = item.get("target_intensity_bp")
-        selected = offered.get(component_id)
+        if (
+            (
+                component_id is None
+                or (isinstance(component_id, str) and not component_id.startswith("component:"))
+            )
+            and isinstance(dimension, str)
+            and dimension in offered_by_dimension
+        ):
+            selected = offered_by_dimension[dimension]
+            component_id = selected["component_id"]
+        elif (
+            (
+                component_id is None
+                or component_id in offered
+                or (isinstance(component_id, str) and not component_id.startswith("component:"))
+            )
+            and isinstance(dimension, str)
+            and dimension in _AFFECT_DIMENSIONS
+            and dimension not in offered_by_dimension
+        ):
+            new_min = (
+                request_min
+                if (request_min := max((int(c.get("minimum_target_intensity_bp", 500)) for c in offered.values()), default=500))
+                else 500
+            )
+            if (
+                isinstance(intensity, bool)
+                or not isinstance(intensity, int)
+                or not new_min <= intensity <= 10_000
+            ):
+                raise ValueError(
+                    "AppraisalDraft Affect update component is outside active head: "
+                    f"target_intensity_bp={intensity!r} must be an integer in {new_min}..10000"
+                )
+            result.append(
+                {
+                    "dimension": dimension,
+                    "target_intensity_bp": intensity,
+                }
+            )
+            continue
+        else:
+            selected = offered.get(component_id)
         if selected is None:
             raise ValueError(
                 "AppraisalDraft Affect update component is outside active head: "
@@ -1091,7 +1300,11 @@ def _existing_affect_components(
             or not 1 <= intensity <= 10_000
             or intensity < int(selected["minimum_target_intensity_bp"])
         ):
-            raise ValueError("AppraisalDraft Affect update component is outside active head")
+            raise ValueError(
+                "AppraisalDraft Affect update component is outside active head: "
+                f"dimension={dimension!r} target_intensity_bp={intensity!r} must be an integer in "
+                f"{selected['minimum_target_intensity_bp']}..10000 (or use affect='resolve' to end the episode)"
+            )
         result.append(
             {
                 "component_id": component_id,
@@ -1099,7 +1312,8 @@ def _existing_affect_components(
                 "target_intensity_bp": intensity,
             }
         )
-    if len({item["component_id"] for item in result}) != len(result):
+    seen_ids = [item["component_id"] for item in result if "component_id" in item]
+    if len(set(seen_ids)) != len(seen_ids) or len({item["dimension"] for item in result}) != len(result):
         raise ValueError("AppraisalDraft Affect update component IDs must be unique")
     return result
 

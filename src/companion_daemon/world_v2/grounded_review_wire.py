@@ -204,7 +204,7 @@ def decode(raw, *, beats=None, carrier=CONTRACT):
                     import re as _re
 
                     _tag_m = _re.match(
-                        r"^\s*(?:\[CQ:reply,id=[^\]]+\]\s*)?(?:(?:\[CQ:voice\]|\[voice\]|\[语音\])\s*(?:[\(（][^\)）]{1,40}[\)）]\s*)?)?",
+                        r"^\s*(?:\[CQ:reply,id=[^\]]+\]\s*)?(?:(?:\[CQ:voice\]|\[voice\]|\[语音\])\s*(?:[\(（【][^\)）】]{1,80}[\)）】]\s*)*)?",
                         original,
                     )
                     if _tag_m is not None and _tag_m.end() > 0 and original.startswith(part["text"], _tag_m.end()):

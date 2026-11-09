@@ -228,6 +228,19 @@ QWEN3_VL_FLASH_PRICE = ModelPrice(
     output_usd_per_million=0.208333,
 )
 
+# GLM-5.3-Flash metered pay-per-token rate:
+# Official CNY: input ¥0.80/M, cache hit ¥0.23/M, output ¥2.80/M.
+GLM_5_3_FLASH_PRICE = ModelPrice(
+    model="GLM-5.3-Flash",
+    version="glm-5.3-flash-2026-11-05",
+    cache_hit_usd_per_million=0.23 / 7.2,
+    cache_miss_usd_per_million=0.80 / 7.2,
+    output_usd_per_million=2.80 / 7.2,
+    cache_hit_cny_per_million=0.23,
+    cache_miss_cny_per_million=0.80,
+    output_cny_per_million=2.80,
+)
+
 # OpenAI GPT Image 2 token rates, official pricing page verified 2026-08-18.
 # Source: https://developers.openai.com/api/docs/pricing  (Image generation models)
 #   Image input $8.00 / cached $2.00 / output $30.00 per 1M tokens
@@ -293,6 +306,8 @@ MODEL_PRICES: Mapping[str, ModelPrice] = {
     QWEN_PLUS_PRICE.model: QWEN_PLUS_PRICE,
     QWEN3_VL_FLASH_PRICE.model: QWEN3_VL_FLASH_PRICE,
     "qwen/qwen3-vl-flash": QWEN3_VL_FLASH_PRICE,
+    GLM_5_3_FLASH_PRICE.model: GLM_5_3_FLASH_PRICE,
+    "glm-5.3-flash": GLM_5_3_FLASH_PRICE,
     GPT_IMAGE_2_PRICE.model: GPT_IMAGE_2_PRICE,
     "openai/gpt-image-2": GPT_IMAGE_2_PRICE,
 }

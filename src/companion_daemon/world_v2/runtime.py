@@ -2477,6 +2477,13 @@ class WorldRuntime:
                     and signal.persistence == relationship_payload["persistence"]
                     and signal.rationale_code == relationship_payload["rationale_code"]
                     for signal in projection.relationship_signals
+                ) or any(
+                    item.process_kind == "relationship_deliberation"
+                    and item.source_evidence_ref == observation_event.event_id
+                    and item.state == "terminal"
+                    and item.runtime_outcome_ref is not None
+                    and item.runtime_outcome_ref.endswith(":accepted")
+                    for item in projection.trigger_processes
                 )
             plan_response_accepted = self._plan_response_complete(projection,selected.proposal_id,shape)
             life_accepted = shape.life_intent is None or not acceptance_is_due(projection, selected.proposal_id) or any(
@@ -2708,10 +2715,17 @@ class WorldRuntime:
             raise ConcurrencyConflict(
                 "expression episode completion lost its claim ownership"
             )
+        completed_at = projection.logical_time or observation.logical_time
+        if (
+            current.claim_lease is not None
+            and completed_at > current.claim_lease.expires_at
+            and current.claim_lease.expires_at >= current.claim_lease.acquired_at
+        ):
+            completed_at = current.claim_lease.expires_at
         event = expression_episode_complete_event(
             world_id=self._world_id,
             process=current,
-            at=projection.logical_time or observation.logical_time,
+            at=completed_at,
             trace_id=observation.trace_id,
             correlation_id=observation.correlation_id,
             outcome_ref=outcome_ref,

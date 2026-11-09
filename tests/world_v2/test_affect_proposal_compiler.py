@@ -401,3 +401,152 @@ def test_role_authored_affect_lifecycle_transitions_accept_and_cold_replay(
     assert reopened.project() == expected
     assert reopened.rebuild() == expected
     reopened.close()
+
+
+def test_explicit_update_upgrades_decay_half_life_for_higher_intensity(tmp_path) -> None:
+    from datetime import timedelta
+    from companion_daemon.world_v2.affect_target_bounds import (
+        DEEP_DECAY_HALF_LIFE_SECONDS,
+        SUSTAINED_DECAY_HALF_LIFE_SECONDS,
+    )
+    from test_appraisal_authority import event
+
+    path = tmp_path / "affect-update-upgrade-decay.sqlite3"
+    issuer = AcceptedLedgerBatchIssuer()
+    ledger = SQLiteWorldLedger(path=path, world_id=WORLD_ID, accepted_batch_issuer=issuer)
+    ledger.commit(
+        [event("event:world-started", "WorldStarted", {})],
+        expected_world_revision=0,
+        expected_deliberation_revision=0,
+    )
+    _accept_ready_appraisal(ledger=ledger, issuer=issuer)
+    _accept_initial_episode(ledger=ledger, issuer=issuer)
+    head = ledger.project()
+    assert head.logical_time is not None
+    origin = head.logical_time
+    later = origin + timedelta(minutes=15)
+    ledger.commit(
+        [
+            event(
+                "event:clock-before-high-update",
+                "ClockAdvanced",
+                {
+                    "logical_time_from": origin.isoformat(),
+                    "logical_time_to": later.isoformat(),
+                },
+                at=later,
+            )
+        ],
+        expected_world_revision=head.world_revision,
+        expected_deliberation_revision=head.deliberation_revision,
+    )
+    target = ledger.project().affect_episodes[0]
+    appraisal = ledger.project().appraisals[0]
+    evidence = appraisal.evidence_refs[0]
+    transition_payload = {
+        "episode_id": target.episode_id,
+        "appraisal_change_refs": [appraisal.origin.change_id],
+        "component_targets": [
+            {
+                "component_id": target.components[0].component_id,
+                "dimension": target.components[0].dimension,
+                "target_intensity_bp": 4800,
+            },
+            {
+                "dimension": "sadness",
+                "target_intensity_bp": 3200,
+            },
+        ],
+    }
+    base = _result()
+    proposal_id = "proposal:generic-affect:update-high"
+    change = TypedChange(
+        change_id="change:decision:affect:update-high",
+        kind="affect_transition",
+        target_id=target.episode_id,
+        transition="update",
+        expected_entity_revision=target.entity_revision,
+        evidence_refs=(evidence.ref_id,),
+        payload=CanonicalTypedPayload.from_value(
+            payload_schema="affect_transition.v1",
+            value=transition_payload,
+        ),
+    )
+    proposal = DecisionProposal(
+        proposal_id=proposal_id,
+        trigger_ref="trigger:generic-affect:update-high",
+        evaluated_world_revision=ledger.project().world_revision,
+        evidence_refs=(
+            ProposalEvidenceRef(
+                ref_id=evidence.ref_id,
+                evidence_kind="observed_message",
+                source_world_revision=evidence.source_world_revision,
+                immutable_hash="sha256:" + str(evidence.immutable_hash),
+            ),
+        ),
+        proposed_changes=(change,),
+        action_intents=(),
+        confidence=8000,
+        brief_rationale="Deepening hurt and new sadness from a heavy life event.",
+        affect_decision="propose",
+        behavior_tendency="quietly_absorb",
+        stance="weighed_down",
+        display_strategy="reserved",
+    )
+    audit = base.audit
+    result = DeliberationResult(
+        result_id="deliberation:"
+        + _digest(
+            {
+                "capsule_id": base.capsule_id,
+                "proposal_hash": proposal.proposal_hash,
+                "attempt_audits": [audit.model_dump(mode="json")],
+            }
+        ),
+        capsule_id=base.capsule_id,
+        proposal=proposal,
+        audit=audit,
+        attempt_audits=(audit,),
+    )
+    cur_head = ledger.project()
+    recorded = ProposalAuditRecorder(ledger=ledger).record(
+        result,
+        ProposalAuditContext(
+            world_id=WORLD_ID,
+            trigger_ref=proposal.trigger_ref,
+            logical_time=cur_head.logical_time or NOW,
+            created_at=cur_head.logical_time or NOW,
+            actor="agent:companion",
+            source="test",
+            trace_id="trace:generic-affect:update-high",
+            causation_id="cause:generic-affect:update-high",
+            correlation_id="correlation:generic-affect:update-high",
+            evaluated_world_revision=cur_head.world_revision,
+            expected_commit_world_revision=cur_head.world_revision,
+            expected_deliberation_revision=cur_head.deliberation_revision,
+            expected_ledger_sequence=cur_head.ledger_sequence,
+        ),
+    )
+    compilation = AffectProposalCompiler(ledger=ledger).record(
+        world_id=WORLD_ID,
+        cursor=recorded.cursor,
+        proposal_id=proposal_id,
+    )
+    assert compilation.status == "candidate_recorded"
+    assert compilation.acceptance_cursor is not None
+    runtime = AffectAcceptanceRuntime(ledger=ledger, batch_issuer=issuer)
+    handle = runtime.pin_proposal(
+        cursor=compilation.acceptance_cursor,
+        proposal_id=str(compilation.typed_proposal_id),
+    )
+    runtime.accept_runtime_owned(
+        handle=handle,
+        actor="worker:affect",
+        source="test:affect-acceptance",
+    )
+    updated_ep = ledger.project().affect_episodes[0]
+    by_dim = {comp.dimension: comp for comp in updated_ep.components}
+    assert by_dim["hurt"].decay_profile.half_life_seconds == DEEP_DECAY_HALF_LIFE_SECONDS
+    assert by_dim["sadness"].decay_profile.half_life_seconds == SUSTAINED_DECAY_HALF_LIFE_SECONDS
+    assert ledger.rebuild() == ledger.project()
+    ledger.close()

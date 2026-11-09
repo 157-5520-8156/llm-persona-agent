@@ -283,7 +283,7 @@ def test_qq_owner_dashboard_html_and_room_assets_are_served_from_this_process(
     assert page.status_code == 200
     assert "/pixel-home/" not in page.text
     assert "生活现场" in page.text
-    assert 'id="recordingToggle"' in page.text
+    assert 'id="presentToggle"' in page.text
     assert script.status_code == 200
     assert "/world-v2/dashboard/home" in script.text
     assert home.status_code == 200

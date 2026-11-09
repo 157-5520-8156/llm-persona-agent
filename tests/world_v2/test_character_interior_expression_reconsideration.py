@@ -270,3 +270,42 @@ async def test_replacement_needs_existing_accepted_plan_and_failure_is_not_conti
     )
     with pytest.raises(RuntimeError, match="provider_timeout"):
         await technical.review(process=_process(), observation_event=_observation(), cursor=CURSOR)
+
+
+@pytest.mark.asyncio
+async def test_accepted_replacement_or_already_delivered_retires_pending_beat_without_continue() -> None:
+    interior_for_replacement = _Interior("continue")
+    with_plan = CharacterInteriorExpressionReconsiderationReviewer(
+        character_interior=interior_for_replacement,  # type: ignore[arg-type]
+        ledger=_Ledger(replacement=True),
+        actor_ref="character:test",
+    )
+    replaced = await with_plan.review(
+        process=_process(), observation_event=_observation(), cursor=CURSOR
+    )
+    assert replaced.disposition == "supersede"
+    assert replaced.replacement_plan_ref == "event:proposal:new"
+    assert interior_for_replacement.opportunities == []
+
+    delivered_ledger = _Ledger(replacement=False)
+    delivered_ledger.projection.actions = (
+        SimpleNamespace(
+            action_id="action:delivered:1",
+            kind="reply",
+            state="delivered",
+            logical_time=NOW + timedelta(seconds=3),
+            payload_ref="payload:old",
+        ),
+    )
+    interior_for_delivered = _Interior("continue")
+    already_delivered = CharacterInteriorExpressionReconsiderationReviewer(
+        character_interior=interior_for_delivered,  # type: ignore[arg-type]
+        ledger=delivered_ledger,
+        actor_ref="character:test",
+    )
+    cancelled = await already_delivered.review(
+        process=_process(), observation_event=_observation(), cursor=CURSOR
+    )
+    assert cancelled.disposition == "cancel"
+    assert cancelled.replacement_plan_ref is None
+    assert interior_for_delivered.opportunities == []

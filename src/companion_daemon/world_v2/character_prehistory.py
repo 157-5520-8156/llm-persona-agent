@@ -28,6 +28,7 @@ COMPILED_SOURCE = "world-v2:compiled-prehistory"
 IMPORT_ACTOR = "system:prehistory-import"
 
 
+@immutable_value_cache(maxsize=4096)
 def digest(value) -> str:
     if isinstance(value, FrozenModel):
         value = value.model_dump(mode="json")

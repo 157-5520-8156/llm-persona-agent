@@ -48,6 +48,12 @@ class Settings(BaseSettings):
     deepseek_debug_api_key: str | None = Field(default=None, alias="DEEPSEEK_DEBUG_API_KEY")
     deepseek_base_url: str = "https://api.deepseek.com"
     deepseek_model: str = "deepseek-v4-flash"
+    world_v2_character_temperature: float = Field(
+        default=1.3,
+        ge=0.0,
+        le=2.0,
+        alias="WORLD_V2_CHARACTER_TEMPERATURE",
+    )
     world_v2_background_provider: Literal['deepseek', 'anthropic_subscription', 'glm'] = Field(
         default='deepseek', alias='WORLD_V2_BACKGROUND_PROVIDER'
     )
@@ -782,10 +788,26 @@ class Settings(BaseSettings):
     )
     transcription_model: str = Field(default="gpt-4o-mini-transcribe", alias="TRANSCRIPTION_MODEL")
     voice_enabled: bool = Field(default=True, alias="VOICE_ENABLED")
-    voice_tts_model: str = Field(default="cosyvoice-v3-flash", alias="VOICE_TTS_MODEL")
+    voice_tts_model: str = Field(default="cosyvoice-v3-plus", alias="VOICE_TTS_MODEL")
     voice_tts_voice: str = Field(
-        default="longwan_v3",
+        default="longanhuan",
         alias="VOICE_TTS_VOICE",
+    )
+    doubao_speech_api_key: str | None = Field(
+        default_factory=lambda: _macos_launchctl_env("DOUBAO_SPEECH_API_KEY"),
+        validation_alias=AliasChoices("DOUBAO_SPEECH_API_KEY", "VOLC_SPEECH_API_KEY"),
+    )
+    doubao_speech_app_id: str | None = Field(
+        default_factory=lambda: _macos_launchctl_env("DOUBAO_SPEECH_APP_ID"),
+        validation_alias=AliasChoices("DOUBAO_SPEECH_APP_ID", "VOLC_SPEECH_APP_ID"),
+    )
+    doubao_speech_resource_id: str = Field(
+        default="volc.seedicl.default",
+        alias="DOUBAO_SPEECH_RESOURCE_ID",
+    )
+    doubao_speech_voice: str = Field(
+        default="S_jvguO05k2",
+        alias="DOUBAO_SPEECH_VOICE",
     )
     voice_phone_mic_realism: bool = Field(default=True, alias="VOICE_PHONE_MIC_REALISM")
     voice_asr_model: str = Field(default="qwen3-omni-flash", alias="VOICE_ASR_MODEL")
@@ -938,7 +960,7 @@ class Settings(BaseSettings):
     # and not HTTP reselections of the same ask.  She may still choose
     # no_change.  Zero disables the farm; inbound hitch is separate.
     world_v2_private_impression_daily_model_call_limit: int = Field(
-        default=3,
+        default=1,
         validation_alias=AliasChoices(
             "WORLD_V2_PRIVATE_IMPRESSION_DAILY_MODEL_CALL_LIMIT",
             "world_v2_private_impression_daily_model_call_limit",
@@ -947,7 +969,7 @@ class Settings(BaseSettings):
         le=24,
     )
     world_v2_private_impression_min_interval_seconds: int = Field(
-        default=14_400,
+        default=43_200,
         validation_alias=AliasChoices(
             "WORLD_V2_PRIVATE_IMPRESSION_MIN_INTERVAL_SECONDS",
             "world_v2_private_impression_min_interval_seconds",
@@ -963,6 +985,52 @@ class Settings(BaseSettings):
         ),
         ge=0,
         le=86_400,
+    )
+    world_v2_outlook_min_refresh_interval_seconds: int = Field(
+        default=28_800,
+        validation_alias=AliasChoices(
+            "WORLD_V2_OUTLOOK_MIN_REFRESH_INTERVAL_SECONDS",
+            "world_v2_outlook_min_refresh_interval_seconds",
+        ),
+        ge=0,
+    )
+    world_v2_life_development_min_interval_seconds: int = Field(
+        default=21_600,
+        validation_alias=AliasChoices(
+            "WORLD_V2_LIFE_DEVELOPMENT_MIN_INTERVAL_SECONDS",
+            "world_v2_life_development_min_interval_seconds",
+        ),
+        ge=0,
+    )
+    world_v2_memory_consolidation_min_interval_seconds: int = Field(
+        default=28_800,
+        validation_alias=AliasChoices(
+            "WORLD_V2_MEMORY_CONSOLIDATION_MIN_INTERVAL_SECONDS",
+            "world_v2_memory_consolidation_min_interval_seconds",
+        ),
+        ge=0,
+    )
+    world_v2_activity_min_interval_seconds: int = Field(
+        default=7_200,
+        validation_alias=AliasChoices(
+            "WORLD_V2_ACTIVITY_MIN_INTERVAL_SECONDS",
+            "world_v2_activity_min_interval_seconds",
+        ),
+        ge=0,
+    )
+    world_v2_ordinary_text_observation_mode: str = Field(
+        default="off",
+        validation_alias=AliasChoices(
+            "WORLD_V2_ORDINARY_TEXT_OBSERVATION_MODE",
+            "world_v2_ordinary_text_observation_mode",
+        ),
+    )
+    world_v2_bilibili_vision_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "WORLD_V2_BILIBILI_VISION_ENABLED",
+            "world_v2_bilibili_vision_enabled",
+        ),
     )
 
 

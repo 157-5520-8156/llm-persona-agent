@@ -163,7 +163,9 @@ _ATOMIC_BRANCH_MARKER = "\nExact result fields by available result_kind:\n"
 
 # Material blocks that offer the role a choice of reference. Anything she may
 # copy back into her answer must stay a literal, never a shared-string token.
-_CHOICE_BEARING_MATERIALS = frozenset({"moments_i_can_share", "shareable_photos"})
+_CHOICE_BEARING_MATERIALS = frozenset(
+    {"moments_i_can_share", "shareable_photos", "selected_recall"}
+)
 
 
 def _shared_string_snapshot(snapshot: object) -> object:
@@ -3783,7 +3785,7 @@ class _InboundCharacterAuthor:
                 )
         if isinstance(correction, dict):
             if (
-                self._atomic_tool_envelope_version == "3"
+                self._atomic_tool_envelope_version in {"3", "slim4"}
                 and transport_provider is None
                 and not compact_gate
                 and use_forced_tool
@@ -4384,8 +4386,99 @@ class _InboundCharacterAuthor:
                 # from a live forced result must state this role-owned
                 # lifecycle choice, including its one bounded correction.
                 raise ValueError("forced AppraisalDraft must explicitly include affect")
+            normalized = dict(raw_value)
+            affect_op = normalized.get("affect")
+            if affect_op in {"update", "resolve", "supersede"}:
+                heads = _active_affect_heads(request)
+                ep_id = normalized.get("episode_id")
+                raw_comps = normalized.get("components")
+                if not isinstance(ep_id, str) or not ep_id.strip():
+                    matched_heads: list[dict[str, object]] = []
+                    if isinstance(raw_comps, list) and raw_comps:
+                        comp_ids = {
+                            c.get("component_id")
+                            for c in raw_comps
+                            if isinstance(c, dict) and isinstance(c.get("component_id"), str) and c.get("component_id")
+                        }
+                        if comp_ids:
+                            matched_heads = [
+                                h for h in heads
+                                if comp_ids <= {
+                                    oc.get("component_id")
+                                    for oc in h.get("components", ())
+                                    if isinstance(oc, dict)
+                                }
+                            ]
+                        if not matched_heads and affect_op == "update":
+                            req_dims = {
+                                c.get("dimension")
+                                for c in raw_comps
+                                if isinstance(c, dict) and isinstance(c.get("dimension"), str)
+                            }
+                            if req_dims:
+                                matched_heads = [
+                                    h for h in heads
+                                    if req_dims <= {
+                                        oc.get("dimension")
+                                        for oc in h.get("components", ())
+                                        if isinstance(oc, dict)
+                                    }
+                                ]
+                                if not matched_heads:
+                                    matched_heads = [
+                                        h for h in heads
+                                        if req_dims & {
+                                            oc.get("dimension")
+                                            for oc in h.get("components", ())
+                                            if isinstance(oc, dict)
+                                        }
+                                    ]
+                    if len(matched_heads) == 1:
+                        ep_id = str(matched_heads[0]["episode_id"])
+                        normalized["episode_id"] = ep_id
+                    elif len(heads) == 1:
+                        ep_id = str(heads[0]["episode_id"])
+                        normalized["episode_id"] = ep_id
+                if affect_op == "update" and isinstance(ep_id, str) and isinstance(raw_comps, list):
+                    target_head = next((h for h in heads if h.get("episode_id") == ep_id), None)
+                    if target_head is not None:
+                        by_dim = {
+                            oc.get("dimension"): oc.get("component_id")
+                            for oc in target_head.get("components", ())
+                            if isinstance(oc, dict)
+                            and isinstance(oc.get("dimension"), str)
+                            and isinstance(oc.get("component_id"), str)
+                        }
+                        other_head_comp_ids = {
+                            oc.get("component_id")
+                            for h in heads
+                            if h.get("episode_id") != ep_id
+                            for oc in h.get("components", ())
+                            if isinstance(oc, dict) and isinstance(oc.get("component_id"), str)
+                        }
+                        bound_comps: list[object] = []
+                        for c in raw_comps:
+                            if (
+                                isinstance(c, dict)
+                                and not c.get("component_id")
+                                and isinstance(c.get("dimension"), str)
+                                and c.get("dimension") in by_dim
+                            ):
+                                bound_comps.append({**c, "component_id": by_dim[c["dimension"]]})
+                            elif (
+                                isinstance(c, dict)
+                                and c.get("component_id") in other_head_comp_ids
+                                and isinstance(c.get("dimension"), str)
+                            ):
+                                if c["dimension"] in by_dim:
+                                    bound_comps.append({**c, "component_id": by_dim[c["dimension"]]})
+                                else:
+                                    bound_comps.append({k: v for k, v in c.items() if k != "component_id"})
+                            else:
+                                bound_comps.append(c)
+                        normalized["components"] = bound_comps
             return materialize_appraisal_draft(
-                raw=json.dumps(raw_value, ensure_ascii=False, separators=(",", ":")),
+                raw=json.dumps(normalized, ensure_ascii=False, separators=(",", ":")),
                 request=request,
             )
 

@@ -70,7 +70,11 @@ from .conversation_continuity import (
     WORKING_DIALOGUE_SOURCE_REF_BUDGET,
     pack_recent_dialogue_under_source_budget,
 )
-from .associative_recall import lexical_relevance_bp
+from .associative_recall import (
+    _GENERIC_CONVERSATIONAL_NGRAMS,
+    _recall_features,
+    lexical_relevance_bp,
+)
 from .epoch_migration_source import (
     archive_observation_ids,
     epoch_migration_source_excerpt,
@@ -469,28 +473,56 @@ def _relevant_prehistory_memory_link_refs(
     # structured relevance. Do not apply the context rank-override floor here:
     # it is meant for explicitly attended items and would make unrelated
     # memories tie with the current observation's actual match.
+    compressed_query = re.sub(
+        r"([\u4e00-\u9fff])[的了过着张个次场顿口份遍回]([\u4e00-\u9fff])",
+        r"\1\2",
+        query_text,
+    )
+    raw_cue_features = _recall_features(
+        (query_text, compressed_query) if compressed_query != query_text else (query_text,)
+    )
+    substantive_cue_features = frozenset(
+        feature
+        for feature in (
+            raw_cue_features
+            - _GENERIC_CONVERSATIONAL_NGRAMS
+            - frozenset({"华东", "师大", "东师", "华东师", "东师大", "宿舍", "寝室", "楼下"})
+        )
+        if not (
+            feature != "小时候"
+            and (
+                feature.startswith(("时候", "候", "没有", "有没", "或者", "觉得", "想起", "起来"))
+                or feature.endswith(("有", "没", "的", "了", "吗", "呢", "吧", "啊", "呀", "或"))
+            )
+        )
+    )
     ranked = []
     for item in eligible:
         base_texts = _item_relevance_texts(item)
         if not base_texts:
             continue
-        if seed:
-            stage_cues = tuple(
+        stage_cues = (
+            tuple(
                 cue
                 for excerpt in item.source_excerpts
                 if (cue := _prehistory_stage_cue(excerpt))
             )
-            compressed_query = re.sub(
-                r"([\u4e00-\u9fff])[的了过着张个次场顿口份遍回]([\u4e00-\u9fff])",
-                r"\1\2",
-                query_text,
-            )
+            if seed
+            else ()
+        )
+        doc_texts = (*base_texts, *stage_cues) if seed else base_texts
+        overlap = substantive_cue_features & _recall_features(doc_texts)
+        if not overlap or (
+            not any(len(feature) >= 3 for feature in overlap) and len(overlap) < 2
+        ):
+            continue
+        if seed:
             effective_query = (
                 f"{query_text} {compressed_query}"
                 if compressed_query != query_text
                 else query_text
             )
-            rel_bp = lexical_relevance_bp(effective_query, (*base_texts, *stage_cues))
+            rel_bp = lexical_relevance_bp(effective_query, doc_texts)
         else:
             rel_bp = memory_relevance_bp(query_text, item)
         if rel_bp <= 0:
@@ -1028,10 +1060,8 @@ def _signal_bp(slice_name: SliceName, item: BaseModel) -> int:
             return 10_000
         if "topic_reactivation" in reasons:
             return 9_900
-        if "acknowledged_context" in reasons:
+        if "acknowledged_context" in reasons or "recent_companion" in reasons or "recent" in reasons:
             return 9_850
-        if "recent_companion" in reasons or "recent" in reasons:
-            return 9_800
     values = getattr(item, "values", None)
     direct = (
         getattr(values, "importance_bp", None),
@@ -1128,11 +1158,31 @@ def _rank(
         # Current accepted execution/intent is grounding for the next choice.
         # Recent scenery must not evict it before the model sees the World.
         if isinstance(item, ActiveActivityContextItem):
-            return 9_925
+            return 9_935
+        if (
+            isinstance(item, PlannedActivityContextItem)
+            and (
+                logical_time is None
+                or (
+                    item.scheduled_window.closes_at >= logical_time
+                    and (item.scheduled_window.opens_at - logical_time).total_seconds()
+                    <= 12 * 3600
+                )
+            )
+        ):
+            return 9_930
+        if isinstance(item, ActiveWorldOccurrenceContextItem):
+            return 9_928
+        if (
+            isinstance(item, CompletedActivityContextItem)
+            and logical_time is not None
+            and item.ended_at is not None
+            and 0 <= (logical_time - item.ended_at).total_seconds() <= 5400
+            and item.activity_kind not in {"sleep", "rest"}
+        ):
+            return 9_926
         if isinstance(item, WorldLifeContextItem) and item.content is not None:
             return 9_910 + (_recency_bp(item, logical_time) * 14 // 10_000)
-        if isinstance(item, PlannedActivityContextItem):
-            return 9_900
     if slice_name == "perception_results":
         if isinstance(item, PerceptionResultContextItem):
             recency = _recency_bp(item, logical_time)
@@ -1220,6 +1270,8 @@ def _bounded_domain_items(
         return None
     if slice_name == "relevant_facts":
         return _bounded_relevant_facts(items, logical_time, rank_overrides, query_text)
+    if slice_name == "pending_outbound":
+        return tuple(items[:MAX_INPUT_ITEMS_PER_SLICE])
     ranked = sorted(
         items,
         key=lambda item: (
@@ -1348,10 +1400,25 @@ def _bound_shared_media_about(
     if place is not None:
         return f"一张{place}{when}{rest}"
     if ledger is not None:
+        raw_refs = getattr(projection, "committed_world_event_refs", ()) or ()
         committed_by_id = {
-            ref.event_id: ref
-            for ref in getattr(projection, "committed_world_event_refs", ()) or ()
-            if getattr(ref, "event_id", None) in bound_refs
+            ref_id: ref
+            for ref_id in sorted(bound_refs)
+            if (
+                ref := (
+                    lookup_last(raw_refs, "event_id", ref_id)
+                    if isinstance(raw_refs, tuple)
+                    else next(
+                        (
+                            item
+                            for item in reversed(tuple(raw_refs))
+                            if getattr(item, "event_id", None) == ref_id
+                        ),
+                        None,
+                    )
+                )
+            )
+            is not None
             and getattr(ref, "event_type", None) == "ImageEvidenceDeclared"
         }
         for event_id, ref in sorted(committed_by_id.items()):
@@ -1655,13 +1722,8 @@ def _epoch_genesis_fact_recall_item(
 ) -> FactRecallItem | None:
     if not is_epoch_genesis_fact(fact):
         return None
-    fact_ref = next(
-        (
-            item
-            for item in projection.committed_world_event_refs
-            if item.event_id == fact.origin.accepted_event_ref
-        ),
-        None,
+    fact_ref = lookup_first(
+        projection.committed_world_event_refs, "event_id", fact.origin.accepted_event_ref
     )
     if fact_ref is None or fact_ref.world_revision > projection.world_revision:
         return None
@@ -1716,10 +1778,12 @@ def fact_recall_items(
     opaque refs and hashes are never presented as if they were prose.
     """
 
-    committed = {item.event_id: item for item in projection.committed_world_event_refs}
+    if not facts:
+        return ()
     observations_by_id: dict[str, list[object]] = {}
     for item in projection.message_observations:
         observations_by_id.setdefault(item.observation_id, []).append(item)
+    observation_events_by_identity: dict[tuple[int, str], list[CommittedWorldEventRef]] | None = None
     genesis_observation_ids = tuple(
         observation_id
         for fact in facts
@@ -1749,7 +1813,9 @@ def fact_recall_items(
         binding = fact.values.assertion_binding
         if binding.source_kind != "observed_message" or binding.payload_ref is None:
             continue
-        fact_ref = committed.get(fact.origin.accepted_event_ref)
+        fact_ref = lookup_last(
+            projection.committed_world_event_refs, "event_id", fact.origin.accepted_event_ref
+        )
         fact_located = ledger.lookup_event_commit(fact.origin.accepted_event_ref)
         if fact_ref is None or fact_located is None:
             continue
@@ -1793,12 +1859,17 @@ def fact_recall_items(
             or observation_ref.content_payload_hash != binding.content_payload_hash
         ):
             continue
+        if observation_events_by_identity is None:
+            observation_events_by_identity = {}
+            for item in projection.committed_world_event_refs:
+                if item.event_type == "ObservationRecorded":
+                    observation_events_by_identity.setdefault(
+                        (item.world_revision, item.payload_hash), []
+                    ).append(item)
         source_event_candidates = tuple(
-            item
-            for item in projection.committed_world_event_refs
-            if item.event_type == "ObservationRecorded"
-            and item.world_revision == observation_ref.world_revision
-            and item.payload_hash == observation_ref.event_payload_hash
+            observation_events_by_identity.get(
+                (observation_ref.world_revision, observation_ref.event_payload_hash), ()
+            )
         )
         if len(source_event_candidates) != 1:
             continue
@@ -2381,6 +2452,11 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
             "BudgetReleased",
             "BudgetAdjusted",
         }
+        budget_refs = [
+            ref
+            for ref in projection.committed_world_event_refs
+            if ref.event_type in budget_event_types
+        ]
 
         # The action-budget slice has one bounded authority closure shared by
         # all accounts.  Once the projection already contains more budget
@@ -2390,18 +2466,10 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         # series of verified SQLite lookups.  Returning the optional slice as
         # unavailable is the same fail-closed result as the bounded loop
         # below, and does not expose or infer any balance.
-        if (
-            sum(
-                ref.event_type in budget_event_types
-                for ref in projection.committed_world_event_refs
-            )
-            > MAX_SOURCE_REFS_PER_ITEM
-        ):
+        if len(budget_refs) > MAX_SOURCE_REFS_PER_ITEM:
             return {account_id: None for account_id in accounts}
 
-        for ref in projection.committed_world_event_refs:
-            if ref.event_type not in budget_event_types:
-                continue
+        for ref in budget_refs:
             located = self._ledger.lookup_event_commit(ref.event_id)
             if located is None:
                 # The projection claims this event exists; missing storage is
@@ -2506,6 +2574,9 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         self._resolve_cache_misses += 1
         projection = self._ledger.project_at(query.cursor)
         self._validate_projection(query, projection)
+        from .character_interior.contracts import register_chat_disclosure_ledger
+
+        register_chat_disclosure_ledger(projection, world_id=query.world_id)
         scope = self._scope_for_query(query, projection)
         with context_read_scope(self._life_content_store, projection):
             return self._resolve_material_views(
@@ -2825,10 +2896,9 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
         recent_dialogue = continuity.dialogue
         continuity_rank_overrides = continuity.rank_overrides
         is_inbound_dialogue_turn = any(
-            claim.authority_event_ref == query.trigger_ref
-            for item in dialogue_candidates
+            "current_turn" in item.continuity_reasons
+            for item in recent_dialogue
             if item.speaker == "counterpart"
-            for claim in item.source_claims
         )
         context_facts = (
             tuple(
@@ -3168,6 +3238,37 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                             )
                         )
                     )
+                    inbound_prehistory_links = _relevant_prehistory_memory_link_refs(
+                        memory_retrievals.items,
+                        actor_ref=query.actor_ref,
+                        logical_time=query.logical_time,
+                        query_text=trigger_dialogue.text,
+                        seed=f"{query.trigger_ref}:{query.ledger_sequence}",
+                    )
+                    if not inbound_prehistory_links:
+                        recent_settled = sorted(
+                            recall_life.settled_items,
+                            key=lambda item: item.authority_world_revision,
+                        )[-3:]
+                        recent_exps = sorted(
+                            recall_experiences,
+                            key=lambda item: item.content.authority_world_revision,
+                        )[-2:]
+                        assoc_parts = [
+                            *(_excerpt_cue_text(item.content) for item in recent_exps),
+                            *(_excerpt_cue_text(item) for item in recent_settled),
+                        ]
+                        assoc_cue = "\n".join(
+                            dict.fromkeys(part for part in assoc_parts if part)
+                        ).strip()[:_LIVED_MOMENT_CUE_CHARACTERS]
+                        if assoc_cue:
+                            inbound_prehistory_links = _relevant_prehistory_memory_link_refs(
+                                memory_retrievals.items,
+                                actor_ref=query.actor_ref,
+                                logical_time=query.logical_time,
+                                query_text=assoc_cue,
+                                seed=f"lived-assoc:{query.trigger_ref}:{query.ledger_sequence}",
+                            )
                     attention_request = build_automatic_recall_request(
                         observation_text=trigger_dialogue.text,
                         recent_dialogue_values=recent_attention_dialogue,
@@ -3203,13 +3304,7 @@ class LedgerProjectionContextResolver(TrustedInternalContextResolver):
                                 *(item.thread_id for item in open_threads_for_continuity),
                             ),
                         ),
-                        priority_link_refs=_relevant_prehistory_memory_link_refs(
-                            memory_retrievals.items,
-                            actor_ref=query.actor_ref,
-                            logical_time=query.logical_time,
-                            query_text=trigger_dialogue.text,
-                            seed=f"{query.trigger_ref}:{query.ledger_sequence}",
-                        ),
+                        priority_link_refs=inbound_prehistory_links,
                         limit=4,
                     )
                     try:

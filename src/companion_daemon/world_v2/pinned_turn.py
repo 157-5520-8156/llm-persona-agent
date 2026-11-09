@@ -675,8 +675,11 @@ class PinnedTurnCompiler:
                 actor_ref=self._companion_actor_ref,reader=self._plan_material_reader,source_refs=(context.trigger_ref,))
             if bounds is not None:
                 deliberate_kwargs["plan_response_input"]=bounds
+        from .character_interior.contracts import chat_disclosure_ledger_scope
+
         model_started = time.perf_counter()
-        result = await self._deliberation.deliberate(capsule, **deliberate_kwargs)
+        with chat_disclosure_ledger_scope(projection, world_id=self._ledger.world_id):
+            result = await self._deliberation.deliberate(capsule, **deliberate_kwargs)
         _LOG.warning(
             "pinned turn phases trace=%s phase=model_ms value=%.1f elapsed_since_start_ms=%.1f",
             observation.trace_id,

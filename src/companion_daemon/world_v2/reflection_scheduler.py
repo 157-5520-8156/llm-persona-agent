@@ -98,6 +98,7 @@ class ReflectionScheduler:
         self._actor = actor
         self._unweighted = unweighted_bp
         self._source = source
+        self._last_opened_logical_time: datetime | None = None
 
     def open_once(
         self,
@@ -124,6 +125,50 @@ class ReflectionScheduler:
                 continue
             processes_by_source.setdefault(source_ref, []).append(process)
 
+        import os
+
+        raw_cooldown = os.environ.get(
+            "WORLD_V2_PRIVATE_IMPRESSION_MIN_INTERVAL_SECONDS", ""
+        ).strip()
+        if raw_cooldown:
+            try:
+                cooldown_s = int(raw_cooldown)
+            except ValueError:
+                cooldown_s = 0
+            if cooldown_s > 0:
+                if any(
+                    getattr(p, "state", None) != "terminal"
+                    for procs in processes_by_source.values()
+                    for p in procs
+                ):
+                    return ReflectionSchedulerResult(skipped=0, reason="cooldown")
+                latest_opened: datetime | None = self._last_opened_logical_time
+                for src_ref, procs in processes_by_source.items():
+                    located = self._ledger.lookup_event_commit(
+                        reflection_opened_event_id(src_ref, len(procs))
+                    )
+                    if located is not None and located[0].logical_time is not None:
+                        if latest_opened is None or located[0].logical_time > latest_opened:
+                            latest_opened = located[0].logical_time
+                    for p in procs:
+                        lease = getattr(p, "claim_lease", None)
+                        acq = getattr(lease, "acquired_at", None) if lease is not None else None
+                        if acq is not None and (latest_opened is None or acq > latest_opened):
+                            latest_opened = acq
+                for appraisal in getattr(projection, "appraisals", ()):
+                    origin = getattr(appraisal, "origin", None)
+                    acc_ref = getattr(origin, "accepted_event_ref", None) if origin is not None else None
+                    if acc_ref:
+                        located = self._ledger.lookup_event_commit(acc_ref)
+                        if located is not None and located[0].logical_time is not None:
+                            if latest_opened is None or located[0].logical_time > latest_opened:
+                                latest_opened = located[0].logical_time
+                if (
+                    latest_opened is not None
+                    and logical_time < latest_opened + timedelta(seconds=cooldown_s)
+                ):
+                    return ReflectionSchedulerResult(skipped=0, reason="cooldown")
+
         bar = self._revisit_bar(projection, logical_time)
         if bar is None:
             return ReflectionSchedulerResult(skipped=0, reason="nothing_weighed")
@@ -140,6 +185,11 @@ class ReflectionScheduler:
 
         for source_ref, processes in processes_by_source.items():
             if any(getattr(process, "state", None) != "terminal" for process in processes):
+                continue
+            if any(
+                str(getattr(process, "runtime_outcome_ref", "") or "").endswith(":no-change")
+                for process in processes
+            ):
                 continue
             visit_count = len(processes)
             if not self._revisit_interval_elapsed(
@@ -278,6 +328,7 @@ class ReflectionScheduler:
             )
         except (ConcurrencyConflict, IdempotencyConflict):
             return False
+        self._last_opened_logical_time = logical_time
         return True
 
 

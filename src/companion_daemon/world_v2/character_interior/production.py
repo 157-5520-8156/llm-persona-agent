@@ -1176,6 +1176,7 @@ def compose_production_character_interior(
     life_source_reviewer=None,
     background_character_model=None,
     background_turn_lease_seconds: int = 120,
+    character_temperature: float | None = None,
     reference_wire: bool = False,
     turn_store: _CharacterInteriorTurnStore | None = None,
     turn_owner_id: str = "character-interior:production",
@@ -1191,7 +1192,9 @@ def compose_production_character_interior(
             "legacy_optional is historical replay/test only"
         )
 
+    resolved_author_temp = float(character_temperature) if character_temperature is not None else 1.3
     author = _InboundCharacterAuthor(
+        temperature=resolved_author_temp,
         whole_candidate_mode=whole_candidate_mode,
         visible_source_review_model=visible_source_review_model,
         atomic_tool_envelope_version=atomic_tool_envelope_version,
@@ -1224,11 +1227,14 @@ def compose_production_character_interior(
     from .living_frame import configured_living_frame
 
     character_disposition = configured_living_frame(identity_frame)
+    is_deepseek = "deepseek" in str(flash_model_id).lower() or "deepseek" in str(getattr(flash_model, "provider", "")).lower()
+    interactive_role_temp = (float(character_temperature) if character_temperature is not None else 1.3) if is_deepseek else 0.8
     if whole_candidate_mode:
         from .proactive_visible_review import ReviewedProactiveStructuredRoleFaculty
 
         role = ReviewedProactiveStructuredRoleFaculty(
             model=flash_model, model_id=flash_model_id,
+            temperature=interactive_role_temp,
             character_disposition=character_disposition,
             reference_wire=reference_wire,
             life_source_reviewer=life_source_reviewer,
@@ -1240,6 +1246,7 @@ def compose_production_character_interior(
         )
     else:
         role = StructuredCharacterRoleFaculty(model=flash_model, model_id=flash_model_id,
+                                             temperature=interactive_role_temp,
                                              character_disposition=character_disposition,
                                              life_source_reviewer=life_source_reviewer,
                                              reference_wire=reference_wire)

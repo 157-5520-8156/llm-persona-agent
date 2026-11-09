@@ -84,6 +84,13 @@ class ConversationContinuityCompiler:
                 key=lambda item: (item.sequence, item.occurred_at, item.dialogue_id),
             )
         )
+        all_acknowledged_event_refs = set(acknowledged_observation_event_refs)
+        all_acknowledged_event_refs.update(
+            ref
+            for item in ordered
+            if item.speaker == "companion"
+            for ref in item.acknowledges_observation_event_refs
+        )
         current = next(
             (
                 item
@@ -95,6 +102,18 @@ class ConversationContinuityCompiler:
             ),
             None,
         )
+        if current is not None and (
+            any(
+                claim.authority_event_ref in all_acknowledged_event_refs
+                for claim in current.source_claims
+            )
+            and any(
+                item.speaker == "companion"
+                and (item.sequence, item.occurred_at) > (current.sequence, current.occurred_at)
+                for item in ordered
+            )
+        ):
+            current = None
         if current is None:
             return ConversationContinuitySelection(
                 dialogue=ordered[-self._max_items :]
@@ -116,6 +135,12 @@ class ConversationContinuityCompiler:
             for item in ordered
             if item.speaker == "companion"
             and (item.sequence, item.occurred_at) < (current.sequence, current.occurred_at)
+        )
+        companions_after = tuple(
+            item
+            for item in ordered
+            if item.speaker == "companion"
+            and (item.sequence, item.occurred_at) >= (current.sequence, current.occurred_at)
         )
         acknowledged_event_refs = set(acknowledged_observation_event_refs)
         acknowledged_event_refs.update(
@@ -157,7 +182,8 @@ class ConversationContinuityCompiler:
         for offset, item in enumerate(reversed(pending)):
             retain(item, "pending_interaction", 9_850 - offset * 50)
 
-        for offset, item in enumerate(reversed(companions_before[-self._max_companion :])):
+        recent_companion_window = (*companions_before, *companions_after)[-self._max_companion :]
+        for offset, item in enumerate(reversed(recent_companion_window)):
             retain(item, "recent_companion", 9_400 - offset * 50)
 
         counterpart_by_source_ref = {

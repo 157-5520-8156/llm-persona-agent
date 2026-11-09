@@ -50,14 +50,31 @@ def _direct_paths(row: dict, shown: dict, *, content_fields_only: bool = False, 
     if material.get("kind") == "current_counterpart_report":
         return [p for p in paths if p == "/message/text" or (p.startswith("/messages/") and p.endswith("/text"))]
     if material.get("kind") == "biographical_coordinate":
-        return [p for p in paths if p == "/material/value"]
+        return [
+            p
+            for p in paths
+            if p
+            in {
+                "/material/value",
+                "/material/value/summary",
+                "/material/value/context_summary",
+            }
+        ]
     if "settled_life_support" in row:
         if content_fields_only:
             return [p for p in paths if p in {
                 "/item/value/content/world_consequence/environment/text",
                 "/item/value/content/world_consequence/authorized_attempt_result/text",
-            }]
-        return [p for p in paths if p.startswith("/item/value/content/world_consequence/")]
+            } or (
+                p.startswith("/item/value/world_planning/scheduled_items/")
+                and p.endswith(("/title", "/starts_at", "/ends_at", "/notes"))
+            )]
+        return [
+            p
+            for p in paths
+            if p.startswith("/item/value/content/world_consequence/")
+            or p.startswith("/item/value/world_planning/scheduled_items/")
+        ]
     if "activity_support" in row:
         return [p for p in paths if p in {
             "/item/value/accepted_intention/text", "/item/value/status",
@@ -100,15 +117,12 @@ def _catalog(
             row=row, pointers=paths, prehistory_authority=prehistory_authority,
             allow_companion_activity_lifecycle=allow_companion_activity_lifecycle,
         )
+        max_reading_chars = 4096 if fact_value_authority else 1024
         for pointer in paths:
             value, _ = _reading(shown, pointer)
             original, _ = _reading(row["review_material"], pointer)
             if value != original:
                 raise ValueError("reading transport requires an exact original scalar")
-            # This prototype reuses the frozen witness consumer's bound rather
-            # than truncating evidence or silently skipping an eligible field.
-            if len(value) > 1024:
-                raise ValueError("reading exceeds witness transport bound")
             permissions = permissions_by_pointer[pointer]
             material = row["review_material"]
             if report_uptake and (
@@ -121,6 +135,10 @@ def _catalog(
                 ]
             if not permissions:
                 continue
+            # This prototype reuses the frozen witness consumer's bound rather
+            # than truncating evidence or silently skipping an eligible field.
+            if len(value) > max_reading_chars:
+                raise ValueError("reading exceeds witness transport bound")
             descriptor = {
                 "material_index": material_index, "pointer": pointer, "value": value,
                 "source_owner_ref": row.get("support_subject_ref"),

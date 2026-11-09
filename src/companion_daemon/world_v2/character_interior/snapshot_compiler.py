@@ -13,7 +13,7 @@ import hashlib
 import json
 import re
 from datetime import datetime, timedelta
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from ..dialogue_fold import fold_dialogue_entries, fold_dialogue_line
@@ -270,7 +270,10 @@ def _photos_i_shared_entry(
 
 
 def _messages_waiting_to_send_entry(
-    item: dict[str, object], *, logical_time: datetime | None
+    item: dict[str, object],
+    *,
+    logical_time: datetime | None,
+    delivered_dialogue: Sequence[Mapping[str, object]] = (),
 ) -> dict[str, object] | None:
     """Bind one unsent later followup as a fact she can read."""
 
@@ -309,16 +312,38 @@ def _messages_waiting_to_send_entry(
         if entry.get("he_spoke_after") is True
         else "写好之后他还没回。"
     )
+    written_dt = _instant(entry.get("written_at"))
+    already_in_chat = False
+    for d_row in delivered_dialogue:
+        if (
+            isinstance(d_row, Mapping)
+            and (
+                d_row.get("speaker") in {"companion", "agent:companion"}
+                or d_row.get("speaker_ref") == "agent:companion"
+            )
+            and d_row.get("delivery_state") in {"provider_accepted", "delivered", None}
+            and isinstance(d_row.get("text"), str)
+            and d_row["text"].strip() == body
+        ):
+            d_dt = _instant(d_row.get("occurred_at"))
+            if written_dt is None or d_dt is None or d_dt >= written_dt:
+                already_in_chat = True
+                break
     if when:
         entry["when"] = when
     if written_clock:
         entry["written_clock"] = written_clock
     if send_clock:
         entry["send_clock"] = send_clock
-    entry["already_in_chat"] = False
-    entry["line"] = (
-        f"{written_stamp}、还没发出，{send_stamp}。正文：「{preview}」{i_spoke}{he_spoke}"
-    )
+    entry["already_in_chat"] = already_in_chat
+    if already_in_chat:
+        entry["line"] = (
+            f"{written_stamp}、还没发出（但相同正文后来已经在对话里发过了），{send_stamp}。正文：「{preview}」{i_spoke}{he_spoke}"
+        )
+    else:
+        entry["line"] = (
+            f"{written_stamp}、还没发出，{send_stamp}。正文：「{preview}」{i_spoke}{he_spoke}"
+        )
     return entry
 
 
@@ -1047,10 +1072,17 @@ def _source_envelope(
     if not isinstance(raw_value, dict):
         raw_value = item.get("value")
     authority_refs = [binding.ref for binding in bindings]
+    origin_obj = raw_value.get("origin") if isinstance(raw_value, dict) else None
+    primary_origin_refs = (
+        _unique_refs(origin_obj, keys=_DIRECT_REF_FIELDS)
+        if isinstance(origin_obj, dict)
+        else ()
+    )
     direct = tuple(
         dict.fromkeys(
             (
                 *authority_refs,
+                *primary_origin_refs,
                 *_unique_refs(raw_value, keys=_DIRECT_REF_FIELDS),
             )
         )
@@ -1713,7 +1745,13 @@ def compile_inner_life_snapshot(
     waiting = [
         entry
         for item in _slice_items(slices, "pending_outbound")
-        if (entry := _messages_waiting_to_send_entry(item, logical_time=logical_time))
+        if (
+            entry := _messages_waiting_to_send_entry(
+                item,
+                logical_time=logical_time,
+                delivered_dialogue=compiled_dialogue,
+            )
+        )
     ][:PRESENT_PENDING_OUTBOUND_ITEM_LIMIT]
     if waiting:
         materials["messages_waiting_to_send"] = waiting
@@ -1754,6 +1792,7 @@ def compile_inner_life_snapshot(
             "protagonist_npc_relationships",
             "npc_observable_attitudes",
             "private_impressions",
+            "memory_understandings",
             "folded_dialogue",
             "recent_dialogue",
             "interaction_acts",
@@ -1761,7 +1800,12 @@ def compile_inner_life_snapshot(
             "messages_waiting_to_send",
             "moments_i_can_share",
         ),
-        "aspirations_conflicts": ("situation", "unresolved", "pending_world_occurrences"),
+        "aspirations_conflicts": (
+            "situation",
+            "unresolved",
+            "pending_world_occurrences",
+            "memory_understandings",
+        ),
         "autonomous_impulses": (
             "situation",
             "relationship",
@@ -1770,6 +1814,7 @@ def compile_inner_life_snapshot(
             "appraisals",
             "affect",
             "unresolved",
+            "memory_understandings",
             "perception",
             "recent_self_experiences",
             "pending_world_occurrences",
@@ -1790,6 +1835,7 @@ def compile_inner_life_snapshot(
             "appraisals",
             "affect",
             "private_impressions",
+            "memory_understandings",
             "perception",
             "folded_dialogue",
             "recent_dialogue",

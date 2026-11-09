@@ -98,13 +98,15 @@ def compile_day_sheet(
     age: int | None = None,
     season: str | None = None,
     timezone_name: str = _DEFAULT_TIMEZONE,
+    include_weekday: bool = True,
 ) -> str:
     """Render clock, biography, and habitual windows without claiming activity."""
 
     local = logical_at.astimezone(ZoneInfo(timezone_name))
     weekday_label = "周" + "一二三四五六日"[local.weekday()]
+    weekday_clause = f"（{weekday_label}）" if include_weekday else ""
     parts: list[str] = [
-        f"今天是{local.strftime('%Y-%m-%d')}（{weekday_label}），当地{local.strftime('%H:%M')}"
+        f"今天是{local.strftime('%Y-%m-%d')}{weekday_clause}，当地{local.strftime('%H:%M')}"
     ]
     identity: list[str] = []
     if age is not None:

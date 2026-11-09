@@ -1053,6 +1053,48 @@ class _WorldStimulusInteriorAuthorityHandler:
                 }
                 if isinstance(affect_transition, InteriorAffectResolveTransition):
                     affect_payload["resolution_summary"] = affect_transition.resolution_summary
+                elif (
+                    isinstance(affect_transition, InteriorAffectUpdateTransition)
+                    and process_kind in {"npc_world_appraisal", "plan_disruption_appraisal"}
+                    and not any(str(ref).startswith("user:") for ref in relationship_subject_refs)
+                ):
+                    offered_by_id = {
+                        item["component_id"]: item
+                        for item in selected_head.get("components", ())
+                        if isinstance(item, dict) and isinstance(item.get("component_id"), str)
+                    }
+                    kept_targets = [
+                        item
+                        for item in affect_transition.component_targets
+                        if not (
+                            item.dimension in {"resentment", "hurt", "loneliness"}
+                            and item.target_intensity_bp
+                            < int(
+                                offered_by_id.get(item.component_id, {}).get(
+                                    "current_intensity_bp", 0
+                                )
+                            )
+                        )
+                    ]
+                    if kept_targets:
+                        affect_payload["component_targets"] = [
+                            item.model_dump(mode="json") for item in kept_targets
+                        ]
+                    else:
+                        affect_payload["component_targets"] = [
+                            {
+                                **item.model_dump(mode="json"),
+                                "target_intensity_bp": max(
+                                    item.target_intensity_bp,
+                                    int(
+                                        offered_by_id.get(item.component_id, {}).get(
+                                            "current_intensity_bp", 0
+                                        )
+                                    ),
+                                ),
+                            }
+                            for item in affect_transition.component_targets
+                        ]
                 else:
                     affect_payload["component_targets"] = [
                         item.model_dump(mode="json") for item in affect_transition.component_targets
@@ -2408,6 +2450,16 @@ class CharacterInteriorWorldStimulusRuntime:
         at: datetime,
         policy: CausalOpportunityPolicy,
     ) -> bool:
+        import os
+
+        if os.environ.get("WORLD_V2_PRIVATE_IMPRESSION_MIN_INTERVAL_SECONDS", "").strip():
+            if source_events and all(
+                event.event_type in {"TriggerSettlementRecorded", "ExecutionReceiptRecorded"}
+                and event.logical_time is not None
+                and event.logical_time + timedelta(hours=1) < at
+                for event in source_events
+            ):
+                return True
         return self._opportunity_runtime.is_expired(
             tuple(
                 CausalOpportunitySource(

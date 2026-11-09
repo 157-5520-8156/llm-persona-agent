@@ -24,7 +24,7 @@ from .life_content_reading import (
     CharacterResponseReading, WorldConsequenceReading, read_character_life_experience_content,
 )
 from .life_content_store import ImmutableLifeContentStore
-from .memory_reducers import evaluate_memory_retrieval
+from .memory_reducers import _canonical_hash, evaluate_memory_retrieval
 from .immutable_value_cache import immutable_value_cache
 from .schema_core import FrozenModel, PrivacyClass
 from .schemas import (
@@ -656,14 +656,7 @@ class MemoryRetrievalCompiler:
 
     @staticmethod
     def _canonical_hash(value) -> str:
-        return hashlib.sha256(
-            json.dumps(
-                value.model_dump(mode="json"),
-                ensure_ascii=False,
-                sort_keys=True,
-                separators=(",", ":"),
-            ).encode()
-        ).hexdigest()
+        return _canonical_hash(value)
 
     def _fact_excerpt(
         self,
@@ -676,15 +669,14 @@ class MemoryRetrievalCompiler:
         locator = self._fact_locator(binding=binding, cursor=cursor, projection=projection)
         if locator is None:
             return None
-        transition = next(
-            (
-                item
-                for item in projection.fact_transitions
-                if item.fact_id == binding.source_id
+        transition = lookup_first(
+            projection.fact_transitions,
+            "accepted_event_ref",
+            binding.authority_event_ref,
+            predicate=lambda item: (
+                item.fact_id == binding.source_id
                 and item.entity_revision == binding.source_entity_revision
-                and item.accepted_event_ref == binding.authority_event_ref
             ),
-            None,
         )
         if transition is None:
             return None
@@ -746,15 +738,14 @@ class MemoryRetrievalCompiler:
         projection,
     ) -> ObservationEventLocator | None:
         del cursor  # Kept in the seam for callers that pin all source reads.
-        transition = next(
-            (
-                item
-                for item in projection.fact_transitions
-                if item.fact_id == binding.source_id
+        transition = lookup_first(
+            projection.fact_transitions,
+            "accepted_event_ref",
+            binding.authority_event_ref,
+            predicate=lambda item: (
+                item.fact_id == binding.source_id
                 and item.entity_revision == binding.source_entity_revision
-                and item.accepted_event_ref == binding.authority_event_ref
             ),
-            None,
         )
         if transition is None or not self._fact_binding_matches(transition, binding):
             return None
@@ -773,28 +764,24 @@ class MemoryRetrievalCompiler:
 
     @staticmethod
     def _message_reference_for_binding(*, binding: MemorySourceBinding, projection):
-        transition = next(
-            (
-                item
-                for item in projection.fact_transitions
-                if item.fact_id == binding.source_id
+        transition = lookup_first(
+            projection.fact_transitions,
+            "accepted_event_ref",
+            binding.authority_event_ref,
+            predicate=lambda item: (
+                item.fact_id == binding.source_id
                 and item.entity_revision == binding.source_entity_revision
-                and item.accepted_event_ref == binding.authority_event_ref
             ),
-            None,
         )
         if transition is None:
             return None
         assertion = transition.values_after.assertion_binding
         if assertion.source_kind != "observed_message":
             return None
-        reference = next(
-            (
-                item
-                for item in projection.message_observations
-                if item.observation_id == assertion.source_ref
-            ),
-            None,
+        reference = lookup_first(
+            projection.message_observations,
+            "observation_id",
+            assertion.source_ref,
         )
         if reference is None or (
             reference.actor != assertion.actor_ref
@@ -812,11 +799,7 @@ class MemoryRetrievalCompiler:
         # ``evaluate_memory_retrieval`` already proves full lifecycle/current
         # eligibility. This repeats only the content-path identity check before
         # a raw observation is opened.
-        material = transition.values_after.model_dump(mode="json")
-        values_hash = hashlib.sha256(
-            json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
-        ).hexdigest()
-        return values_hash == binding.source_values_hash
+        return _canonical_hash(transition.values_after) == binding.source_values_hash
 
 
 __all__ = [

@@ -841,6 +841,10 @@ class LifeEcologyRuntime:
                     after_world_revision=None if retry_old_consequence else projection.world_revision,
                 )
             except (ValueError, TypeError, ConcurrencyConflict):
+                _LOG.exception(
+                    "life ecology completed activity source unavailable wake=%s",
+                    wake_event_ref,
+                )
                 await self._complete_failed_safe(key=key, trigger_id=claim.trigger_id)
                 return LifeEcologyRunResult(
                     status="failed_safe", trigger_id=claim.trigger_id,
@@ -858,6 +862,10 @@ class LifeEcologyRuntime:
                     after_world_revision=None if retry_old_consequence else projection.world_revision,
                 )
             except (ValueError, TypeError, ConcurrencyConflict):
+                _LOG.exception(
+                    "life ecology active attempt source unavailable wake=%s",
+                    wake_event_ref,
+                )
                 await self._complete_failed_safe(key=key, trigger_id=claim.trigger_id)
                 return LifeEcologyRunResult(
                     status="failed_safe", trigger_id=claim.trigger_id,
@@ -1217,6 +1225,10 @@ class LifeEcologyRuntime:
                 if not isinstance(visual_evidence_status, str) or not visual_evidence_status:
                     raise ValueError("visual evidence result has no stable status")
             except Exception:
+                _LOG.exception(
+                    "life ecology visual evidence followup failed wake=%s",
+                    wake_event_ref,
+                )
                 await self._complete_failed_safe(key=key, trigger_id=claim.trigger_id)
                 return LifeEcologyRunResult(
                     status="failed_safe",

@@ -1253,12 +1253,16 @@ class NpcEcology:
                 ]
             )
             request_json = _canonical(messages)
+            npc_origin = getattr(model, "authority_origin", model)
+            npc_provider = str(getattr(npc_origin, "provider", "")).lower()
+            npc_model_name = str(getattr(npc_origin, "model", "")).lower()
+            npc_temp = 1.3 if ("deepseek" in npc_provider or "deepseek" in npc_model_name) else (1.0 if ("glm" in npc_provider or "glm" in npc_model_name) else (0.75 if ordinal == 0 else 0.55))
             try:
                 with model_call_scope(purpose, actor=actor_ref, attempt=ordinal + 1):
                     raw = await complete_json_object(
                         model,
                         messages,
-                        temperature=0.75 if ordinal == 0 else 0.55,
+                        temperature=npc_temp,
                     )
             except (TimeoutError, httpx.TimeoutException):
                 attempts.append(

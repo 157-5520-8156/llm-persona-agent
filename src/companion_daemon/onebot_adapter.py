@@ -202,6 +202,7 @@ class OneBotReplyTarget:
         if not content:
             return {}
         from companion_daemon.world_v2.qq_voice import (
+            clean_spoken_text_for_tts,
             extract_voice_tag_and_clean_text,
             synthesize_companion_voice_note,
         )
@@ -222,7 +223,7 @@ class OneBotReplyTarget:
                         return voice_resp
             except Exception:
                 pass
-            content = voice_cleaned
+            content = clean_spoken_text_for_tts(voice_cleaned) or voice_cleaned
         bvid, cleaned_text = _extract_bilibili_bvid_and_clean_text(content)
         if bvid is not None:
             recipient_key = (str(self.user_id or self.group_id or ""), bvid)

@@ -107,103 +107,110 @@ def _append_bounded(parts: list[str], material: str) -> None:
         parts.append(material[: remaining - 1].rstrip() + "…")
 
 
-def _affect_summary(values: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
-    summaries: list[dict[str, object]] = []
+def _affect_summary(values: Sequence[Mapping[str, object]]) -> str:
+    tokens: list[str] = []
     for episode in values:
         for raw_component in _sequence(episode.get("components")):
             component = _mapping(raw_component)
             dimension = component.get("dimension")
             intensity = component.get("intensity_bp")
-            if not isinstance(dimension, str):
+            if not isinstance(dimension, str) or not dimension.strip():
                 continue
-            item: dict[str, object] = {"dimension": dimension}
-            if isinstance(intensity, int):
-                item["intensity_bp"] = intensity
-            residue = component.get("residue_bp")
-            if isinstance(residue, int):
-                item["residue_bp"] = residue
-            summaries.append(item)
-            if len(summaries) >= _MAX_AFFECT_COMPONENTS:
-                return summaries
-    return summaries
+            tokens.append(
+                f"{dimension.strip()}:{intensity}"
+                if isinstance(intensity, int)
+                else dimension.strip()
+            )
+            if len(tokens) >= _MAX_AFFECT_COMPONENTS:
+                return ",".join(tokens)
+    return ",".join(tokens)
 
 
-def _appraisal_summary(values: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
-    summaries: list[dict[str, object]] = []
-    for appraisal in values[:_MAX_APPRAISALS]:
-        hypotheses: list[dict[str, object]] = []
-        for raw_hypothesis in _sequence(appraisal.get("hypotheses"))[:3]:
+def _appraisal_summary(values: Sequence[Mapping[str, object]]) -> str:
+    ordered = (
+        sorted(
+            values,
+            key=lambda item: str(item.get("accepted_at") or ""),
+            reverse=True,
+        )
+        if any(item.get("accepted_at") for item in values)
+        else list(values)
+    )
+    meanings: list[str] = []
+    for appraisal in ordered[:_MAX_APPRAISALS]:
+        for raw_hypothesis in _sequence(appraisal.get("hypotheses"))[:2]:
             hypothesis = _mapping(raw_hypothesis)
-            item = {
-                key: hypothesis[key]
-                for key in ("meaning", "attribution", "severity", "weight_bp")
-                if key in hypothesis
-            }
-            if item:
-                hypotheses.append(item)
-        summary = {
-            key: appraisal[key]
-            for key in ("confidence_bp", "expires_at")
-            if key in appraisal
-        }
-        if hypotheses:
-            summary["hypotheses"] = hypotheses
-        if summary:
-            summaries.append(summary)
-    return summaries
+            meaning = hypothesis.get("meaning")
+            if isinstance(meaning, str) and meaning.strip():
+                text = meaning.strip()
+                meanings.append(text if len(text) <= 36 else text[:35] + "…")
+    return "；".join(meanings)
 
 
-def _relationship_summary(values: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
-    return [
-        {
-            key: value[key]
-            for key in ("stage", "temperature", "variables", "last_adjusted_at")
-            if key in value
-        }
-        for value in values[:_MAX_RELATIONSHIPS]
-    ]
+def _relationship_summary(values: Sequence[Mapping[str, object]]) -> str:
+    tokens: list[str] = []
+    for value in values[:_MAX_RELATIONSHIPS]:
+        parts = [
+            str(value[key]).strip()
+            for key in ("stage", "temperature")
+            if isinstance(value.get(key), str) and str(value[key]).strip()
+        ]
+        if parts:
+            tokens.append(",".join(parts))
+    return "；".join(tokens)
 
 
-def _situation_summary(value: Mapping[str, object]) -> dict[str, object]:
-    summary = {
-        key: value[key]
-        for key in ("time_segment", "attention_slice", "social_environment", "plan_relation")
-        if key in value
-    }
-    activities = [
-        _mapping(item)
-        for item in _sequence(value.get("activity_slices"))[:_MAX_ACTIVITIES]
-    ]
-    if activities:
-        summary["activity_slices"] = activities
-    return summary
+def _situation_summary(value: Mapping[str, object]) -> str:
+    parts: list[str] = []
+    time_seg = value.get("time_segment")
+    if isinstance(time_seg, str) and time_seg.strip():
+        parts.append(time_seg.strip())
+    for raw_act in _sequence(value.get("activity_slices"))[:_MAX_ACTIVITIES]:
+        act = _mapping(raw_act)
+        title = act.get("title") or act.get("activity_kind")
+        if isinstance(title, str) and title.strip():
+            parts.append(title.strip()[:16])
+    social = _mapping(value.get("social_environment"))
+    relation = social.get("relation")
+    if isinstance(relation, str) and relation.strip():
+        parts.append(relation.strip())
+    return ",".join(parts)
 
 
-def _thread_summary(values: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
-    return [
-        {
-            key: value[key]
-            for key in ("kind", "importance_bp", "due_window", "status")
-            if key in value
-        }
-        for value in values[:_MAX_THREADS]
-    ]
+def _thread_summary(values: Sequence[Mapping[str, object]]) -> str:
+    tokens: list[str] = []
+    for value in values[:_MAX_THREADS]:
+        kind = value.get("kind")
+        if isinstance(kind, str) and kind.strip():
+            tokens.append(kind.strip())
+    return ",".join(tokens)
 
 
-def _dialogue_summary(values: Sequence[Mapping[str, object]]) -> list[dict[str, object]]:
-    summaries: list[dict[str, object]] = []
+def _dialogue_summary(values: Sequence[Mapping[str, object]]) -> str:
+    items: list[tuple[str, str]] = []
     for value in values[-_MAX_RECENT_DIALOGUE_ITEMS:]:
         speaker = value.get("speaker")
         text = value.get("text")
         if not isinstance(speaker, str) or not isinstance(text, str) or not text.strip():
             continue
-        summaries.append(
-            {
-                "speaker": speaker,
-                "text": text.strip()[:_MAX_RECENT_DIALOGUE_TEXT_CHARACTERS],
-            }
+        label = (
+            "他"
+            if speaker == "counterpart"
+            else "我"
+            if speaker == "companion"
+            else speaker
         )
-    return summaries
+        items.append((label, text.strip()[:_MAX_RECENT_DIALOGUE_TEXT_CHARACTERS]))
+    if not items:
+        return ""
+    joined = " / ".join(f"{label}：{text}" for label, text in items)
+    if len(joined) <= 110:
+        return joined
+    per_item = max(18, 96 // len(items))
+    return " / ".join(
+        f"{label}：{text if len(text) <= per_item else text[: per_item - 1] + '…'}"
+        for label, text in items
+    )
 
 
 def _lexical_attention_cue(text: str) -> str | None:
@@ -255,22 +262,22 @@ def build_automatic_recall_request(
     _append_bounded(parts, f"{observation_label}：{lexical[:_MAX_DENSE_OBSERVATION_CHARACTERS]}")
     dialogue = _dialogue_summary(recent_dialogue_values)
     if dialogue:
-        _append_bounded(parts, "最近对话：" + _compact_json(dialogue))
+        _append_bounded(parts, "最近对话：" + dialogue)
     affect = _affect_summary(affect_values)
     if affect:
-        _append_bounded(parts, "当前感受：" + _compact_json(affect))
+        _append_bounded(parts, "当前感受：" + affect)
     appraisals = _appraisal_summary(appraisal_values)
     if appraisals:
-        _append_bounded(parts, "当前解读：" + _compact_json(appraisals))
+        _append_bounded(parts, "当前解读：" + appraisals)
     relationships = _relationship_summary(relationship_values)
     if relationships:
-        _append_bounded(parts, "当前关系：" + _compact_json(relationships))
+        _append_bounded(parts, "当前关系：" + relationships)
     situation = _situation_summary(situation_value or {})
     if situation:
-        _append_bounded(parts, "当前处境：" + _compact_json(situation))
+        _append_bounded(parts, "当前处境：" + situation)
     threads = _thread_summary(open_thread_values)
     if threads:
-        _append_bounded(parts, "未完话题：" + _compact_json(threads))
+        _append_bounded(parts, "未完话题：" + threads)
     # Allocate this disposable cue across supplied facets rather than letting
     # one long Observation or dialogue consume the entire embedding budget.
     # Full source material and the separate focused Observation stay intact.

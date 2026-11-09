@@ -687,8 +687,8 @@ class ContextCapsuleBudgetPolicy(_FrozenModel):
     pending_outbound: SliceBudget = Field(
         default_factory=lambda: SliceBudget(
             max_items=PRESENT_PENDING_OUTBOUND_ITEM_LIMIT,
-            max_fields=48,
-            max_characters=4_000,
+            max_fields=128,
+            max_characters=8_000,
         )
     )
 
@@ -1742,28 +1742,39 @@ def _compile_slice(
     # the exact semantic subject of the proactive lane's model request.  Keep
     # it ahead of optional advisories so both the per-slice cap and the global
     # tail-eviction policy preserve its source-bound contract.
-    resolved.sort(
-        key=lambda pair: (
-            0 if pair[1].item_ref in preferred_item_refs else 1,
-            0
-            if slice_name == "relevant_facts"
-            and isinstance(pair[0], FactRecallItem)
-            and fact_predicate_is_stable(pair[0].predicate_code)
-            else 0
-            if slice_name == "advisories"
-            and isinstance(pair[0], InnerAdvisoryProjection)
-            and pair[0].kind
-            in {
-                "proactive_opportunity",
-                "proactive_self_history",
-                "response_expectation",
-                "expired_expectation",
-            }
-            else 1,
-            -pair[1].rank_score_bp,
-            pair[1].item_ref,
+    if slice_name == "pending_outbound":
+        resolved.sort(
+            key=lambda pair: (
+                0 if pair[1].item_ref in preferred_item_refs else 1,
+                getattr(pair[0], "send_at", None) or getattr(pair[0], "written_at", None),
+                getattr(pair[0], "beat_id", "") or "",
+                pair[1].item_ref,
+            )
         )
-    )
+    else:
+        resolved.sort(
+            key=lambda pair: (
+                0 if pair[1].item_ref in preferred_item_refs else 1,
+                0
+                if slice_name == "relevant_facts"
+                and isinstance(pair[0], FactRecallItem)
+                and fact_predicate_is_stable(pair[0].predicate_code)
+                else 0
+                if slice_name == "advisories"
+                and isinstance(pair[0], InnerAdvisoryProjection)
+                and pair[0].kind
+                in {
+                    "proactive_opportunity",
+                    "proactive_self_history",
+                    "response_expectation",
+                    "expired_expectation",
+                }
+                else 1,
+                -pair[1].rank_score_bp,
+                -getattr(pair[0], "sequence", 0) if slice_name == "recent_dialogue" else 0,
+                pair[1].item_ref,
+            )
+        )
     if slice_name == "perception_results" and len(resolved) > 1:
         top_media = next(
             (pair for pair in resolved if isinstance(pair[0], PerceptionResultContextItem)),
@@ -2713,7 +2724,11 @@ def _compile_resolved_context(
         "advisories": len(slices["advisories"].items),
         "perception_results": 2,
         "media_deliveries": 1,
-        "pending_outbound": 1,
+        "pending_outbound": (
+            len(slices["pending_outbound"].items)
+            if "pending_outbound" in slices
+            else 1
+        ),
     }
     protected_advisory_present = any(
         json.loads(item.payload_json).get("kind")

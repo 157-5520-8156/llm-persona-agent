@@ -263,3 +263,50 @@ def test_default_appraisal_window_outlives_the_whole_revisit_ladder() -> None:
         (reflection_revisit_gap(visit) for visit in range(1, 5)), timedelta()
     )
     assert DEFAULT_APPRAISAL_WINDOW > ladder
+
+
+def test_my_state_anchors_appraisal_when_weighed_or_touched_without_meaning_of_this() -> None:
+    """Without meaning_of_this, full my_state anchors appraisal when weighed/touched, but stays off casual turns."""
+
+    full_thought = "五小时没动静，一上来就扔三个字敷衍我，我心里那股闷气还没消，不想顺着他台阶下"
+    weighed_only = compile_slim_consider_payload(
+        {
+            "messages": ["哦，忙完啦。"],
+            "my_state": full_thought,
+            "matters_bp": 6_800,
+        }
+    )
+    assert weighed_only is not None
+    assert weighed_only["appraisal_draft"]["appraise"] is True
+    assert weighed_only["appraisal_draft"]["confidence"] == 6_800
+    assert weighed_only["appraisal_draft"]["meanings"] == [
+        {"meaning": full_thought, "confidence": 6_800}
+    ]
+
+    rel_touched = compile_slim_consider_payload(
+        {
+            "messages": ["算你有良心。"],
+            "my_state": "他居然还记着我随口提过一句的胃疼，心里一下子软了半截",
+            "about_us": "他会把我的小事放在心上",
+            "why_us": "随口提过的事他专门去买了药",
+        }
+    )
+    assert rel_touched is not None
+    assert rel_touched["appraisal_draft"]["appraise"] is True
+    assert rel_touched["appraisal_draft"]["meanings"] == [
+        {
+            "meaning": "他居然还记着我随口提过一句的胃疼，心里一下子软了半截",
+            "confidence": REFLECTION_UNWEIGHTED_BP,
+        }
+    ]
+
+    casual = compile_slim_consider_payload(
+        {
+            "messages": ["好呀。"],
+            "my_state": "随口应一声，继续看手头的书",
+        }
+    )
+    assert casual is not None
+    assert casual["appraisal_draft"]["appraise"] is False
+    assert "meanings" not in casual["appraisal_draft"]
+

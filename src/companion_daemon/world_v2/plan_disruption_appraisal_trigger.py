@@ -58,9 +58,16 @@ def plan_disruption_opportunity(projection) -> PlanDisruptionOpportunity | None:
     authority origin names exactly its terminal ``ActivityAbandoned`` event.
     """
 
+    import os
+
+    skip_self_plan_response = bool(
+        os.environ.get("WORLD_V2_ACTIVITY_MIN_INTERVAL_SECONDS", "").strip()
+    )
     anchor = None
     for ref in projection.committed_world_event_refs:
         if ref.event_type != "ActivityAbandoned":
+            continue
+        if skip_self_plan_response and ref.event_id.startswith("event:world-plan-response:"):
             continue
         if anchor is None or ref.world_revision > anchor.world_revision:
             anchor = ref

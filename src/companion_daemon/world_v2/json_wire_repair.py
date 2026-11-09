@@ -31,43 +31,159 @@ def strip_json_fence(raw: str, *, unclosed_message: str = "JSON fence is unclose
     return candidate
 
 
-def escape_unescaped_quotes_in_json_strings(text: str) -> str:
-    """Escape ASCII quotes that cannot close a JSON string.
+_VALID_JSON_VALUE_STARTERS = (
+    '"',
+    "{",
+    "[",
+    "-",
+    "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "t",
+    "f",
+    "n",
+    "]",
+)
 
-    A quote is a terminator only when the next non-space character is
-    ``,``, ``}``, ``]``, ``:``, or the end of the text. Every other quote
-    is inner speech and can be escaped losslessly. This does not rewrite
-    keys, numbers, or already-escaped quotes.
+
+def _starts_with_object_key(after_comma: str) -> bool:
+    if not after_comma.startswith('"'):
+        return False
+    escaped = False
+    for idx in range(1, len(after_comma)):
+        ch = after_comma[idx]
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\":
+            escaped = True
+            continue
+        if ch == '"':
+            return after_comma[idx + 1 :].lstrip().startswith(":")
+    return False
+
+
+def escape_unescaped_quotes_in_json_strings(text: str) -> str:
+    """Escape ASCII quotes and raw control characters that cannot close a JSON string.
+
+    An object-key string closes only before ``:`` (or end of text). A value
+    string closes only before its enclosing container closer (``}`` or ``]``),
+    end of text, or ``,`` followed by a valid next member/element token.
+    Every other quote is inner speech and can be escaped losslessly.
     """
 
     repaired: list[str] = []
     in_string = False
+    in_key_string = False
     escaped = False
-    for index, character in enumerate(text):
+    container_stack: list[str] = []
+    last_nonspace_outside = ""
+    index = 0
+    length = len(text)
+    while index < length:
+        character = text[index]
         if in_string:
             if escaped:
                 repaired.append(character)
                 escaped = False
+                index += 1
                 continue
             if character == "\\":
                 repaired.append(character)
                 escaped = True
+                index += 1
+                continue
+            if character == "\n":
+                repaired.append("\\n")
+                index += 1
+                continue
+            if character == "\r":
+                repaired.append("\\r")
+                index += 1
+                continue
+            if character == "\t":
+                repaired.append("\\t")
+                index += 1
                 continue
             if character == '"':
                 rest = text[index + 1 :].lstrip()
-                if rest.startswith((",", "}", "]", ":")) or rest == "":
+                enclosing = container_stack[-1] if container_stack else ""
+                if in_key_string:
+                    is_closer = rest.startswith(":") or rest == ""
+                else:
+                    expected_closer = "}" if enclosing == "{" else ("]" if enclosing == "[" else "")
+                    if rest == "" or (expected_closer and rest.startswith(expected_closer)):
+                        is_closer = True
+                    elif not expected_closer and rest.startswith(("}", "]")):
+                        is_closer = True
+                    elif enclosing == "{" and _starts_with_object_key(rest):
+                        is_closer = True
+                    elif rest.startswith(","):
+                        after_comma = rest[1:].lstrip()
+                        if after_comma == "":
+                            is_closer = True
+                        elif enclosing == "{":
+                            is_closer = after_comma.startswith("}") or _starts_with_object_key(
+                                after_comma
+                            )
+                        else:
+                            is_closer = after_comma.startswith(_VALID_JSON_VALUE_STARTERS)
+                    else:
+                        is_closer = False
+                if is_closer:
                     in_string = False
+                    in_key_string = False
+                    last_nonspace_outside = '"'
                     repaired.append(character)
                 else:
                     repaired.append("\\")
                     repaired.append('"')
+                index += 1
                 continue
             repaired.append(character)
+            index += 1
+            continue
+        if (
+            character == '"'
+            and container_stack
+            and container_stack[-1] == "{"
+            and last_nonspace_outside in ("{", ",")
+            and text[index : index + 3] in ('"}"', '"]"')
+            and not text[index + 3 :].lstrip().startswith(":")
+        ):
+            closer_char = text[index + 1]
+            if not text[index + 3 :].lstrip().startswith(closer_char):
+                repaired.append(closer_char)
+                container_stack.pop()
+                last_nonspace_outside = closer_char
+            index += 3
             continue
         repaired.append(character)
         if character == '"':
             in_string = True
+            in_key_string = bool(
+                container_stack
+                and container_stack[-1] == "{"
+                and last_nonspace_outside in ("{", ",")
+            )
             escaped = False
+        elif character in ("{", "["):
+            container_stack.append(character)
+            last_nonspace_outside = character
+        elif character in ("}", "]"):
+            if container_stack:
+                container_stack.pop()
+            last_nonspace_outside = character
+        elif not character.isspace():
+            last_nonspace_outside = character
+        index += 1
     return "".join(repaired)
 
 
@@ -126,6 +242,10 @@ def merge_split_object_arrays(text: str) -> str:
                         repaired.append(", ")
                         index = look + 1
                         continue
+                    if look < length and text[look] == "{":
+                        repaired.append(", ")
+                        index = look
+                        continue
             depth_array = max(0, depth_array - 1)
         repaired.append(character)
         index += 1
@@ -142,8 +262,7 @@ def close_unclosed_json_containers(text: str) -> str:
     stays fail-closed.
     """
 
-    depth_object = 0
-    depth_array = 0
+    open_stack: list[str] = []
     in_string = False
     escaped = False
     for character in text:
@@ -161,18 +280,56 @@ def close_unclosed_json_containers(text: str) -> str:
             in_string = True
             continue
         if character == "{":
-            depth_object += 1
-        elif character == "}":
-            depth_object -= 1
+            open_stack.append("}")
         elif character == "[":
-            depth_array += 1
-        elif character == "]":
-            depth_array -= 1
-        if depth_object < 0 or depth_array < 0:
-            return text
-    if in_string or escaped or (depth_object == 0 and depth_array == 0):
+            open_stack.append("]")
+        elif character in ("}", "]"):
+            if not open_stack or open_stack[-1] != character:
+                return text
+            open_stack.pop()
+    if in_string or escaped or not open_stack:
         return text
-    return text + ("]" * depth_array) + ("}" * depth_object)
+    return text + "".join(reversed(open_stack))
+
+
+def repair_commas_outside_strings(text: str) -> str:
+    """Remove trailing commas before ``}``/``]`` and insert missing commas before ``"``."""
+
+    repaired: list[str] = []
+    in_string = False
+    escaped = False
+    last_nonspace_outside = ""
+    for index, character in enumerate(text):
+        if in_string:
+            repaired.append(character)
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+                last_nonspace_outside = '"'
+            continue
+        if character == ",":
+            rest = text[index + 1 :].lstrip()
+            if rest.startswith(("}", "]")):
+                continue
+            repaired.append(character)
+            last_nonspace_outside = ","
+            continue
+        if character == '"':
+            if last_nonspace_outside in ('"', "}", "]") or (
+                last_nonspace_outside and last_nonspace_outside.isalnum()
+            ):
+                repaired.append(",")
+            in_string = True
+            escaped = False
+            repaired.append(character)
+            continue
+        repaired.append(character)
+        if not character.isspace():
+            last_nonspace_outside = character
+    return "".join(repaired)
 
 
 def loads_one_json_object(
@@ -196,6 +353,10 @@ def loads_one_json_object(
     repaired = escape_unescaped_quotes_in_json_strings(candidate)
     if repaired != candidate:
         texts.append(repaired)
+    for text in list(texts):
+        comma_fixed = repair_commas_outside_strings(text)
+        if comma_fixed != text:
+            texts.append(comma_fixed)
     for text in list(texts):
         merged = merge_split_object_arrays(text)
         if merged != text:

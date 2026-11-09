@@ -112,18 +112,23 @@ _LEGACY_INTERIOR_USER_PAYLOAD_ORDER = (
 _INTERIOR_USER_PAYLOAD_ORDER = (
     "configured_character_disposition",
     "lived_evidence_scope",
-    "wire_contract",
     "eight_facets",
-    "background_context_profile",
+    "selective_recall",
+    "presentation",
     "inner_life_snapshot",
+    "context_reading",
+    "living_choice_scope",
+    "reflection_scope",
+    "wire_contract",
     "purpose_instruction",
-    "current_authorship_authority",
     "purpose_contract",
+    "background_context_profile",
+    "current_authorship_authority",
     "citeable_sources",
     "capability_manifest",
-    "selective_recall",
     "inner_turn",
     "correction",
+    "reference_dictionary",
 )
 
 _EXPRESSION_RECONSIDERATION_DISPOSITIONS = frozenset(
@@ -281,11 +286,102 @@ def _bind_host_owned_source_lists(
         decoded["proposals"] = repaired_proposals
     decision = decoded.get("decision")
     manifest = request.capability_manifest
+    if (
+        request.purpose == "private_impression_reflection"
+        and manifest is not None
+        and isinstance(decoded.get("proposals"), list)
+    ):
+        raw_sources = manifest.payload.get("reflection_sources")
+        raw_token_map = manifest.payload.get("token_map")
+        anchor_refs = manifest.payload.get("anchor_source_refs")
+        if isinstance(raw_sources, list):
+            offered_list = [
+                item.get("source_ref")
+                for item in raw_sources
+                if isinstance(item, dict) and isinstance(item.get("source_ref"), str)
+            ]
+            offered_set = set(offered_list)
+            existing_impressions = {
+                item.get("source_ref")
+                for item in raw_sources
+                if isinstance(item, dict)
+                and item.get("source_kind") == "existing_impression"
+                and isinstance(item.get("source_ref"), str)
+            }
+            alias_to_refs: dict[str, list[str]] = {}
+            if isinstance(raw_token_map, dict):
+                for tok, sref in raw_token_map.items():
+                    if isinstance(tok, str) and isinstance(sref, str) and sref in offered_set:
+                        alias_to_refs.setdefault(tok, []).append(sref)
+            for item in raw_sources:
+                if not isinstance(item, dict):
+                    continue
+                sref = item.get("source_ref")
+                if not isinstance(sref, str):
+                    continue
+                alias_to_refs.setdefault(sref, []).append(sref)
+                if sref.startswith("private-impression:"):
+                    alias_to_refs.setdefault(sref.removeprefix("private-impression:"), []).append(sref)
+                auth_ref = item.get("authority_event_ref")
+                if isinstance(auth_ref, str) and auth_ref:
+                    alias_to_refs.setdefault(auth_ref, []).append(sref)
+                val_json = item.get("value_json")
+                if isinstance(val_json, str):
+                    try:
+                        val_obj = json.loads(val_json)
+                    except json.JSONDecodeError:
+                        val_obj = None
+                    if isinstance(val_obj, dict):
+                        for id_key in ("impression_id", "appraisal_id", "component_id", "episode_id"):
+                            id_val = val_obj.get(id_key)
+                            if isinstance(id_val, str) and id_val:
+                                alias_to_refs.setdefault(id_val, []).append(sref)
+            anchors = [
+                item for item in anchor_refs if isinstance(item, str) and item in offered_set
+            ] if isinstance(anchor_refs, list) else []
+            repaired_pi_proposals = []
+            for prop in decoded["proposals"]:
+                if isinstance(prop, dict):
+                    prop = dict(prop)
+                    dec = prop.get("decision")
+                    raw_preds = prop.get("predecessor_refs")
+                    if dec == "retain":
+                        prop["predecessor_refs"] = []
+                    elif isinstance(raw_preds, list):
+                        mapped_preds: list[str] = []
+                        for item in raw_preds:
+                            if isinstance(item, str):
+                                for candidate in alias_to_refs.get(item, ()):
+                                    if candidate in existing_impressions and candidate not in mapped_preds:
+                                        mapped_preds.append(candidate)
+                        if mapped_preds:
+                            prop["predecessor_refs"] = mapped_preds
+                    raw_srefs = prop.get("source_refs")
+                    if isinstance(raw_srefs, list):
+                        mapped_srefs: list[str] = []
+                        for item in raw_srefs:
+                            if isinstance(item, str):
+                                for candidate in alias_to_refs.get(item, ()):
+                                    if candidate in offered_set and candidate not in mapped_srefs:
+                                        mapped_srefs.append(candidate)
+                        for pred in prop.get("predecessor_refs", ()):
+                            if isinstance(pred, str) and pred in offered_set and pred not in mapped_srefs:
+                                mapped_srefs.append(pred)
+                        if anchors and not (set(mapped_srefs) & set(anchors)):
+                            mapped_srefs.insert(0, anchors[0])
+                        if mapped_srefs:
+                            prop["source_refs"] = mapped_srefs
+                repaired_pi_proposals.append(prop)
+            decoded["proposals"] = repaired_pi_proposals
     if not isinstance(decision, dict):
         return
     decision = dict(decision)
     if decoded.get("status") is None and isinstance(decision.get("status"), str):
         decoded["status"] = decision.pop("status")
+    if "recall_query" in decision and decision.get("recall_query") is None:
+        decoded.setdefault("recall_query", decision.pop("recall_query"))
+    if "proposals" in decision and decision.get("proposals") == []:
+        decoded.setdefault("proposals", decision.pop("proposals"))
     if decision.get("type") == "object":
         decision.pop("type", None)
     if decision.get("proposal_extra") == "ignored":
@@ -302,11 +398,33 @@ def _bind_host_owned_source_lists(
     if request.purpose == "activity_lifecycle_choice" and isinstance(payload, dict):
         noticed = payload.get("noticed")
         payload = dict(payload)
+        if payload.get("decision") == "no_op" and payload.get("selected_token") is None:
+            payload.pop("selected_token", None)
         if isinstance(noticed, str) and noticed.strip():
             payload["user_channel_completion"] = "none"
         elif noticed is None:
             payload.pop("user_channel_completion", None)
         decoded["decision"] = {**decision, "payload": payload}
+    if (
+        request.purpose == "world_stimulus_appraisal"
+        and os.environ.get("WORLD_V2_LIFE_DEVELOPMENT_MIN_INTERVAL_SECONDS", "").strip()
+    ):
+        proposals = decoded.get("proposals")
+        if isinstance(proposals, list) and len(proposals) == 1 and isinstance(proposals[0], dict):
+            prop = dict(proposals[0])
+            prop["proposal_type"] = "world_stimulus_appraisal_result"
+            expected_status = (
+                "transition"
+                if prop.get("decision") == "activate"
+                or prop.get("aspiration_transition") is not None
+                or prop.get("experience_transition") is not None
+                or prop.get("life_intent") is not None
+                or prop.get("plan_response") is not None
+                or prop.get("life_responses") is not None
+                else "no_change"
+            )
+            decoded["status"] = expected_status
+            decoded["proposals"] = [prop]
     if (
         request.purpose == "external_perception_attention"
         and manifest is not None
@@ -369,12 +487,31 @@ def _bind_host_owned_source_lists(
         }
 
 
+_VOLATILE_CITEABLE_SOURCE_PREFIXES = (
+    "event:trigger:",
+    "event:expression-plan:",
+    "action:",
+    "advisory:",
+    "affect:",
+    "appraisal:",
+    "dialogue:",
+    "event:dialogue:",
+)
+
+
 def _citeable_catalog_for_request(request: _InteriorRoleRequest) -> PinnedSourceCatalog:
     # The attention result has eight slots; that is not a limit on the
     # evidence she may read or cite. Keep the complete pinned catalog and
-    # preserve its original prefix so existing source ids retain their meaning.
+    # place stable background refs ahead of per-turn volatile refs so
+    # lean aliases (s0..sN) inside stable snapshot slices do not renumber
+    # every time a new dialogue beat, action, or appraisal is recorded.
+    refs = request.attention_source_refs
+    if request.snapshot.life_source_origin is None:
+        stable = [r for r in refs if not r.startswith(_VOLATILE_CITEABLE_SOURCE_PREFIXES)]
+        volatile = [r for r in refs if r.startswith(_VOLATILE_CITEABLE_SOURCE_PREFIXES)]
+        refs = (*stable, *volatile)
     return PinnedSourceCatalog.from_refs(
-        request.attention_source_refs,
+        refs,
         labels=citeable_source_labels(request.snapshot),
     )
 
@@ -654,12 +791,17 @@ def _memory_consolidation_provider_payload(payload, *, compact=False):
     result["understanding_instruction"] = (
         "你决定保留或释放一份有来源的理解，也可以选择[]。每项写disposition=retain或release，"
         "明确列出你选择替代的predecessor_tokens，保留summary、facet、confidence_bp。"
-        "summary直接用第一人称写出你记住的事与真实想法。"
+        "理解用于从你自己的真实生活处境（家里近况与经济压力、学业与勤工助学、社团与身边人关系、与对方的相处经历）提炼出这一阶段的行为习惯、自我要求与处事心气："
+        "写清因为自己所处的具体生活处境，所以这一阶段做事养成了什么习惯、对自己有什么要求（例如因为家里变故或经济吃紧，所以最近做事都要注意什么、要自立不给家里添麻烦）。"
+        "单次事件的具体金额、具体日期或编号已保存在底层记忆并由evidence_quotes绑定；修订旧的standing_understandings时直接整句重写为当前阶段的完整理解，不在旧句末尾机械续写，也不必在长期理解里背诵单次事件数字。summary使用纯中文自然第一人称大白话，不夹杂英文单词。"
+        "private_self写因家庭、经济或学业处境养成的阶段生活习惯、自我要求与日常步调；"
+        "subjective_relationship与expression_stance写从与身边人或对方往来里长出来的相处原则、分寸与说话心气；"
+        "aspirations_conflicts与emotional_continuity写这一阶段因现实处境在心里压着的重担、心结或憋着的一股劲。"
         "evidence_quotes每项只写quote_ref，选择quote_options里的原文编号，不重抄或改写引文；"
         "quote_parts按顺序拼回完整原文，不是删减过的摘要。"
         "retain配空前身表示新理解，配一个前身表示修订，配多个前身表示合并；release必须选一个前身。"
         "不要再写operation。前身只能选understanding_tokens里的现存条目，引用只能选实际提供的来源。"
-        "已有方面没有新变化时不必重复新增；可修订、合并或选择不更新。不能同时忘掉来源又用它产生新理解。"
+        "不能同时忘掉来源又用它产生新理解。"
         "evidence_quotes只用understanding_source_tokens中的m/k条目，不能引用一般注意目录的s条目。"
         "forget表示完全遗忘这个候选及其依赖的新理解；若仍想保留它的影响，需要自行选择retain该来源。"
     )
@@ -2394,8 +2536,8 @@ class StructuredCharacterRoleFaculty:
                     },
                 },
                 "summary_semantics": (
-                    "one short instant private self: what currently matters, feels salient, "
-                    "or is wanted/avoided; no hidden chain-of-thought and no invented fact"
+                    "one natural first-person inner thought at this moment; "
+                    "no hidden chain-of-thought and no invented fact"
                 ),
             },
         }
@@ -2432,14 +2574,15 @@ class StructuredCharacterRoleFaculty:
             if request.purpose == "world_stimulus_appraisal":
                 user_payload["reflection_scope"] = {
                     "contract": "role-owned-reflection-depth.1",
-                    "instruction": "感受用第一人称写，可以只是一句，也可以没有变化（no_change）。"
+                    "instruction": "本次评估对象仅限 capability_manifest.payload.stimulus 当前发生的具体事件或刺激；recent_dialogue 仅作背景语境（若当前外部事件本身没触动你，直接选 no_change）。"
+                    "感受和想法用平实自然的第一人称日常口语写，像平时心里闪过的念头一样简单真切，可以只是一句，也可以没有变化（no_change）。"
                     "由你决定是否值得深入想。brief允许行为倾向、态度和表达策略写null，"
-                    "表示这次没有形成这些说明，不是系统代你选择行为。真正在意或牵动你的事"
-                    "可选elaborated并按需通过affect_transition开启或更新持续情绪；不要为了填字段展开长篇分析。"
+                    "表示这次没有形成这些说明，不是系统代你选择行为。真正在意或牵动你的事（包括手头拮据、室友或社团冷战摩擦、兼职奔波、学业与材料受阻等现实生活小事带来的委屈、烦闷、焦虑或松一口气）"
+                    "可选elaborated并按需通过affect_transition开启或更新持续情绪，让真实生活经历自然沉淀为心境起伏。"
                     "若开启或更新affect_transition，维度可按真实心情选用（hurt/sadness/loneliness/resentment/anger/anxiety/warmth/joy），"
                     "target_intensity_bp 采用 0..10000 基点。"
-                    "当前感受不需要先有同样感受的历史记录；不知道对方原因不妨碍你有自己的感受或不满，"
-                    "但不能把猜测当成对方已经做过或想过的事实。",
+                    "若填写 relationship_signal，其中的 signal_code 与 rationale_code 也请直接用第一人称日常口语写心意与原因，不要写生硬的心理或行政分类标签。"
+                    "当前感受不需要先有同样感受的历史记录；猜测不构成对方已经做过或想过的外部事实。",
                 }
                 purpose_view = user_payload["purpose_contract"]
                 purpose_view.pop("proposal_example_activate", None)
@@ -2453,9 +2596,9 @@ class StructuredCharacterRoleFaculty:
             user_payload["purpose_instruction"] = (
                 "对 external_perception_attention：从 candidates 里挑出真正吸引你点开看或留意的条目（也可以全都不选 []）。"
                 "materials.relevant_facts 中 subject_ref 为 user:* 的条目属于对方的个人事实，不是你自己的身份或经历。"
-                "候选 licensed_summary 中的「视频画面与声音实看」「字幕原文实读」「故事板抽帧实看」是视频本身的画面与台词，"
-                "「时间轴弹幕」「高赞神评」是网友发的弹幕与评论；若某条候选只有标题和简介、没有上述实看内容，代表只滑过封面标题未点开，不根据标题脑补画面细节。"
-                "subjective_summary 与 epistemic_notes 由你自由记录。"
+                "候选材料里有什么就看什么，不编造材料之外的细节；"
+                "subjective_summary 用平实自然的第一人称日常口语随手记一句刷到这条内容时的真实反应或感兴趣的具体点；"
+                "epistemic_notes 仅在信息来源本身有明显存疑时简短备注，平时无特别疑问直接写空字符串 \"\"。"
             )
         if request.purpose == "media_selection":
             user_payload["purpose_instruction"] = (
@@ -2464,12 +2607,28 @@ class StructuredCharacterRoleFaculty:
                 "capability_manifest.payload.candidates 中每项候选提供客观属性：capture_modes、character_visibility、accompanied_by_text、lived_facts 与 advisory。"
                 "是否发图（decision='select' 或 'no_op'）以及选哪张候选，完全由你结合当下语境与心情自主决定。"
             )
+        if request.purpose == "private_impression_reflection":
+            user_payload["purpose_instruction"] = (
+                "对 private_impression_reflection：这不是待完成的总结任务，而是你过着自己的日常（lived_moment）时，"
+                "独处回想近期人际往来与经历、在心里对自己说的第一人称私房话。"
+                "先站在「我」的当下生活状态与连续经历里，用平实自然的第一人称日常口语写你此刻心里真正搁着或惦记的具体想法（summary 与 reflection_summary），"
+                "像平时在心里琢磨一个人或一件事那样简单直接；"
+                "若这属于会持续一段时间的牵挂、心结或对关系的私密想法，expiry_condition 可选 until_counter_evidence 或 until_relationship_stage_changes；"
+                "若已有旧印记已不再贴合眼下处境，可通过 supersede 或 consolidate 更新替换，或用 release 放下。"
+                "若现有印象已经够用、没有新的想法变化，直接选 no_change。"
+            )
         if request.purpose == "proactive_contact":
             user_payload["purpose_instruction"] = (
                 "对 proactive_contact：这次唤醒的触发原因见 wakeup_reason 与环境状态。"
-                "此刻要不要开口（timing_choice='now' | 'later' | 'silent'）、发几条气泡、用什么语气，以及是否同时通过 revisit（wait_seconds: 5..86400）、response_expectation 安排下一次唤醒、通过 media_request='consider_available_candidate' 请求发图、或通过 appraisal_draft 更新持续情绪（affect: open/update/supersede），完全由你自主决定。"
-                "可用表达形式见 capability_manifest.payload.expression_capabilities（含文字、'[CQ:voice]（语气提示）台词' 语音、及 modality='sticker' 表情包）。"
+                "接下来发生的事不是待完成的联系任务，而是你自己正在经历的日常生活与人际往来的一部分；"
+                "唤醒只代表你正过着自己的日子时脑海里闪过一个念头或有了一个空档，绝不是要求你必须找个由头去发消息。"
+                "思考与权衡时，始终以第一人称「我」从 lived_moment（当下正在过着的生活、近期连续状态轨迹、此刻情绪余波、关系拉扯与身上悬着的处境）和 recent_dialogue 出发："
+                "先在外层 summary 里用第一人称日常口语写下你此刻在自己生活里的真实闪念（比如手头刚忙完什么、已经独处/连轴转了多久、看了一眼手机发现他回没回、心里是怎么盘算的），再顺着这份真实心境决定要不要理他。"
+                "即便选择 silent，你依然可以在外层 summary、about_us/why_us/us_deltas、keep_impression+stuck_with_me 以及 appraisal_draft（affect: open/update/supersede）里诚实记下此刻心里的真实念头、情绪余波或回溯性想法。"
+                "此刻要不要开口（timing_choice='now' | 'later' | 'silent'）、发几条气泡、用什么语气，以及是否同时通过 revisit（wait_seconds: 5..86400）、response_expectation 安排下一次唤醒、通过 media_request='consider_available_candidate' 请求发图、或通过 appraisal_draft 更新持续情绪（affect: open/update/supersede），完全由你结合当下心境与 recent_dialogue 中的对话进展自主决定。"
+                "可用表达形式见 capability_manifest.payload.expression_capabilities（含文字、'[CQ:voice]（声学与气息导演提示）<自然口语台词>' 语音、及 modality='sticker' 表情包）。"
                 "私人状态只写在外层 summary 和 attended_source_refs；"
+                "外层 summary、stuck_with_me、noticed、about_us、why_us 用平实自然的第一人称日常口语写此刻心里的真实感受和念头；"
                 "payload 里禁止 private_turn_state（这一点和 inbound 相反，不要照 inbound 的草稿来写）。"
                 "attended_source_refs 最多 8 条，只写 citeable_sources 里你真正注意到的那几条。"
                 "没有可核对的世界事实时 world_claims 写 []。"
@@ -2662,7 +2821,9 @@ class StructuredCharacterRoleFaculty:
                     " 来源只写 citeable_sources 里的 id 或原样抄 ref，不要手写拼接。"
                     + (
                         " 对这次私人反应，只写你实际形成的内容。可以没有变化，也可以只是一句感受；"
-                        "不要求内心独白。没有形成行为倾向或表达策略时可选brief并把对应说明写null，"
+                        "不要求内心独白。你不必当永远情绪稳定、凡事都能消化的事务机器：遇到家里经济、现实挫败、人际委屈或孤单落空时，"
+                        "无论你是真的难过（sadness）、委屈受伤（hurt）、孤单（loneliness）、焦虑（anxiety）、窝火（anger/resentment），还是觉得无所谓，都按你真实的性情反应，并在有情绪波动时如实体现在 affect_transition 中。"
+                        "没有形成行为倾向或表达策略时可选brief并把对应说明写null，"
                         "无需为了字段重复解释。只有你确实有多层理解时才展开。"
                         "若本次只是你自己的独处日常结算而对方并未产生新的互动，不要在 relationship_signal 里对 recent_authored_signals 中已记过的旧对话重复累加正数 suggested_deltas（若在独处时想念或暗暗喜欢他，可写 0 增量只更新心意读法，或留存 private_impression）。"
                         if request.purpose == "world_stimulus_appraisal" else ""
@@ -3123,6 +3284,46 @@ class StructuredCharacterRoleFaculty:
             normalized["status"] = "transition"
 
         if isinstance(raw_decision, dict):
+            if contract.purpose == "activity_lifecycle_choice":
+                target_payload = (
+                    raw_decision.get("payload")
+                    if isinstance(raw_decision.get("payload"), dict)
+                    else raw_decision
+                )
+                raw_intents = target_payload.get("life_intents")
+                if isinstance(raw_intents, list):
+                    clamped_intents = [
+                        {
+                            **item,
+                            **(
+                                {
+                                    "duration_seconds": min(
+                                        max(item["duration_seconds"], 60), 21600
+                                    )
+                                }
+                                if type(item.get("duration_seconds")) is int
+                                else {}
+                            ),
+                            **(
+                                {
+                                    "start_after_seconds": min(
+                                        max(item["start_after_seconds"], 0), 86400
+                                    )
+                                }
+                                if type(item.get("start_after_seconds")) is int
+                                else {}
+                            ),
+                        }
+                        if isinstance(item, dict)
+                        else item
+                        for item in raw_intents
+                    ]
+                    target_payload = {**target_payload, "life_intents": clamped_intents}
+                    if isinstance(raw_decision.get("payload"), dict):
+                        raw_decision = {**raw_decision, "payload": target_payload}
+                    else:
+                        raw_decision = target_payload
+                    normalized["decision"] = raw_decision
             if (
                 contract.proposal_type is not None
                 and isinstance(proposals, list)
@@ -3929,11 +4130,6 @@ class StructuredCharacterRoleFaculty:
                         "external_attention_privacy_invalid",
                         response_hash=response_hash,
                     )
-                if not selection.epistemic_notes.strip():
-                    cls._raise(
-                        "external_attention_live_notes_required",
-                        response_hash=response_hash,
-                    )
                 authored = selection.subjective_summary + "\n" + selection.epistemic_notes
                 for revision_ref in selection.exact_signal_revision_refs:
                     source = durable_by_revision.get(revision_ref)
@@ -4185,8 +4381,8 @@ class StructuredCharacterRoleFaculty:
                         "candidate_ref": "one offered candidate_token",
                         "exact_signal_revision_refs": ["one or more revisions from that candidate"],
                         "selected_channel_ref": "one channel from that candidate",
-                        "subjective_summary": "the character's own fallible reading",
-                        "epistemic_notes": "uncertainty noticed in the evidence",
+                        "subjective_summary": "the character's own natural first-person reaction",
+                        "epistemic_notes": "optional brief note if source is dubious; empty string when none",
                         "attended_context_refs": ["optional canonical inner-life source refs"],
                         "privacy_class": "live only: public|shareable|personal|private|withhold",
                     }
@@ -4368,15 +4564,15 @@ class StructuredCharacterRoleFaculty:
             view["proposal_example_activate"] = {
                 "proposal_type": "world_stimulus_appraisal_result",
                 "decision": "activate",
-                "brief_rationale": "This settled moment matters to me; I want to acknowledge it privately.",
-                "behavior_tendency": "Stay quietly open to similar moments.",
-                "stance": "Gently moved; this aligns with what I value.",
-                "display_strategy": "Keep it private; no need to announce it.",
+                "brief_rationale": "<your private reason in your own voice>",
+                "behavior_tendency": "<your actual behavioral tendency>",
+                "stance": "<your genuine inner attitude or feeling>",
+                "display_strategy": "<how or whether you show it>",
                 "confidence": 7000,
                 "meaning_candidates": [
-                    {"meaning": "A small moment of genuine connection", "confidence": 6000},
+                    {"meaning": "<first personal reading of what happened>", "confidence": 6000},
                     {
-                        "meaning": "A reminder that quiet shared experiences matter",
+                        "meaning": "<second possible reading if any>",
                         "confidence": 4000,
                     },
                 ],
@@ -4385,7 +4581,12 @@ class StructuredCharacterRoleFaculty:
                 "expiry": "2026-08-09T12:00:00Z",
                 "affect_transition": {
                     "operation": "open",
-                    "component_targets": [{"dimension": "warmth", "target_intensity_bp": 6000}],
+                    "component_targets": [
+                        {
+                            "dimension": "<sadness|hurt|loneliness|anxiety|anger|resentment|warmth|joy>",
+                            "target_intensity_bp": 4500,
+                        }
+                    ],
                 },
                 "relationship_signal": None,
                 "aspiration_transition": None,

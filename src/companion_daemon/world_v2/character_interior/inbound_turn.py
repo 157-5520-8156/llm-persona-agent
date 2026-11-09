@@ -305,6 +305,73 @@ def _shareable_photo_binding_slice(snapshot: InnerLifeSnapshot) -> dict[str, obj
     }
 
 
+def _living_affect_binding_slice(
+    snapshot: InnerLifeSnapshot,
+    existing_slice: object,
+) -> dict[str, object] | None:
+    """Re-pin active living affect heads omitted by the Capsule slice budget."""
+
+    raw_affect = snapshot.materials.get("affect")
+    if not isinstance(raw_affect, list) or not raw_affect:
+        return None
+    inventory_by_ref = {
+        item.source_ref: item
+        for item in snapshot.source_inventory
+        if item.scope == "affect"
+        and item.entity_revision is not None
+        and item.direct_source_refs
+    }
+    existing_items: list[dict[str, object]] = []
+    existing_refs: set[str] = set()
+    if (
+        isinstance(existing_slice, dict)
+        and existing_slice.get("availability") == "available"
+        and isinstance(existing_slice.get("items"), list)
+    ):
+        for item in existing_slice["items"]:
+            if not isinstance(item, dict):
+                continue
+            existing_items.append(item)
+            ref = item.get("source_ref") or item.get("item_ref")
+            if isinstance(ref, str):
+                existing_refs.add(ref)
+    missing_items: list[dict[str, object]] = []
+    for entry in raw_affect:
+        if not isinstance(entry, dict) or entry.get("status") != "active":
+            continue
+        episode_id = entry.get("episode_id")
+        if not isinstance(episode_id, str) or episode_id in existing_refs:
+            continue
+        inv = inventory_by_ref.get(episode_id)
+        if inv is None or inv.entity_revision is None or not inv.direct_source_refs:
+            continue
+        value = {
+            key: field_value
+            for key, field_value in entry.items()
+            if key != "source_ref"
+        }
+        value["entity_revision"] = inv.entity_revision
+        value["origin"] = {"accepted_event_ref": inv.direct_source_refs[0]}
+        missing_items.append(
+            {
+                "item_ref": episode_id,
+                "source_ref": episode_id,
+                "attention_source_refs": list(inv.direct_source_refs),
+                "value": value,
+            }
+        )
+        existing_refs.add(episode_id)
+    if not missing_items:
+        return None
+    combined = [*existing_items, *missing_items]
+    base = dict(existing_slice) if isinstance(existing_slice, dict) else {}
+    return {
+        **base,
+        "availability": "available",
+        "items": combined,
+    }
+
+
 def _logical_time(request: ModelInput) -> datetime:
     try:
         content = json.loads(request.model_content_json)
@@ -643,6 +710,16 @@ class InboundTurnFaculty:
         if photo_slice is not None:
             slices = dict(content.get("slices") or {})
             slices["shareable_photos"] = photo_slice
+            content["slices"] = slices
+        affect_slice = _living_affect_binding_slice(
+            request.snapshot,
+            (content.get("slices") or {}).get("affect_episodes")
+            if isinstance(content.get("slices"), dict)
+            else None,
+        )
+        if affect_slice is not None:
+            slices = dict(content.get("slices") or {})
+            slices["affect_episodes"] = affect_slice
             content["slices"] = slices
         content["inner_life_snapshot"] = request.snapshot.model_view()
         if request.correction_ordinal == 1:

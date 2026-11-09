@@ -16,6 +16,7 @@ from companion_daemon.world_v2.revisit_intention_view import (
     due_commitment_consideration_id,
     due_revisit_consideration_id,
     due_thread_consideration_id,
+    unfinished_revisits,
 )
 from companion_daemon.world_v2.schemas import WorldEvent
 from test_social_initiative import NOW, _compiler_fixture
@@ -362,3 +363,90 @@ async def test_proactive_expired_expectation_does_not_self_chain_while_user_is_s
     projection.trigger_processes = (proc,)
 
     assert await compiler.next_opportunity(projection) is None
+
+
+def test_late_verified_receipt_does_not_resurrect_revisit_superseded_by_newer_plan():
+    compiler, projection, _ = _compiler_fixture(receptive=False)
+    due = projection.logical_time - timedelta(seconds=10)
+    _declared(compiler, projection, kind="revisit", name="old", due=due, revision=2)
+    projection.execution_receipts[-1].observed_state = "provider_accepted"
+
+    # A newer turn is accepted and sent at projection.logical_time (>= due)
+    _declared(compiler, projection, kind="revisit", name="new", due=projection.logical_time + timedelta(minutes=15), revision=3)
+    projection.committed_world_event_refs[-1].logical_time = projection.logical_time
+    projection.execution_receipts[-1].observed_state = "provider_accepted"
+
+    # Then the 90s post-send verification receipt for `action:old` arrives at revision=4 (> 3)
+    projection.committed_world_event_refs += (
+        SimpleNamespace(
+            event_id="event:old:verified",
+            event_type="ExecutionReceiptRecorded",
+            world_revision=4,
+            logical_time=projection.logical_time + timedelta(seconds=5),
+        ),
+    )
+    projection.execution_receipts += (
+        SimpleNamespace(action_id="action:old", observed_state="delivered"),
+    )
+
+    due_now = unfinished_revisits(projection, due_only=True)
+    assert [item.plan_id for item in due_now] == []
+
+
+def test_revisit_superseded_by_newer_plan_accepted_before_due_window():
+    compiler, projection, _ = _compiler_fixture(receptive=False)
+    due = projection.logical_time + timedelta(hours=3)
+    _declared(compiler, projection, kind="revisit", name="early", due=due, revision=2)
+    projection.execution_receipts[-1].observed_state = "provider_accepted"
+
+    # A newer proactive/expression plan is accepted and delivered 30 minutes later (still before `due`)
+    later_turn_time = NOW + timedelta(minutes=30)
+    _declared(
+        compiler,
+        projection,
+        kind="expectation",
+        name="newer-turn",
+        due=due + timedelta(hours=1),
+        revision=3,
+    )
+    projection.committed_world_event_refs[-1].logical_time = later_turn_time
+    projection.execution_receipts[-1].observed_state = "provider_accepted"
+
+    projection.logical_time = due + timedelta(minutes=1)
+    due_now = unfinished_revisits(projection, due_only=True)
+    assert [item.plan_id for item in due_now] == []
+
+
+@pytest.mark.asyncio
+async def test_revisit_proactive_outreach_does_not_chain_into_expired_expectation_while_user_is_silent():
+    compiler, projection, _ = _compiler_fixture(receptive=False)
+    due = projection.logical_time - timedelta(seconds=1)
+    revisit_source, _, revisit_cid = _declared(
+        compiler, projection, kind="revisit", name="first-revisit", due=due, revision=2
+    )
+    _, _, _ = _declared(
+        compiler, projection, kind="expectation", name="revisit-proactive-hope", due=due, revision=5
+    )
+    projection.expression_plan_manifests[-1].beats[0].action.kind = "proactive_message"
+    proc = _process(revisit_source, revisit_cid, state="terminal")
+    proc.runtime_outcome_ref = "proactive:authorized:plan:revisit-proactive-hope"
+    projection.trigger_processes = (proc,)
+
+    assert await compiler.next_opportunity(projection) is None
+
+
+@pytest.mark.asyncio
+async def test_revisit_silent_completion_does_not_spawn_post_silent_cadence():
+    compiler, projection, _ = _compiler_fixture(receptive=False)
+    due = projection.logical_time - timedelta(seconds=1)
+    revisit_source, _, revisit_cid = _declared(
+        compiler, projection, kind="revisit", name="goodnight-revisit", due=due, revision=2
+    )
+    proc = _process(revisit_source, revisit_cid, state="terminal")
+    proc.runtime_outcome_ref = "proactive:silent"
+    projection.trigger_processes = (proc,)
+
+    assert await compiler._post_silent_chain_active(projection) is False  # noqa: SLF001
+    assert await compiler._post_silent_consideration(projection, projection.logical_time) is None  # noqa: SLF001
+
+

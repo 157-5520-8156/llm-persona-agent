@@ -145,13 +145,13 @@ def test_local_dashboard_requires_signed_session_and_never_leaks_operator_token(
     assert authenticated_page.status_code == 200
     assert "operator-token" not in authenticated_page.text
     assert "沈知栀 · 生活现场" in authenticated_page.text
-    assert "这一刻" in authenticated_page.text
+    assert 'data-nav="now">此刻<' in authenticated_page.text
     assert 'id="dashboardNav"' not in authenticated_page.text
     assert 'id="detailDrawer"' in authenticated_page.text
     assert "Snapshot" not in authenticated_page.text
-    assert "world-v2-dashboard-home.1-ui10" in authenticated_page.text
-    assert 'id="recordingToggle"' in authenticated_page.text
-    assert 'id="recordingFocus"' in authenticated_page.text
+    assert "world-v2-dashboard-home.1-stage1" in authenticated_page.text
+    assert 'id="presentToggle"' in authenticated_page.text
+    assert 'id="pauseDisplay"' in authenticated_page.text
     assert "<iframe" not in authenticated_page.text
 
 

@@ -173,6 +173,11 @@ class ActivityLifecycleWorker:
                 projection=projection, wake_event_ref=wake_event_ref, catalog=catalog,
             ) if pending is not None or fresh_ending else None
             if handled is not None:
+                if (
+                    handled.character_interior_model_result is not None
+                    and projection.logical_time is not None
+                ):
+                    self._last_choice_logical_time = projection.logical_time
                 return handled
         pending = pending_opportunities(self._ledger, owner_actor_ref=self._owner_actor_ref)
         selected = next((x for x in pending if x.due_at <= logical_time), None)
@@ -484,7 +489,11 @@ class ActivityLifecycleWorker:
             # Retain the original failed work and its retry due. A new exact
             # source can still enter immediately; this is not a role cooldown.
             return ActivityLifecycleModelDraft(decision="no_op"), None
-        if source_bound_consideration and consideration_epoch is not None:
+        if (
+            source_bound_consideration
+            and consideration_epoch is not None
+            and not self._discretionary_activity_cooldown_active(projection)
+        ):
             cadence_source = "occasion:life_beat:activity-cadence:" + consideration_epoch
             if not self._occasion_spends.spent(cadence_source):
                 cause_spends = tuple(sorted((*cause_spends, cadence_source)))
@@ -495,16 +504,40 @@ class ActivityLifecycleWorker:
         ) or self._occasion_spends.spent(first_occasion_id)
         cause_bound = tuple(item for item in openings if item.opening_kind != "ordinary")
         completes = tuple(item for item in openings if item.operation == "complete")
+        plans_by_id = {p.plan_id: p for p in projection.plans}
+        window_elapsed_completes = tuple(
+            item
+            for item in completes
+            if (
+                (
+                    bound := (
+                        bound_openings.get(item.opening_token)
+                        if bound_openings is not None
+                        else self._catalog.resolve_opening(
+                            projection=projection,
+                            wake_event_ref=wake_event_ref,
+                            opening_token=item.opening_token,
+                        )
+                    )
+                )
+                is not None
+                and (plan := plans_by_id.get(bound.plan_id)) is not None
+                and plan.scheduled_window is not None
+                and projection.logical_time >= plan.scheduled_window.closes_at
+            )
+        )
         closed_window_abandon_only = _openings_are_closed_window_abandons(openings)
         if not openings:
             return ActivityLifecycleModelDraft(decision="no_op"), None
         if len(completes) == 1 and all(item.operation == "complete" for item in openings):
             return _timing_closure_draft(completes[0].opening_token), None
+        if window_elapsed_completes and bool(
+            os.environ.get("WORLD_V2_ACTIVITY_MIN_INTERVAL_SECONDS", "").strip()
+        ):
+            return _timing_closure_draft(window_elapsed_completes[0].opening_token), None
         if (
             new_plan_opportunity is None
             and not renewed_plan_catalog
-            and not closed_window_abandon_only
-            and not completes
             and self._discretionary_activity_cooldown_active(projection)
         ):
             return ActivityLifecycleModelDraft(decision="no_op"), None
@@ -875,6 +908,7 @@ class ActivityLifecycleWorker:
                 p.last_transitioned_at
                 for p in projection.plans
                 if p.owner_actor_ref == self._owner_actor_ref
+                and p.status in {"active", "paused"}
                 and p.last_transitioned_at is not None
             ),
             default=None,
@@ -913,8 +947,15 @@ class ActivityLifecycleWorker:
             plan = plans[bound.plan_id]
             opening_causes = []
             adopted_revision = getattr(plan.authority_origin, "accepted_world_revision", 0)
+            window = plan.scheduled_window
+            window_already_closed = bool(
+                window is not None
+                and projection.logical_time >= window.closes_at
+                and opening.operation == "abandon"
+            )
             if (
                 latest_observation is not None
+                and not window_already_closed
                 and latest_observation.world_revision > adopted_revision
                 and (retry_cutoff is None or latest_observation.world_revision > retry_cutoff[0])
             ):
@@ -927,7 +968,6 @@ class ActivityLifecycleWorker:
                 )
             ):
                 opening_causes.append(["accepted-plan", plan.plan_id])
-            window = plan.scheduled_window
             if window is not None and (
                 opening.operation == "complete"
                 or bound.cause_kind == "clock_activity_conflict"
@@ -938,7 +978,7 @@ class ActivityLifecycleWorker:
                         opening_causes.append(
                             ["window-closed", plan.plan_id, window.closes_at.isoformat()]
                         )
-                elif opening.operation == "complete":
+                elif opening.operation == "complete" and not self._discretionary_activity_cooldown_active(projection):
                     from .activity_timing import activity_window_completion_allowed
 
                     if retry_cutoff is None or not activity_window_completion_allowed(

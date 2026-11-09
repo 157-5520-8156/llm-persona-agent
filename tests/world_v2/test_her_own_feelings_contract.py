@@ -74,6 +74,30 @@ def test_lasting_affect_requires_her_authored_target_intensity() -> None:
     with pytest.raises(ValueError, match="target_intensity_bp"):
         compile_slim_consider_payload(_slim(mood="hurt"))
 
+    with pytest.raises(ValueError, match="episode_id"):
+        compile_slim_consider_payload(
+            _slim(
+                affect="open",
+                episode_id="affect:1",
+                components=[{"dimension": "warmth", "target_intensity_bp": 5800}],
+            )
+        )
+
+    with pytest.raises(ValueError, match="resolution_summary"):
+        compile_slim_consider_payload(_slim(affect="resolve", episode_id="affect:1"))
+
+    updated = compile_slim_consider_payload(
+        _slim(
+            affect="update",
+            components=[{"dimension": "warmth", "target_intensity_bp": 5800}],
+        )
+    )
+    assert updated is not None
+    assert updated["appraisal_draft"]["affect"] == "update"
+    assert updated["appraisal_draft"]["components"] == [
+        {"dimension": "warmth", "target_intensity_bp": 5800}
+    ]
+
 
 def test_declared_expectation_preserves_her_pressure_and_importance() -> None:
     compiled = compile_slim_consider_payload(

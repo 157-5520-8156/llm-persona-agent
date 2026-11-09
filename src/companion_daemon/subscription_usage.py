@@ -15,6 +15,11 @@ from .llm_anthropic import AnthropicChatModel
 
 
 class SubscriptionTokenLedger:
+    # Metered pay-per-token rates for GLM-5.3-Flash (CNY per 1M tokens)
+    GLM_INPUT_MISS_CNY_PER_M = 0.80
+    GLM_CACHE_HIT_CNY_PER_M = 0.23
+    GLM_OUTPUT_CNY_PER_M = 2.80
+
     def __init__(self, path, *, five_hour_tokens=150_000_000, weekly_tokens=500_000_000,
                  clock=time.time):
         if min(five_hour_tokens, weekly_tokens) <= 0:
@@ -29,7 +34,24 @@ class SubscriptionTokenLedger:
                 reservation_id TEXT PRIMARY KEY, created_at REAL NOT NULL,
                 purpose TEXT NOT NULL, model TEXT NOT NULL, reserved_tokens INTEGER NOT NULL,
                 reported_tokens INTEGER, state TEXT NOT NULL, status TEXT NOT NULL DEFAULT '',
-                latency_ms INTEGER NOT NULL DEFAULT 0)""")
+                latency_ms INTEGER NOT NULL DEFAULT 0,
+                prompt_tokens INTEGER, completion_tokens INTEGER,
+                cache_hit_tokens INTEGER, cache_miss_tokens INTEGER, cost_cny REAL)""")
+            existing_cols = {
+                row[1]
+                for row in connection.execute("PRAGMA table_info(subscription_requests)").fetchall()
+            }
+            for col_name, col_type in (
+                ("prompt_tokens", "INTEGER"),
+                ("completion_tokens", "INTEGER"),
+                ("cache_hit_tokens", "INTEGER"),
+                ("cache_miss_tokens", "INTEGER"),
+                ("cost_cny", "REAL"),
+            ):
+                if col_name not in existing_cols:
+                    connection.execute(
+                        f"ALTER TABLE subscription_requests ADD COLUMN {col_name} {col_type}"
+                    )
 
     @staticmethod
     def _used(connection, since):
@@ -50,13 +72,36 @@ class SubscriptionTokenLedger:
                                    (7 * 86400, self.weekly_tokens)):
                 if self._used(connection, now - seconds) + tokens > limit:
                     raise ValueError('subscription_token_limit_exceeded')
-            connection.execute('INSERT INTO subscription_requests VALUES (?,?,?,?,?,NULL,?,?,?)',
-                               (token, now, purpose, model, tokens, 'pending', '', 0))
+            connection.execute(
+                'INSERT INTO subscription_requests '
+                '(reservation_id, created_at, purpose, model, reserved_tokens, reported_tokens, state, status, latency_ms) '
+                'VALUES (?,?,?,?,?,NULL,?,?,?)',
+                (token, now, purpose, model, tokens, 'pending', '', 0),
+            )
         return token
 
     def record(self, usage):
         if usage.billing_state not in {'known', 'unknown', 'not_billed'}:
             raise ValueError('invalid subscription usage state')
+        prompt_tok = int(getattr(usage, 'prompt_tokens', 0) or 0)
+        comp_tok = int(getattr(usage, 'completion_tokens', 0) or 0)
+        hit_tok = int(getattr(usage, 'cache_hit_tokens', 0) or 0)
+        miss_tok = int(getattr(usage, 'cache_miss_tokens', 0) or 0)
+        if hit_tok > prompt_tok and prompt_tok > 0:
+            hit_tok = prompt_tok
+        if miss_tok == 0 and prompt_tok > hit_tok:
+            miss_tok = prompt_tok - hit_tok
+        if usage.billing_state == 'known' and (prompt_tok > 0 or comp_tok > 0 or int(usage.total_tokens or 0) > 0):
+            if prompt_tok == 0 and comp_tok == 0 and int(usage.total_tokens or 0) > 0:
+                prompt_tok = int(usage.total_tokens)
+                miss_tok = prompt_tok
+            cost_cny = (
+                hit_tok * self.GLM_CACHE_HIT_CNY_PER_M
+                + miss_tok * self.GLM_INPUT_MISS_CNY_PER_M
+                + comp_tok * self.GLM_OUTPUT_CNY_PER_M
+            ) / 1_000_000.0
+        else:
+            cost_cny = 0.0
         with closing(sqlite3.connect(self.path, timeout=10)) as connection, connection:
             connection.execute('BEGIN IMMEDIATE')
             row = connection.execute('SELECT purpose,model,state FROM subscription_requests '
@@ -67,10 +112,23 @@ class SubscriptionTokenLedger:
             # A completed reservation cannot be overwritten by a duplicate callback.
             if row[2] in {'known', 'not_billed'}:
                 raise ValueError('subscription reservation already settled')
-            connection.execute('UPDATE subscription_requests SET reported_tokens=?,state=?, '
-                               'status=?,latency_ms=? WHERE reservation_id=?',
-                               (usage.total_tokens, usage.billing_state, usage.status,
-                                usage.latency_ms, usage.budget_reservation_id))
+            connection.execute(
+                'UPDATE subscription_requests SET reported_tokens=?,state=?, '
+                'status=?,latency_ms=?,prompt_tokens=?,completion_tokens=?, '
+                'cache_hit_tokens=?,cache_miss_tokens=?,cost_cny=? WHERE reservation_id=?',
+                (
+                    usage.total_tokens,
+                    usage.billing_state,
+                    usage.status,
+                    usage.latency_ms,
+                    prompt_tok,
+                    comp_tok,
+                    hit_tok,
+                    miss_tok,
+                    cost_cny,
+                    usage.budget_reservation_id,
+                ),
+            )
 
     def snapshot(self):
         now = self.clock()
@@ -199,6 +257,7 @@ class BackgroundGLMModel(_BackgroundTokenBudget, DeepSeekChatModel):
                 rendered,
                 temperature=temperature, json_object=True, tools=None, tool_choice=None,
             )
+            payload["temperature"] = min(1.0, max(0.0, float(temperature)))
             if self._tool_result_carrier == "json_schema":
                 # The named response format already supplies the exact schema;
                 # do not inject a second copy into the conversation. Retain
@@ -222,8 +281,10 @@ class BackgroundGLMModel(_BackgroundTokenBudget, DeepSeekChatModel):
                 "properties": {"result": expand_local_schema_references(function["parameters"])},
                 "required": ["result"], "additionalProperties": False,
             }
-        return super().request_payload(messages, temperature=temperature, json_object=json_object,
-                                       tools=tools, tool_choice=tool_choice)
+        payload = super().request_payload(messages, temperature=temperature, json_object=json_object,
+                                          tools=tools, tool_choice=tool_choice)
+        payload["temperature"] = min(1.0, max(0.0, float(temperature)))
+        return payload
 
     def _response_tool_content(self, message, *, tools, tool_choice, expected_tool_name):
         if self._tool_result_carrier in {"json_object", "json_schema"}:
