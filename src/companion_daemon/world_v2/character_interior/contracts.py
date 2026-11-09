@@ -1988,6 +1988,133 @@ def _walking_in_continuous_trajectory(
     return f"近期连续状态轨迹：今天已接连经历 {len(ended_labels[:3])} 段日常（{chain_str}）"
 
 
+_STORY_STOP_CHARS: frozenset[str] = frozenset(
+    "的了着过吗呢吧啊呀哦嗯哈唔诶是在有把被给让向往从到和与跟对就都也还又再更最很太真只才却并但而或若如虽因所"
+    "这那哪谁啥怎几多每各某本原去来回出进上下里外前后左右中高低大小长短新旧好坏快慢早晚先可要会能得想说看听写"
+    "做干弄搞走跑拿放带我你他她它咱们自己"
+)
+
+
+def _extract_concrete_story_anchors(text: str) -> set[str]:
+    """Extract non-generic 2-char and 3-char CJK domain anchors for causal story chaining."""
+    anchors: set[str] = set()
+    for run in re.findall(r"[\u4e00-\u9fff]{2,}", text):
+        n = len(run)
+        for i in range(n - 1):
+            bg = run[i : i + 2]
+            if (
+                bg not in _GENERIC_CHAT_BIGRAMS
+                and not any(ch in _STORY_STOP_CHARS for ch in bg)
+            ):
+                anchors.add(bg)
+            if i + 3 <= n:
+                tg = run[i : i + 3]
+                if (
+                    tg not in _GENERIC_CHAT_TRIGRAMS
+                    and tg[:2] not in _GENERIC_CHAT_BIGRAMS
+                    and tg[1:] not in _GENERIC_CHAT_BIGRAMS
+                    and not any(ch in _STORY_STOP_CHARS for ch in tg)
+                ):
+                    anchors.add(tg)
+    return anchors
+
+
+def _find_chat_to_life_origin(
+    exp: Mapping[str, object],
+    *,
+    cause_raw: str,
+    scene_raw: str,
+    occ_at: datetime | None,
+    materials: Mapping[str, object] | None,
+) -> str:
+    """Detect if a personal experience was triggered by an earlier chat or chat_life_intent."""
+    explicit_origin = str(
+        exp.get("chat_origin_excerpt")
+        or exp.get("triggered_by_dialogue_excerpt")
+        or ""
+    ).strip()
+    if explicit_origin:
+        clean_orig = explicit_origin.rstrip("。；; ").replace("\n", " ")[:28]
+        return f"[由头：此前跟他聊到「{clean_orig}」后去做的]"
+    if not isinstance(materials, Mapping):
+        return ""
+    exp_plan_id = str(exp.get("plan_id") or "").strip()
+    for slice_key in ("historical_activity_intentions", "recently_ended_activities", "planned_activities"):
+        raw_list = materials.get(slice_key)
+        if not isinstance(raw_list, list):
+            continue
+        for act in raw_list:
+            if not isinstance(act, Mapping):
+                continue
+            if act.get("planning_scope") == "chat_life_intent" or act.get("completion_scope") == "chat_life_intent":
+                act_plan_id = str(act.get("plan_id") or "").strip()
+                intent_obj = act.get("accepted_intention")
+                intent_txt = (
+                    str(intent_obj.get("text") or intent_obj.get("summary") or "").strip()
+                    if isinstance(intent_obj, Mapping)
+                    else str(intent_obj or "").strip()
+                )
+                if (exp_plan_id and exp_plan_id == act_plan_id) or (
+                    intent_txt and (intent_txt[:8] in cause_raw or intent_txt[:8] in scene_raw)
+                ):
+                    short_intent = intent_txt.rstrip("。；; ")[:24]
+                    return (
+                        f"[由头：此前边聊边动念「{short_intent}」去做的]"
+                        if short_intent
+                        else "[由头：此前跟他聊着天动念去做的]"
+                    )
+    target_anchors = _extract_concrete_story_anchors(f"{cause_raw} {scene_raw}")
+    if not target_anchors:
+        return ""
+    diag_entries = _material_entries(materials, "recent_dialogue")
+    for d_entry in reversed(diag_entries):
+        if not isinstance(d_entry, Mapping):
+            continue
+        reasons = d_entry.get("continuity_reasons")
+        if isinstance(reasons, (list, tuple)) and "current_turn" in reasons:
+            continue
+        d_at = _instant(d_entry.get("occurred_at"))
+        if occ_at is not None and d_at is not None:
+            diff_sec = (occ_at - d_at).total_seconds()
+            if diff_sec < -60 or diff_sec > 12 * 3600:
+                continue
+        d_txt = str(d_entry.get("text") or "").strip()
+        if not d_txt:
+            continue
+        shared_anchors = target_anchors & _extract_concrete_story_anchors(d_txt)
+        if len(shared_anchors) >= 2:
+            snippet = d_txt.replace("\n", " ").strip()[:22]
+            if len(d_txt) > 22:
+                snippet += "…"
+            spk = "他" if d_entry.get("speaker") == "counterpart" else "我"
+            return f"[由头：此前聊天{spk}提过「{snippet}」]"
+    return ""
+
+
+def _are_experiences_causally_linked(
+    earlier: Mapping[str, object],
+    later: Mapping[str, object],
+) -> bool:
+    """Return whether two personal experiences belong to the same causal story chain."""
+    e_ids: set[str] = set(earlier.get("self_ids") or set())  # type: ignore[arg-type]
+    l_ids: set[str] = set(later.get("self_ids") or set())  # type: ignore[arg-type]
+    e_links: set[str] = set(earlier.get("link_refs") or set())  # type: ignore[arg-type]
+    l_links: set[str] = set(later.get("link_refs") or set())  # type: ignore[arg-type]
+    if (e_ids & l_links) or (l_ids & e_links) or (e_links and (e_links & l_links)):
+        return True
+    e_anchors: set[str] = set(earlier.get("anchors") or set())  # type: ignore[arg-type]
+    l_anchors: set[str] = set(later.get("anchors") or set())  # type: ignore[arg-type]
+    if len(e_anchors & l_anchors) >= 2:
+        e_at = earlier.get("occ_at")
+        l_at = later.get("occ_at")
+        if isinstance(e_at, datetime) and isinstance(l_at, datetime):
+            if abs((l_at - e_at).total_seconds()) <= 36 * 3600:
+                return True
+        else:
+            return True
+    return False
+
+
 def _walking_in_recent_self_stories(
     *,
     recent_self_experiences: object = None,
@@ -1995,7 +2122,7 @@ def _walking_in_recent_self_stories(
     companion_texts: Sequence[str] = (),
     materials: Mapping[str, object] | None = None,
 ) -> str | None:
-    """Surface concrete causal story arcs from recent committed personal experiences, prioritizing unshared ones and demoting already-shared ones."""
+    """Surface concrete causal story arcs and multi-event causal chains from recent committed personal experiences."""
     exp_items = (
         recent_self_experiences.get("items")
         if isinstance(recent_self_experiences, Mapping)
@@ -2008,9 +2135,8 @@ def _walking_in_recent_self_stories(
         return None
     zone = ZoneInfo("Asia/Shanghai")
     local_now = logical_time.astimezone(zone) if logical_time is not None else None
-    unshared_stories: list[str] = []
-    shared_stories: list[str] = []
-    for exp in exp_items:
+    parsed_exps: list[dict[str, object]] = []
+    for idx, exp in enumerate(exp_items):
         if not isinstance(exp, Mapping) or exp.get("privacy_class") == "withhold":
             continue
         is_committed_exp = (
@@ -2116,33 +2242,136 @@ def _walking_in_recent_self_stories(
                 and not _is_unshared_in_companion_dialogue(scene_clean, companion_texts)
             )
         )
-        if is_shared:
-            if len(scene_clean) > 54:
-                scene_clean = scene_clean[:53].rstrip("，、 ") + "…"
-            entry_str = f"{time_tag}{scene_clean}（此前已在聊天提过，勿重复当新事展开）"
-            if entry_str not in shared_stories:
-                shared_stories.append(entry_str)
-        else:
-            if len(scene_clean) > 128:
-                scene_clean = scene_clean[:127].rstrip("，、 ") + "…"
-            reaction_clean = ""
-            if reaction_raw:
-                reaction_clean = _to_first_person_self_reference(
-                    reaction_raw.rstrip("。；; ").replace("\n", " ").replace("。", "，").replace("；", "，")
-                )
-                if len(reaction_clean) > 68:
-                    reaction_clean = reaction_clean[:67].rstrip("，、 ") + "…"
-            inner_part = (
-                f"（当时反应：{reaction_clean}｜私下亲历，尚未在聊天细说）"
-                if reaction_clean
-                else "（私下亲历，尚未在聊天细说）"
+        chat_origin = _find_chat_to_life_origin(
+            exp,
+            cause_raw=cause_raw,
+            scene_raw=scene_raw,
+            occ_at=occ_at,
+            materials=materials,
+        )
+        self_ids: set[str] = set()
+        for k in ("source_ref", "experience_id", "occurrence_id"):
+            v = exp.get(k)
+            if isinstance(v, str) and v.strip():
+                self_ids.add(v.strip())
+        link_refs: set[str] = set()
+        for k in ("plan_id", "goal_ref", "episode_ref", "causal_predecessor_ref"):
+            v = exp.get(k)
+            if isinstance(v, str) and v.strip():
+                link_refs.add(v.strip())
+        for k in ("related_experience_refs", "related_record_refs", "thread_refs", "link_refs"):
+            raw_r = exp.get(k)
+            if isinstance(raw_r, (list, tuple)):
+                for r_item in raw_r:
+                    if isinstance(r_item, str) and r_item.strip():
+                        link_refs.add(r_item.strip())
+        nav = wc.get("story_navigation") or exp.get("story_navigation")
+        if isinstance(nav, Mapping):
+            for th in nav.get("thread_refs") or ():
+                if isinstance(th, str) and th.strip():
+                    link_refs.add(th.strip())
+            for anc in nav.get("anchors") or ():
+                if isinstance(anc, Mapping) and isinstance(anc.get("source_ref"), str):
+                    link_refs.add(anc["source_ref"])
+
+        short_scene = scene_clean[:53].rstrip("，、 ") + "…" if len(scene_clean) > 54 else scene_clean
+        full_scene = scene_clean[:127].rstrip("，、 ") + "…" if len(scene_clean) > 128 else scene_clean
+        reaction_clean = ""
+        if reaction_raw:
+            reaction_clean = _to_first_person_self_reference(
+                reaction_raw.rstrip("。；; ").replace("\n", " ").replace("。", "，").replace("；", "，")
             )
-            entry_str = f"{time_tag}{scene_clean}{inner_part}"
-            if entry_str not in unshared_stories:
-                unshared_stories.append(entry_str)
+            if len(reaction_clean) > 68:
+                reaction_clean = reaction_clean[:67].rstrip("，、 ") + "…"
+        inner_part = (
+            f"（当时反应：{reaction_clean}｜私下亲历，尚未在聊天细说）"
+            if reaction_clean
+            else "（私下亲历，尚未在聊天细说）"
+        )
+        unshared_str = f"{time_tag}{chat_origin}{full_scene}{inner_part}"
+        shared_str = f"{time_tag}{chat_origin}{short_scene}（此前已在聊天提过，勿重复当新事展开）"
+        parsed_exps.append(
+            {
+                "idx": idx,
+                "occ_at": occ_at,
+                "time_tag": time_tag,
+                "chat_origin": chat_origin,
+                "short_scene": short_scene,
+                "full_scene": full_scene,
+                "inner_part": inner_part,
+                "unshared_str": unshared_str,
+                "shared_str": shared_str,
+                "is_shared": is_shared,
+                "self_ids": self_ids,
+                "link_refs": link_refs,
+                "anchors": _extract_concrete_story_anchors(f"{cause_raw} {scene_raw}"),
+            }
+        )
+
+    if not parsed_exps:
+        return None
+
+    # Sort chronologically (oldest -> newest) when building causal chains so Cause precedes Effect
+    chrono_exps = sorted(
+        parsed_exps,
+        key=lambda item: (
+            item["occ_at"].timestamp() if isinstance(item["occ_at"], datetime) else float(item["idx"]),
+            item["idx"],
+        ),
+    )
+    used_indices: set[int] = set()
+    unshared_stories: list[str] = []
+    shared_stories: list[str] = []
+    unshared_event_count = 0
+
+    for i, item_a in enumerate(chrono_exps):
+        if i in used_indices:
+            continue
+        chain = [item_a]
+        used_indices.add(i)
+        for j in range(i + 1, len(chrono_exps)):
+            if j in used_indices:
+                continue
+            item_b = chrono_exps[j]
+            if any(_are_experiences_causally_linked(prev, item_b) for prev in chain):
+                chain.append(item_b)
+                used_indices.add(j)
+
+        if len(chain) == 1:
+            single = chain[0]
+            if single["is_shared"]:
+                shared_stories.append(str(single["shared_str"]))
+            else:
+                unshared_stories.append(str(single["unshared_str"]))
+                unshared_event_count += 1
+            continue
+
+        # Multi-event causal chain (e.g. Cause A -> Follow-up B)
+        has_unshared = any(not step["is_shared"] for step in chain)
+        if has_unshared:
+            chain_parts: list[str] = []
+            for pos, step in enumerate(chain):
+                if step["is_shared"]:
+                    chain_parts.append(
+                        f"[前因已聊过：{step['time_tag']}{step['short_scene']}（此前已在聊天提过，勿重复当新事展开）]"
+                    )
+                else:
+                    prefix = "紧接着后续" if pos > 0 and chain[pos - 1]["is_shared"] else ("紧接着" if pos > 0 else "")
+                    chain_parts.append(f"{prefix}{step['unshared_str']}")
+                    unshared_event_count += 1
+            unshared_stories.append(" ➔ ".join(chain_parts))
+        else:
+            chain_parts = [
+                f"{step['time_tag']}{step['chat_origin']}{step['short_scene']}"
+                for step in chain
+            ]
+            shared_stories.append(
+                " ➔ ".join(chain_parts) + "（此前已在聊天提过，勿重复当新事展开）"
+            )
+
     if unshared_stories:
         stories = unshared_stories[:3]
-        if len(stories) < 2 and shared_stories:
+        if unshared_event_count < 2 and shared_stories:
             stories.append(shared_stories[0])
     else:
         stories = shared_stories[:2]
@@ -2557,6 +2786,7 @@ def _walking_in_shared_dialogue_callback(
     automatic_prefetch: object = None,
     remembered_material: object = None,
     unresolved: object = None,
+    materials: Mapping[str, object] | None = None,
 ) -> str | None:
     """Surface recalled shared dialogue banter/callbacks or open threads in lived_moment."""
     candidates: list[Mapping[str, object]] = []
@@ -2616,8 +2846,41 @@ def _walking_in_shared_dialogue_callback(
         else (one_way_Dialogues[0] if one_way_Dialogues else None)
     )
     if chosen_dialogue:
+        linked_reflection = ""
+        if isinstance(materials, Mapping):
+            d_anchors = _extract_concrete_story_anchors(chosen_dialogue)
+            for mu in _material_entries(materials, "memory_understandings"):
+                if not isinstance(mu, Mapping) or mu.get("privacy_class") == "withhold":
+                    continue
+                if mu.get("status") not in {None, "active"}:
+                    continue
+                if str(mu.get("facet") or "").strip() == "subjective_relationship":
+                    mu_sum = str(mu.get("summary") or "").replace("\n", " ").strip()
+                    if mu_sum and (not d_anchors or (d_anchors & _extract_concrete_story_anchors(mu_sum)) or not linked_reflection):
+                        linked_reflection = mu_sum.rstrip("。；; ")[:52]
+                        if d_anchors and (d_anchors & _extract_concrete_story_anchors(mu_sum)):
+                            break
+            if not linked_reflection:
+                for imp in _material_entries(materials, "private_impressions"):
+                    if not isinstance(imp, Mapping) or imp.get("privacy_class") == "withhold":
+                        continue
+                    imp_sum = str(imp.get("summary") or imp.get("text") or "").replace("\n", " ").strip()
+                    if imp_sum:
+                        linked_reflection = imp_sum.rstrip("。；; ")[:52]
+                        break
+            if not linked_reflection:
+                for rel in _material_entries(materials, "relationship")[:1]:
+                    if not isinstance(rel, Mapping) or rel.get("privacy_class") == "withhold":
+                        continue
+                    sigs = rel.get("recent_authored_signals")
+                    if isinstance(sigs, (list, tuple)):
+                        for sig in sigs[:1]:
+                            if isinstance(sig, Mapping) and isinstance(sig.get("signal_code"), str):
+                                linked_reflection = sig["signal_code"].strip().rstrip("。；; ")[:52]
+                                break
+        chain_tail = f" ➔ 由此留下的体会/心意：{linked_reflection}" if linked_reflection else ""
         return (
-            f"被勾起的你们旧话头/小梗：{chosen_dialogue}"
+            f"被勾起的你们旧话头/小梗：{chosen_dialogue}{chain_tail}"
             "（你们之前聊过的旧话头，仅心头闪回，是否拿来打趣、接梗或翻旧账由你决定）"
         )
 
@@ -2772,6 +3035,7 @@ def _lived_moment(
             automatic_prefetch=automatic_prefetch,
             remembered_material=remembered_material,
             unresolved=materials.get("unresolved"),
+            materials=materials,
         )
         if shared_callback:
             parts.append(shared_callback)

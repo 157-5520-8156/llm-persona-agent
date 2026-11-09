@@ -1736,6 +1736,13 @@ def test_four_pillar_story_clusters_core_atlas_and_scope_alignment() -> None:
                 "summary": "社团换届和征文这两天堆在一起，心里绷得有点紧。",
             },
         ],
+        "historical_activity_intentions": [
+            {
+                "plan_id": "plan:club-check",
+                "planning_scope": "chat_life_intent",
+                "accepted_intention": {"text": "先去活动室跟林晚把读书会分工对完再回来跟你细说"},
+            }
+        ],
         "recent_self_experiences": {
             "availability": "available",
             "items": [
@@ -1755,6 +1762,7 @@ def test_four_pillar_story_clusters_core_atlas_and_scope_alignment() -> None:
                     "context_kind": "committed_experience",
                     "experience_id": "experience:unshared-club-drama",
                     "source_ref": "experience:unshared-club-drama",
+                    "plan_id": "plan:club-check",
                     "settled_at": "2026-11-08T10:30:00Z",
                     "shared_in_chat": False,
                     "content": {
@@ -1810,16 +1818,27 @@ def test_four_pillar_story_clusters_core_atlas_and_scope_alignment() -> None:
                         "story": {"record_ref": "prehistory-record:celia-expanded-university-u11"},
                     },
                 },
+                {
+                    "source_ref": "dialogue-episode:rainy-night-comfort:window:0:300",
+                    "source_slice": "recent_dialogue",
+                    "authority": "dialogue_record",
+                    "text": "一段聊天：\n[2026-11-05] 我：上次在社团受委屈跟你说完心里松快多了。\n[2026-11-05] 他：以后谁再给你甩锅随时找我倒苦水。",
+                },
             ]
         },
     }
 
     lived = _rendered_lived_moment(materials, logical_time, actor_ref="agent:companion")
     assert lived is not None
-    # Unshared recent stories carry full causal chain (原本打算 -> 经过 -> 当时反应) and demote already-shared ones when >=2 unshared exist
+    # Unshared recent stories carry full causal chain (原本打算 -> 经过 -> 当时反应), chat-to-life origin, and multi-event stitching (➔ 紧接着)
+    assert "[由头：此前边聊边动念「先去活动室跟林晚把读书会分工对完再回来跟你细说」去做的]" in lived
     assert "原本打算去活动室跟林晚核对周六读书会借桌子和签到分工 → 周叙临时说去拍作业" in lived
     assert "当时反应：我盯着那叠临时甩过来的表格又气又闷" in lived
+    assert " ➔ 紧接着[今天19:15]去文印店打场地审批表时机器卡纸" in lived
     assert "早上在河西食堂买到了最后两个热腾腾的豆沙包" not in lived
+    # Shared dialogue callback stitches linked relationship understanding
+    assert "被勾起的你们旧话头/小梗：" in lived
+    assert "➔ 由此留下的体会/心意：跟Geoff已经熟到可以连发一串消息倒苦水" in lived
     # Prehistory spontaneous flash stitches causal neighbor into a complete story arc
     assert "大一下学期办第二次闲置交换前" in lived
     assert "｜关联前因/后续：活动结束后我一个人留到天黑把多借的折叠桌搬回仓库" in lived
@@ -1835,9 +1854,11 @@ def test_four_pillar_story_clusters_core_atlas_and_scope_alignment() -> None:
                 "S01": "experience:unshared-club-drama",
                 "S02": "experience:unshared-printer-jam",
                 "S03": "prehistory-record:celia-expanded-university-u10:window:0:400",
+                "S04": "dialogue-episode:rainy-night-comfort:window:0:300",
             },
             "world_claim_source_refs": {
                 "past_world": ["S01", "S02", "S03"],
+                "shared_history": ["S04"],
             },
         },
     }
@@ -1846,9 +1867,15 @@ def test_four_pillar_story_clusters_core_atlas_and_scope_alignment() -> None:
     assert "prehistory_story_clusters" in atlas
     assert any("[S03][未聊过]" in item for item in atlas["prehistory_story_clusters"])
     assert "shared_history_and_relationship_milestones" in atlas
-    assert any("受了委屈第一个想找他倒苦水" in item for item in atlas["shared_history_and_relationship_milestones"])
+    assert any(
+        "[共同经历与关系因果链]" in item and "➔ 沉淀体会：" in item and "➔ 当下定位：" in item
+        for item in atlas["shared_history_and_relationship_milestones"]
+    )
     assert "active_life_arcs_and_recent_clusters" in atlas
-    assert any("[S01][未聊过]" in item for item in atlas["active_life_arcs_and_recent_clusters"])
+    assert any(
+        "[S01 ➔ S02][近期经历因果链]" in item and "➔ 紧接着后续[S02][未聊过]" in item
+        for item in atlas["active_life_arcs_and_recent_clusters"]
+    )
     assert len(json.dumps(atlas, ensure_ascii=False)) <= 3500
 
     # Test Pillar 2: missing scope in slim payload + automatic scope alignment & multi-scope splitting in materialize_expression_draft

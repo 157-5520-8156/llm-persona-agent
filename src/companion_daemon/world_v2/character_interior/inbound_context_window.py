@@ -1783,8 +1783,15 @@ def _build_core_life_atlas(
     boundaries: object = None,
     logical_time: object = None,
 ) -> dict[str, list[str]]:
-    """Compile a strictly bounded (<3.5k chars) 3-slot Core Life & Relationship Atlas."""
+    """Compile a strictly bounded (<3.5k chars) 3-slot Core Life & Relationship Atlas with explicit causal chains."""
     _ = logical_time
+    from .contracts import (
+        _extract_concrete_story_anchors,
+        _find_chat_to_life_origin,
+        _instant,
+        _material_entries,
+    )
+
     aliases_map = boundaries.get("source_ref_aliases") if isinstance(boundaries, Mapping) else None
     alias_to_canonical = (
         {
@@ -1795,11 +1802,17 @@ def _build_core_life_atlas(
         if isinstance(aliases_map, Mapping)
         else {}
     )
-    prehistory_unshared: list[str] = []
-    prehistory_shared: list[str] = []
+    exp_by_ref: dict[str, Mapping[str, object]] = {}
+    for exp in _material_entries(materials, "recent_self_experiences"):
+        if isinstance(exp, Mapping):
+            eref = str(exp.get("source_ref") or exp.get("experience_id") or "").strip()
+            if eref:
+                exp_by_ref[eref] = exp
+
+    prehistory_records: list[dict[str, object]] = []
+    active_exp_records: list[dict[str, object]] = []
+    shared_interaction_records: list[dict[str, object]] = []
     shared_milestones: list[str] = []
-    active_arcs_unshared: list[str] = []
-    active_arcs_shared: list[str] = []
 
     for sc in shortcuts:
         if not isinstance(sc, Mapping):
@@ -1826,29 +1839,100 @@ def _build_core_life_atlas(
             and not canonical.startswith(("experience:", "life-influence:", "dialogue"))
         )
         if is_prehistory:
-            line = f"[{alias}]{share_tag} {preview[:140]}"
-            if shared_flag is True:
+            prehistory_records.append(
+                {
+                    "alias": alias,
+                    "canonical": canonical,
+                    "share_tag": share_tag,
+                    "shared_flag": shared_flag,
+                    "preview": preview[:140],
+                    "anchors": _extract_concrete_story_anchors(preview),
+                }
+            )
+        elif slice_name in {"recent_self_experiences", "biographical_context"}:
+            raw_exp = exp_by_ref.get(canonical, {})
+            extra_txt = ""
+            if isinstance(raw_exp, Mapping):
+                content_map = raw_exp.get("content") if isinstance(raw_exp.get("content"), Mapping) else {}
+                wc_map = content_map.get("world_consequence") if isinstance(content_map.get("world_consequence"), Mapping) else {}
+                io_map = wc_map.get("intention_outcome") if isinstance(wc_map.get("intention_outcome"), Mapping) else {}
+                cr_map = content_map.get("character_response") if isinstance(content_map.get("character_response"), Mapping) else {}
+                extra_txt = " ".join(
+                    str(v)
+                    for v in (
+                        raw_exp.get("intention_summary"),
+                        raw_exp.get("trigger_summary"),
+                        io_map.get("intended_text"),
+                        cr_map.get("response_text"),
+                    )
+                    if isinstance(v, str) and v
+                )
+            active_exp_records.append(
+                {
+                    "alias": alias,
+                    "canonical": canonical,
+                    "share_tag": share_tag,
+                    "shared_flag": shared_flag,
+                    "preview": preview[:140],
+                    "anchors": _extract_concrete_story_anchors(f"{preview} {extra_txt}"),
+                    "raw_exp": raw_exp,
+                }
+            )
+        elif slice_name == "relevant_facts" or "shared_history" in scopes or canonical.startswith("dialogue"):
+            shared_interaction_records.append(
+                {
+                    "alias": alias,
+                    "canonical": canonical,
+                    "preview": preview[:110],
+                    "anchors": _extract_concrete_story_anchors(preview),
+                }
+            )
+
+    # 1. Prehistory causal stitching
+    prehistory_unshared: list[str] = []
+    prehistory_shared: list[str] = []
+    used_pre_idx: set[int] = set()
+    for i, rec in enumerate(prehistory_records):
+        if i in used_pre_idx:
+            continue
+        chain = [rec]
+        used_pre_idx.add(i)
+        for j in range(i + 1, len(prehistory_records)):
+            if j in used_pre_idx:
+                continue
+            cand = prehistory_records[j]
+            last_anchors = chain[-1]["anchors"]
+            cand_anchors = cand["anchors"]
+            if isinstance(last_anchors, set) and isinstance(cand_anchors, set) and len(last_anchors & cand_anchors) >= 2:
+                chain.append(cand)
+                used_pre_idx.add(j)
+                if len(chain) >= 2:
+                    break
+        if len(chain) >= 2:
+            chain_aliases = " ➔ ".join(str(c["alias"]) for c in chain)
+            chain_body = " ➔ 后续".join(
+                f"[{c['alias']}]{c['share_tag']} {str(c['preview'])[:95]}"
+                for c in chain
+            )
+            line = f"[{chain_aliases}][前史因果链] {chain_body}"
+            if any(c["shared_flag"] is not True for c in chain):
+                prehistory_unshared.append(line)
+            else:
+                prehistory_shared.append(line)
+        else:
+            line = f"[{rec['alias']}]{rec['share_tag']} {rec['preview']}"
+            if rec["shared_flag"] is True:
                 if line not in prehistory_shared:
                     prehistory_shared.append(line)
             else:
                 if line not in prehistory_unshared:
                     prehistory_unshared.append(line)
-        elif slice_name in {"recent_self_experiences", "biographical_context"}:
-            line = f"[{alias}]{share_tag} {preview[:140]}"
-            if shared_flag is True:
-                if line not in active_arcs_shared:
-                    active_arcs_shared.append(line)
-            else:
-                if line not in active_arcs_unshared:
-                    active_arcs_unshared.append(line)
-        elif slice_name == "relevant_facts" or "shared_history" in scopes:
-            line = f"[{alias}] {preview[:110]}"
-            if line not in shared_milestones and len(shared_milestones) < 5:
-                shared_milestones.append(line)
 
-    from .contracts import _material_entries
-
+    # 2. Shared history & relationship causal chain synthesis
     rel_entries = _material_entries(materials, "relationship")
+    rel_coord_str = ""
+    rel_sig_str = ""
+    rel_rationale_str = ""
     for rel in rel_entries[:1]:
         if not isinstance(rel, Mapping) or rel.get("privacy_class") == "withhold":
             continue
@@ -1856,29 +1940,38 @@ def _build_core_life_atlas(
         vars_map = rel.get("variables") if isinstance(rel.get("variables"), Mapping) else {}
         c_bp = vars_map.get("closeness_bp")
         t_bp = vars_map.get("trust_bp")
-        coord_str = (
+        rel_coord_str = (
             f"阶段={stage} 亲近={c_bp}bp 信任={t_bp}bp"
             if stage and isinstance(c_bp, int) and isinstance(t_bp, int)
             else f"阶段={stage}"
             if stage
             else ""
         )
-        sig_str = ""
         raw_sigs = rel.get("recent_authored_signals")
         if isinstance(raw_sigs, (list, tuple)):
             for sig in raw_sigs[:1]:
-                if isinstance(sig, Mapping) and isinstance(sig.get("signal_code"), str):
-                    sig_str = sig["signal_code"].strip()[:80]
-        if not sig_str and isinstance(materials.get("lived_moment"), str):
+                if isinstance(sig, Mapping):
+                    if isinstance(sig.get("signal_code"), str):
+                        rel_sig_str = sig["signal_code"].strip()[:80]
+                    if isinstance(sig.get("rationale_code"), str):
+                        rel_rationale_str = sig["rationale_code"].strip()[:65]
+        if not rel_sig_str and isinstance(materials.get("lived_moment"), str):
             lm_str = materials["lived_moment"]
             marker = "我最近对我们关系的定性与感受："
             if marker in lm_str:
-                sig_str = lm_str.split(marker, 1)[1].split("｜", 1)[0].split("。", 1)[0].strip()[:80]
-        rel_line = "｜".join(p for p in (coord_str, sig_str) if p)
+                rel_sig_str = lm_str.split(marker, 1)[1].split("｜", 1)[0].split("。", 1)[0].strip()[:80]
+        rel_tail = (
+            f"{rel_rationale_str} ➔ {rel_sig_str}"
+            if rel_rationale_str and rel_sig_str and rel_rationale_str != rel_sig_str
+            else rel_sig_str
+        )
+        rel_line = "｜".join(p for p in (rel_coord_str, rel_tail) if p)
         if rel_line:
             shared_milestones.insert(0, f"[关系底色] {rel_line}")
 
     understandings = _material_entries(materials, "memory_understandings")
+    rel_understandings: list[tuple[str, str]] = []
+    self_understandings: list[tuple[str, str]] = []
     for mu in understandings:
         if not isinstance(mu, Mapping) or mu.get("status") not in {None, "active"}:
             continue
@@ -1887,11 +1980,178 @@ def _build_core_life_atlas(
         if not summary:
             continue
         if facet in {"subjective_relationship", "emotional_continuity", "expression_stance"}:
-            if len(shared_milestones) < 5:
-                shared_milestones.append(f"[长期体会:{facet}] {summary[:115]}")
+            rel_understandings.append((facet, summary))
         elif facet in {"private_self", "aspirations_conflicts"}:
-            if len(active_arcs_unshared) + len(active_arcs_shared) < 5:
-                active_arcs_unshared.append(f"[阶段心气:{facet}] {summary[:115]}")
+            self_understandings.append((facet, summary))
+
+    shared_photos = _material_entries(materials, "photos_i_shared")
+    shared_photo_note = ""
+    for ph in shared_photos[:1]:
+        if isinstance(ph, Mapping) and ph.get("privacy_class") != "withhold":
+            ph_sum = str(ph.get("caption") or ph.get("summary") or ph.get("scene_note") or "").strip()
+            if ph_sum:
+                shared_photo_note = f"曾发过照片「{ph_sum[:32]}」"
+
+    if shared_interaction_records and (rel_understandings or rel_sig_str):
+        first_inter = shared_interaction_records[0]
+        inter_seg = f"[{first_inter['alias']}] {str(first_inter['preview'])[:72]}"
+        if shared_photo_note:
+            inter_seg = f"{inter_seg}（{shared_photo_note}）"
+        reflection_seg = (
+            f"沉淀体会：{rel_understandings[0][1][:65]}"
+            if rel_understandings
+            else f"关系心意：{rel_sig_str[:65]}"
+        )
+        status_seg = f"当下定位：{rel_sig_str[:50]}" if rel_understandings and rel_sig_str else ""
+        chain_segs = [inter_seg, reflection_seg]
+        if status_seg:
+            chain_segs.append(status_seg)
+        shared_milestones.append("[共同经历与关系因果链] " + " ➔ ".join(chain_segs))
+        remaining_interactions = shared_interaction_records[1:]
+        remaining_rel_understandings = rel_understandings[1:] if rel_understandings else []
+    else:
+        remaining_interactions = shared_interaction_records
+        remaining_rel_understandings = rel_understandings
+
+    for rec in remaining_interactions:
+        line = f"[{rec['alias']}] {rec['preview']}"
+        if line not in shared_milestones and len(shared_milestones) < 5:
+            shared_milestones.append(line)
+    for facet, summary in remaining_rel_understandings:
+        if len(shared_milestones) < 5:
+            shared_milestones.append(f"[长期体会:{facet}] {summary[:115]}")
+
+    # 3. Post-genesis active experience causal chains + chat-to-life bridge + prehistory resonance
+    active_arcs_unshared: list[str] = []
+    active_arcs_shared: list[str] = []
+    used_exp_idx: set[int] = set()
+    for i, rec in enumerate(active_exp_records):
+        if i in used_exp_idx:
+            continue
+        chain = [rec]
+        used_exp_idx.add(i)
+        raw_i = rec.get("raw_exp") if isinstance(rec.get("raw_exp"), Mapping) else {}
+        for j in range(i + 1, len(active_exp_records)):
+            if j in used_exp_idx:
+                continue
+            cand = active_exp_records[j]
+            raw_j = cand.get("raw_exp") if isinstance(cand.get("raw_exp"), Mapping) else {}
+            linked = False
+            if raw_i and raw_j:
+                p_i = str(raw_i.get("plan_id") or "").strip()
+                p_j = str(raw_j.get("plan_id") or "").strip()
+                if p_i and p_i == p_j:
+                    linked = True
+                nav_i = raw_i.get("story_navigation") if isinstance(raw_i.get("story_navigation"), Mapping) else {}
+                nav_j = raw_j.get("story_navigation") if isinstance(raw_j.get("story_navigation"), Mapping) else {}
+                refs_i = {
+                    str(v).strip()
+                    for k in ("experience_id", "source_ref", "plan_id")
+                    if (v := raw_i.get(k))
+                }
+                refs_j = {
+                    str(v).strip()
+                    for k in ("experience_id", "source_ref", "plan_id")
+                    if (v := raw_j.get(k))
+                }
+                nav_refs_i = {
+                    str(v).strip()
+                    for k in ("OriginRef", "FollowUpRef", "ThreadClusterRef", "origin_ref", "follow_up_ref", "thread_cluster_ref")
+                    if (v := nav_i.get(k))
+                }
+                nav_refs_j = {
+                    str(v).strip()
+                    for k in ("OriginRef", "FollowUpRef", "ThreadClusterRef", "origin_ref", "follow_up_ref", "thread_cluster_ref")
+                    if (v := nav_j.get(k))
+                }
+                if (refs_i & nav_refs_j) or (refs_j & nav_refs_i) or (nav_refs_i and (nav_refs_i & nav_refs_j)):
+                    linked = True
+            if not linked:
+                a_i = rec.get("anchors")
+                a_j = cand.get("anchors")
+                if isinstance(a_i, set) and isinstance(a_j, set) and len(a_i & a_j) >= 2:
+                    linked = True
+            if linked:
+                chain.append(cand)
+                used_exp_idx.add(j)
+                raw_i = raw_j
+                if len(chain) >= 3:
+                    break
+        if len(chain) >= 2:
+            # Sort chronologically if occurred_at is available
+            chain.sort(
+                key=lambda c: (
+                    _instant(c["raw_exp"].get("occurred_at") or c["raw_exp"].get("settled_at")).timestamp()
+                    if isinstance(c.get("raw_exp"), Mapping)
+                    and _instant(c["raw_exp"].get("occurred_at") or c["raw_exp"].get("settled_at")) is not None
+                    else 0.0
+                )
+            )
+            first_raw = chain[0].get("raw_exp") if isinstance(chain[0].get("raw_exp"), Mapping) else {}
+            origin_tag = (
+                _find_chat_to_life_origin(
+                    first_raw,
+                    cause_raw=str(first_raw.get("intention_summary") or first_raw.get("trigger_summary") or ""),
+                    scene_raw=str(first_raw.get("what_happened") or first_raw.get("summary") or chain[0].get("preview") or ""),
+                    occ_at=_instant(first_raw.get("occurred_at") or first_raw.get("settled_at")),
+                    materials=materials,
+                )
+                if first_raw
+                else ""
+            )
+            origin_prefix = f"{origin_tag} " if origin_tag else ""
+            chain_aliases = " ➔ ".join(str(c["alias"]) for c in chain)
+            chain_body = " ➔ 紧接着后续".join(
+                f"[{c['alias']}]{c['share_tag']} {str(c['preview'])[:88]}"
+                for c in chain
+            )
+            union_anchors: set[str] = set()
+            for c in chain:
+                if isinstance(c.get("anchors"), set):
+                    union_anchors |= c["anchors"]
+            pre_echo = [
+                str(pr["alias"])
+                for pr in prehistory_records
+                if isinstance(pr.get("anchors"), set) and len(union_anchors & pr["anchors"]) >= 2
+            ]
+            echo_suffix = f"｜勾起前史：[{', '.join(pre_echo[:2])}]" if pre_echo else ""
+            line = f"[{chain_aliases}][近期经历因果链] {origin_prefix}{chain_body}{echo_suffix}"
+            if any(c["shared_flag"] is not True for c in chain):
+                active_arcs_unshared.append(line)
+            else:
+                active_arcs_shared.append(line)
+        else:
+            raw_single = rec.get("raw_exp") if isinstance(rec.get("raw_exp"), Mapping) else {}
+            origin_tag = (
+                _find_chat_to_life_origin(
+                    raw_single,
+                    cause_raw=str(raw_single.get("intention_summary") or raw_single.get("trigger_summary") or ""),
+                    scene_raw=str(raw_single.get("what_happened") or raw_single.get("summary") or rec.get("preview") or ""),
+                    occ_at=_instant(raw_single.get("occurred_at") or raw_single.get("settled_at")),
+                    materials=materials,
+                )
+                if raw_single
+                else ""
+            )
+            origin_prefix = f"{origin_tag} " if origin_tag else ""
+            rec_anchors = rec.get("anchors") if isinstance(rec.get("anchors"), set) else set()
+            pre_echo = [
+                str(pr["alias"])
+                for pr in prehistory_records
+                if isinstance(pr.get("anchors"), set) and len(rec_anchors & pr["anchors"]) >= 2
+            ]
+            echo_suffix = f"｜勾起前史：[{', '.join(pre_echo[:2])}]" if pre_echo else ""
+            line = f"[{rec['alias']}]{rec['share_tag']} {origin_prefix}{rec['preview']}{echo_suffix}"
+            if rec["shared_flag"] is True:
+                if line not in active_arcs_shared:
+                    active_arcs_shared.append(line)
+            else:
+                if line not in active_arcs_unshared:
+                    active_arcs_unshared.append(line)
+
+    for facet, summary in self_understandings:
+        if len(active_arcs_unshared) + len(active_arcs_shared) < 5:
+            active_arcs_unshared.append(f"[阶段心气:{facet}] {summary[:115]}")
 
     atlas: dict[str, list[str]] = {}
     prehistory_slot = (prehistory_unshared + prehistory_shared)[:4]
