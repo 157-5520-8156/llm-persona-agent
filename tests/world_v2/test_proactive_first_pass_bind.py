@@ -674,3 +674,47 @@ def test_subjective_claim_with_source_refs_normalizes_and_external_perception_bi
     )
     assert bind_proactive_world_claims(draft=draft, request=_request(context)) is draft
 
+
+def test_proactive_causal_chain_multi_ref_and_prehistory_identity_align_cleanly() -> None:
+    rain = "event:life-development:activated:rain"
+    library = "dialogue:expression:plan:expression:library-beat:1"
+    prehistory_ref = "prehistory-record:companion:highschool-debate"
+    context = _context()
+    context["inner_life_snapshot"] = {
+        "source_refs": [prehistory_ref],
+        "materials": {},
+    }
+    request = _request(context)
+    draft = ProactiveDraft.model_validate_json(
+        json.dumps(
+            {
+                **_payload(),
+                "private_turn_state": {
+                    "inner_state_summary": "顺着刚才的话把前因后果一起讲完。",
+                    "attended_source_refs": [rain, library, prehistory_ref],
+                },
+                "world_claims": [
+                    {
+                        "claim_text": "刚才跟他说过在图书馆，结果雨下大打断了散步",
+                        "scope": "current_world",
+                        "source_refs": [rain, library],
+                    },
+                    {
+                        "claim_text": "以前高中辩论赛也遇到过这种突发状况",
+                        "scope": "stable_identity",
+                        "source_refs": [prehistory_ref],
+                    },
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        strict=True,
+    )
+    bound = bind_proactive_world_claims(draft=draft, request=request)
+    assert [(c.scope, c.source_refs) for c in bound.world_claims] == [
+        ("current_world", (rain,)),
+        ("past_world", (library,)),
+        ("past_world", (prehistory_ref,)),
+    ]
+
+

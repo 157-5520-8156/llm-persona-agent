@@ -9,6 +9,7 @@ never prescribe which social response should be selected.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 import hashlib
 import json
@@ -2651,18 +2652,110 @@ def bind_proactive_expression_wire(value: dict[str, object]) -> dict[str, object
     return bound
 
 
+def align_proactive_world_claim_scopes(
+    claims: Sequence[Mapping[str, object]],
+    *,
+    lanes: "ProactiveWorldClaimSourceLanes",
+) -> list[dict[str, object]]:
+    """Align identity/prehistory scopes and split multi-ref causal chain claims across lanes.
+
+    Hard epistemic boundaries remain strictly enforced:
+    1. Any unpinned ``source_ref`` (absent from all lanes) is never modified so
+       ``ProactiveWorldClaimSourceLanes.validate_claims`` rejects it.
+    2. Single-ref ``current_world`` / ``counterpart_history`` claims citing a source
+       outside that lane are never silently rewritten, preserving strict lane checks.
+    3. Multi-ref causal chain claims (2+ pinned ``source_refs`` where at least one
+       belongs to the authored ``scope`` and the causal neighbor belongs to another
+       pinned lane such as ``past_world`` or ``shared_history``) are split by lane,
+       and ``stable_identity`` <-> ``past_world`` prehistory/identity refs are aligned.
+    """
+
+    scope_priority = (
+        "past_world",
+        "shared_history",
+        "stable_identity",
+        "current_world",
+        "counterpart_history",
+    )
+    aligned_claims: list[dict[str, object]] = []
+    for raw_claim in claims:
+        if not isinstance(raw_claim, Mapping):
+            aligned_claims.append(raw_claim)  # type: ignore[arg-type]
+            continue
+        claim_dict = dict(raw_claim)
+        scope = str(claim_dict.get("scope") or "").strip()
+        raw_refs = claim_dict.get("source_refs")
+        if scope == "subjective_or_hypothetical" or not isinstance(raw_refs, (list, tuple)) or not raw_refs:
+            aligned_claims.append(claim_dict)
+            continue
+        refs = [str(r).strip() for r in raw_refs if isinstance(r, str) and str(r).strip()]
+        if len(refs) != len(raw_refs):
+            aligned_claims.append(claim_dict)
+            continue
+        current_lane_refs = set(lanes.source_refs_by_scope.get(scope, ()))
+        if set(refs).issubset(current_lane_refs):
+            aligned_claims.append(claim_dict)
+            continue
+        is_identity_past_swap = scope in {"stable_identity", "past_world", "shared_history"} and all(
+            ref.startswith(("prehistory-record:", "memory-understanding:", "biographical", "character_core"))
+            or ref in lanes.source_refs_by_scope.get("stable_identity", ())
+            for ref in refs
+        )
+        is_multi_ref_causal_chain = len(refs) >= 2 and bool(set(refs) & current_lane_refs)
+        if not (is_identity_past_swap or is_multi_ref_causal_chain):
+            aligned_claims.append(claim_dict)
+            continue
+        ref_target_scopes: list[tuple[str, str]] = []
+        possible = True
+        for ref in refs:
+            valid_scopes = [
+                s for s in scope_priority if ref in lanes.source_refs_by_scope.get(s, ())
+            ]
+            if not valid_scopes:
+                possible = False
+                break
+            target_scope = scope if scope in valid_scopes else valid_scopes[0]
+            ref_target_scopes.append((ref, target_scope))
+        if not possible:
+            aligned_claims.append(claim_dict)
+            continue
+        grouped_refs: dict[str, list[str]] = {}
+        for ref, target_scope in ref_target_scopes:
+            bucket = grouped_refs.setdefault(target_scope, [])
+            if ref not in bucket:
+                bucket.append(ref)
+        for target_scope, bucket_refs in grouped_refs.items():
+            aligned_claims.append(
+                {
+                    **claim_dict,
+                    "scope": target_scope,
+                    "source_refs": bucket_refs,
+                }
+            )
+    return aligned_claims
+
+
 def bind_proactive_world_claims(
     *,
     draft: ExpressionDraft,
     request: ModelInput,
     stable_identity_source_refs: frozenset[str] = frozenset(),
 ) -> ExpressionDraft:
-    """Validate source-lane permission without changing any authored claim."""
+    """Validate source-lane permission, aligning multi-ref causal chains and identity/prehistory scopes."""
 
     lanes = compile_proactive_world_claim_source_lanes(
         model_content_json=request.model_content_json, trigger_ref=request.trigger_ref,
         trigger_message=request.trigger_message, stable_identity_source_refs=stable_identity_source_refs,
     )
+    if draft.world_claims:
+        raw_claims = [claim.model_dump(mode="json") for claim in draft.world_claims]
+        aligned_raw = align_proactive_world_claim_scopes(raw_claims, lanes=lanes)
+        if aligned_raw != raw_claims:
+            aligned_models = tuple(
+                WorldClaimDraft.model_validate_json(json.dumps(item, ensure_ascii=False), strict=True)
+                for item in aligned_raw
+            )
+            draft = draft.model_copy(update={"world_claims": aligned_models})
     lanes.validate_claims(draft.world_claims)
     return draft
 

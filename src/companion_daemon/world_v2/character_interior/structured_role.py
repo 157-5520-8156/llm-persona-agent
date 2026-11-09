@@ -794,8 +794,8 @@ def _memory_consolidation_provider_payload(payload, *, compact=False):
         "理解用于从你自己的真实生活处境（家里近况与经济压力、学业与勤工助学、社团与身边人关系、与对方的相处经历）提炼出这一阶段的行为习惯、自我要求与处事心气："
         "写清因为自己所处的具体生活处境，所以这一阶段做事养成了什么习惯、对自己有什么要求（例如因为家里变故或经济吃紧，所以最近做事都要注意什么、要自立不给家里添麻烦）。"
         "单次事件的具体金额、具体日期或编号已保存在底层记忆并由evidence_quotes绑定；修订旧的standing_understandings时直接整句重写为当前阶段的完整理解，不在旧句末尾机械续写，也不必在长期理解里背诵单次事件数字。summary使用纯中文自然第一人称大白话，不夹杂英文单词。"
-        "private_self写因家庭、经济或学业处境养成的阶段生活习惯、自我要求与日常步调；"
-        "subjective_relationship与expression_stance写从与身边人或对方往来里长出来的相处原则、分寸与说话心气；"
+        "private_self写因家庭、经济或学业处境（或某次亲历的具体事情经过）养成的阶段生活习惯、自我要求与日常步调；"
+        "subjective_relationship与expression_stance写从与身边人或对方具体哪次往来/对话交集里长出来的相处体会、分寸与说话心气（保留所涉具体事件或话题词作为因果锚点）；"
         "aspirations_conflicts与emotional_continuity写这一阶段因现实处境在心里压着的重担、心结或憋着的一股劲。"
         "evidence_quotes每项只写quote_ref，选择quote_options里的原文编号，不重抄或改写引文；"
         "quote_parts按顺序拼回完整原文，不是删减过的摘要。"
@@ -993,6 +993,7 @@ def _validate_proactive_payload(
     # proactive scheduling a dependency of every CharacterInterior import.
     from ..expression_draft import (
         ProactiveWorldClaimSourceLanes,
+        align_proactive_world_claim_scopes,
         bind_proactive_expression_wire,
         normalize_expression_draft_wire,
     )
@@ -1016,13 +1017,21 @@ def _validate_proactive_payload(
             }
         )
     )
+    lanes: ProactiveWorldClaimSourceLanes | None = None
+    if source_lanes is not _PROACTIVE_SOURCE_LANES_ABSENT:
+        lanes = ProactiveWorldClaimSourceLanes.model_validate_json(_canonical(source_lanes), strict=True)
+        raw_claims = normalized.get("world_claims")
+        if isinstance(raw_claims, list) and raw_claims:
+            normalized = {
+                **normalized,
+                "world_claims": align_proactive_world_claim_scopes(raw_claims, lanes=lanes),
+            }
     draft = ProactiveDraft.model_validate_json(_canonical(normalized), strict=True)
     if draft.appraisal_draft is not None:
         from .inbound_appraisal_wire import canonicalize_appraisal_draft_wire
 
         canonicalize_appraisal_draft_wire(draft.appraisal_draft)
-    if source_lanes is not _PROACTIVE_SOURCE_LANES_ABSENT:
-        lanes = ProactiveWorldClaimSourceLanes.model_validate_json(_canonical(source_lanes), strict=True)
+    if lanes is not None:
         lanes.validate_claims(draft.world_claims)
 
 
@@ -2612,7 +2621,7 @@ class StructuredCharacterRoleFaculty:
                 "对 private_impression_reflection：这不是待完成的总结任务，而是你过着自己的日常（lived_moment）时，"
                 "独处回想近期人际往来与经历、在心里对自己说的第一人称私房话。"
                 "先站在「我」的当下生活状态与连续经历里，用平实自然的第一人称日常口语写你此刻心里真正搁着或惦记的具体想法（summary 与 reflection_summary），"
-                "像平时在心里琢磨一个人或一件事那样简单直接；"
+                "把因果由头带出来（因刚才或近期哪件具体事、哪句具体话 ➔ 心里留下了什么具体体会或牵挂），像平时在心里琢磨一个人或一件事那样简单直接；"
                 "若这属于会持续一段时间的牵挂、心结或对关系的私密想法，expiry_condition 可选 until_counter_evidence 或 until_relationship_stage_changes；"
                 "若已有旧印记已不再贴合眼下处境，可通过 supersede 或 consolidate 更新替换，或用 release 放下。"
                 "若现有印象已经够用、没有新的想法变化，直接选 no_change。"
@@ -2622,9 +2631,9 @@ class StructuredCharacterRoleFaculty:
                 "对 proactive_contact：这次唤醒的触发原因见 wakeup_reason 与环境状态。"
                 "接下来发生的事不是待完成的联系任务，而是你自己正在经历的日常生活与人际往来的一部分；"
                 "唤醒只代表你正过着自己的日子时脑海里闪过一个念头、上一波话才说了一半喘口气准备接着敲、或等他回话到了点，绝不是要求你按固定模板应酬。"
-                "思考与权衡时，始终以第一人称「我」从 lived_moment（当下正在过着的生活、近期连续状态轨迹、此刻情绪余波、关系拉扯与身上悬着的处境）和 recent_dialogue 出发："
+                "思考与权衡时，始终以第一人称「我」从 lived_moment（当下正在过着的生活、近期连续状态轨迹、近日亲历因果链、共同经历与印象因果链、此刻情绪余波、关系拉扯与身上悬着的处境）和 recent_dialogue 出发："
                 "先在外层 summary 里用第一人称日常口语写下你此刻在自己生活里的真实闪念（比如上一波话还没倒完正接着往下打字、刚忙完手头的事、看了一眼手机发现他回没回、心里是怎么盘算的），再顺着这份真实心境决定怎么行动："
-                "① 若这次唤醒是因为你几秒到几十秒前刚发了前半截故事或委屈、留了 revisit（Leftover she asked to return to）准备接着把下半截经过或找补的话倒完（此时距离上一条刚过去很短时间，对方还没来得及回属自然现象），你可以直接顺着刚才的话头继续发下一波 beats 把事情讲透（若还意犹未尽可继续留 revisit，讲完想等他反应则可配 response_expectation）；"
+                "① 若这次唤醒是因为你几秒到几十秒前刚发了前半截故事或委屈、留了 revisit（Leftover she asked to return to）准备接着把下半截经过或找补的话倒完（此时距离上一条刚过去很短时间，对方还没来得及回属自然现象，且 lived_moment 中 `[前因已聊过：...] ➔ 紧接着后续[...]` 标出了哪半截已聊过、哪半截后续尚未展开），你可以直接顺着刚才的话头继续发下一波 beats 把事情讲透（若还意犹未尽可继续留 revisit，讲完想等他反应则可配 response_expectation）；"
                 "② 若这次唤醒是因为你之前发完消息等他回应（expired_expectation 或间隔较久的 revisit / spontaneous_contact）而他一直没回，你可以顺着此刻的真实脾气与关系亲疏，自然选择追问戳他、顺着刚才的话接着往下说、嘴硬找补、换个新话头，或者干脆不理他（silent）。"
                 "即便选择 silent，你依然可以在外层 summary、about_us/why_us/us_deltas、keep_impression+stuck_with_me 以及 appraisal_draft（affect: open/update/supersede）里诚实记下此刻心里的真实念头、情绪余波或回溯性想法。"
                 "此刻要不要开口（timing_choice='now' | 'later' | 'silent'）、发几条气泡、用什么语气，以及是否同时通过 revisit（wait_seconds: 5..86400）、response_expectation 安排下一次唤醒、通过 media_request='consider_available_candidate' 请求发图、或通过 appraisal_draft 更新持续情绪（affect: open/update/supersede），完全由你结合当下心境与 recent_dialogue 中的对话进展自主决定。"
@@ -4247,6 +4256,23 @@ class StructuredCharacterRoleFaculty:
         payload = dict(decision.payload)
         if _is_explicit_media_no_op(payload):
             payload.pop("selected_token", None)
+        if request.purpose == "proactive_contact" and request.capability_manifest is not None:
+            raw_lanes = request.capability_manifest.payload.get(
+                "world_claim_source_lanes", _PROACTIVE_SOURCE_LANES_ABSENT
+            )
+            raw_claims = payload.get("world_claims")
+            if raw_lanes is not _PROACTIVE_SOURCE_LANES_ABSENT and isinstance(raw_claims, list) and raw_claims:
+                from ..expression_draft import (
+                    ProactiveWorldClaimSourceLanes,
+                    align_proactive_world_claim_scopes,
+                )
+
+                lanes = ProactiveWorldClaimSourceLanes.model_validate_json(
+                    _canonical(raw_lanes), strict=True
+                )
+                payload["world_claims"] = align_proactive_world_claim_scopes(
+                    raw_claims, lanes=lanes
+                )
         if request.purpose == "life_development_choice":
             manifest = request.capability_manifest
             assert manifest is not None

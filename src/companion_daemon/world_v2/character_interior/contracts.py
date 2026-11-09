@@ -2034,7 +2034,12 @@ def _find_chat_to_life_origin(
         or ""
     ).strip()
     if explicit_origin:
-        clean_orig = explicit_origin.rstrip("。；; ").replace("\n", " ")[:28]
+        clean_orig = (
+            explicit_origin.rstrip("。；; ")
+            .replace("\n", " ")
+            .replace("。", "，")
+            .replace("；", "，")[:28]
+        )
         return f"[由头：此前跟他聊到「{clean_orig}」后去做的]"
     if not isinstance(materials, Mapping):
         return ""
@@ -2057,7 +2062,12 @@ def _find_chat_to_life_origin(
                 if (exp_plan_id and exp_plan_id == act_plan_id) or (
                     intent_txt and (intent_txt[:8] in cause_raw or intent_txt[:8] in scene_raw)
                 ):
-                    short_intent = intent_txt.rstrip("。；; ")[:24]
+                    short_intent = (
+                        intent_txt.rstrip("。；; ")
+                        .replace("\n", " ")
+                        .replace("。", "，")
+                        .replace("；", "，")[:24]
+                    )
                     return (
                         f"[由头：此前边聊边动念「{short_intent}」去做的]"
                         if short_intent
@@ -2083,7 +2093,13 @@ def _find_chat_to_life_origin(
             continue
         shared_anchors = target_anchors & _extract_concrete_story_anchors(d_txt)
         if len(shared_anchors) >= 2:
-            snippet = d_txt.replace("\n", " ").strip()[:22]
+            snippet = (
+                d_txt.replace("\n", " ")
+                .strip()
+                .rstrip("。；; ")
+                .replace("。", "，")
+                .replace("；", "，")[:22]
+            )
             if len(d_txt) > 22:
                 snippet += "…"
             spk = "他" if d_entry.get("speaker") == "counterpart" else "我"
@@ -2827,7 +2843,12 @@ def _walking_in_shared_dialogue_callback(
                 continue
             line_s = re.sub(r"^(?:\[[^\]]+\]\s*)+", "", line_s).strip()
             if line_s:
-                lines.append(line_s.rstrip("。；; ").replace("。", "，"))
+                lines.append(
+                    line_s.rstrip("。；; ")
+                    .replace("。", "，")
+                    .replace("；", "，")
+                    .replace(";", "，")
+                )
         if not lines:
             continue
         has_counterpart = any(l.startswith("他") for l in lines)
@@ -2857,7 +2878,12 @@ def _walking_in_shared_dialogue_callback(
                 if str(mu.get("facet") or "").strip() == "subjective_relationship":
                     mu_sum = str(mu.get("summary") or "").replace("\n", " ").strip()
                     if mu_sum and (not d_anchors or (d_anchors & _extract_concrete_story_anchors(mu_sum)) or not linked_reflection):
-                        linked_reflection = mu_sum.rstrip("。；; ")[:52]
+                        linked_reflection = (
+                            mu_sum.rstrip("。；; ")
+                            .replace("。", "，")
+                            .replace("；", "，")
+                            .replace(";", "，")[:52]
+                        )
                         if d_anchors and (d_anchors & _extract_concrete_story_anchors(mu_sum)):
                             break
             if not linked_reflection:
@@ -2866,7 +2892,12 @@ def _walking_in_shared_dialogue_callback(
                         continue
                     imp_sum = str(imp.get("summary") or imp.get("text") or "").replace("\n", " ").strip()
                     if imp_sum:
-                        linked_reflection = imp_sum.rstrip("。；; ")[:52]
+                        linked_reflection = (
+                            imp_sum.rstrip("。；; ")
+                            .replace("。", "，")
+                            .replace("；", "，")
+                            .replace(";", "，")[:52]
+                        )
                         break
             if not linked_reflection:
                 for rel in _material_entries(materials, "relationship")[:1]:
@@ -2876,7 +2907,14 @@ def _walking_in_shared_dialogue_callback(
                     if isinstance(sigs, (list, tuple)):
                         for sig in sigs[:1]:
                             if isinstance(sig, Mapping) and isinstance(sig.get("signal_code"), str):
-                                linked_reflection = sig["signal_code"].strip().rstrip("。；; ")[:52]
+                                linked_reflection = (
+                                    sig["signal_code"]
+                                    .strip()
+                                    .rstrip("。；; ")
+                                    .replace("。", "，")
+                                    .replace("；", "，")
+                                    .replace(";", "，")[:52]
+                                )
                                 break
         chain_tail = f" ➔ 由此留下的体会/心意：{linked_reflection}" if linked_reflection else ""
         return (
