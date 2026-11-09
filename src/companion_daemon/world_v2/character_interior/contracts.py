@@ -696,6 +696,39 @@ def _sanitize_env_piece(text: str, limit: int = 90) -> str:
     return cleaned
 
 
+_OTHER_FEMALE_MARKERS = (
+    "沈岚", "母亲", "妈妈", "周祺", "许桥", "林晚", "室友", "学姐", "老师", "朋友", "同学", "女生", "外婆", "阿姨", "姑姑"
+)
+_SELF_PRONOUN_RE = re.compile(r"(?<![说问回看听替给跟对找叫劝让帮陪等])她")
+
+
+def _to_first_person_self_reference(text: str) -> str:
+    """Convert third-person protagonist references ('沈知栀'/'知栀') and bound '她' into first-person '我'."""
+    out = (
+        text.replace("沈知栀", "我")
+        .replace("知栀", "我")
+        .replace("她们", "我们")
+    )
+    parts = re.split(r"([，。；！？—]+)", out)
+    last_subject = "self" if "我" in out else "other"
+    rendered: list[str] = []
+    for part in parts:
+        if re.fullmatch(r"[，。；！？—]+", part):
+            rendered.append(part)
+            continue
+        has_other_female = any(m in part for m in _OTHER_FEMALE_MARKERS)
+        has_self = "我" in part
+        if has_other_female and not has_self:
+            last_subject = "other"
+        elif has_self and not has_other_female:
+            last_subject = "self"
+            part = _SELF_PRONOUN_RE.sub("我", part)
+        elif last_subject == "self" and not has_other_female:
+            part = _SELF_PRONOUN_RE.sub("我", part)
+        rendered.append(part)
+    return "".join(rendered)
+
+
 def _walking_in_environment(
     recent_experiences: object, logical_time: datetime | None = None
 ) -> str | None:
@@ -1541,7 +1574,9 @@ def _walking_in_life_weight(
                 )
                 if is_physical_scene or not summary or summary.startswith(("#", "{")):
                     continue
-                cleaned = summary.replace("。", "，").replace("；", "，")[:68]
+                cleaned = _to_first_person_self_reference(
+                    summary.replace("。", "，").replace("；", "，")
+                )[:68]
                 disclosed_coord = _lookup_disclosed_claim(
                     (
                         item.get("coordinate_ref"),
@@ -1988,9 +2023,10 @@ def _walking_in_spontaneous_memory_flash(
                         raw_text = ex["text"].strip()
         if not raw_text:
             continue
-        clean_text = re.sub(r"^(?:\[[^\]]+\]\s*)+", "", raw_text).strip()
-        clean_text = (
-            clean_text.rstrip("。；; ")
+        clean_text = _to_first_person_self_reference(
+            re.sub(r"^(?:\[[^\]]+\]\s*)+", "", raw_text)
+            .strip()
+            .rstrip("。；; ")
             .replace("\n", " ")
             .replace("。", "，")
             .replace("；", "，")
