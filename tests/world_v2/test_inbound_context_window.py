@@ -1590,6 +1590,13 @@ def test_lived_moment_surfaces_counterpart_life_browsed_tidbit_and_shared_callba
                 "source_excerpt": "成都理工大四软件工程",
             },
             {
+                "fact_id": "fact:sleep-visible-in-dialogue",
+                "predicate_code": "routine.sleep_pattern",
+                "subject_ref": "user:geoff",
+                "occurred_at": "2026-11-06T09:00:00Z",
+                "source_excerpt": "一觉睡到下午，头都是昏昏沉沉的",
+            },
+            {
                 "fact_id": "fact:tooth",
                 "predicate_code": "schedule.commitment",
                 "subject_ref": "user:geoff",
@@ -1599,12 +1606,19 @@ def test_lived_moment_surfaces_counterpart_life_browsed_tidbit_and_shared_callba
         ],
         "perception": [
             {
+                "influence_id": "life-influence:external-perception:shared-meme",
+                "source_ref": "life-influence:external-perception:shared-meme",
+                "accepted_at": "2026-11-08T02:00:00Z",
+                "headline": "【命运石之门】全员抽象小剧场",
+                "subjective_summary": "刷到命运石之门的抽象整活视频。",
+            },
+            {
                 "influence_id": "life-influence:external-perception:pan-video",
                 "source_ref": "life-influence:external-perception:pan-video",
                 "accepted_at": "2026-11-08T01:00:00Z",
                 "headline": "【美食制作】铁锅/不锈钢锅都能用：一套物理不粘公式，煎鱼豆腐都不粘",
                 "subjective_summary": "讲物理不粘锅原理的做饭视频，弹幕里『煎鱼变鱼汤』看着就好笑。",
-            }
+            },
         ],
         "automatic_prefetch": {
             "items": [
@@ -1618,12 +1632,27 @@ def test_lived_moment_surfaces_counterpart_life_browsed_tidbit_and_shared_callba
         },
         "recent_dialogue": [
             {
+                "dialogue_id": "dialogue:0",
+                "speaker": "counterpart",
+                "text": "一觉睡到下午，头都是昏昏沉沉的",
+                "occurred_at": "2026-11-06T09:00:00Z",
+                "continuity_reasons": ["recent"],
+            },
+            {
+                "dialogue_id": "dialogue:0b",
+                "speaker": "companion",
+                "text": "刚才刷到个命运石之门的抽象整活视频笑死我了",
+                "occurred_at": "2026-11-08T02:10:00Z",
+                "continuity_reasons": ["recent"],
+                "world_claim_refs": ["life-influence:external-perception:shared-meme"],
+            },
+            {
                 "dialogue_id": "dialogue:1",
                 "speaker": "counterpart",
                 "text": "这会儿有点无聊，你在干嘛呢",
                 "occurred_at": "2026-11-08T06:00:00Z",
                 "continuity_reasons": ["current_turn"],
-            }
+            },
         ],
     }
     lived = _rendered_lived_moment(materials, logical_time, actor_ref="agent:companion")

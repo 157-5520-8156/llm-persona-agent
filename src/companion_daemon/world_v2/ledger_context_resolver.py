@@ -1195,13 +1195,19 @@ def _rank(
             return min(9_900, 8_500 + min(1_400, item.source_world_revision))
     if slice_name in _READ_SCORE_SLICES:
         recency_bp = _recency_bp(item, logical_time)
+        relevance_query = query_text
+        min_relevance_bp = 0
         if slice_name == "relevant_facts" and isinstance(item, FactRecallItem):
             if fact_predicate_is_stable(item.predicate_code):
                 recency_bp = STABLE_FACT_RECENCY_BP
+            else:
+                for sw in ("今天", "昨天", "明天", "这会儿", "这会", "现在", "刚才", "最近", "有点", "一下"):
+                    relevance_query = relevance_query.replace(sw, " ")
+                min_relevance_bp = 2_500
         return memory_read_score_bp(
             recency_bp=recency_bp,
             importance_bp=_signal_bp(slice_name, item),
-            relevance_bp=memory_relevance_bp(query_text, item),
+            relevance_bp=max(min_relevance_bp, memory_relevance_bp(relevance_query, item)),
         )
     total_weight = sum(RANK_WEIGHT_BP.values())
     return (

@@ -2763,13 +2763,23 @@ def _compile_resolved_context(
             2
             if (
                 slices.get("perception_results") is not None
-                and any(
-                    "result_id" in json.loads(i.payload_json)
-                    for i in slices["perception_results"].items
-                )
-                and any(
-                    "influence_id" in json.loads(i.payload_json)
-                    for i in slices["perception_results"].items
+                and (
+                    (
+                        any(
+                            "result_id" in json.loads(i.payload_json)
+                            for i in slices["perception_results"].items
+                        )
+                        and any(
+                            "influence_id" in json.loads(i.payload_json)
+                            for i in slices["perception_results"].items
+                        )
+                    )
+                    or sum(
+                        1
+                        for i in slices["perception_results"].items
+                        if "influence_id" in json.loads(i.payload_json)
+                    )
+                    >= 2
                 )
             )
             else (

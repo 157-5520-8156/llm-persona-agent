@@ -911,7 +911,7 @@ def bounded_inbound_context(packet, *, include_delivery_overlap=False):
                 and (latest_chat_sec - acc_sec).total_seconds() > 6 * 3600
             ):
                 if (
-                    not fallback_external_perception
+                    len(fallback_external_perception) < 2
                     and (latest_chat_sec - acc_sec).total_seconds() <= 48 * 3600
                     and (
                         p_item.get("headline")

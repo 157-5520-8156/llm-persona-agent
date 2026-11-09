@@ -2084,6 +2084,7 @@ def _walking_in_counterpart_recent_life(
     automatic_prefetch: object = None,
     logical_time: datetime | None = None,
     actor_ref: str | None = None,
+    materials: Mapping[str, object] | None = None,
 ) -> str | None:
     """Surface 1-2 recent dynamic counterpart life facts so she can naturally remember his ongoing life."""
     candidates: list[Mapping[str, object]] = []
@@ -2102,9 +2103,28 @@ def _walking_in_counterpart_recent_life(
     if not candidates:
         return None
 
+    visible_cp_tail: list[str] = []
+    if isinstance(materials, Mapping):
+        rd = materials.get("recent_dialogue")
+        rd_rows = (
+            rd
+            if isinstance(rd, list)
+            else (
+                [*(rd.get("stable_turns") or ()), *([rd["volatile_last_turn"]] if isinstance(rd.get("volatile_last_turn"), Mapping) else [])]
+                if isinstance(rd, Mapping)
+                else []
+            )
+        )
+        for row in rd_rows[-14:]:
+            if isinstance(row, Mapping) and str(row.get("speaker") or "") == "counterpart":
+                t = str(row.get("text") or "").strip().replace("\n", " ")
+                if t:
+                    visible_cp_tail.append(t)
+
     zone = ZoneInfo("Asia/Shanghai")
     now_local_date = logical_time.astimezone(zone).date() if logical_time is not None else None
-    snippets: list[str] = []
+    primary_snippets: list[str] = []
+    tail_dup_snippets: list[str] = []
     seen_texts: set[str] = set()
 
     for item in candidates:
@@ -2145,7 +2165,6 @@ def _walking_in_counterpart_recent_life(
             else:
                 age_prefix = f"[{day_diff}天前]"
         elif not pred:
-            # Without a predicate_code or recent timestamp, avoid surfacing timeless profile facts.
             continue
 
         val = item.get("value")
@@ -2168,12 +2187,18 @@ def _walking_in_counterpart_recent_life(
         if not clean or clean in seen_texts:
             continue
         seen_texts.add(clean)
+        is_tail_dup = any(clean[:12] in tail_txt for tail_txt in visible_cp_tail)
         if len(clean) > 46:
             clean = clean[:45].rstrip("，、 ") + "…"
-        snippets.append(f"{age_prefix}{clean}" if age_prefix else clean)
-        if len(snippets) >= 2:
+        formatted = f"{age_prefix}{clean}" if age_prefix else clean
+        if is_tail_dup:
+            tail_dup_snippets.append(formatted)
+        else:
+            primary_snippets.append(formatted)
+        if len(primary_snippets) >= 2:
             break
 
+    snippets = (primary_snippets + tail_dup_snippets)[:2]
     if not snippets:
         return None
     return (
@@ -2192,6 +2217,8 @@ def _walking_in_recent_browsed_tidbit(
     """Surface a recently browsed external perception item (e.g. Bilibili video) in lived_moment."""
     if not isinstance(perception, list):
         return None
+    unshared_candidates: list[str] = []
+    shared_candidates: list[str] = []
     for item in perception:
         if not isinstance(item, Mapping) or item.get("privacy_class") == "withhold":
             continue
@@ -2227,18 +2254,27 @@ def _walking_in_recent_browsed_tidbit(
             (item.get("source_ref"), item.get("influence_id")),
             materials=materials,
         )
-        if disclosed is not None or item.get("shared_in_chat") is True:
-            status_tag = "此前已在聊天提过"
-        elif companion_texts and not _is_unshared_in_companion_dialogue(
-            f"{headline} {subj_sum}", companion_texts
-        ):
-            status_tag = "此前已在聊天提过"
-        else:
-            status_tag = "刚刷到的闲事，尚未跟他说过"
-        return (
+        is_shared = (
+            disclosed is not None
+            or item.get("shared_in_chat") is True
+            or (
+                bool(companion_texts)
+                and not _is_unshared_in_companion_dialogue(f"{headline} {subj_sum}", companion_texts)
+            )
+        )
+        status_tag = "此前已在聊天提过" if is_shared else "刚刷到的闲事，尚未跟他说过"
+        clause = (
             f"手边刚刷到的闲事：{combined}"
             f"（{status_tag}，闲聊或想岔开话题时可随手提起，不提亦可）"
         )
+        if is_shared:
+            shared_candidates.append(clause)
+        else:
+            unshared_candidates.append(clause)
+    if unshared_candidates:
+        return unshared_candidates[0]
+    if shared_candidates:
+        return shared_candidates[0]
     return None
 
 
@@ -2263,6 +2299,8 @@ def _walking_in_shared_dialogue_callback(
             if isinstance(it, Mapping):
                 candidates.append(it)
 
+    two_way_Dialogues: list[str] = []
+    one_way_Dialogues: list[str] = []
     for item in candidates:
         if item.get("privacy_class") == "withhold" or item.get("privacy_ceiling") == "withhold":
             continue
@@ -2288,11 +2326,24 @@ def _walking_in_shared_dialogue_callback(
                 lines.append(line_s.rstrip("。；; ").replace("。", "，"))
         if not lines:
             continue
+        has_counterpart = any(l.startswith("他") for l in lines)
+        has_self = any(l.startswith("我") for l in lines)
         snippet = " / ".join(lines[:2])
         if len(snippet) > 74:
             snippet = snippet[:73].rstrip("，、 ") + "…"
+        if has_counterpart and has_self:
+            two_way_Dialogues.append(snippet)
+        else:
+            one_way_Dialogues.append(snippet)
+
+    chosen_dialogue = (
+        two_way_Dialogues[0]
+        if two_way_Dialogues
+        else (one_way_Dialogues[0] if one_way_Dialogues else None)
+    )
+    if chosen_dialogue:
         return (
-            f"被勾起的你们旧话头/小梗：{snippet}"
+            f"被勾起的你们旧话头/小梗：{chosen_dialogue}"
             "（你们之前聊过的旧话头，仅心头闪回，是否拿来打趣、接梗或翻旧账由你决定）"
         )
 
@@ -2424,6 +2475,7 @@ def _lived_moment(
             automatic_prefetch=automatic_prefetch,
             logical_time=logical_time,
             actor_ref=actor_ref,
+            materials=materials,
         )
         if counterpart_life:
             parts.append(counterpart_life)
