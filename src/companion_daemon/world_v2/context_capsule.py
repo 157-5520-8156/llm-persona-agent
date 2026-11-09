@@ -607,16 +607,16 @@ class ContextCapsuleBudgetPolicy(_FrozenModel):
         # fact.  The 30-turn recall eval showed 12k pinned this slice at
         # exactly two facts for 25 consecutive turns while six more committed
         # facts stayed invisible, so even a direct "do you remember my name"
-        # probe missed.  24k holds four fully sourced recalls; the global
-        # hard cap still bounds the whole capsule, and provider-facing
-        # compaction strips the proof envelopes before the prompt.
+        # probe missed.  36k holds stable profile facts plus 2-3 fresh dynamic
+        # counterpart facts; the global hard cap still bounds the whole capsule,
+        # and provider-facing compaction strips the proof envelopes before the prompt.
         default_factory=lambda: SliceBudget(
             max_items=16,
             # Each FactRecallItem exposes ~18 typed keys. 192 fields kept only
             # ~10 items before episodic selection could evict stable profile
             # Facts that must remain visible regardless of recency.
             max_fields=320,
-            max_characters=24_000,
+            max_characters=36_000,
         )
     )
     recent_experiences: SliceBudget = Field(
@@ -2688,7 +2688,11 @@ def _compile_resolved_context(
             if isinstance(item, FactRecallItem)
             and fact_predicate_is_stable(item.predicate_code)
         )
-    relevant_fact_floor = max(2, stable_relevant_fact_floor)
+    dynamic_relevant_fact_floor = min(
+        2,
+        max(0, len(slices["relevant_facts"].items) - stable_relevant_fact_floor),
+    )
+    relevant_fact_floor = max(2, stable_relevant_fact_floor + dynamic_relevant_fact_floor)
     # Preserve one unit of the state that gives an otherwise capable reply its
     # interpersonal continuity.  Treating these like ordinary ranked items
     # allowed a large capability/budget/advisory envelope to evict the sole

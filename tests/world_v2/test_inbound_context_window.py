@@ -1575,12 +1575,92 @@ def test_chat_disclosure_ledger_and_spontaneous_prehistory_flash():
         assert "读书会" not in mismatch
 
 
+def test_lived_moment_surfaces_counterpart_life_browsed_tidbit_and_shared_callbacks() -> None:
+    from datetime import datetime
+    from companion_daemon.world_v2.character_interior.contracts import _rendered_lived_moment
 
+    logical_time = datetime.fromisoformat("2026-11-08T14:00:00+08:00")
+    materials = {
+        "relevant_facts": [
+            {
+                "fact_id": "fact:edu",
+                "predicate_code": "profile.education",
+                "subject_ref": "user:geoff",
+                "occurred_at": "2026-08-16T10:00:00Z",
+                "source_excerpt": "成都理工大四软件工程",
+            },
+            {
+                "fact_id": "fact:tooth",
+                "predicate_code": "schedule.commitment",
+                "subject_ref": "user:geoff",
+                "occurred_at": "2026-11-04T06:00:00Z",
+                "source_excerpt": "下午去看牙去了",
+            },
+        ],
+        "perception": [
+            {
+                "influence_id": "life-influence:external-perception:pan-video",
+                "source_ref": "life-influence:external-perception:pan-video",
+                "accepted_at": "2026-11-08T01:00:00Z",
+                "headline": "【美食制作】铁锅/不锈钢锅都能用：一套物理不粘公式，煎鱼豆腐都不粘",
+                "subjective_summary": "讲物理不粘锅原理的做饭视频，弹幕里『煎鱼变鱼汤』看着就好笑。",
+            }
+        ],
+        "automatic_prefetch": {
+            "items": [
+                {
+                    "source_ref": "dialogue-episode:banter-pork",
+                    "source_slice": "recent_dialogue",
+                    "authority": "dialogue_record",
+                    "text": "一段聊天：\n[11-05 18:20] 他：其实是东北菜的把子肉啦，肥瘦相间很香\n[11-05 18:21] 我：行吧，你替我多吃两口",
+                }
+            ]
+        },
+        "recent_dialogue": [
+            {
+                "dialogue_id": "dialogue:1",
+                "speaker": "counterpart",
+                "text": "这会儿有点无聊，你在干嘛呢",
+                "occurred_at": "2026-11-08T06:00:00Z",
+                "continuity_reasons": ["current_turn"],
+            }
+        ],
+    }
+    lived = _rendered_lived_moment(materials, logical_time, actor_ref="agent:companion")
+    assert lived is not None
+    assert "心里记挂他的近况：[4天前]下午去看牙去了" in lived
+    assert "成都理工" not in lived
+    assert "手边刚刷到的闲事：【美食制作】铁锅/不锈钢锅都能用" in lived
+    assert "煎鱼变鱼汤" in lived
+    assert "被勾起的你们旧话头/小梗：他：其实是东北菜的把子肉啦" in lived
 
-
-
-
-
-
-
+    packet = {
+        "inner_life_snapshot": {
+            "cursor": {"logical_time": "2026-11-08T06:00:00Z"},
+            "materials": {
+                **materials,
+                "lived_moment": lived,
+            },
+        },
+        "current_trigger_message": {"text": "这会儿有点无聊，你在干嘛呢"},
+        "expression_hard_boundaries": {
+            "source_ref_aliases": {
+                "S01": "life-influence:external-perception:pan-video",
+            },
+            "world_claim_source_refs": {
+                "past_world": ["S01"],
+            },
+        },
+    }
+    bounded = bounded_inbound_context(packet)
+    inner_moment = bounded["current_trigger_message"]["current_inner_moment"]
+    assert "心里记挂他的近况：[4天前]下午去看牙去了" in inner_moment
+    assert "手边刚刷到的闲事：" in inner_moment
+    assert "被勾起的你们旧话头/小梗：" in inner_moment
+    shortcuts = {
+        s["alias"]: s
+        for s in bounded["context_window"]["citable_memory_shortcuts"]
+    }
+    assert "S01" in shortcuts
+    assert "铁锅/不锈钢锅都能用" in shortcuts["S01"]["preview"]
 

@@ -700,6 +700,7 @@ _OTHER_FEMALE_MARKERS = (
     "沈岚", "母亲", "妈妈", "周祺", "许桥", "林晚", "室友", "学姐", "老师", "朋友", "同学", "女生", "外婆", "阿姨", "姑姑"
 )
 _SELF_PRONOUN_RE = re.compile(r"(?<![说问回看听替给跟对找叫劝让帮陪等])她")
+_OBJECT_PRONOUN_RE = re.compile(r"(?<=[见问给让叫看听替跟对找劝帮陪等])她")
 
 
 def _to_first_person_self_reference(text: str) -> str:
@@ -720,11 +721,16 @@ def _to_first_person_self_reference(text: str) -> str:
         has_self = "我" in part
         if has_other_female and not has_self:
             last_subject = "other"
+            part = _OBJECT_PRONOUN_RE.sub("我", part)
         elif has_self and not has_other_female:
             last_subject = "self"
             part = _SELF_PRONOUN_RE.sub("我", part)
         elif last_subject == "self" and not has_other_female:
-            part = _SELF_PRONOUN_RE.sub("我", part)
+            part = part.replace("她", "我")
+        elif last_subject == "other" and not has_other_female:
+            part = _OBJECT_PRONOUN_RE.sub("我", part)
+            if "我" in part or any(m in part for m in ("父亲", "爸爸", "舅舅")):
+                last_subject = "self"
         rendered.append(part)
     return "".join(rendered)
 
@@ -2061,6 +2067,260 @@ def _walking_in_spontaneous_memory_flash(
     return None
 
 
+_DYNAMIC_COUNTERPART_FACT_PREDICATES: frozenset[str] = frozenset(
+    {
+        "situation.recent",
+        "schedule.commitment",
+        "activity.current",
+        "location.current",
+        "health.condition",
+    }
+)
+
+
+def _walking_in_counterpart_recent_life(
+    *,
+    relevant_facts: object = None,
+    automatic_prefetch: object = None,
+    logical_time: datetime | None = None,
+    actor_ref: str | None = None,
+) -> str | None:
+    """Surface 1-2 recent dynamic counterpart life facts so she can naturally remember his ongoing life."""
+    candidates: list[Mapping[str, object]] = []
+    if isinstance(relevant_facts, list):
+        for item in relevant_facts:
+            if isinstance(item, Mapping):
+                candidates.append(item)
+    if isinstance(automatic_prefetch, Mapping) and isinstance(automatic_prefetch.get("items"), list):
+        for item in automatic_prefetch["items"]:
+            if isinstance(item, Mapping) and (
+                item.get("source_slice") == "relevant_facts"
+                or item.get("authority") == "fact"
+            ):
+                candidates.append(item)
+
+    if not candidates:
+        return None
+
+    zone = ZoneInfo("Asia/Shanghai")
+    now_local_date = logical_time.astimezone(zone).date() if logical_time is not None else None
+    snippets: list[str] = []
+    seen_texts: set[str] = set()
+
+    for item in candidates:
+        if item.get("privacy_class") == "withhold" or item.get("privacy_ceiling") == "withhold":
+            continue
+        subj = item.get("subject_ref")
+        subj_refs = item.get("subject_refs")
+        if isinstance(subj, str) and subj:
+            if subj == actor_ref or subj.startswith(("agent:", "npc:")):
+                continue
+        elif isinstance(subj_refs, list) and subj_refs:
+            if not any(
+                isinstance(r, str) and r != actor_ref and not r.startswith(("agent:", "npc:"))
+                for r in subj_refs
+            ):
+                continue
+
+        pred = str(item.get("predicate_code") or "").strip()
+        if pred and pred not in _DYNAMIC_COUNTERPART_FACT_PREDICATES:
+            continue
+
+        raw_ts = (
+            item.get("occurred_at")
+            or item.get("occurred_to")
+            or item.get("occurred_from")
+            or item.get("updated_at")
+        )
+        occ_dt = _instant(raw_ts)
+        age_prefix = ""
+        if occ_dt is not None and now_local_date is not None:
+            day_diff = (now_local_date - occ_dt.astimezone(zone).date()).days
+            if day_diff > 10:
+                continue
+            if day_diff <= 0:
+                age_prefix = "[今天]"
+            elif day_diff == 1:
+                age_prefix = "[昨天]"
+            else:
+                age_prefix = f"[{day_diff}天前]"
+        elif not pred:
+            # Without a predicate_code or recent timestamp, avoid surfacing timeless profile facts.
+            continue
+
+        val = item.get("value")
+        raw_text = str(
+            item.get("source_excerpt")
+            or (val.get("text") if isinstance(val, Mapping) else "")
+            or item.get("text")
+            or ""
+        ).strip()
+        if not raw_text:
+            continue
+        clean = (
+            re.sub(r"^(?:\[[^\]]+\]\s*)+", "", raw_text)
+            .strip()
+            .rstrip("。；; ")
+            .replace("\n", " ")
+            .replace("。", "，")
+            .replace("；", "，")
+        )
+        if not clean or clean in seen_texts:
+            continue
+        seen_texts.add(clean)
+        if len(clean) > 46:
+            clean = clean[:45].rstrip("，、 ") + "…"
+        snippets.append(f"{age_prefix}{clean}" if age_prefix else clean)
+        if len(snippets) >= 2:
+            break
+
+    if not snippets:
+        return None
+    return (
+        "心里记挂他的近况："
+        + "｜".join(snippets)
+        + "（仅你记得他提过的近况，是否顺口关心或问起由你决定）"
+    )
+
+
+def _walking_in_recent_browsed_tidbit(
+    *,
+    perception: object = None,
+    companion_texts: Sequence[str] = (),
+    materials: Mapping[str, object] | None = None,
+) -> str | None:
+    """Surface a recently browsed external perception item (e.g. Bilibili video) in lived_moment."""
+    if not isinstance(perception, list):
+        return None
+    for item in perception:
+        if not isinstance(item, Mapping) or item.get("privacy_class") == "withhold":
+            continue
+        src_ref = str(item.get("source_ref") or item.get("influence_id") or "").strip()
+        headline = str(item.get("headline") or item.get("title") or "").strip()
+        subj_sum = str(
+            item.get("subjective_summary")
+            or item.get("licensed_summary")
+            or item.get("summary")
+            or ""
+        ).strip()
+        is_external = (
+            bool(headline)
+            or bool(item.get("subjective_summary"))
+            or bool(item.get("influence_id"))
+            or src_ref.startswith("life-influence:external-perception:")
+        )
+        if not is_external or (not headline and not subj_sum):
+            continue
+        headline_clean = headline.rstrip("。；; ").replace("\n", " ")
+        if len(headline_clean) > 38:
+            headline_clean = headline_clean[:37].rstrip("，、 ") + "…"
+        sum_clean = _to_first_person_self_reference(
+            subj_sum.rstrip("。；; ").replace("\n", " ").replace("。", "，").replace("；", "，")
+        )
+        if len(sum_clean) > 46:
+            sum_clean = sum_clean[:45].rstrip("，、 ") + "…"
+        if headline_clean and sum_clean and headline_clean not in sum_clean:
+            combined = f"{headline_clean}（{sum_clean}）"
+        else:
+            combined = sum_clean or headline_clean
+        disclosed = _lookup_disclosed_claim(
+            (item.get("source_ref"), item.get("influence_id")),
+            materials=materials,
+        )
+        if disclosed is not None or item.get("shared_in_chat") is True:
+            status_tag = "此前已在聊天提过"
+        elif companion_texts and not _is_unshared_in_companion_dialogue(
+            f"{headline} {subj_sum}", companion_texts
+        ):
+            status_tag = "此前已在聊天提过"
+        else:
+            status_tag = "刚刷到的闲事，尚未跟他说过"
+        return (
+            f"手边刚刷到的闲事：{combined}"
+            f"（{status_tag}，闲聊或想岔开话题时可随手提起，不提亦可）"
+        )
+    return None
+
+
+def _walking_in_shared_dialogue_callback(
+    *,
+    automatic_prefetch: object = None,
+    remembered_material: object = None,
+    unresolved: object = None,
+) -> str | None:
+    """Surface recalled shared dialogue banter/callbacks or open threads in lived_moment."""
+    candidates: list[Mapping[str, object]] = []
+    if isinstance(automatic_prefetch, Mapping) and isinstance(automatic_prefetch.get("items"), list):
+        for it in automatic_prefetch["items"]:
+            if isinstance(it, Mapping):
+                candidates.append(it)
+    elif isinstance(automatic_prefetch, list):
+        for it in automatic_prefetch:
+            if isinstance(it, Mapping):
+                candidates.append(it)
+    if isinstance(remembered_material, list):
+        for it in remembered_material:
+            if isinstance(it, Mapping):
+                candidates.append(it)
+
+    for item in candidates:
+        if item.get("privacy_class") == "withhold" or item.get("privacy_ceiling") == "withhold":
+            continue
+        src_ref = str(item.get("source_ref") or item.get("candidate_id") or "").strip()
+        src_slice = str(item.get("source_slice") or "").strip()
+        authority = str(item.get("authority") or "").strip()
+        raw_text = str(item.get("text") or item.get("source_excerpt") or "").strip()
+        is_shared_dialogue = (
+            src_slice == "recent_dialogue"
+            or authority == "dialogue_record"
+            or src_ref.startswith(("dialogue-episode:", "dialogue:"))
+            or raw_text.startswith("一段聊天：")
+        )
+        if not is_shared_dialogue or not raw_text:
+            continue
+        lines: list[str] = []
+        for raw_line in raw_text.splitlines():
+            line_s = raw_line.strip()
+            if not line_s or line_s == "一段聊天：":
+                continue
+            line_s = re.sub(r"^(?:\[[^\]]+\]\s*)+", "", line_s).strip()
+            if line_s:
+                lines.append(line_s.rstrip("。；; ").replace("。", "，"))
+        if not lines:
+            continue
+        snippet = " / ".join(lines[:2])
+        if len(snippet) > 74:
+            snippet = snippet[:73].rstrip("，、 ") + "…"
+        return (
+            f"被勾起的你们旧话头/小梗：{snippet}"
+            "（你们之前聊过的旧话头，仅心头闪回，是否拿来打趣、接梗或翻旧账由你决定）"
+        )
+
+    if isinstance(unresolved, list):
+        for th in unresolved:
+            if not isinstance(th, Mapping) or th.get("privacy_class") == "withhold":
+                continue
+            if th.get("status") not in {None, "open", "active"}:
+                continue
+            th_text = str(
+                th.get("summary")
+                or th.get("topic")
+                or th.get("text")
+                or th.get("anchor_excerpt")
+                or ""
+            ).strip()
+            if not th_text:
+                continue
+            clean_th = th_text.rstrip("。；; ").replace("\n", " ").replace("。", "，")
+            if len(clean_th) > 68:
+                clean_th = clean_th[:67].rstrip("，、 ") + "…"
+            return (
+                f"被勾起的你们旧话头/小梗：{clean_th}"
+                "（此前留下的未完话头，是否顺手提起由你决定）"
+            )
+    return None
+
+
 def _lived_moment(
     *,
     week_diary: list[dict[str, object]],
@@ -2158,6 +2418,29 @@ def _lived_moment(
     )
     if spontaneous_flash:
         parts.append(spontaneous_flash)
+    if isinstance(materials, Mapping):
+        counterpart_life = _walking_in_counterpart_recent_life(
+            relevant_facts=materials.get("relevant_facts"),
+            automatic_prefetch=automatic_prefetch,
+            logical_time=logical_time,
+            actor_ref=actor_ref,
+        )
+        if counterpart_life:
+            parts.append(counterpart_life)
+        browsed_tidbit = _walking_in_recent_browsed_tidbit(
+            perception=materials.get("perception"),
+            companion_texts=companion_texts,
+            materials=materials,
+        )
+        if browsed_tidbit:
+            parts.append(browsed_tidbit)
+        shared_callback = _walking_in_shared_dialogue_callback(
+            automatic_prefetch=automatic_prefetch,
+            remembered_material=remembered_material,
+            unresolved=materials.get("unresolved"),
+        )
+        if shared_callback:
+            parts.append(shared_callback)
     residue = _walking_in_residue(appraisals, logical_time)
     if residue:
         parts.append(residue)

@@ -774,6 +774,9 @@ def bounded_inbound_context(packet, *, include_delivery_overlap=False):
         "心里记挂的个人心愿/打算：",
         "近期身上悬着的处境：",
         "脑海顺带闪过的旧事：",
+        "心里记挂他的近况：",
+        "手边刚刷到的闲事：",
+        "被勾起的你们旧话头/小梗：",
         "今日近期课表/日程：",
         "此刻情绪余波：",
         "此刻心里的关系拉扯：",
@@ -812,6 +815,9 @@ def bounded_inbound_context(packet, *, include_delivery_overlap=False):
                     "心里记挂的个人心愿/打算：",
                     "近期身上悬着的处境：",
                     "脑海顺带闪过的旧事：",
+                    "心里记挂他的近况：",
+                    "手边刚刷到的闲事：",
+                    "被勾起的你们旧话头/小梗：",
                     "此刻情绪余波：",
                     "此刻心里的关系拉扯：",
                     "今日近期课表/日程：",
@@ -893,6 +899,7 @@ def bounded_inbound_context(packet, *, include_delivery_overlap=False):
     if isinstance(perception_items, list):
         latest_chat_sec = max(dialogue_seconds) if dialogue_seconds else None
         kept_perception = []
+        fallback_external_perception = []
         for p_item in perception_items:
             if not isinstance(p_item, dict):
                 kept_perception.append(p_item)
@@ -903,8 +910,20 @@ def bounded_inbound_context(packet, *, include_delivery_overlap=False):
                 and acc_sec is not None
                 and (latest_chat_sec - acc_sec).total_seconds() > 6 * 3600
             ):
+                if (
+                    not fallback_external_perception
+                    and (latest_chat_sec - acc_sec).total_seconds() <= 48 * 3600
+                    and (
+                        p_item.get("headline")
+                        or p_item.get("subjective_summary")
+                        or p_item.get("licensed_summary")
+                    )
+                ):
+                    fallback_external_perception.append(p_item)
                 continue
             kept_perception.append(p_item)
+        if not kept_perception and fallback_external_perception:
+            kept_perception = fallback_external_perception
         if kept_perception:
             materials["perception"] = kept_perception
         else:
@@ -1407,6 +1426,13 @@ def _citable_memory_shortcuts(
             scopes = alias_to_scopes.get(alias or "", []) if alias else []
             if not alias or not scopes or alias in seen_aliases:
                 continue
+            p_title = item.get("title") or item.get("headline")
+            p_sum = (
+                item.get("subjective_summary")
+                or item.get("licensed_summary")
+                or item.get("summary")
+                or item.get("content_summary")
+            )
             preview = (
                 item.get("text")
                 or item.get("source_excerpt")
@@ -1423,11 +1449,12 @@ def _citable_memory_shortcuts(
                     else None
                 )
                 or (
-                    f"{item['title']} — {item['summary']}"
-                    if isinstance(item.get("title"), str) and isinstance(item.get("summary"), str)
+                    f"{p_title} — {p_sum}"
+                    if isinstance(p_title, str) and p_title and isinstance(p_sum, str) and p_sum
                     else None
                 )
-                or item.get("summary")
+                or p_sum
+                or p_title
                 or (
                     ((item.get("content") or {}).get("world_consequence") or {})
                     .get("authorized_attempt_result", {})
