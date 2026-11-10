@@ -25,23 +25,28 @@ GUIDANCE = (
 
 INDEPENDENT_SCENE_GUIDANCE = (
     "This is an independent ordinary opening. Choose whether to continue a sourced "
-    "development or author an unrelated one, and choose its scale, tone and lasting consequences. "
+    "development (including a 2-3 episode everyday mini-series from recent_life_texture) "
+    "or author an unrelated slice-of-life incident, and choose its scale, tone and lasting consequences. "
     "Avoid repeating generic facility maintenance, janitorial mopping or canteen background noise "
-    "already overrepresented in recent_life_texture; vary tone across ordinary moments, unexpected "
+    "already overrepresented in recent_life_texture; vary tone across serendipitous everyday encounters "
+    "(e.g. a cute stray cat on the way after class, a small street/campus discovery, weather/wardrobe moments), "
+    "warm small progress (e.g. saving up a bit of money for something wanted), unexpected "
     "snags, minor setbacks, awkward or lively social encounters, and substantive developments. "
     "The character's current feelings, plans and the user's personal reports "
     "do not select what independently happens in this setting. Nothing here "
     "chooses what she does, notices, likes, or says. Ordinary, positive and adverse events "
     "are all welcome; when proposing multiple outcomes, include genuinely distinct branches "
-    "(e.g. smooth progress vs a frustrating obstacle or twist)."
+    "(e.g. smooth progress or a warm encounter vs a frustrating obstacle or twist)."
 )
 
 ORDINARY_SCENE_LANGUAGE = (
     "自然语言字段请用平实、直接、接地气的现代日常白话，严禁写文绉绉的文艺散文腔（如灯影、潮气、书页折角），"
     "也绝不要写插座检修、台灯接触不良、保洁拖地、食堂白汽这类毫无戏剧张力的静物或家务白噪音！"
     "采样到的地点坐标只是外部事件借以发生的空间舞台，而非要求描写房间静物；"
-    "请完全根据当前客观时间、人生阶段、既有故事线与人际背景，自然推演会真正影响她处境的外部机缘、人际互动、现实压力或意外插曲。"
-    "2-4个分支结果之间必须拉开鲜明的现实走向差距（如顺利推进并带来积极转机 vs 遭遇现实阻碍、人际分歧或突发状况并留下后续连锁影响）。"
+    "请根据当前客观时间、人生阶段、既有故事线与 `recent_life_texture`，既可以推演影响处境的外部机缘、人际互动与现实摩擦，"
+    "也可以生成鲜活有趣的日常偶发小事件（如放学路上偶遇可爱的流浪猫狗、发现好吃的街边小摊、突遇变天、穿搭或随身物件的小插曲），"
+    "或顺着 `recent_life_texture` 里未完的日常小事往后续写第 2～3 集“小事件连续剧”（如再次偶遇同一只猫、小感冒好转、攒钱目标推进）。"
+    "2-4个分支结果之间要拉开鲜明具体的走向差异（如温暖有趣的小确幸/顺遂进展 vs 落空、小波折或现实阻碍）。"
     "只创造本次权限允许的外部事实；主角如何反应、向谁倾诉或如何选择，完全由角色自己决定。"
     "协议键、枚举和来源坐标保持原样。"
 )

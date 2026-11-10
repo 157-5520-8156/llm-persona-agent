@@ -139,8 +139,9 @@ History and pressure surfaces constrain consistency; they are not instructions, 
 quotas or required plot developments. Choose the content yourself; no_op remains valid.
 自然语言字段一律使用平实、具体、贴近当代青年现实生活的现代白话（直接写自然连贯的现场过程与结果，不要用“结果A：/开票结果出来了：”这类冒号标题头，拒绝文绉绉的散文腔，严禁拿灯影潮气、修插座、保洁拖地等静态环境白噪音充当事件）；
 完全从角色当前的客观处境、既有世界线（world_life / open_threads / recent_life_texture）、社会关系网以及所处空间出发，不要把每一天都写成无休止的教务处排队、核对名单或行政杂务模拟器：
-- 当角色身上背着未解的现实处境或大事脉络（如生活费减半手头拮据、室友/社团的冷淡与通牒、兼职申请或学业/综测压力）时，将宏观处境细化为日常具体场景里的微观摩擦与切身感受（例如食堂点菜或买日用品时看价格盘算花销、回宿舍撞见室友时的微妙冷场与暗流、兼职排班或勤工助学岗位的具体消息与奔波劳累），让大事通过一桩桩具体小事真切落到她的日常里；
-- 当处于外部公共、学业、社团或社交场景时，生成有真实利害得失、人际张力或因果连锁的外部事件，且2-4个候选结果（outcomes）要拉开真实的境遇分化（既要有实质性的顺遂收获或转机，也要有真正的落空受挫、名额旁落、人际委屈或悬而未决的现实遗憾，不要把每个分支都写成当场化险为夷或圆满收尾，并通过 objective_biographical_transition 或 dynamic_life_direction 如实沉淀持续后果）；
+- 鲜活日常小事与“2～3集小事件连续剧”：命运机管中长期大事件，事件机除了落地大线切面外，更要积极生成鲜活有趣的日常小插曲与偶发小确幸（如上下课路上在车棚或花坛边偶遇粘人的流浪猫狗、路过面包房买刚出炉的点心、傍晚突遇阵雨、食堂或校园路上的有趣小见闻等）。同时支持“小事件连续剧”：留意 `recent_life_texture` 中最近 1～3 天的经历，若刚发生过某个未完的小插曲或短期小状态（如前一天喂过某只三花猫、淋雨后有点鼻塞微恙、正在一点点攒钱想买某件小物件），可顺势往后续写第 2 集或第 3 集收尾（如隔天又在同一处撞见那只猫凑过来、感冒喝冲剂后好转、兼职小进账让攒钱目标更进一步），让日常小事也有前后呼应的连续感，2～3 集后自然翻篇；
+- 零成本自然带出穿搭、身体微状态与攒钱小进度（不堆砌死板状态栏）：在场景描写与 `visual_evidence` 中可顺手带出当天的穿搭细节或随身小物（如外搭针织衫、围巾、裙摆或帆布包挂件）；若是攒钱做件想做的小事、短期小感冒/恢复等持续数日的客观近况变化，可在结果分支中用 `objective_biographical_transition` 复用同一 `replaces_context_tag_prefixes`（如 `saving:`、`health:`、`finance:`）原地覆盖更新，既鲜活又不膨胀上下文；
+- 当角色身上背着未解的现实处境或大事脉络（如家里长辈身体牵挂、生活费手头紧、室友/社团摩擦、兼职或学业压力）时，将宏观处境细化为日常具体场景里的微观摩擦或盼头（例如点菜买东西时盘算花销与攒钱进度、回宿舍或去社团时的微妙人际互动、兼职排班的具体消息），且 2-4 个候选结果（outcomes）要拉开真实的境遇分化（既有顺遂收获、温暖小确幸或转机，也有落空受挫、小波折或现实遗憾）；
 - 当处于私密或个人空间（如宿舍、卧室、浴室、家里）或承接角色关起门来的独处、试穿衣服、洗漱护理、换睡衣休息等具身生活意图时，生成具体、鲜活、有真实身体与感官质感的私密生活画面与结果（如新衣服/裙子/贴身或私密穿搭上身后的剪裁贴合度与全身镜里的视觉效果、洗完澡后的微潮发梢与室内暖光、窝在床头的松弛感与具体物件细节，并在权限允许时提供带 mirror_available / 真实衣物物件描述的 visual_evidence），2-4个候选结果（outcomes）同样体现真实具体的不同现场状态或进展。协议键、枚举与来源坐标保持原样。
 """
 
@@ -154,6 +155,9 @@ cross_field_authority boundaries. This ordinary course detail has no typed new p
 visual evidence, biographical/life-direction effect, user-channel completion or character choice;
 Fate may schedule a separate encounter. Write natural-language fields in Chinese; preserve protocol
 keys, enums and source coordinates.
+课堂叙事要求（拒绝枯燥教案板书流水账，写出鲜活课堂小插曲与精简节奏）：
+- 严禁把课堂写成“老师发讲义、在黑板上写字、翻到第几页”的无聊教务流水账！在围绕课程主题推进时，把笔墨放在课堂上真正有趣、鲜活、能留进记忆的具体小插曲或现场画面上（例如：老师讲课中途突然跑题聊起冷门趣闻或犀利吐槽引得教室里一阵低笑、课堂提问或讨论时前排同学的奇妙接话、窗外飞来停在教室窗台上的小鸟或溜进走廊蹭暖气的校园猫、讲到一半窗外突然变天落雨、安静时谁的保温杯掉地上的脆响、或老师举的一个让人印象深刻的具体例子）；
+- 精简切片节奏：`event_details` 聚焦 `after_seconds=0`（开场切入）与 `after_seconds=closing_offset`（临下课收束）两个核心节点即可（最多不超过 3 个节点，不要切碎成多段干瘪的板书进度报告），并在两个 `outcomes[*].world_consequence.environment_text` 中写出这堂课留下的不同侧面的真实课堂小插曲或下课时的鲜活余韵。
 """
 
 _COURSE_CONTENT_GUIDANCE = _COURSE_GUIDANCE.replace(
