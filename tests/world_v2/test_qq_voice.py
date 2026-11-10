@@ -405,15 +405,12 @@ async def test_doubao_seed_icl_2_0_cloned_voice_includes_tone_fidelity_and_offic
         assert body["req_params"]["model"] == "seed-tts-2.0-expressive"
         assert (
             body["req_params"]["text"]
-            == "<cot text=委屈低落鼻音>刚才去交表又被退回来了，</cot><cot text=声音发颤叹气>我明明已经改了三遍了。</cot>"
+            == "<cot text=眼眶泛红，声音哽咽发颤>刚才去交表又被退回来了，</cot><cot text=委屈地吸了吸鼻子，声音沙哑>我明明已经改了三遍了。</cot>"
         )
         additions = json.loads(body["req_params"]["additions"])
-        assert additions["tone_fidelity"] is True
         assert additions["use_tag_parser"] is True
         assert additions["disable_markdown_filter"] is True
-        assert len(additions["context_texts"]) == 1
-        inst = additions["context_texts"][0]
-        assert inst == "用委屈低落鼻音、声音发颤叹气的语气演绎下面这句话："
+        assert "context_texts" not in additions
         stream_line = json.dumps({"code": 0, "data": pcm_chunk}) + "\n"
         return httpx.Response(200, content=stream_line.encode("utf-8"))
 
@@ -426,7 +423,7 @@ async def test_doubao_seed_icl_2_0_cloned_voice_includes_tone_fidelity_and_offic
     )
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         note = await synthesize_companion_voice_note(
-            "[CQ:voice]（委屈低落鼻音）刚才去交表又被退回来了，（声音发颤叹气）我明明已经改了三遍了。",
+            "[CQ:voice]（眼眶泛红，声音哽咽发颤）刚才去交表又被退回来了，（委屈地吸了吸鼻子，声音沙哑）我明明已经改了三遍了。",
             settings=settings,
             http_client=client,
             delivered_dir=tmp_path,

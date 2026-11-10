@@ -132,8 +132,8 @@ def _extract_acting_cue_and_spoken_text(text: str) -> tuple[str, str]:
 def _sanitize_cot_label(raw_cue: str) -> str:
     cue = re.sub(r"^(?:请用|用)", "", raw_cue.strip()).strip()
     cue = re.sub(r"(?:的语气(?:说话|说)?|说话|说)$", "", cue).strip()
-    cue = re.sub(r"[\s\"'<>《》【】（）()，,。！？；：:、]+", "", cue)
-    return cue[:18]
+    cue = re.sub(r"[\s\"'<>《》【】（）()！？；：:]+", "", cue)
+    return cue.strip("，,、。")[:36]
 
 
 def _wrap_clause_with_cot(segment: str, cue_label: str) -> str:
@@ -1172,20 +1172,30 @@ async def _synthesize_via_doubao_seed_tts(
             },
         }
         if res_id in {"seed-tts-2.0", "seed-icl-2.0", "volc.seedicl.default"}:
+            has_inline_cot = "<cot " in effective_text
             additions_payload: dict[str, Any] = {
-                "context_texts": [
-                    _build_doubao_context_instruction(
-                        acting_cue,
-                        spoken_text,
-                        is_cloned_speaker=cloned_mode,
-                    )
-                ],
                 "disable_markdown_filter": True,
             }
             if cloned_mode:
                 req_params["model"] = "seed-tts-2.0-expressive"
-                additions_payload["use_tag_parser"] = "<cot " in effective_text
-                additions_payload["tone_fidelity"] = True
+                if has_inline_cot:
+                    additions_payload["use_tag_parser"] = True
+                else:
+                    additions_payload["context_texts"] = [
+                        _build_doubao_context_instruction(
+                            acting_cue,
+                            spoken_text,
+                            is_cloned_speaker=True,
+                        )
+                    ]
+            else:
+                additions_payload["context_texts"] = [
+                    _build_doubao_context_instruction(
+                        acting_cue,
+                        spoken_text,
+                        is_cloned_speaker=False,
+                    )
+                ]
             req_params["additions"] = json.dumps(
                 additions_payload,
                 ensure_ascii=False,
