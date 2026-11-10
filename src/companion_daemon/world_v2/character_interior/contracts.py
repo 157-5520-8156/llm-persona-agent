@@ -705,6 +705,8 @@ _OBJECT_PRONOUN_RE = re.compile(r"(?<=[见问给让叫看听替跟对找劝帮�
 
 def _to_first_person_self_reference(text: str) -> str:
     """Convert third-person protagonist references ('沈知栀'/'知栀') and bound '她' into first-person '我'."""
+    if "我" in text and "沈知栀" not in text and "知栀" not in text:
+        return text
     out = (
         text.replace("沈知栀", "我")
         .replace("知栀", "我")
@@ -2930,7 +2932,12 @@ def _walking_in_shared_dialogue_callback(
                 for imp in _material_entries(materials, "private_impressions"):
                     if not isinstance(imp, Mapping) or imp.get("privacy_class") == "withhold":
                         continue
-                    imp_sum = str(imp.get("summary") or imp.get("text") or "").replace("\n", " ").strip()
+                    imp_sum = str(
+                        imp.get("reflection_summary")
+                        or imp.get("summary")
+                        or imp.get("text")
+                        or ""
+                    ).replace("\n", " ").strip()
                     if imp_sum:
                         linked_reflection = (
                             imp_sum.rstrip("。；; ")

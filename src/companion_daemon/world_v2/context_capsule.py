@@ -2863,7 +2863,7 @@ def _compile_resolved_context(
                 relevant_fact_floor
                 if name == "relevant_facts"
                 else min(3, len(slices["recent_experiences"].items))
-                if name == "recent_experiences" and active_policy.hard_max_characters >= 40_000
+                if name == "recent_experiences" and active_policy.hard_max_characters >= 20_000
                 else max(1, terminal_minimum_items.get(name, 0))
             )
         ]

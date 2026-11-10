@@ -1455,6 +1455,31 @@ def _citable_memory_shortcuts(
                 or item.get("summary")
                 or item.get("content_summary")
             )
+            content_dict = item.get("content") if isinstance(item.get("content"), dict) else {}
+            wc_dict = content_dict.get("world_consequence") if isinstance(content_dict.get("world_consequence"), dict) else {}
+            wc_text = (
+                (wc_dict.get("authorized_attempt_result") or {}).get("text")
+                if isinstance(wc_dict.get("authorized_attempt_result"), dict)
+                else None
+            ) or (
+                (wc_dict.get("environment") or {}).get("text")
+                if isinstance(wc_dict.get("environment"), dict)
+                else None
+            )
+            cr_text = (
+                (content_dict.get("character_response") or {}).get("response_text")
+                if isinstance(content_dict.get("character_response"), dict)
+                else None
+            )
+            wc_and_cr = (
+                f"{wc_text.strip().rstrip('。； ')}（当时反应：{cr_text.strip()}）"
+                if isinstance(wc_text, str) and wc_text.strip() and isinstance(cr_text, str) and cr_text.strip()
+                else wc_text
+                if isinstance(wc_text, str) and wc_text.strip()
+                else cr_text
+                if isinstance(cr_text, str) and cr_text.strip()
+                else None
+            )
             preview = (
                 item.get("text")
                 or item.get("source_excerpt")
@@ -1477,25 +1502,12 @@ def _citable_memory_shortcuts(
                 )
                 or p_sum
                 or p_title
-                or (
-                    ((item.get("content") or {}).get("world_consequence") or {})
-                    .get("authorized_attempt_result", {})
-                    .get("text")
-                    if isinstance(item.get("content"), dict)
-                    else None
-                )
-                or (
-                    ((item.get("content") or {}).get("world_consequence") or {})
-                    .get("environment", {})
-                    .get("text")
-                    if isinstance(item.get("content"), dict)
-                    else None
-                )
+                or wc_and_cr
             )
             if not isinstance(preview, str) or not preview.strip():
                 continue
             when_local = None
-            raw_ts = item.get("occurred_to") or item.get("occurred_from") or item.get("occurred_at")
+            raw_ts = item.get("occurred_to") or item.get("occurred_from") or item.get("occurred_at") or item.get("settled_at")
             item_dt = _recorded_second(raw_ts)
             if item_dt is not None and now_local_date is not None:
                 local_dt = item_dt.astimezone(_DEFAULT_LOCAL_TZ)
@@ -1571,10 +1583,11 @@ def _citable_memory_shortcuts(
                 ),
                 "preview": preview.replace("\n", " ").strip()[
                     : (
-                        96
+                        136
+                        if slice_name == "recent_self_experiences"
+                        else 96
                         if slice_name
                         in {
-                            "recent_self_experiences",
                             "remembered_material",
                             "automatic_prefetch",
                             "perception",

@@ -1735,7 +1735,7 @@ def compile_inner_life_snapshot(
     if len(recent) < exp_limit:
         tail_lanes = (
             (experience_lanes[1], experience_lanes[0])
-            if has_world_planning_in_lane0
+            if len(experience_lanes) == 2
             else experience_lanes
         )
         recent.extend(entry for entries in tail_lanes for entry in entries[1:])
