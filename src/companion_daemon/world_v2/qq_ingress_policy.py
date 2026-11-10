@@ -932,6 +932,7 @@ def normalize_onebot_qq_ingress(
     """Normalize supported private OneBot message/control shapes without prose rules."""
 
     post_type = event.get("post_type")
+    self_id = str(event.get("self_id") or "")
     user_id = str(event.get("user_id") or "")
     source_id = str(event.get("message_id") or event.get("event_id") or "")
     timestamp = event.get("time")
@@ -950,7 +951,13 @@ def normalize_onebot_qq_ingress(
         or (notice_type == "notify" and sub_type == "input_status")
     )
     if is_input_status:
-        if not user_id or event.get("group_id"):
+        if not user_id or user_id in {"0", self_id}:
+            for candidate_key in ("sender_id", "peer_id", "operator_id", "target_id"):
+                candidate_val = str(event.get(candidate_key) or "")
+                if candidate_val and candidate_val not in {"0", self_id}:
+                    user_id = candidate_val
+                    break
+        if not user_id or event.get("group_id") not in {None, 0, "0", ""}:
             return None
         raw_status = str(
             event.get("status") or event.get("status_text") or sub_type or ""

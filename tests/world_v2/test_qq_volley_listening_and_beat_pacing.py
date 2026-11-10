@@ -169,3 +169,33 @@ async def test_pacing_disabled_never_sleeps() -> None:
     await host._pace_followup_beat()
     assert slept == []
     await host.aclose()
+
+
+@pytest.mark.asyncio
+async def test_hold_before_send_waits_while_peer_typing_and_wakes_on_message_arrival() -> None:
+    clock = {"now": NOW}
+    slept: list[float] = []
+    store = MemoryQQIngressStore()
+
+    async def record_sleep(delay: float) -> None:
+        slept.append(delay)
+        clock["now"] += timedelta(seconds=min(delay, 1.5))
+        # Simulate user's second bubble arriving 1.5s into typing
+        store.submit(_text("message:slow-2", "结果在门口踩了一脚泥", observed_at=clock["now"]), received_at=clock["now"])
+
+    host = QQC2CHost(
+        host=_PacingProjectionHost(),  # type: ignore[arg-type]
+        recipient_id="10001",
+        canonical_user_id="geoff",
+        ingress_store=store,
+        ingress_now=lambda: clock["now"],
+        ingress_sleep=record_sleep,
+        followup_composition_pacing=True,
+    )
+    host._last_typing_started_at = NOW
+    await host._hold_before_send_while_peer_typing(excluding_source_event_ids=("message:slow-1",))
+    # Woke up as soon as uncommitted content landed after the first sleep slice
+    assert len(slept) == 1
+    assert store.has_uncommitted_content(excluding_source_event_ids=("message:slow-1",))
+    await host.aclose()
+

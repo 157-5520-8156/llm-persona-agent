@@ -29,7 +29,14 @@ PREHISTORY_CONTRACT = "visible-source-reading-experiment.5"
 CONTENT_FIELD_CONTRACTS = frozenset((CONTENT_FIELD_CONTRACT, PREHISTORY_CONTRACT))
 
 
-def _direct_paths(row: dict, shown: dict, *, content_fields_only: bool = False, prehistory_authority: bool = False) -> list[str]:
+def _direct_paths(
+    row: dict,
+    shown: dict,
+    *,
+    content_fields_only: bool = False,
+    prehistory_authority: bool = False,
+    legacy_catalog_paths: bool = False,
+) -> list[str]:
     """Choose typed evidence bodies, not hashes or bookkeeping identifiers.
 
     Surrounding actor/time/status/qualification data stays in the full card.
@@ -50,6 +57,8 @@ def _direct_paths(row: dict, shown: dict, *, content_fields_only: bool = False, 
     if material.get("kind") == "current_counterpart_report":
         return [p for p in paths if p == "/message/text" or (p.startswith("/messages/") and p.endswith("/text"))]
     if material.get("kind") == "biographical_coordinate":
+        if legacy_catalog_paths:
+            return [p for p in paths if p == "/material/value"]
         return [
             p
             for p in paths
@@ -66,14 +75,18 @@ def _direct_paths(row: dict, shown: dict, *, content_fields_only: bool = False, 
                 "/item/value/content/world_consequence/environment/text",
                 "/item/value/content/world_consequence/authorized_attempt_result/text",
             } or (
-                p.startswith("/item/value/world_planning/scheduled_items/")
+                not legacy_catalog_paths
+                and p.startswith("/item/value/world_planning/scheduled_items/")
                 and p.endswith(("/title", "/starts_at", "/ends_at", "/notes"))
             )]
         return [
             p
             for p in paths
             if p.startswith("/item/value/content/world_consequence/")
-            or p.startswith("/item/value/world_planning/scheduled_items/")
+            or (
+                not legacy_catalog_paths
+                and p.startswith("/item/value/world_planning/scheduled_items/")
+            )
         ]
     if "activity_support" in row:
         return [p for p in paths if p in {
@@ -87,6 +100,7 @@ def _catalog(
     packet: dict, *, report_uptake: bool = False, content_fields_only: bool = False,
     prehistory_authority: bool = False, fact_value_authority: bool = False,
     allow_companion_activity_lifecycle: bool = True,
+    legacy_catalog_paths: bool = False,
 ) -> list[dict]:
     """Merge only exact scalar/material/owner/permission equivalents.
 
@@ -112,7 +126,13 @@ def _catalog(
                                 'material_index': material_index, 'source_ref_indexes': [row['source_ref_index']]})
             continue
         shown = packet["shown_materials"][material_index]
-        paths = _direct_paths(row, shown, content_fields_only=content_fields_only, prehistory_authority=prehistory_authority)
+        paths = _direct_paths(
+            row,
+            shown,
+            content_fields_only=content_fields_only,
+            prehistory_authority=prehistory_authority,
+            legacy_catalog_paths=legacy_catalog_paths,
+        )
         permissions_by_pointer = source_subject_permissions(
             row=row, pointers=paths, prehistory_authority=prehistory_authority,
             allow_companion_activity_lifecycle=allow_companion_activity_lifecycle,

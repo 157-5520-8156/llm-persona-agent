@@ -518,7 +518,11 @@ def verify_evidence(*, raw, proposal, requirement, author_call, author_request_h
     elif "recall_audits" in value:
         raise ValueError("legacy visible review cannot carry new recall authority")
     if grounded:
-        from .visible_grounded_review import prepare_grounded_review, verify_grounded_review_receipt
+        from .visible_grounded_review import (
+            prepare_grounded_review,
+            uses_legacy_catalog_paths,
+            verify_grounded_review_receipt,
+        )
         matching = [s for s in subcalls if s.purpose == "source_review"
                     and s.model_call_id == receipt.review.model_call_id and s.outcome == "winner"]
         if len(matching) != 1:
@@ -540,6 +544,7 @@ def verify_evidence(*, raw, proposal, requirement, author_call, author_request_h
             faithful_proposition=pin.get("faithful_proposition", False), reference_wire=pin.get("reference_wire", False),
             material_presentation=pin.get("material_presentation"),
             legacy_reasoned_instruction=legacy_reasoned,
+            legacy_catalog_paths=uses_legacy_catalog_paths(pin),
         )
         if pin.get("wire_feedback"):
             feedback = pin["wire_feedback"]

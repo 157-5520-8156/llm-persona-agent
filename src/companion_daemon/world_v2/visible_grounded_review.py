@@ -269,9 +269,19 @@ class PreparedGroundedReview:
         return {"beat_outcomes": outcomes, "diagnostics": diagnostics, "inconclusive": inconclusive}
 
 
+def uses_legacy_catalog_paths(pin: dict) -> bool:
+    """Detect pre-ad55404d receipts whose catalog preceded summary/schedule direct pointers."""
+    return not any(
+        reading.get("pointer") in {"/material/value/summary", "/material/value/context_summary"}
+        or str(reading.get("pointer", "")).startswith("/item/value/world_planning/scheduled_items/")
+        for reading in pin.get("catalog", ())
+    )
+
+
 def prepare_grounded_review(*, candidate, source_table, source_ref_aliases, protocol=PROTOCOL,
                             ordered_native=False, faithful_proposition=False, reference_wire=False,
-                            material_presentation=None, legacy_reasoned_instruction=False):
+                            material_presentation=None, legacy_reasoned_instruction=False,
+                            legacy_catalog_paths=False):
     from .proposal_envelope import DecisionProposal
     if not isinstance(candidate, DecisionProposal) or not isinstance(source_table, VisibleSourceTable):
         raise ValueError("grounded review requires a typed decision and source table")
@@ -282,13 +292,15 @@ def prepare_grounded_review(*, candidate, source_table, source_ref_aliases, prot
         candidate.model_dump_json(), source_table.payload_json, _json(dict(source_ref_aliases)),
         protocol, ordered_native, faithful_proposition, reference_wire, material_presentation,
         legacy_reasoned_instruction if isinstance(legacy_reasoned_instruction, str) else bool(legacy_reasoned_instruction),
+        bool(legacy_catalog_paths),
     ))
 
 
 @lru_cache(maxsize=8)
 def _compiled_grounded_bytes(candidate_json, source_table_json, aliases_json,
                             protocol, ordered_native, faithful_proposition, reference_wire,
-                            material_presentation, legacy_reasoned_instruction=False):
+                            material_presentation, legacy_reasoned_instruction=False,
+                            legacy_catalog_paths=False):
     # Exact immutable inputs include candidate, full source pin/permissions and
     # protocol options. Cache compilation only, NEVER a semantic verdict.
     from .proposal_envelope import DecisionProposal
@@ -298,12 +310,13 @@ def _compiled_grounded_bytes(candidate_json, source_table_json, aliases_json,
         protocol=protocol, ordered_native=ordered_native, faithful_proposition=faithful_proposition,
         reference_wire=reference_wire, material_presentation=material_presentation,
         legacy_reasoned_instruction=legacy_reasoned_instruction,
+        legacy_catalog_paths=legacy_catalog_paths,
     ).payload_json
 
 
 def _compile_grounded_review(*, candidate, source_table, source_ref_aliases, protocol,
                             ordered_native, faithful_proposition, reference_wire, material_presentation,
-                            legacy_reasoned_instruction=False):
+                            legacy_reasoned_instruction=False, legacy_catalog_paths=False):
     if protocol not in _PROTOCOLS:
         raise ValueError("grounded review protocol is unsupported")
     material = compile_visible_candidate_material(
@@ -318,6 +331,7 @@ def _compile_grounded_review(*, candidate, source_table, source_ref_aliases, pro
         witness_pin, report_uptake=True, content_fields_only=True,
         prehistory_authority=True, fact_value_authority=True,
         allow_companion_activity_lifecycle=protocol == PROTOCOL,
+        legacy_catalog_paths=legacy_catalog_paths,
     )
     cards = []
     for index, shown in enumerate(witness_pin["shown_materials"]):
@@ -483,6 +497,7 @@ def _verified_prepared_bytes(raw):
         ordered_native=pin.get("wire_carrier", False), reference_wire=pin.get("reference_wire", False),
         material_presentation=pin.get("material_presentation"),
         legacy_reasoned_instruction=legacy_reasoned,
+        legacy_catalog_paths=uses_legacy_catalog_paths(pin),
     )
     if pin.get("wire_feedback"):
         feedback = pin["wire_feedback"]

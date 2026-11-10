@@ -646,7 +646,12 @@ class QQC2CHost:
         ):
             self._recent_beat_dispatches.append((action_id, self._ingress_now()))
 
-    async def _pace_followup_beat(self) -> None:
+    async def _pace_followup_beat(
+        self,
+        *,
+        target_action_id: str | None = None,
+        excluding_source_event_ids: Collection[str] = (),
+    ) -> None:
         """Wait out the typing gap before an authored follow-up beat.
 
         Runs before the scheduled drain takes the provider mutex, so a
@@ -658,6 +663,14 @@ class QQC2CHost:
 
         if not self._followup_composition_pacing or not self._recent_beat_dispatches:
             return
+        if (
+            excluding_source_event_ids
+            and self._ingress_store is not None
+            and self._ingress_store.has_uncommitted_content(
+                excluding_source_event_ids=excluding_source_event_ids,
+            )
+        ):
+            return
         dispatched_at = dict(self._recent_beat_dispatches)
         try:
             projection = await self._read_action_due_projection()
@@ -667,6 +680,11 @@ class QQC2CHost:
         by_id = {getattr(item, "action_id", None): item for item in actions}
         pause = 0.0
         for action in actions:
+            if (
+                target_action_id is not None
+                and getattr(action, "action_id", None) != target_action_id
+            ):
+                continue
             if getattr(action, "state", None) not in {"authorized", "scheduled"}:
                 continue
             plan_id = getattr(action, "expression_plan_id", None)
@@ -692,7 +710,46 @@ class QQC2CHost:
                 elapsed = (self._ingress_now() - previous_at).total_seconds()
                 pause = max(pause, needed - max(0.0, elapsed))
         if pause > 0.0:
-            await self._ingress_sleep(pause)
+            if excluding_source_event_ids:
+                await self._sleep_for_rhythm_or_typing(pause)
+            else:
+                await self._ingress_sleep(pause)
+
+    async def _hold_before_send_while_peer_typing(
+        self,
+        *,
+        excluding_source_event_ids: Collection[str] = (),
+    ) -> None:
+        """Pause thumb over Send while the peer's live 'typing…' indicator is active.
+
+        If the peer is not typing, this returns immediately (0ms delay).
+        If the peer is actively composing a follow-up bubble in the chat box,
+        hold up to the typing signal TTL or until their new bubble lands in the
+        ingress store (at which point ActionDispatchStarted fences the stale
+        draft behind the new observation for reconsideration).
+        """
+
+        if not self._followup_composition_pacing:
+            return
+        while True:
+            if (
+                self._ingress_store is not None
+                and self._ingress_store.has_uncommitted_content(
+                    excluding_source_event_ids=excluding_source_event_ids,
+                )
+            ):
+                return
+            now = self._ingress_now()
+            started = self._last_typing_started_at
+            if started is None or not self._typing_is_active(now=now):
+                return
+            remaining = self._TYPING_SIGNAL_TTL_SECONDS - max(
+                0.0, (now - started).total_seconds()
+            )
+            if remaining <= 0.005:
+                return
+            self._typing_signal_event.clear()
+            await self._sleep_for_rhythm_or_typing(remaining)
 
     async def _drain_scheduled_action_once(self) -> object:
         """Run one passive ActionPump unit without locking background work."""
@@ -764,6 +821,7 @@ class QQC2CHost:
 
     async def _drain_scheduled_action_once_unowned(self) -> object:
         await self._pace_followup_beat()
+        await self._hold_before_send_while_peer_typing()
         result = await self._drain_scheduled_action_once_locked()
         self._note_beat_dispatch(result)
         return result
@@ -928,6 +986,8 @@ class QQC2CHost:
             self._forget_endpoint_fragments(
                 tuple(source_event_id for source_event_id, _ in self._endpoint_fragments)
             )
+        self._last_typing_started_at = None
+        self._typing_signal_event.set()
         self._last_content_received_at = received_at
         self._last_content_text = fragment.text
         if fragment.text:
@@ -1901,6 +1961,13 @@ class QQC2CHost:
             visible_reply_recorded = False
             first_visible_reply_ns: int | None = None
             for candidate_action_id in action_ids:
+                await self._pace_followup_beat(
+                    target_action_id=candidate_action_id,
+                    excluding_source_event_ids=batch.source_event_ids,
+                )
+                await self._hold_before_send_while_peer_typing(
+                    excluding_source_event_ids=batch.source_event_ids,
+                )
                 drain_task = self._start_owned_action_drain(candidate_action_id)
                 dispatch_seconds = (
                     turn_budget.remaining(include_reserve=True) if turn_budget is not None else None
@@ -1941,6 +2008,11 @@ class QQC2CHost:
                         )
                 if result is not None and result.action_id not in {None, candidate_action_id}:
                     raise RuntimeError("targeted QQ C2C drain returned a different Action")
+                if result is not None and getattr(result, "status", None) in {
+                    "deferred_ingress",
+                    "not_due",
+                }:
+                    break
                 settled_user_visible_dispatch = (
                     outcome.status == "action_authorized"
                     and result is not None
