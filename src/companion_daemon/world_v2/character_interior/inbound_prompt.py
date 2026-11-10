@@ -291,7 +291,7 @@ def conversation_atomic_slim_system_prompt(
         CONVERSATION_PROMPT_VERSION + "\n" + _CONVERSATION_AUTHORITY
         + "\n角色身份材料：\n" + identity_instruction
         + "\n\n" + private_scope + "\n\n" + _CONVERSATION_FIELDS
-        + "\nmessages 可包含文字字符串（可在开头加 [CQ:reply,id=<message_id>] 引用回复，或用 {\"voice\":\"（具象的语气指令，如：试探性的犹豫、带点害羞又藏着温柔期待 / 声音微颤带着委屈和轻微哭腔 / 刚睡醒困倦迷糊、软绵绵撒娇 / 压低声音说悄悄话 / 忍俊不禁轻笑调侃）<1~2句自然口语台词>\"} / \"[CQ:voice]（具象的语气指令）<自然口语台词>\" 发送 QQ 语音；发语音时切勿在台词里写“哈啊、唔、哼哼、噗、噗嗤、嘶”这类拟声字——气口、犹豫、害羞或哽咽靠句中省略号“…”停顿、单字微重复吞吐如“我… 我刚才”“能…… 能”“再… 再”以及自然口语碎词如“哎，”“其实……”来体现，避免工整书面长句）、"
+        + "\nmessages 可包含文字字符串（可在开头加 [CQ:reply,id=<message_id>] 引用回复，或用 {\"voice\":\"（句首语气提示）前半句，（子句间语气变化提示）后半句\"} / \"[CQ:voice]（句首语气提示）前半句，（子句间语气提示）后半句\" 发送 QQ 语音；语音支持在句首及文字子句之间穿插简短括号语气标签来分段调控每半句的语气、情绪与快慢，如“（委屈低落鼻音）刚才去交表又被退回来了，（声音微颤叹气）明明已经改了三遍了怎么还不行啊”或“（忍俊不禁轻笑）你还敢说我呢，（带着笑意调侃）刚才在门口是谁差点平地摔了一跤啊”；切勿在语音台词里写“哈啊、唔、哼哼、噗、噗嗤、嘶”这类拟声字，也不要刻意结巴重复单字，避免工整书面长句）、"
           "{\"sticker_id\":\"<精确复制 sticker_options 中的单个 ID 字符串>\"}（可用选项见 expression_capabilities.sticker_options）、"
           "{\"reaction_id\":\"<已提供的选项ID>\"}或{\"typing\":true}。每项只选一种，顺序由你决定；"
           "仅使用本轮提供的 modality 和选项ID。reaction 回应本轮触发消息；typing 后必须有可见内容；later 仅支持文字。\n"

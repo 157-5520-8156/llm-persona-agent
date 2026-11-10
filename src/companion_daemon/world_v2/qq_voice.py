@@ -72,6 +72,8 @@ _LEADING_VOICE_TAG_RE = re.compile(
 _STAGE_DIRECTION_RE = re.compile(
     r"[（(][^）)\n]{1,80}[）)]|【[^】\n]{1,80}】|\*[^*\n]{1,60}\*"
 )
+_COT_TAG_RE = re.compile(r"<cot\s+text=([^>]+)>(.*?)</cot>", re.DOTALL | re.IGNORECASE)
+_COT_OPEN_OR_CLOSE_RE = re.compile(r"</?cot[^>]*>", re.IGNORECASE)
 
 
 def _find_ffmpeg() -> str | None:
@@ -110,7 +112,12 @@ def _extract_acting_cue_and_spoken_text(text: str) -> tuple[str, str]:
     cleaned = re.sub(r"\[CQ:[^\]]+\]", "", text)
     cleaned = re.sub(r"^(?:\[CQ:voice\]|\[voice\]|\[语音\])\s*", "", cleaned, flags=re.IGNORECASE)
     cues = [m.group(0).strip("（）()【】* ") for m in _STAGE_DIRECTION_RE.finditer(cleaned)]
-    spoken = _STAGE_DIRECTION_RE.sub("", cleaned).strip()
+    for cot_m in _COT_TAG_RE.finditer(cleaned):
+        cot_cue = cot_m.group(1).strip().strip("\"' ")
+        if cot_cue and cot_cue not in cues:
+            cues.append(cot_cue)
+    spoken = _STAGE_DIRECTION_RE.sub("", cleaned)
+    spoken = _COT_OPEN_OR_CLOSE_RE.sub("", spoken).strip()
     if _LEADING_WRITTEN_LAUGH_RE.match(spoken):
         spoken = _LEADING_WRITTEN_LAUGH_RE.sub("", spoken, count=1).strip()
         if not any("笑" in c for c in cues):
@@ -120,6 +127,82 @@ def _extract_acting_cue_and_spoken_text(text: str) -> tuple[str, str]:
         if not any(k in c for c in cues for k in ("困", "哈欠", "迷糊")):
             cues.append("刚睡醒最困倦迷糊、软绵绵撒娇")
     return ("、".join(c for c in cues if c), spoken)
+
+
+def _sanitize_cot_label(raw_cue: str) -> str:
+    cue = re.sub(r"^(?:请用|用)", "", raw_cue.strip()).strip()
+    cue = re.sub(r"(?:的语气(?:说话|说)?|说话|说)$", "", cue).strip()
+    cue = re.sub(r"[\s\"'<>《》【】（）()，,。！？；：:、]+", "", cue)
+    return cue[:18]
+
+
+def _wrap_clause_with_cot(segment: str, cue_label: str) -> str:
+    seg = segment.strip()
+    if not seg or not cue_label:
+        return seg
+    # Official Doubao Seed-ICL 2.0 expressive rule: single <cot> span should be <64 chars
+    if len(seg) + len(cue_label) + 16 <= 60:
+        return f"<cot text={cue_label}>{seg}</cot>"
+    # Split at the first clause boundary so the <cot> span stays well within 64 chars
+    m = re.search(r"[，,。！？；…]", seg)
+    if m and 2 <= m.end() <= 42:
+        head = seg[: m.end()]
+        tail = seg[m.end() :]
+        return f"<cot text={cue_label}>{head}</cot>{tail}"
+    head = seg[:36]
+    tail = seg[36:]
+    return f"<cot text={cue_label}>{head}</cot>{tail}"
+
+
+def _build_doubao_inline_cot_text(raw_text: str, acting_cue: str, spoken_text: str) -> str:
+    """Build inline ``<cot text=...>...</cot>`` tagged text for ``seed-tts-2.0-expressive``.
+
+    Supports both explicit ``<cot text=...>...</cot>`` tags authored by the model and
+    inline parenthetical cues ``（小声试探）哎，能不能一起撑伞呀？（害羞小声）其实我盼这场雨好久了。``
+    """
+    cleaned = re.sub(r"\[CQ:[^\]]+\]", "", raw_text)
+    cleaned = re.sub(r"^(?:\[CQ:voice\]|\[voice\]|\[语音\])\s*", "", cleaned, flags=re.IGNORECASE).strip()
+    if "<cot" in cleaned.lower() and "</cot>" in cleaned.lower():
+        def _norm_cot(m: re.Match[str]) -> str:
+            lbl = _sanitize_cot_label(m.group(1))
+            inner = _STAGE_DIRECTION_RE.sub("", m.group(2)).strip()
+            inner = _LEADING_WRITTEN_LAUGH_RE.sub("", inner, count=1).strip()
+            inner = _LEADING_WRITTEN_YAWN_RE.sub("", inner, count=1).strip()
+            return _wrap_clause_with_cot(inner, lbl) if lbl else inner
+
+        out = _COT_TAG_RE.sub(_norm_cot, cleaned)
+        return _STAGE_DIRECTION_RE.sub("", out).strip()
+
+    parts = re.split(r"([（(][^）)\n]{1,80}[）)]|【[^】\n]{1,80}】|\*[^*\n]{1,60}\*)", cleaned)
+    if len(parts) > 1:
+        rebuilt: list[str] = []
+        pending_cue: str = ""
+        for part in parts:
+            if not part or not part.strip():
+                continue
+            if _STAGE_DIRECTION_RE.fullmatch(part.strip()):
+                lbl = _sanitize_cot_label(part.strip("（）()【】* "))
+                if lbl:
+                    pending_cue = lbl
+            else:
+                seg = _LEADING_WRITTEN_LAUGH_RE.sub("", part.strip(), count=1).strip()
+                seg = _LEADING_WRITTEN_YAWN_RE.sub("", seg, count=1).strip()
+                if not seg:
+                    continue
+                if pending_cue:
+                    rebuilt.append(_wrap_clause_with_cot(seg, pending_cue))
+                    pending_cue = ""
+                else:
+                    rebuilt.append(seg)
+        joined = "".join(rebuilt).strip()
+        if joined:
+            return joined
+
+    if acting_cue and spoken_text:
+        lbl = _sanitize_cot_label(acting_cue.split("、")[0])
+        if lbl:
+            return _wrap_clause_with_cot(spoken_text, lbl)
+    return spoken_text
 
 
 def clean_spoken_text_for_tts(text: str) -> str:
@@ -1049,6 +1132,7 @@ async def _synthesize_via_doubao_seed_tts(
     resource_id: str,
     api_key: str,
     acting_cue: str = "",
+    raw_voice_text: str = "",
     app_id: str | None = None,
     client: httpx.AsyncClient,
 ) -> bytes | None:
@@ -1073,8 +1157,14 @@ async def _synthesize_via_doubao_seed_tts(
             headers["X-Api-Access-Key"] = api_key
         else:
             headers["X-Api-Key"] = api_key
+        cloned_mode = is_cloned_speaker or res_id in {"seed-icl-2.0", "volc.seedicl.default"}
+        effective_text = (
+            _build_doubao_inline_cot_text(raw_voice_text or spoken_text, acting_cue, spoken_text)
+            if cloned_mode and res_id in {"seed-icl-2.0", "volc.seedicl.default"}
+            else spoken_text
+        )
         req_params: dict[str, Any] = {
-            "text": spoken_text,
+            "text": effective_text,
             "speaker": voice_name,
             "audio_params": {
                 "format": "pcm",
@@ -1082,7 +1172,6 @@ async def _synthesize_via_doubao_seed_tts(
             },
         }
         if res_id in {"seed-tts-2.0", "seed-icl-2.0", "volc.seedicl.default"}:
-            cloned_mode = is_cloned_speaker or res_id in {"seed-icl-2.0", "volc.seedicl.default"}
             additions_payload: dict[str, Any] = {
                 "context_texts": [
                     _build_doubao_context_instruction(
@@ -1094,6 +1183,8 @@ async def _synthesize_via_doubao_seed_tts(
                 "disable_markdown_filter": True,
             }
             if cloned_mode:
+                req_params["model"] = "seed-tts-2.0-expressive"
+                additions_payload["use_tag_parser"] = "<cot " in effective_text
                 additions_payload["tone_fidelity"] = True
             req_params["additions"] = json.dumps(
                 additions_payload,
@@ -1227,6 +1318,7 @@ async def synthesize_companion_voice_note(
                 resource_id=doubao_res,
                 api_key=doubao_key,
                 acting_cue=acting_cue,
+                raw_voice_text=text,
                 app_id=doubao_app_id,
                 client=client,
             )
