@@ -761,37 +761,54 @@ def _build_doubao_context_instruction(acting_cue: str, spoken_text: str = "") ->
     """Build a concise Doubao 2.0 console-style vocal acting instruction for ``context_texts``.
 
     Per Volcengine Doubao Seed-TTS 2.0 / Seed-ICL 2.0 official tuning guidelines:
-    - Keep ``context_texts[0]`` concise, concrete, and affirmative (15-35 chars), like a
+    - Keep ``context_texts[0]`` concise, concrete, and affirmative (15-40 chars), like a
       director speaking to a voice actor (avoid long negative prompts such as "不要像播音员").
-    - Explicitly pair paralinguistic cues (laughter, sigh, pause/breath) with textual hooks
-      (``……``, ``——``, ``唉``, ``唔``, ``噗``, ``哈哈``) present in ``spoken_text`` or ``acting_cue``.
+    - Pair non-verbal / paralinguistic sounds (yawn, sob/nasal cry, hum/pout, gasp/hiss,
+      cough/stuffy nose, breathy chuckle, sigh) with physiologically matching vowel/breath
+      hooks in ``spoken_text`` (``哈啊……``, ``唔……``, ``哼……``, ``嘶——``, ``唉……``).
     """
     cue = acting_cue.strip().strip("。，、； ")
     text = spoken_text.strip()
+    combined = f"{cue} {text}"
+
     has_pause_hook = ("……" in text) or ("..." in text) or ("——" in text)
-    has_laugh_hook = any(k in (cue + text) for k in ("笑", "噗", "哈哈", "嘿嘿", "忍俊不禁", "调侃", "打趣"))
-    has_sigh_hook = any(k in (cue + text) for k in ("叹", "唉", "哈啊", "累", "酸", "困", "哈欠", "乏"))
+    has_yawn_hook = any(k in combined for k in ("哈欠", "哈啊", "困", "刚醒", "迷糊", "睁不开眼"))
+    has_cry_hook = any(k in combined for k in ("哭腔", "哽咽", "委屈", "眼眶", "抽泣", "吸鼻子", "快哭"))
+    has_hum_hook = any(k in combined for k in ("轻哼", "哼唧", "娇嗔", "嘟囔", "撒娇", "不依", "哼……"))
+    has_hiss_hook = any(k in combined for k in ("倒吸", "嘶——", "嘶…", "好冷", "冻死", "烫"))
+    has_cough_hook = any(k in combined for k in ("轻咳", "清嗓", "感冒", "鼻塞", "哑", "咳……"))
+    has_laugh_hook = any(k in combined for k in ("笑", "哈哈", "嘿嘿", "忍俊不禁", "调侃", "打趣"))
+    has_sigh_hook = any(k in combined for k in ("叹", "唉", "累", "酸", "乏", "松了口气"))
     has_whisper_hook = any(k in cue for k in ("压低", "小声", "悄悄", "气声", "耳语"))
 
+    # Build targeted physiological vocal cue additions
+    extras: list[str] = []
+    if has_yawn_hook:
+        extras.append("带着打哈欠般的长呼气声与困倦迷糊鼻音，语速放慢、尾音拖长")
+    elif has_cry_hook:
+        extras.append("声音微微发颤，带着委屈浓鼻音、轻微哽咽哭腔与吸气停顿")
+    elif has_cough_hook:
+        extras.append("带着感冒鼻塞般的轻微鼻音与清嗓气声，声线微哑松弛")
+    elif has_hiss_hook:
+        extras.append("句首带一点倒吸凉气的真实气音，语速微促")
+    elif has_hum_hook:
+        extras.append("带着娇嗔鼻音与轻轻哼唧的撒娇感，尾音微扬")
+    elif has_laugh_hook and "笑" not in cue:
+        extras.append("嘴角带笑，开口带一点忍俊不禁的气音轻笑")
+    elif has_sigh_hook and "叹" not in cue and "气" not in cue:
+        extras.append("先带一点明显的叹气呼气声，语速稍缓")
+
+    if has_pause_hook and "停顿" not in cue and not any("停顿" in e for e in extras):
+        extras.append("注意停顿留白与换气气口")
+
     if cue:
-        extras: list[str] = []
-        if has_laugh_hook and "笑" not in cue:
-            extras.append("带一点自然的轻笑声")
-        elif has_sigh_hook and "叹" not in cue and "气" not in cue:
-            extras.append("带一点轻微叹气与呼吸感")
-        if has_pause_hook and "停顿" not in cue:
-            extras.append("注意停顿留白与气口")
         suffix = ("，" + "，".join(extras)) if extras else ""
         if has_whisper_hook:
             return f"你嗓门再小点，用{cue}的语气像说悄悄话一样轻声说{suffix}。"
-        return f"请用{cue}的亲昵自然口语语气说话{suffix}。"
+        return f"请用{cue}的语气自然说话{suffix}。"
 
-    if has_sigh_hook:
-        return "请用稍微放缓、略带疲惫和轻微叹气的松弛语气说话，注意句中停顿与气口。"
-    if has_laugh_hook:
-        return "请用轻松亲昵、带着忍俊不禁轻笑意的温柔语气说话，语调灵动自然。"
-    if has_pause_hook:
-        return "请用温柔松弛的私聊语音口吻说话，语速稍缓，在省略号和转折处留出自然的呼吸停顿。"
+    if extras:
+        return f"请用像跟亲近的人发私聊语音一样的自然口吻说话，{'，'.join(extras)}。"
     return "请用温柔松弛、像跟亲近的人发私聊语音一样的自然口语语气说话，注意气口与尾音。"
 
 
