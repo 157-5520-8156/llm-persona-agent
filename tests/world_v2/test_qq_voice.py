@@ -389,3 +389,43 @@ async def test_doubao_seed_tts_synthesis_when_doubao_key_configured(tmp_path: Pa
     assert note.model_name == "seed-tts-2.0"
     assert "Vivi 2.0" in note.voice_name
     assert note.audio_bytes.startswith(b"RIFF")
+
+
+@pytest.mark.asyncio
+async def test_doubao_seed_icl_2_0_cloned_voice_includes_model_type_4_and_concise_context_texts(
+    tmp_path: Path,
+) -> None:
+    pcm_chunk = base64.b64encode(b"\x01\x00" * 12000).decode("ascii")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert str(request.url) == "https://openspeech.bytedance.com/api/v3/tts/unidirectional"
+        assert request.headers["X-Api-Resource-Id"] == "seed-icl-2.0"
+        body = json.loads(request.content.decode("utf-8"))
+        assert body["req_params"]["speaker"] == "S_jvguO05k2"
+        additions = json.loads(body["req_params"]["additions"])
+        assert additions["model_type"] == 4
+        assert additions["disable_markdown_filter"] is True
+        assert len(additions["context_texts"]) == 1
+        inst = additions["context_texts"][0]
+        assert "播音员" not in inst
+        assert "停顿" in inst
+        stream_line = json.dumps({"code": 0, "data": pcm_chunk}) + "\n"
+        return httpx.Response(200, content=stream_line.encode("utf-8"))
+
+    settings = Settings(
+        DOUBAO_SPEECH_API_KEY="test-doubao-speech-key",
+        DOUBAO_SPEECH_RESOURCE_ID="volc.seedicl.default",
+        DOUBAO_SPEECH_VOICE="S_jvguO05k2",
+        VOICE_TTS_VOICE="S_jvguO05k2",
+        VOICE_ENABLED=True,
+    )
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        note = await synthesize_companion_voice_note(
+            "[CQ:voice]（略带疲惫轻叹一口气）唉……今天走了一下午，腿都快断了。",
+            settings=settings,
+            http_client=client,
+            delivered_dir=tmp_path,
+        )
+    assert note is not None
+    assert note.spoken_text == "唉……今天走了一下午，腿都快断了。"
+    assert "豆包声音复刻2.0原声" in note.voice_name

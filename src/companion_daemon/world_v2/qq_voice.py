@@ -750,18 +750,42 @@ async def _synthesize_via_cosyvoice_ws(
     return raw_wav
 
 
-def _build_doubao_context_instruction(acting_cue: str) -> str:
-    """Build a natural vocal acting instruction for Doubao Seed-TTS 2.0 ``context_texts``."""
-    cue = acting_cue.strip()
+def _build_doubao_context_instruction(acting_cue: str, spoken_text: str = "") -> str:
+    """Build a concise Doubao 2.0 console-style vocal acting instruction for ``context_texts``.
+
+    Per Volcengine Doubao Seed-TTS 2.0 / Seed-ICL 2.0 official tuning guidelines:
+    - Keep ``context_texts[0]`` concise, concrete, and affirmative (15-35 chars), like a
+      director speaking to a voice actor (avoid long negative prompts such as "不要像播音员").
+    - Explicitly pair paralinguistic cues (laughter, sigh, pause/breath) with textual hooks
+      (``……``, ``——``, ``唉``, ``唔``, ``噗``, ``哈哈``) present in ``spoken_text`` or ``acting_cue``.
+    """
+    cue = acting_cue.strip().strip("。，、； ")
+    text = spoken_text.strip()
+    has_pause_hook = ("……" in text) or ("..." in text) or ("——" in text)
+    has_laugh_hook = any(k in (cue + text) for k in ("笑", "噗", "哈哈", "嘿嘿", "忍俊不禁", "调侃", "打趣"))
+    has_sigh_hook = any(k in (cue + text) for k in ("叹", "唉", "哈啊", "累", "酸", "困", "哈欠", "乏"))
+    has_whisper_hook = any(k in cue for k in ("压低", "小声", "悄悄", "气声", "耳语"))
+
     if cue:
-        return (
-            f"请用{cue}的声线与呼吸状态，像20岁女大学生贴着手机麦克风跟亲近的人私聊发语音一样自然松弛地说这句话，"
-            "语速随性有快有慢，保留真实的气声、轻微鼻音、口语停顿和句尾自然的尾音起伏，千万不要像朗读课文或播音员那样端着念。"
-        )
-    return (
-        "请用20岁女大学生贴着手机麦克风跟亲近的人发私聊语音的慵懒、亲昵、随性口吻说这句话，"
-        "语速随性有快有慢，带一点真实的轻微呼吸感、自然的口语停顿与尾音起伏，千万不要像朗读课文或播音员那样端着念。"
-    )
+        extras: list[str] = []
+        if has_laugh_hook and "笑" not in cue:
+            extras.append("带一点自然的轻笑声")
+        elif has_sigh_hook and "叹" not in cue and "气" not in cue:
+            extras.append("带一点轻微叹气与呼吸感")
+        if has_pause_hook and "停顿" not in cue:
+            extras.append("注意停顿留白与气口")
+        suffix = ("，" + "，".join(extras)) if extras else ""
+        if has_whisper_hook:
+            return f"你嗓门再小点，用{cue}的语气像说悄悄话一样轻声说{suffix}。"
+        return f"请用{cue}的亲昵自然口语语气说话{suffix}。"
+
+    if has_sigh_hook:
+        return "请用稍微放缓、略带疲惫和轻微叹气的松弛语气说话，注意句中停顿与气口。"
+    if has_laugh_hook:
+        return "请用轻松亲昵、带着忍俊不禁轻笑意的温柔语气说话，语调灵动自然。"
+    if has_pause_hook:
+        return "请用温柔松弛的私聊语音口吻说话，语速稍缓，在省略号和转折处留出自然的呼吸停顿。"
+    return "请用温柔松弛、像跟亲近的人发私聊语音一样的自然口语语气说话，注意气口与尾音。"
 
 
 _LOCAL_SEED_VC_DIR = Path(__file__).resolve().parents[3] / "data" / "seed_vc_engine"
@@ -1000,15 +1024,14 @@ async def _synthesize_via_doubao_seed_tts(
 ) -> bytes | None:
     """Synthesize speech via Volcengine Doubao Seed-TTS 2.0 / Seed-ICL 2.0 V3 streaming API."""
     is_cloned_speaker = voice_name.startswith("S_")
-    candidate_resources = (
-        [resource_id]
-        if (is_cloned_speaker and resource_id and ("icl" in resource_id or "megatts" in resource_id))
-        else (
-            ["volc.seedicl.default", "seed-icl-2.0", "volc.megatts.default"]
-            if is_cloned_speaker
-            else [resource_id or "seed-tts-2.0"]
+    if is_cloned_speaker:
+        candidate_resources = (
+            [resource_id, "seed-icl-2.0", "volc.seedicl.default"]
+            if (resource_id and resource_id not in {"seed-icl-2.0", "volc.seedicl.default"})
+            else ["seed-icl-2.0", "volc.seedicl.default", "volc.megatts.default"]
         )
-    )
+    else:
+        candidate_resources = [resource_id or "seed-tts-2.0"]
     for res_id in candidate_resources:
         pcm_chunks: list[bytes] = []
         headers: dict[str, str] = {
@@ -1029,8 +1052,14 @@ async def _synthesize_via_doubao_seed_tts(
             },
         }
         if res_id in {"seed-tts-2.0", "seed-icl-2.0", "volc.seedicl.default"}:
+            additions_payload: dict[str, Any] = {
+                "context_texts": [_build_doubao_context_instruction(acting_cue, spoken_text)],
+                "disable_markdown_filter": True,
+            }
+            if is_cloned_speaker or res_id in {"seed-icl-2.0", "volc.seedicl.default"}:
+                additions_payload["model_type"] = 4
             req_params["additions"] = json.dumps(
-                {"context_texts": [_build_doubao_context_instruction(acting_cue)]},
+                additions_payload,
                 ensure_ascii=False,
             )
         async with client.stream(
@@ -1152,7 +1181,7 @@ async def synthesize_companion_voice_note(
                 )
             )
             doubao_res = getattr(cfg, "doubao_speech_resource_id", None) or (
-                "volc.seedicl.default" if doubao_voice.startswith("S_") else "seed-tts-2.0"
+                "seed-icl-2.0" if doubao_voice.startswith("S_") else "seed-tts-2.0"
             )
             doubao_app_id = (getattr(cfg, "doubao_speech_app_id", None) or "").strip() or None
             audio_bytes = await _synthesize_via_doubao_seed_tts(

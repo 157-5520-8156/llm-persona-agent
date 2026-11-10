@@ -291,7 +291,7 @@ def conversation_atomic_slim_system_prompt(
         CONVERSATION_PROMPT_VERSION + "\n" + _CONVERSATION_AUTHORITY
         + "\n角色身份材料：\n" + identity_instruction
         + "\n\n" + private_scope + "\n\n" + _CONVERSATION_FIELDS
-        + "\nmessages 可包含文字字符串（可在开头加 [CQ:reply,id=<message_id>] 引用回复，或用 {\"voice\":\"（声学与气息导演提示，如：贴近麦克风压低声音带一点笑意 / 刚醒困倦鼻音 / 轻叹一口气语尾微拖）<真实口语语流台词>\"} / \"[CQ:voice]（声学与气息导演提示）<真实口语语流台词>\" 发送 QQ 语音；发语音时可自然带上口语起首词与停顿如“哈啊…/唔…/诶，”或半句省略，按对着手机随口说话的真实语流写，不要写工整书面长句）、"
+        + "\nmessages 可包含文字字符串（可在开头加 [CQ:reply,id=<message_id>] 引用回复，或用 {\"voice\":\"（简短具象的语气/语速/气口导演提示，如：带着忍俊不禁的轻笑调侃 / 略带疲惫轻叹一口气语速放慢 / 压低声音像在宿舍说悄悄话 / 刚醒迷糊鼻音带点撒娇）<1~2句带自然气口的口语台词>\"} / \"[CQ:voice]（简短具象的语气导演提示）<真实口语台词>\" 发送 QQ 语音；发语音时台词请用口语碎句与倒装，善用“……”与“——”留出呼吸和犹豫停顿，自然嵌入“唔……/唉……/噗，/诶，”等口癖或叹词触发真实呼吸与笑意，避免写工整书面长句）、"
           "{\"sticker_id\":\"<精确复制 sticker_options 中的单个 ID 字符串>\"}（可用选项见 expression_capabilities.sticker_options）、"
           "{\"reaction_id\":\"<已提供的选项ID>\"}或{\"typing\":true}。每项只选一种，顺序由你决定；"
           "仅使用本轮提供的 modality 和选项ID。reaction 回应本轮触发消息；typing 后必须有可见内容；later 仅支持文字。\n"
