@@ -101,12 +101,19 @@ def extract_voice_tag_and_clean_text(text: str) -> tuple[bool, str]:
     return True, remainder
 
 
+_LEADING_WRITTEN_LAUGH_RE = re.compile(r"^\s*(?:噗嗤|噗哈哈|噗)[，,。、…\s]*")
+
+
 def _extract_acting_cue_and_spoken_text(text: str) -> tuple[str, str]:
     """Return ``(acting_cue, spoken_text)`` from an outbound voice bubble."""
     cleaned = re.sub(r"\[CQ:[^\]]+\]", "", text)
     cleaned = re.sub(r"^(?:\[CQ:voice\]|\[voice\]|\[语音\])\s*", "", cleaned, flags=re.IGNORECASE)
     cues = [m.group(0).strip("（）()【】* ") for m in _STAGE_DIRECTION_RE.finditer(cleaned)]
     spoken = _STAGE_DIRECTION_RE.sub("", cleaned).strip()
+    if _LEADING_WRITTEN_LAUGH_RE.match(spoken):
+        spoken = _LEADING_WRITTEN_LAUGH_RE.sub("", spoken, count=1).strip()
+        if not any("笑" in c for c in cues):
+            cues.append("带着忍俊不禁的轻笑意")
     return ("、".join(c for c in cues if c), spoken)
 
 

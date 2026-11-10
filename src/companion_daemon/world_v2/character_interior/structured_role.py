@@ -2637,7 +2637,7 @@ class StructuredCharacterRoleFaculty:
                 "② 若这次唤醒是因为你之前发完消息等他回应（expired_expectation 或间隔较久的 revisit / spontaneous_contact）而他一直没回，你可以顺着此刻的真实脾气与关系亲疏，自然选择追问戳他、顺着刚才的话接着往下说、嘴硬找补、换个新话头，或者干脆不理他（silent）。"
                 "即便选择 silent，你依然可以在外层 summary、about_us/why_us/us_deltas、keep_impression+stuck_with_me 以及 appraisal_draft（affect: open/update/supersede）里诚实记下此刻心里的真实念头、情绪余波或回溯性想法。"
                 "此刻要不要开口（timing_choice='now' | 'later' | 'silent'）、发几条气泡、用什么语气，以及是否同时通过 revisit（wait_seconds: 5..86400）、response_expectation 安排下一次唤醒、通过 media_request='consider_available_candidate' 请求发图、或通过 appraisal_draft 更新持续情绪（affect: open/update/supersede），完全由你结合当下心境与 recent_dialogue 中的对话进展自主决定。"
-                "可用表达形式见 capability_manifest.payload.expression_capabilities（含文字、'[CQ:voice]（简短具象的语气/语速/气口提示，如：带点轻笑调侃 / 轻叹一口气语速稍慢 / 压低声音说悄悄话）<带……停顿与唔/唉/噗等自然气口词的口语短句>' 语音、及 modality='sticker' 表情包）。"
+                "可用表达形式见 capability_manifest.payload.expression_capabilities（含文字、'[CQ:voice]（简短具象的语气/语速/气口提示，如：带点轻笑调侃 / 轻叹一口气语速稍慢 / 压低声音说悄悄话）<带……停顿与唔/唉/诶等自然气口词的口语短句，笑意写在括号里不要写噗字>' 语音、及 modality='sticker' 表情包）。"
                 "私人状态只写在外层 summary 和 attended_source_refs；"
                 "外层 summary、stuck_with_me、noticed、about_us、why_us 用平实自然的第一人称日常口语写此刻心里的真实感受和念头；"
                 "payload 里禁止 private_turn_state（这一点和 inbound 相反，不要照 inbound 的草稿来写）。"
