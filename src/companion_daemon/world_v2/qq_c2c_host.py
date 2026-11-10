@@ -19,7 +19,7 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Awaitable, Callable, Coroutine, Literal, Mapping, TypeVar, TYPE_CHECKING
+from typing import Any, Awaitable, Callable, Collection, Coroutine, Literal, Mapping, TypeVar, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .character_interior.life_source_review import LifeSourceReviewer
@@ -1972,15 +1972,26 @@ class QQC2CHost:
                 dispatch_seconds = (
                     turn_budget.remaining(include_reserve=True) if turn_budget is not None else None
                 )
+                min_dispatch_seconds = (
+                    max(turn_budget.acceptance_dispatch_reserve_seconds, 5.0)
+                    if turn_budget is not None
+                    and turn_budget.acceptance_dispatch_reserve_seconds >= 1.0
+                    else (
+                        turn_budget.acceptance_dispatch_reserve_seconds
+                        if turn_budget is not None
+                        else None
+                    )
+                )
                 if (
                     dispatch_seconds is not None
-                    and turn_budget is not None
-                    and dispatch_seconds < turn_budget.acceptance_dispatch_reserve_seconds
+                    and min_dispatch_seconds is not None
+                    and dispatch_seconds < min_dispatch_seconds
                 ):
-                    # Cognition may consume the absolute turn deadline, but an
-                    # already-authorized visible reply must still get one
-                    # bounded provider attempt in this user-owned lane.
-                    dispatch_seconds = turn_budget.acceptance_dispatch_reserve_seconds
+                    # Cognition or intentional follow-up/typing rhythm pacing may
+                    # consume the absolute turn deadline, but an already-authorized
+                    # visible reply must still get one bounded provider attempt in
+                    # this user-owned lane.
+                    dispatch_seconds = min_dispatch_seconds
                     _LOG.warning(
                         "world v2 dispatch grace trace=%s "
                         "reason=turn_budget_exhausted grace_seconds=%.3f",

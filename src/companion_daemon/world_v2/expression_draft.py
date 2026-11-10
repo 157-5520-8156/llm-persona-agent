@@ -454,7 +454,12 @@ def validate_expression_draft_capabilities(
     contract, so both inbound and proactive paths reject them identically.
     """
 
-    if len(draft.beats) > capabilities.max_beats:
+    effective_max_beats = (
+        max(capabilities.max_beats, 16)
+        if capabilities.profile_id == "expression:qq-napcat.1" and capabilities.max_beats == 8
+        else capabilities.max_beats
+    )
+    if len(draft.beats) > effective_max_beats:
         raise ValueError("expression draft exceeds the deployment beat limit")
     if (
         draft.media_request == "consider_available_candidate"

@@ -1814,6 +1814,19 @@ def _slim_beats(
         if allow_nontext:
             raise ValueError(f"messages[{index}]不是有效的文字或表达选项对象")
         return None
+    if (
+        len(messages) > SLIM_REPLY_ONLY_MAX_TEXT_BEATS
+        and any(item.get("modality") == "typing" for item in messages)
+        and any(item.get("modality") != "typing" for item in messages)
+    ):
+        trimmed: list[dict[str, object]] = []
+        remaining_over = len(messages) - SLIM_REPLY_ONLY_MAX_TEXT_BEATS
+        for item in messages:
+            if item.get("modality") == "typing" and remaining_over > 0:
+                remaining_over -= 1
+                continue
+            trimmed.append(item)
+        messages = trimmed
     return messages
 
 

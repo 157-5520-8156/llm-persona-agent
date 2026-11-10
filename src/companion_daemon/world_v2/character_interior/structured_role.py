@@ -15,6 +15,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 import hashlib
 import json
+import os
 import unicodedata
 from typing import Annotated, Any, Literal
 
@@ -1516,6 +1517,16 @@ class _WorldStimulusAppraisalResult(BaseModel):
         if isinstance(value, dict) and "source_refs" in value:
             value = dict(value)
             value.pop("source_refs", None)
+        if (
+            isinstance(value, dict)
+            and value.get("reflection_depth") == "elaborated"
+            and any(
+                value.get(field) is None
+                for field in ("behavior_tendency", "stance", "display_strategy")
+            )
+        ):
+            value = dict(value)
+            value["reflection_depth"] = "brief"
         return value
 
     @field_validator("expiry", mode="before")
@@ -3370,6 +3381,27 @@ class StructuredCharacterRoleFaculty:
                 }
                 normalized["decision"] = raw_decision
             if "source_refs" in raw_decision or "payload" in raw_decision:
+                extra_decision_keys = [
+                    k for k in raw_decision if k not in {"source_refs", "payload"}
+                ]
+                if extra_decision_keys and "source_refs" in raw_decision:
+                    existing_payload = raw_decision.get("payload")
+                    if isinstance(existing_payload, dict):
+                        merged_payload = {
+                            **{k: raw_decision[k] for k in extra_decision_keys},
+                            **existing_payload,
+                        }
+                        raw_decision = {
+                            "source_refs": raw_decision["source_refs"],
+                            "payload": merged_payload,
+                        }
+                        normalized["decision"] = raw_decision
+                    elif existing_payload is None:
+                        raw_decision = {
+                            "source_refs": raw_decision["source_refs"],
+                            "payload": {k: raw_decision[k] for k in extra_decision_keys},
+                        }
+                        normalized["decision"] = raw_decision
                 if (
                     contract.purpose == "life_development_choice"
                     and isinstance(raw_decision.get("payload"), dict)

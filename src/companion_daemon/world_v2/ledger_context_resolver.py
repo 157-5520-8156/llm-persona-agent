@@ -9,7 +9,7 @@ an inferred reference or hash.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 import hashlib
 import json
@@ -17,7 +17,7 @@ import logging
 import re
 import threading
 import time
-from typing import Iterable, Mapping
+from typing import Iterable, Mapping, Sequence
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
