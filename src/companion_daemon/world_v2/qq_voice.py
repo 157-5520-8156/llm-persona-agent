@@ -102,6 +102,7 @@ def extract_voice_tag_and_clean_text(text: str) -> tuple[bool, str]:
 
 
 _LEADING_WRITTEN_LAUGH_RE = re.compile(r"^\s*(?:噗嗤|噗哈哈|噗)[，,。、…\s]*")
+_LEADING_WRITTEN_YAWN_RE = re.compile(r"^\s*哈啊[…，,。、\s]*(?:唔[…，,。、\s]*)?")
 
 
 def _extract_acting_cue_and_spoken_text(text: str) -> tuple[str, str]:
@@ -114,6 +115,10 @@ def _extract_acting_cue_and_spoken_text(text: str) -> tuple[str, str]:
         spoken = _LEADING_WRITTEN_LAUGH_RE.sub("", spoken, count=1).strip()
         if not any("笑" in c for c in cues):
             cues.append("带着忍俊不禁的轻笑意")
+    if _LEADING_WRITTEN_YAWN_RE.match(spoken):
+        spoken = _LEADING_WRITTEN_YAWN_RE.sub("", spoken, count=1).strip()
+        if not any(k in c for c in cues for k in ("困", "哈欠", "迷糊")):
+            cues.append("刚睡醒最困倦迷糊、软绵绵撒娇")
     return ("、".join(c for c in cues if c), spoken)
 
 
@@ -757,59 +762,60 @@ async def _synthesize_via_cosyvoice_ws(
     return raw_wav
 
 
-def _build_doubao_context_instruction(acting_cue: str, spoken_text: str = "") -> str:
-    """Build a concise Doubao 2.0 console-style vocal acting instruction for ``context_texts``.
+def _build_doubao_context_instruction(
+    acting_cue: str,
+    spoken_text: str = "",
+    *,
+    is_cloned_speaker: bool = True,
+) -> str:
+    """Build an official Volcengine Doubao 2.0 instruction for ``context_texts``.
 
-    Per Volcengine Doubao Seed-TTS 2.0 / Seed-ICL 2.0 official tuning guidelines:
-    - Keep ``context_texts[0]`` concise, concrete, and affirmative (15-40 chars), like a
-      director speaking to a voice actor (avoid long negative prompts such as "不要像播音员").
-    - Pair non-verbal / paralinguistic sounds (yawn, sob/nasal cry, hum/pout, gasp/hiss,
-      cough/stuffy nose, breathy chuckle, sigh) with physiologically matching vowel/breath
-      hooks in ``spoken_text`` (``哈啊……``, ``唔……``, ``哼……``, ``嘶——``, ``唉……``).
+    Follows the official Volcengine Doubao documentation:
+    - ``《声音复刻 2.0 最佳实践》`` (for ``seed-icl-2.0`` / ``S_...`` cloned voices):
+      Uses the colon-terminated superlative emotion format
+      ``"用<具象情绪描述>的语气演绎下面这句话："``.
+    - ``《语音指令与标签》`` (for ``seed-tts-2.0`` native 2.0 voices):
+      Uses concise console instruction format ``"用<具象情绪描述>的语气说"``.
     """
-    cue = acting_cue.strip().strip("。，、； ")
+    cue = acting_cue.strip().strip("。，、；：: ")
     text = spoken_text.strip()
     combined = f"{cue} {text}"
 
-    has_pause_hook = ("……" in text) or ("..." in text) or ("——" in text)
-    has_yawn_hook = any(k in combined for k in ("哈欠", "哈啊", "困", "刚醒", "迷糊", "睁不开眼"))
-    has_cry_hook = any(k in combined for k in ("哭腔", "哽咽", "委屈", "眼眶", "抽泣", "吸鼻子", "快哭"))
-    has_hum_hook = any(k in combined for k in ("轻哼", "哼唧", "娇嗔", "嘟囔", "撒娇", "不依", "哼……"))
-    has_hiss_hook = any(k in combined for k in ("倒吸", "嘶——", "嘶…", "好冷", "冻死", "烫"))
-    has_cough_hook = any(k in combined for k in ("轻咳", "清嗓", "感冒", "鼻塞", "哑", "咳……"))
-    has_laugh_hook = any(k in combined for k in ("笑", "哈哈", "嘿嘿", "忍俊不禁", "调侃", "打趣"))
-    has_sigh_hook = any(k in combined for k in ("叹", "唉", "累", "酸", "乏", "松了口气"))
-    has_whisper_hook = any(k in cue for k in ("压低", "小声", "悄悄", "气声", "耳语"))
+    has_yawn = any(k in combined for k in ("哈欠", "困", "刚醒", "刚睡醒", "迷糊", "睁不开眼", "眼皮"))
+    has_cry = any(k in combined for k in ("哭腔", "哽咽", "委屈", "眼眶", "抽泣", "吸鼻子", "快哭"))
+    has_shy = any(k in combined for k in ("害羞", "试探", "犹豫", "不好意思", "小鹿乱撞"))
+    has_pout = any(k in combined for k in ("轻哼", "哼唧", "娇嗔", "嘟囔", "撒娇", "不依"))
+    has_laugh = any(k in combined for k in ("笑", "哈哈", "嘿嘿", "忍俊不禁", "调侃", "打趣"))
+    has_sigh = any(k in combined for k in ("叹", "唉", "累", "酸", "乏", "松了口气"))
+    has_whisper = any(k in cue for k in ("压低", "小声", "悄悄", "气声", "耳语"))
 
-    # Build targeted physiological vocal cue additions
-    extras: list[str] = []
-    if has_yawn_hook:
-        extras.append("带着打哈欠般的长呼气声与困倦迷糊鼻音，语速放慢、尾音拖长")
-    elif has_cry_hook:
-        extras.append("声音微微发颤，带着委屈浓鼻音、轻微哽咽哭腔与吸气停顿")
-    elif has_cough_hook:
-        extras.append("带着感冒鼻塞般的轻微鼻音与清嗓气声，声线微哑松弛")
-    elif has_hiss_hook:
-        extras.append("句首带一点倒吸凉气的真实气音，语速微促")
-    elif has_hum_hook:
-        extras.append("带着娇嗔鼻音与轻轻哼唧的撒娇感，尾音微扬")
-    elif has_laugh_hook and "笑" not in cue:
-        extras.append("嘴角带笑，开口带一点忍俊不禁的气音轻笑")
-    elif has_sigh_hook and "叹" not in cue and "气" not in cue:
-        extras.append("先带一点明显的叹气呼气声，语速稍缓")
+    if not cue:
+        if has_cry:
+            tone_desc = "最委屈、声音微颤带着哭腔和鼻音"
+        elif has_yawn:
+            tone_desc = "刚睡醒最困倦迷糊、软绵绵撒娇"
+        elif has_shy:
+            tone_desc = "试探性的犹豫、带点害羞又藏着温柔期待"
+        elif has_pout:
+            tone_desc = "带着点小傲娇、娇嗔撒娇"
+        elif has_laugh:
+            tone_desc = "带着忍俊不禁的轻笑意、俏皮自然"
+        elif has_sigh:
+            tone_desc = "略带疲惫、轻轻叹气又温柔松弛"
+        else:
+            tone_desc = "温柔松弛、像跟亲近的人私聊一样自然"
+    else:
+        tone_desc = re.sub(r"^(?:请用|用)", "", cue).strip()
+        tone_desc = re.sub(r"(?:的语气(?:说话|说|演绎下面这句话)?|说话|说)$", "", tone_desc).strip()
 
-    if has_pause_hook and "停顿" not in cue and not any("停顿" in e for e in extras):
-        extras.append("注意停顿留白与换气气口")
+    if is_cloned_speaker:
+        if has_whisper and "悄悄话" not in tone_desc and "小声" not in tone_desc:
+            return f"用压低声音说悄悄话、{tone_desc}的语气演绎下面这句话："
+        return f"用{tone_desc}的语气演绎下面这句话："
 
-    if cue:
-        suffix = ("，" + "，".join(extras)) if extras else ""
-        if has_whisper_hook:
-            return f"你嗓门再小点，用{cue}的语气像说悄悄话一样轻声说{suffix}。"
-        return f"请用{cue}的语气自然说话{suffix}。"
-
-    if extras:
-        return f"请用像跟亲近的人发私聊语音一样的自然口吻说话，{'，'.join(extras)}。"
-    return "请用温柔松弛、像跟亲近的人发私聊语音一样的自然口语语气说话，注意气口与尾音。"
+    if has_whisper:
+        return f"你嗓门再小点，用{tone_desc}的语气像说悄悄话一样轻声说"
+    return f"用{tone_desc}的语气说"
 
 
 _LOCAL_SEED_VC_DIR = Path(__file__).resolve().parents[3] / "data" / "seed_vc_engine"
@@ -1076,12 +1082,19 @@ async def _synthesize_via_doubao_seed_tts(
             },
         }
         if res_id in {"seed-tts-2.0", "seed-icl-2.0", "volc.seedicl.default"}:
+            cloned_mode = is_cloned_speaker or res_id in {"seed-icl-2.0", "volc.seedicl.default"}
             additions_payload: dict[str, Any] = {
-                "context_texts": [_build_doubao_context_instruction(acting_cue, spoken_text)],
+                "context_texts": [
+                    _build_doubao_context_instruction(
+                        acting_cue,
+                        spoken_text,
+                        is_cloned_speaker=cloned_mode,
+                    )
+                ],
                 "disable_markdown_filter": True,
             }
-            if is_cloned_speaker or res_id in {"seed-icl-2.0", "volc.seedicl.default"}:
-                additions_payload["model_type"] = 4
+            if cloned_mode:
+                additions_payload["tone_fidelity"] = True
             req_params["additions"] = json.dumps(
                 additions_payload,
                 ensure_ascii=False,
