@@ -173,13 +173,17 @@ def _build_doubao_inline_cot_text(raw_text: str, acting_cue: str, spoken_text: s
         out = _COT_TAG_RE.sub(_norm_cot, cleaned)
         return _STAGE_DIRECTION_RE.sub("", out).strip()
 
-    parts = re.split(r"([（(][^）)\n]{1,80}[）)]|【[^】\n]{1,80}】|\*[^*\n]{1,60}\*)", cleaned)
-    if len(parts) > 1:
+    parts = [
+        p
+        for p in re.split(r"([（(][^）)\n]{1,80}[）)]|【[^】\n]{1,80}】|\*[^*\n]{1,60}\*)", cleaned)
+        if p and p.strip()
+    ]
+    cue_indices = [i for i, p in enumerate(parts) if _STAGE_DIRECTION_RE.fullmatch(p.strip())]
+    has_mid_sentence_cue = len(cue_indices) >= 2 or (len(cue_indices) == 1 and cue_indices[0] > 0)
+    if has_mid_sentence_cue:
         rebuilt: list[str] = []
         pending_cue: str = ""
         for part in parts:
-            if not part or not part.strip():
-                continue
             if _STAGE_DIRECTION_RE.fullmatch(part.strip()):
                 lbl = _sanitize_cot_label(part.strip("（）()【】* "))
                 if lbl:
@@ -198,10 +202,6 @@ def _build_doubao_inline_cot_text(raw_text: str, acting_cue: str, spoken_text: s
         if joined:
             return joined
 
-    if acting_cue and spoken_text:
-        lbl = _sanitize_cot_label(acting_cue.split("、")[0])
-        if lbl:
-            return _wrap_clause_with_cot(spoken_text, lbl)
     return spoken_text
 
 
